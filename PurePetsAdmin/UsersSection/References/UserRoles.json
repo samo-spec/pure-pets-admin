@@ -1,0 +1,59 @@
+{
+  "UserRoles": {
+    "User": {
+      "ViewAds": true,
+      "FavoriteItems": true,
+      "PostAds": "Limited/Verified only",
+      "SellNew": false,
+      "SellUsed": "Limited",
+      "Adoption": true,
+      "ManageStore": false,
+      "Moderation": false,
+      "FullAccess": false
+    },
+    "Owner": {
+      "ViewAds": true,
+      "FavoriteItems": true,
+      "PostAds": true,
+      "SellNew": true,
+      "SellUsed": true,
+      "Adoption": true,
+      "ManageStore": true,
+      "Moderation": false,
+      "FullAccess": false
+    },
+    "Vet": {
+      "ViewAds": true,
+      "FavoriteItems": true,
+      "PostAds": true,
+      "SellNew": false,
+      "SellUsed": false,
+      "Adoption": true,
+      "ManageStore": false,
+      "Moderation": false,
+      "FullAccess": false
+    },
+    "Moderator": {
+      "ViewAds": true,
+      "FavoriteItems": true,
+      "PostAds": true,
+      "SellNew": false,
+      "SellUsed": false,
+      "Adoption": true,
+      "ManageStore": false,
+      "Moderation": true,
+      "FullAccess": false
+    },
+    "Admin": {
+      "ViewAds": true,
+      "FavoriteItems": true,
+      "PostAds": true,
+      "SellNew": true,
+      "SellUsed": true,
+      "Adoption": true,
+      "ManageStore": true,
+      "Moderation": true,
+      "FullAccess": true
+    }
+  }
+}

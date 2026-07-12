@@ -1,0 +1,382 @@
+*** a/FUManager.m
+--- b/FUManager.m
+@@
+ @implementation FUManager
+@@
+-+ (FIRQuery *)usersBaseQueryOrderedBy:(NSString * _Nullable)orderField ascending:(BOOL)ascending
+-{
+-    FIRFirestore *db = [FIRFirestore firestore];
+-    FIRCollectionReference *col = [db collectionWithPath:@"UsersCol"];
+-
+-    NSString *field = orderField.length ? orderField : @"UserName";
+-    DLog(@"[PERM_SUB_COLL] usersBaseQueryOrderedBy | field=%@ asc=%d", field, ascending);
+-
+-    // NOTE: add a stable tiebreaker if needed:
+-    // return [[col queryOrderedByField:field descending:!ascending] queryOrderedByField:@"uid" descending:NO];
+-
+-    FIRQuery *q = [col queryOrderedByField:field descending:!ascending];
+-    return q;
+-}
++// Stable sorting by UserName + uid tiebreaker to prevent UI flicker
+++ (FIRQuery *)usersBaseQueryOrderedBy:(NSString * _Nullable)orderField
++                            ascending:(BOOL)ascending
++{
++    FIRFirestore *db = [FIRFirestore firestore];
++    FIRCollectionReference *col = [db collectionWithPath:kFUUsersCollection];
++
++    NSString *field = orderField.length ? orderField : @"UserName";
++    DLog(@"[PERM_SUB_COLL] usersBaseQueryOrderedBy | field=%@ asc=%d", field, ascending);
++
++    FIRQuery *q = [[col queryOrderedByField:field descending:!ascending]
++                        queryOrderedByField:@"uid" descending:NO];
++    return q;
++}
+@@
+-- (id<FIRListenerRegistration>)_listenAllUsersInternalOrderedBy:(NSString *)orderField
+-                                                      ascending:(BOOL)ascending
+-                                           includeMetadataChanges:(BOOL)includeMetadata
+-                                                          queue:(dispatch_queue_t)callbackQueue
+-                                                     wantDiffs:(BOOL)wantDiffs
+-                                                      completion:(void(^)(NSArray<UserModel *> * _Nullable users,
+-                                                                          NSArray<FIRDocumentChange *> * _Nullable changes,
+-                                                                          FIRSnapshotMetadata * _Nullable metadata,
+-                                                                          NSError * _Nullable error))completion
+-{
+-    NSParameterAssert(completion != nil);
+-
+-    DLog(@"[PERM_SUB_COLL] _listenAllUsersInternalOrderedBy ENTER | field=%@ asc=%d includeMetadata=%d wantDiffs=%d queue=%s",
+-         orderField ?: @"<nil>", ascending, includeMetadata, wantDiffs,
+-         callbackQueue ? dispatch_queue_get_label(callbackQueue) : "MAIN");
+-
+-    FIRQuery *q = [self.class usersBaseQueryOrderedBy:orderField ascending:ascending];
+-
+-    id<FIRListenerRegistration> reg =
+-    [q addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+-        if (error) {
+-            DLog(@"[PERM_SUB_COLL] snapshotListener ERROR: %@", error.localizedDescription);
+-            [self _deliverOnQueue:callbackQueue block:^{ completion(nil, nil, nil, error); }];
+-            return;
+-        }
+-        if (!snapshot) {
+-            DLog(@"[PERM_SUB_COLL] snapshotListener WARNING: snapshot is nil");
+-            [self _deliverOnQueue:callbackQueue block:^{ completion(@[], @[], nil, nil); }];
+-            return;
+-        }
+-
+-        DLog(@"[PERM_SUB_COLL] snapshotListener START | docs=%lu changes=%lu fromCache=%d pendingWrites=%d",
+-             (unsigned long)snapshot.documents.count,
+-             (unsigned long)snapshot.documentChanges.count,
+-             snapshot.metadata.isFromCache,
+-             snapshot.metadata.hasPendingWrites);
+-
+-        CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
+-
+-        dispatch_queue_t workQ = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
+-        [self _parseUsersFromSnapshot:snapshot
+-                                workQ:workQ
+-                            completion:^(NSArray<UserModel *> *users) {
+-
+-            NSArray<FIRDocumentChange *> *changes = wantDiffs ? snapshot.documentChanges : @[];
+-
+-            CFAbsoluteTime parseMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0;
+-            DLog(@"[PERM_SUB_COLL] snapshotListener PARSED | users=%lu (%.2fms) deliverQueue=%s",
+-                 (unsigned long)users.count, parseMs,
+-                 callbackQueue ? dispatch_queue_get_label(callbackQueue) : "MAIN");
+-
+-            // Optional: log each change briefly
+-            if (wantDiffs && changes.count) {
+-                for (FIRDocumentChange *c in changes) {
+-                    NSString *typeStr = c.type == FIRDocumentChangeTypeAdded ? @"ADDED" :
+-                                        c.type == FIRDocumentChangeTypeModified ? @"MODIFIED" : @"REMOVED";
+-                    DLog(@"[PERM_SUB_COLL] change %@ | old=%ld new=%ld docID=%@",
+-                         typeStr, (long)c.oldIndex, (long)c.newIndex, c.document.documentID);
+-                }
+-            }
+-
+-            [self _deliverOnQueue:callbackQueue block:^{
+-                DLog(@"[PERM_SUB_COLL] snapshotListener COMPLETE deliver");
+-                completion(users, changes, snapshot.metadata, nil);
+-            }];
+-        }];
+-    }];
+-
+-    DLog(@"[PERM_SUB_COLL] _listenAllUsersInternalOrderedBy ATTACHED listener");
+-    return reg;
+-}
++- (id<FIRListenerRegistration>)_listenAllUsersInternalOrderedBy:(NSString *)orderField
++                                                      ascending:(BOOL)ascending
++                                           includeMetadataChanges:(BOOL)includeMetadata
++                                                          queue:(dispatch_queue_t)callbackQueue
++                                                     wantDiffs:(BOOL)wantDiffs
++                                                      completion:(void(^)(NSArray<UserModel *> * _Nullable users,
++                                                                          NSArray<FIRDocumentChange *> * _Nullable changes,
++                                                                          FIRSnapshotMetadata * _Nullable metadata,
++                                                                          NSError * _Nullable error))completion
++{
++    NSParameterAssert(completion != nil);
++
++    DLog(@"[PERM_SUB_COLL] _listenAllUsersInternalOrderedBy ENTER | field=%@ asc=%d includeMetadata=%d wantDiffs=%d queue=%s",
++         orderField ?: @"<nil>", ascending, includeMetadata, wantDiffs, PPQueueLabel(callbackQueue));
++
++    FIRQuery *q = [self.class usersBaseQueryOrderedBy:orderField ascending:ascending];
++
++    void (^handle)(FIRQuerySnapshot * _Nullable, NSError * _Nullable) = ^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
++        if (error) {
++            DLog(@"[PERM_SUB_COLL] snapshotListener ERROR: %@", error.localizedDescription);
++            [self _deliverOnQueue:callbackQueue block:^{ completion(nil, nil, nil, error); }];
++            return;
++        }
++        if (!snapshot) {
++            DLog(@"[PERM_SUB_COLL] snapshotListener WARNING: snapshot is nil");
++            [self _deliverOnQueue:callbackQueue block:^{ completion(@[], @[], nil, nil); }];
++            return;
++        }
++
++        DLog(@"[PERM_SUB_COLL] snapshotListener START | docs=%lu changes=%lu fromCache=%d pendingWrites=%d",
++             (unsigned long)snapshot.documents.count,
++             (unsigned long)snapshot.documentChanges.count,
++             snapshot.metadata.isFromCache,
++             snapshot.metadata.hasPendingWrites);
++
++        CFAbsoluteTime t0 = CFAbsoluteTimeGetCurrent();
++        dispatch_queue_t workQ = dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0);
++
++        [self _parseUsersFromSnapshot:snapshot
++                                workQ:workQ
++                            completion:^(NSArray<UserModel *> *users) {
++            NSArray<FIRDocumentChange *> *changes = wantDiffs ? snapshot.documentChanges : @[];
++
++            CFAbsoluteTime parseMs = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0;
++            DLog(@"[PERM_SUB_COLL] snapshotListener PARSED | users=%lu (%.2fms) deliverQueue=%s",
++                 (unsigned long)users.count, parseMs, PPQueueLabel(callbackQueue));
++
++            if (wantDiffs && changes.count) {
++                for (FIRDocumentChange *c in changes) {
++                    NSString *typeStr = c.type == FIRDocumentChangeTypeAdded ? @"ADDED" :
++                                        c.type == FIRDocumentChangeTypeModified ? @"MODIFIED" : @"REMOVED";
++                    DLog(@"[PERM_SUB_COLL] change %@ | old=%ld new=%ld docID=%@",
++                         typeStr, (long)c.oldIndex, (long)c.newIndex, c.document.documentID);
++                }
++            }
++
++            [self _deliverOnQueue:callbackQueue block:^{
++                DLog(@"[PERM_SUB_COLL] snapshotListener COMPLETE deliver");
++                completion(users, changes, snapshot.metadata, nil);
++            }];
++        }];
++    };
++
++    id<FIRListenerRegistration> reg = includeMetadata
++        ? [q addSnapshotListenerWithIncludeMetadataChanges:YES listener:handle]
++        : [q addSnapshotListener:handle];
++
++    DLog(@"[PERM_SUB_COLL] _listenAllUsersInternalOrderedBy ATTACHED listener");
++    return reg;
++}
+@@
+ - (void)setPermission:(NSString *)permName
+                forUID:(NSString *)uid
+               allowed:(BOOL)allowed
+            completion:(FUErrorBlock)completion
+ {
+-    if (!uid.length || !permName.length) {
+-        if (completion) completion([self p_err:@"Missing uid or permName" code:301]);
+-        return;
+-    }
+-
+-
+-    FIRFirestore *db = [FIRFirestore firestore];
+-    [[[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]] documentWithPath:permName] setData:@{@"allowed": @(allowed), @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]}
+-     
+-     
+-     completion:^(NSError * _Nullable error) {
+-        if (error) {
+-            NSLog(@"❌ [FUManager] Failed to set %@ for %@: %@", permName, uid, error.localizedDescription);
+-        } else {
+-            NSLog(@"✅ [FUManager] Permission %@=%@ for %@", permName, allowed ? @"YES" : @"NO", uid);
+-        }
+-        if (completion) completion(error);
+-    }];
+-    
+-    NSDictionary *data;
+-    if([permName isEqualToString:kPermAdminAll])
+-    {
+-        data = @{@"isAdmin": @(allowed),
+-                 @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]};
+-        
+-        [[[db collectionWithPath:@"UsersCol"] documentWithPath:uid] updateData:data
+-         completion:^(NSError * _Nullable error) {
+-            if (error) {
+-                NSLog(@"❌ [FUManager] Failed to set %@ for %@: %@", permName, uid, error.localizedDescription);
+-            } else {
+-                NSLog(@"✅ [FUManager] Permission %@=%@ for %@", permName, allowed ? @"YES" : @"NO", uid);
+-            }
+-            if (completion) completion(error);
+-        }];
+-    }
++    if (!uid.length || !permName.length) {
++        DLog(@"[PERM_SUB_COLL] setPermission ❌ missing uid or permName");
++        if (completion) completion([self p_err:@"Missing uid or permName" code:301]);
++        return;
++    }
++
++    FIRFirestore *db = [FIRFirestore firestore];
++    FIRWriteBatch *batch = [db batch];
++
++    FIRDocumentReference *permDoc =
++        [[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]]
++          documentWithPath:permName];
++
++    [batch setData:@{ @"allowed": @(allowed),
++                      @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp] }
++         forDocument:permDoc
++               merge:YES];
++
++    if ([permName isEqualToString:kPermAdminAll]) {
++        FIRDocumentReference *userDoc = [[db collectionWithPath:@"UsersCol"] documentWithPath:uid];
++        [batch setData:@{ @"isAdmin": @(allowed),
++                          @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp] }
++            forDocument:userDoc
++                  merge:YES];
++    }
++
++    DLog(@"[PERM_SUB_COLL] setPermission ▶️ uid=%@ %@=%@", uid, permName, allowed ? @"YES" : @"NO");
++    [batch commitWithCompletion:^(NSError * _Nullable error) {
++        if (error) {
++            DLog(@"[PERM_SUB_COLL] setPermission ❌ uid=%@ %@ error=%@", uid, permName, error.localizedDescription);
++        } else {
++            DLog(@"[PERM_SUB_COLL] setPermission ✅ uid=%@ %@=%@", uid, permName, allowed ? @"YES" : @"NO");
++        }
++        if (completion) completion(error);
++    }];
+ }
+@@
+ - (void)fetchPermissionsForUID:(NSString *)uid
+                     completion:(void(^)(NSDictionary<NSString *, NSNumber *> * _Nullable perms,
+                                         NSError * _Nullable error))completion
+ {
+-    if (!uid.length) {
+-        if (completion) completion(@{}, [self p_err:@"Missing uid" code:302]);
+-        return;
+-    }
+-
+-    FIRFirestore *db = [FIRFirestore firestore];
+-    [[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]]
+-     getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
+-        if (error) {
+-            if (completion) completion(@{}, error);
+-            return;
+-        }
+-
+-        NSMutableDictionary *map = [NSMutableDictionary dictionary];
+-        for (FIRDocumentSnapshot *doc in snap.documents) {
+-            map[doc.documentID] = doc.data[@"allowed"] ?: @(NO);
+-        }
+-
+-        NSLog(@"✅ [FUManager] fetchPermissions loaded %lu items for %@", (unsigned long)map.count, uid);
+-        if (completion) completion(map, nil);
+-    }];
++    if (!uid.length) {
++        DLog(@"[PERM_SUB_COLL] fetchPermissions ❌ missing uid");
++        if (completion) completion(@{}, [self p_err:@"Missing uid" code:302]);
++        return;
++    }
++
++    FIRFirestore *db = [FIRFirestore firestore];
++    [[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]]
++     getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
++        if (error) {
++            DLog(@"[PERM_SUB_COLL] fetchPermissions ❌ uid=%@ error=%@", uid, error.localizedDescription);
++            if (completion) completion(@{}, error);
++            return;
++        }
++
++        NSMutableDictionary *map = [NSMutableDictionary dictionary];
++        for (FIRDocumentSnapshot *doc in snap.documents) {
++            map[doc.documentID] = doc.data[@"allowed"] ?: @(NO);
++        }
++
++        DLog(@"[PERM_SUB_COLL] fetchPermissions ✅ uid=%@ count=%lu", uid, (unsigned long)map.count);
++        if (completion) completion(map, nil);
++    }];
+ }
+@@
+ - (id<FIRListenerRegistration>)listenPermissionsForUID:(NSString *)uid
+                                              onChange:(void(^)(NSDictionary<NSString *, NSNumber *> *perms,
+                                                                NSError * _Nullable error))block
+ {
+-    if (!uid.length) {
+-        if (block) block(@{}, [self p_err:@"Missing uid" code:303]);
+-        return nil;
+-    }
+-
+-    FIRFirestore *db = [FIRFirestore firestore];
+-    return [[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]]
+-            addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
+-        if (error) {
+-            NSLog(@"❌ [FUManager] listenPermissions error for %@: %@", uid, error.localizedDescription);
+-            if (block) block(@{}, error);
+-            return;
+-        }
+-
+-        NSMutableDictionary *map = [NSMutableDictionary dictionary];
+-        for (FIRDocumentSnapshot *doc in snap.documents) {
+-            map[doc.documentID] = doc.data[@"allowed"] ?: @(NO);
+-        }
+-
+-        NSLog(@"🔄 [FUManager] live permissions update for %@ → %@", uid, map);
+-        if (block) block(map, nil);
+-    }];
++    if (!uid.length) {
++        DLog(@"[PERM_SUB_COLL] listenPermissions ❌ missing uid");
++        if (block) block(@{}, [self p_err:@"Missing uid" code:303]);
++        return nil;
++    }
++
++    FIRFirestore *db = [FIRFirestore firestore];
++    DLog(@"[PERM_SUB_COLL] listenPermissions ▶️ attach uid=%@", uid);
++    return [[db collectionWithPath:[NSString stringWithFormat:@"UsersCol/%@/permissions", uid]]
++            addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
++        if (error) {
++            DLog(@"[PERM_SUB_COLL] listenPermissions ❌ uid=%@ error=%@", uid, error.localizedDescription);
++            if (block) block(@{}, error);
++            return;
++        }
++
++        NSMutableDictionary *map = [NSMutableDictionary dictionary];
++        for (FIRDocumentSnapshot *doc in snap.documents) {
++            map[doc.documentID] = doc.data[@"allowed"] ?: @(NO);
++        }
++
++        DLog(@"[PERM_SUB_COLL] listenPermissions 🔄 uid=%@ -> %@", uid, map);
++        if (block) block(map, nil);
++    }];
+ }
+@@
+ - (UserModel * _Nullable)userModelFromAuth:(FIRUser * _Nullable)auth doc:(FUUserDoc * _Nullable)doc {
+@@
+-    // IDs
+-    m.uid = auth.uid ?: doc.uid ?: FUString(raw[@"uid"]) ?: @"";
+-    m.ID  = m.ID;
++    // IDs
++    m.uid = auth.uid ?: doc.uid ?: FUString(raw[@"uid"]) ?: @"";
++    m.ID  = m.uid;   // fixed (was self-assign)
+@@
+-- (void)_deliverOnQueue:(dispatch_queue_t)q block:(dispatch_block_t)block {
+-    const char *label = q ? dispatch_queue_get_label(q) : dispatch_queue_get_label(dispatch_get_main_queue());
+-    BOOL isMain = (q == NULL || q == dispatch_get_main_queue());
+-    DLog(@"[PERM_SUB_COLL] _deliverOnQueue → %s (main=%d)", label, isMain);
+-
+-    if (!q) q = dispatch_get_main_queue();
+-    if (q == dispatch_get_main_queue() && [NSThread isMainThread]) { block(); }
+-    else { dispatch_async(q, block); }
+-}
++- (void)_deliverOnQueue:(dispatch_queue_t)q block:(dispatch_block_t)block {
++    const char *label = PPQueueLabel(q);
++    BOOL isMain = (q == NULL || q == dispatch_get_main_queue());
++    DLog(@"[PERM_SUB_COLL] _deliverOnQueue → %s (main=%d)", label, isMain);
++
++    if (!q) q = dispatch_get_main_queue();
++    if (q == dispatch_get_main_queue() && [NSThread isMainThread]) { block(); }
++    else { dispatch_async(q, block); }
++}

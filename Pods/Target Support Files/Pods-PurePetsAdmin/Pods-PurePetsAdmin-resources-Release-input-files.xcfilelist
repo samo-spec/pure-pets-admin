@@ -1,0 +1,5 @@
+${PODS_ROOT}/Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin-resources.sh
+${PODS_CONFIGURATION_BUILD_DIR}/IQKeyboardManager/IQKeyboardManager.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/SDWebImage/SDWebImage.bundle
+${PODS_CONFIGURATION_BUILD_DIR}/TOCropViewController/TOCropViewControllerBundle.bundle
+${PODS_ROOT}/XLForm/XLForm/XLForm.bundle

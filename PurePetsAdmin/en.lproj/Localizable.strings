@@ -1,0 +1,2033 @@
+/* ===================== Admin Login ===================== */
+"AdminLoginTitle"              = "Admin Login";
+"Email"                        = "Email";
+"EmailPlaceholder"             = "Enter email";
+"Password"                     = "Password";
+"PasswordPlaceholder"          = "Enter password";
+"Login"                        = "Login";
+"StatusEnterBoth"              = "Please enter both email and password";
+"StatusLoggingIn"              = "Logging in...";
+"StatusWelcomeAdmin"           = "✅ Welcome, Admin!";
+"StatusNoAccess"               = "❌ No administrative access";
+"StatusFetchClaims"            = "Failed to fetch claims";
+"Error_Title"                  = "Error";
+"Success_Title"                = "Success";
+"OK_Title"                     = "OK";
+
+/* ===================== Dashboard ===================== */
+"AdminDashboard"               = "Dashboard";
+"Welcome"                      = "Welcome";
+"Admin"                        = "Admin";
+
+/* ===================== Users Section ===================== */
+"UsersSection"                 = "Users";
+"AddUser"                      = "Add User";
+"AddUserSubtitle"              = "Create a new user account";
+"BlockUser"                    = "Block User";
+"BlockUserSubtitle"            = "Restrict user access";
+"SetPermissions"               = "Set Permissions";
+"SetPermissionsSubtitle"       = "Assign roles and privileges";
+
+/* ===================== Management Section ===================== */
+"ManagementSection"            = "Management";
+"AdminDashboard_Section_Management_Description" = "Staff, roles, and access without noise.";
+"Staff_Management"             = "Staff Management";
+"StaffMembers_Title"           = "Staff Members";
+"StaffMembers_Subtitle"        = "Manage console staff and their access";
+"StaffRoles_Title"             = "Staff Roles";
+"StaffRoles_Subtitle"          = "Define and assign custom staff roles";
+
+"Staff_Create_New"             = "Create New";
+"Staff_Assign_Existing"        = "Assign Existing";
+"Staff_New_Account_Info"       = "New Account Info";
+"Staff_Select_Existing_User"   = "Select Existing User";
+"Staff_Role_Status"            = "Role & Status";
+"Staff_Role"                   = "Staff Role";
+"Staff_Error_Password_Min"     = "Password must be at least 8 characters.";
+"Staff_EditMember_Title"       = "Edit Staff Member";
+"Staff_EditMember_Subtitle"    = "Review staff access, role, permissions, and app features";
+"Staff_AssignExistingSubtitle" = "Connect an existing Pure Pets account to staff access";
+"Staff_Edit_Existing"          = "Editing Staff";
+"Staff_Select_User_Search_Placeholder" = "I already have an account";
+"Staff_NormalUserUpgrade_Title" = "Upgrade normal user?";
+"Staff_NormalUserUpgrade_Message" = "This is a normal user. Do you want to upgrade this account to staff?";
+"Staff_NormalUserUpgrade_Confirm" = "Upgrade to Staff";
+"Staff_List_Tab"                 = "Staff List";
+"Staff_Create_Tab"               = "Create Staff";
+"Staff_Roles_Tab"                = "Roles";
+"Staff_Preview_Tab"              = "Preview";
+"Staff_Preview_Select"           = "Select a staff member to preview their permissions";
+"Staff_Preview_Title"            = "Staff Preview";
+"Staff_Preview_Subtitle"         = "Review effective permissions for any staff member";
+"Staff_Permissions_Breakdown"    = "Permissions Breakdown";
+"Staff_Role_Effective"           = "Role";
+"Staff_Status_Label"             = "Status";
+"Staff_Scope_Global"             = "Global Access";
+"Staff_Scope_Limited"            = "Limited Access";
+"Staff_Scope_Empty"              = "No scope restrictions";
+"Staff_Permission_Granted"       = "Granted";
+"Staff_Permission_NotGranted"    = "Not Granted";
+"Staff_Module_Dashboard"         = "Dashboard";
+"Staff_Module_Staff"             = "Staff";
+"Staff_Module_Users"             = "Users";
+"Staff_Module_Stock"             = "Stock";
+"Staff_Module_Listings"          = "Listings";
+"Staff_Module_Payments"          = "Payments";
+"Staff_Module_POS"               = "POS";
+"Staff_Module_Branches"          = "Branches";
+"Staff_Module_Agents"            = "Agents";
+"Staff_Module_Support"           = "Support";
+"Staff_Module_Services"          = "Services";
+"Staff_Module_Providers"         = "Providers";
+"Staff_Module_Settings"          = "Settings";
+"Staff_Module_Notifications"     = "Notifications";
+"Staff_Module_Accounting"        = "Accounting";
+"Staff_Module_Reports"           = "Reports";
+"Staff_Module_Audit"             = "Audit";
+"Staff_Module_Moderation"        = "Moderation";
+"Staff_Module_Banners"           = "Banners";
+"Staff_Module_Categories"        = "Categories";
+"Staff_Module_Veterinarians"     = "Veterinarians";
+"Error_SelectUser"             = "Please select a user first";
+
+"StaffRole_SuperAdmin"         = "Super Admin";
+"StaffRole_Owner"              = "Owner";
+"StaffRole_OperationsManager"  = "Operations Manager";
+"StaffRole_InventoryManager"   = "Inventory Manager";
+"StaffRole_PaymentsManager"    = "Payments Manager";
+"StaffRole_SupportAgent"       = "Support Agent";
+"StaffRole_Viewer"             = "Viewer";
+
+"BuiltInRoles"                 = "Built-in Roles";
+"CustomRoles"                  = "Custom Roles";
+"SystemRole"                   = "System Role";
+"NewRole"                      = "New Role";
+"EditRole"                     = "Edit Role";
+"Role_Info"                    = "Role Info";
+"RoleNameEn"                   = "Name (English)";
+"RoleNameAr"                   = "Name (Arabic)";
+"RoleDescEn"                   = "Description (English)";
+"RoleDescAr"                   = "Description (Arabic)";
+"confirmDeleteRole"            = "Are you sure you want to delete this role?";
+
+"Total_Users" = "Total Users";
+"Active_Users" = "Active";
+"Verified_Users" = "Verified";
+"Production_Users" = "Production";
+"Blocked" = "Blocked";
+"Disabled" = "Disabled";
+"Pending Review" = "Pending Review";
+"Active" = "Active";
+"Account_Status" = "Account Status";
+"Protection_Status" = "Protection Status";
+"Verified_Status" = "Verified Status";
+"Features" = "Features";
+"Feature_CanPostPetAds" = "Post pet ads";
+"Feature_CanPostAdoption" = "Post adoption listings";
+"Feature_CanSellAccessories" = "Sell accessories";
+"Feature_CanOfferServices" = "Offer services";
+"Feature_CanDelivery" = "Delivery access";
+"Feature_CanUseStories" = "Use stories";
+"Feature_CanUseChat" = "Use chat";
+"Feature_CanAccessPremiumMarketplace" = "Premium marketplace access";
+"Feature_CanPharmacy" = "Pharmacy access";
+"Feature_CanVet" = "Veterinary access";
+"Subscriptions" = "Subscriptions";
+"Restrictions" = "Restrictions";
+"Save_Changes" = "Save Changes";
+"Update_Success" = "Updated successfully";
+"Update_Error" = "Failed to update";
+
+/* ===================== Store Section ===================== */
+"StockSection" = "Stock";
+"Manage Accessories" = "Manage Accessories";
+"Manage Food" = "Manage Food";
+"Manage Live Pets" = "Manage Live Pets";
+"AddLivePet" = "Add Live Pet";
+"EditLivePet" = "Edit Live Pet";
+"manageLivePetsSubtitle" = "View and manage live animals stock";
+
+"PaymentsFollowSection" = "Payments Follow";
+"Live pets" = "Live pets";
+"ChangeOrderStatusSubtitle"    = "Manage order lifecycle";
+"NewAccessory" = "New Accessory";
+"NewAccessorySubtitle" = "Add a new pet accessory to the store.";
+
+/* ===================== Banner Section ===================== */
+"BannerSection"                = "Banners";
+"AddOffer"                     = "Add Offer";
+"Offer"                     = "Offer";
+"AddOfferSubtitle"             = "Create a promotional ad";
+"NewAccessoryBanner"           = "New Accessory Banner";
+"NewAccessoryBannerSubtitle"   = "Showcase latest accessories";
+"OtherControls"                = "Other Controls";
+"OtherControlsSubtitle"        = "Manage additional options";
+
+/* ===================== Food Section ===================== */
+"FoodSection"                  = "Food";
+"AddFood"                      = "Add Food";
+"EditFood"                      = "Edit Food";
+"AddFoodSubtitle"              = "Add new food items";
+"RemoveFood"                   = "Remove Food";
+"RemoveFoodSubtitle"           = "Delete food from store";
+"MarkFoodFinished"             = "Mark as Finished";
+"MarkFoodFinishedSubtitle"     = "Set food as unavailable";
+
+/* ===================== Add User ===================== */
+"AddUser_Title"                = "Add User";
+"InfoSectionTitle"             = "User Info";
+"UsernameTitle"                = "User Name";
+"UsernamePlaceholder"          = "Enter username";
+"PhoneTitle"                   = "Phone";
+"PhonePlaceholder"             = "Enter phone number";
+"Role_Title"                   = "User Role";
+"Permissions_Title"            = "Permissions";
+"SetAsAdmin_Title"             = "Grant Admin Rights";
+"SaveUser_Title"               = "Save User";
+"Error_FillAllFields"          = "Please fill in all required fields.";
+"UserAdded"                    = "User added successfully.";
+
+/* ===================== Roles ===================== */
+"Role_User"                    = "User";
+"Role_User_Desc"               = "Regular user.";
+"Role_Owner"                   = "Owner";
+"Role_Owner_Desc"              = "Can manage pets and ads.";
+"Role_Vet"                     = "Veterinarian";
+"Role_Vet_Desc"                = "Veterinarian role.";
+"Role_Moderator"               = "Moderator";
+"Role_Moderator_Desc"          = "Can moderate content.";
+"Role_Admin"                   = "Admin";
+"Role_Admin_Desc"              = "Full application control.";
+
+/* ===================== Permissions ===================== */
+"Perm_SellNew"                 = "Sell New";
+"Perm_SellNew_Desc"            = "Allow selling new products.";
+"Perm_ManageStore"             = "Manage Store";
+"Perm_ManageStore_Desc"        = "Allow store and order management.";
+"Perm_Moderation"              = "Moderation";
+"Perm_Moderation_Desc"         = "Allow moderating ads, comments, and users.";
+"Perm_AdminAll"                = "Full Admin Access";
+"Perm_AdminAll_Desc"           = "Grant all administrative privileges.";
+
+/* ===================== Notifications ===================== */
+"Notifications"                = "Notifications";
+"NoNewNotifications"           = "No new notifications";
+"TappedOption"                 = "You tapped %@";
+
+/// Language change alert
+"LanguageChanged_Title" = "Language Changed";
+"LanguageChanged_Message" = "The app will close now to apply the new language. Please reopen it.";
+"LanguageChanged_OK" = "OK";
+
+"BlockUser_Title" = "Block User";
+"BlockUser_User" = "User Email or ID";
+"BlockUser_User_Placeholder" = "Enter user email or UID";
+"BlockUser_Reason" = "Reason";
+"BlockUser_Reason_Placeholder" = "Enter reason (optional)";
+"BlockUser_Duration" = "Duration";
+"BlockUser_Permanent" = "Permanent";
+"BlockUser_7Days" = "7 Days";
+"BlockUser_30Days" = "30 Days";
+"BlockUser_Action" = "Block User";
+"BlockUser_Error_UserRequired" = "Please enter a user email or ID.";
+"BlockUser_Success" = "User has been blocked successfully.";
+
+/// Admin Accessories
+"Manage Accessories" = "Manage Accessories";
+"Add Accessory" = "Add Accessory";
+"Edit Accessory" = "Edit Accessory";
+
+/// Form Fields
+"Name" = "Name";
+"Enter name" = "Enter name";
+"Description" = "Description";
+"Enter description" = "Enter description";
+"Price" = "Price";
+"0.00" = "0.00";
+"Quantity" = "Quantity";
+"Enter quantity" = "Enter quantity";
+"Condition" = "Condition";
+"New" = "New";
+"Used" = "Used";
+"MainStore" = "Main Store";
+"MyStore" = "My Store";
+"DiscountPercent" = "Discount %";
+"DiscountPercentPlaceholder" = "0 - 100";
+"DiscountAmount" = "Discount Amount";
+"FinalPrice" = "Final Price";
+"Store" = "Store";
+"Kind" = "Kind";
+"Accessory" = "Accessory";
+"Food" = "Food";
+"Images" = "Images";
+
+/// Actions
+"Save" = "Save";
+"Delete" = "Delete";
+"Cancel" = "Cancel";
+"Confirm Delete" = "Confirm Delete";
+"Are you sure you want to delete this accessory?" = "Are you sure you want to delete this accessory?";
+
+/// Errors
+"Error" = "Error";
+"OK" = "OK";
+"Name and price are required" = "Name and price are required";
+
+/// Info
+"Qty" = "Qty";
+"EGP" = "EGP";
+
+"OK" = "OK";
+"Cancel" = "Cancel";
+"Confirm" = "Confirm";
+"Loading" = "Loading...";
+"Please wait" = "Please wait";
+"Saved" = "Saved";
+"Your changes were saved successfully." = "Your changes were saved successfully.";
+"Error" = "Error";
+"Something went wrong." = "Something went wrong.";
+"Warning" = "Warning";
+"Are you sure you want to continue?" = "Are you sure you want to continue?";
+"Info" = "Information";
+
+// Species (MainKinds)
+"Species" = "Species";
+"SpeciesPlaceholder" = "Select a species";
+"SpeciesRequired" = "Species is required";
+
+// Breeds (SubKinds)
+"Breed" = "Breed";
+"BreedPlaceholder" = "Select a breed (optional)";
+"BreedOptional" = "Breed is optional";
+
+"Add Accessory" = "Add Accessory";
+"Edit Accessory" = "Edit Accessory";
+"Name" = "Name";
+"Enter name" = "Enter name";
+"Description" = "Description";
+"Enter description" = "Enter description";
+"Species" = "Species";
+"SpeciesPlaceholder" = "Select a species";
+"Breed" = "Breed";
+"BreedPlaceholder" = "Select a breed (optional)";
+"Price" = "Price";
+"0.00" = "0.00";
+"Quantity" = "Quantity";
+"Enter quantity" = "Enter quantity";
+"Condition" = "Condition";
+"New" = "New";
+"Used" = "Used";
+"Images" = "Images";
+"Post Ad" = "Post Ad";
+"Uploading" = "Uploading...";
+"PleaseWait" = "Please wait while we upload your images.";
+"Error" = "Error";
+"NamePriceRequired" = "Name and price are required";
+"Something went wrong." = "Something went wrong.";
+"Saved" = "Saved";
+"AccessoryPosted" = "Your accessory has been posted successfully.";
+
+"LoginWithFaceID" = "Login with Face ID";
+"LoginWithTouchID" = "Login with Touch ID";
+"UseFaceIDTitle"  = "Use Face ID for quick login?";
+"UseFaceIDMsg"    = "You can use Face ID next time instead of typing your password.";
+"Enable"          = "Enable";
+"NotNow"          = "Not now";
+"AuthenticateToLogin" = "Authenticate to login";
+"BiometricNotAvailable" = "Face ID/Touch ID not available";
+"BiometricFailed" = "Authentication failed";
+"NoSavedCredentials" = "No saved credentials";
+"FaceID enabled"  = "Face ID enabled";
+
+"ProLoginWelcomeBadge" = "Pure Pets Pro";
+"ProLoginTitle" = "Secure admin access";
+"ProLoginSubtitle" = "Sign in with your staff account to manage operations, inventory, payments, and moderation.";
+"ProLoginHint" = "Only authorized staff accounts can continue.";
+"ProLoginFooter" = "Protected by Pure Pets Pro";
+
+"Confirm_AdminAll_Title" = "Grant Full Admin Access?";
+"Confirm_AdminAll_Msg"   = "This will give the user complete administrative permissions.";
+"Confirm"                = "Confirm";
+"Cancel"                 = "Cancel";
+
+"Confirm_LanguageChange_Title" = "Change Language";
+"Confirm_LanguageChange_Msg"   = "Are you sure you want to switch language?";
+"Confirm"                      = "Confirm";
+"Cancel"                       = "Cancel";
+
+"Logout"                  = "Logout";
+"Logout_Confirm_Title"    = "Logout";
+"Logout_Confirm_Message"  = "Are you sure you want to log out?";
+"Logout_Success_Title"    = "Success";
+"Logout_Success_Message"  = "Logged out successfully";
+"Confirm"                 = "Confirm";
+"Cancel"                  = "Cancel";
+
+"Select User"                  = "Select User";
+"SearchHere"                  = "Search here";
+
+"NotificationsSection"               = "Notifications";
+"SendPushNotification"               = "Send Push Notification";
+"SendPushNotificationSubtitle"       = "Send instant push to users or admins";
+"ManageTopics"                       = "Manage Topics";
+"ManageTopicsSubtitle"               = "Control FCM/APNs topics for users/admins";
+"ScheduleNotification"               = "Schedule Notification";
+"ScheduleNotificationSubtitle"       = "Plan notifications to send later";
+"EnableAdminNotifications" = "Enable Notifications (Admin App)";
+"EnableAdminNotifications" = "Enable Notifications (Admin App)";
+"Notifications" = "Notifications";
+"NotificationsEnabled" = "Notifications have been enabled.";
+"NotificationsDisabled" = "Notifications have been disabled.";
+
+"Error" = "Error";
+"OK" = "OK";
+"TryAgain" = "Try again";
+"Dismiss" = "Dismiss";
+
+"MissingUserId_Title"   = "Missing user ID";
+"MissingUserId_Message" = "We couldn't complete the action because the user ID is missing.";
+
+"NoSignedInUser_Title"   = "Not signed in";
+"NoSignedInUser_Message" = "Please sign in to continue.";
+
+"WriteFailed_Title"   = "Couldn't save data";
+"WriteFailed_Message" = "An error occurred while saving. (%@)";
+
+"Inbox" = "Inbox";
+"User"  = "User";
+
+/* If you want to keep the exact keys you typed earlier */
+"Missing user id"   = "Missing user id";
+"No signed-in user" = "No signed-in user";
+
+
+/* Navigation / Titles */
+"SendPushNotification" = "Send push notification";
+"Compose Notification" = "Compose Notification";
+
+/* Form rows */
+"Title" = "Title";
+"Body" = "Body";
+"Type" = "Type";
+
+/* Type options */
+"General" = "General";
+"Order" = "Order";
+"Ad Review" = "Ad Review";
+"Warning" = "Warning";
+
+/* Target section */
+"Target" = "Target";
+"User ID (optional)" = "User ID (optional)";
+"BlockUser_User_Placeholder" = "Enter email or user ID";
+
+/* Alerts / Info */
+"Error" = "Error";
+"Info" = "Info";
+"NoUsersFound" = "No users found";
+"Select User" = "Select User";
+
+/* Send result messages */
+"Failed" = "Failed";
+"Sent" = "Sent";
+"Delivered to user inbox." = "Delivered to user inbox.";
+"Queued" = "Queued";
+"Broadcast queued." = "Broadcast queued.";
+
+/* (Shared) Validation & Common */
+"FillRequiredFields" = "Please fill all required fields.";
+"OK" = "OK";
+"Cancel" = "Cancel";
+"Done" = "Done";
+"Retry" = "Retry";
+
+/* (Shared) Network / Loading */
+"Loading" = "Loading...";
+"TryAgainLater" = "Please try again later.";
+
+"Check your notification target" = "Check your notification target";
+"Default" = "Default";
+"Default_Subtitle" = "Use the single user field below (optional).";
+"Supervisors" = "Supervisors";
+"Supervisors_Subtitle" = "Moderators & Admins.";
+"App Users" = "App users";
+"AppUsers_Subtitle" = "All registered users.";
+"All Users" = "All users";
+"AllUsers_Subtitle" = "Everyone.";
+"Specific Users" = "Specific users";
+"SpecificUsers_Subtitle" = "Choose one or more users.";
+"Add users to this message" = "Add users to this message";
+"Add User" = "Add user";
+"User" = "User";
+"Please add at least one user." = "Please add at least one user.";
+"Nobody" = "Nobody";
+"Nobody_Subtitle" = "Do not send to anyone (safe default).";
+
+/* Notifications screen */
+"NotificationsTitle" = "Notifications";
+"NoNotifications" = "No notifications yet.";
+"FetchError" = "Failed to load notifications.";
+"NotificationsLoaded" = "Notifications loaded";
+"PullToRefresh" = "Pull to refresh";
+"Loading" = "Loading…";
+"Retry" = "Retry";
+
+/* PPS / Search */
+
+"PPS_Filter" = "Filter";
+"PPS_Scan" = "Scan";
+// In Localizable.strings (English)
+"Select User" = "Select User";
+"SetPermissions_Title" = "Set User Permissions";
+"SetPermissions_Users_Section" = "Users";
+"SetPermissions_Search_Placeholder" = "Search users by name, email, or phone";
+"SetPermissions_Filter_NotImplemented" = "Filters coming soon";
+
+"SetPermissions_Edit_Title" = "Edit Permissions";
+"SetPermissions_Edit_SubtitleFmt" = "Change permissions for \"%@\"?";
+"SetPermissions_MakeAdmin" = "Make Admin";
+"SetPermissions_AdminUpdated" = "Permissions updated.";
+
+// Localizable.strings (English)
+"AdminBadge" = "Admin";
+
+// in Localizable.strings (English)
+"SetPermissions_AdminGranted" = "Admin permission granted";
+"SetPermissions_AdminRevoked" = "Admin permission revoked";
+
+"SetPermissions_AdminGranted" = "Admin permission granted";
+"SetPermissions_AdminRevoked" = "Admin permission revoked";
+"SetPermissions_MakeAdmin"    = "Grant admin permission";
+"SetPermissions_RevokeAdmin"  = "Revoke admin permission";
+
+"perm_roles_title"     = "Permissions & Roles";
+
+"permissions_section"  = "Permissions";
+"roles_section"        = "Role";
+
+"perm_post_ads"        = "Post Ads";
+"perm_sell_new"        = "Sell New";
+"perm_sell_used"       = "Sell Used";
+"perm_adoption"        = "Adoption";
+"perm_manage_store"    = "Manage Store";
+"perm_moderation"      = "Moderation";
+"perm_admin_all"       = "Admin (All)";
+
+"role_user"            = "User";
+"role_owner"           = "Owner";
+"role_vet"             = "Vet";
+"role_moderator"       = "Moderator";
+"role_admin"           = "Admin";
+
+/* ===================== Permissions & Roles VC ===================== */
+"PermRoles_Title"          = "Permissions & Roles";
+
+/* ===================== Account Section ===================== */
+"Account_Section"          = "Account";
+"Username_Placeholder"     = "Enter username";
+"Email_Placeholder"        = "Enter email";
+"Phone_Placeholder"        = "Enter phone number";
+"Password_Placeholder"     = "Enter new password";
+
+/* ===================== Permissions Section ===================== */
+"Permissions_Section"      = "Permissions";
+"UserAppPermissions_Section" = "User App Permissions";
+"AdminAppPermissions_Section" = "Admin App Permissions";
+"Perm_PostAds"             = "Post Ads";
+"Perm_SellNew"             = "Sell New";
+"Perm_SellUsed"            = "Sell Used";
+"Perm_Adoption"            = "Adoption";
+"Perm_ManageStore"         = "Manage Store";
+"Perm_Moderation"          = "Moderation";
+"Perm_AdminAll"            = "Admin (All)";
+
+/* ===================== Roles Section ===================== */
+"Roles_Section"            = "Role";
+"Role_User"                = "User";
+"Role_Owner"               = "Owner";
+"Role_Vet"                 = "Vet";
+"Role_Moderator"           = "Moderator";
+"Role_Admin"               = "Admin";
+
+/* ===================== Alerts / Errors ===================== */
+"Error_Title"              = "Error";
+"Success_Title"            = "Success";
+"OK_Title"                 = "OK";
+"Error_SaveFailed"         = "Failed to save changes. Please try again.";
+"Success_AccountSaved"     = "Account fields saved successfully.";
+"Error_InvalidPassword"    = "Password must be at least 6 characters.";
+"Success_PasswordReset"    = "Password has been reset successfully.";
+
+// In Localizable.strings (en)
+
+// Identity
+"pp_me_guest"            = "Guest";
+
+// Roles (use the one you pass as roleKey)
+"pp_role_admin"          = "Admin";
+"pp_role_moderator"      = "Moderator";
+"pp_role_owner"          = "Owner";
+"pp_role_vet"            = "Veterinarian";
+"pp_role_user"           = "User";
+
+// Stats titles
+"pp_stat_accessories"    = "Accessories";
+"pp_stat_orders"         = "Orders";
+"pp_stat_ads"            = "Ads";
+
+// Quick actions (panel buttons)
+"pp_q_add_user"          = "Add User";
+"pp_q_new_accessory"     = "New Accessory";
+"pp_q_new_ad"            = "New Ad";
+"pp_q_orders"            = "Orders";
+
+// (Optional) Accessibility / hints
+"pp_a11y_notifications"  = "Notifications";
+"pp_a11y_avatar"         = "Profile Photo";
+"pp_a11y_trailing_action"= "Quick Action";
+
+// en.strings
+"pp_stats_ads"          = "Ads";
+"pp_stats_accessories"  = "Accessories";
+"pp_stats_users"        = "Users";
+
+// 🔐 Authentication / Flow
+"Login"                    = "Login";
+"Email"                    = "Email";
+"EmailPlaceholder"          = "Enter your email";
+"Password"                  = "Password";
+"PasswordPlaceholder"        = "Enter your password";
+"StatusEnterBoth"            = "Please enter both email and password";
+"StatusLoggingIn"            = "Logging in...";
+"StatusLoginFailed"          = "Login failed. Please check your credentials and try again.";
+"StatusAppCheckInvalid"      = "App verification failed. Please update the app or contact support.";
+"StatusFetchClaims"          = "Could not verify access rights.";
+"StatusNoAccess"             = "You do not have admin access.";
+"StatusUserDocError"         = "Error fetching user profile.";
+"Login successful"           = "Login successful";
+"Logout_Confirm_Title"       = "Confirm Logout";
+"Logout_Confirm_Message"     = "Are you sure you want to log out?";
+"Logged out successfully"    = "Logged out successfully";
+"Error"                      = "Error";
+"Success"                    = "Success";
+"Warning"                    = "Warning";
+"Please wait"                = "Please wait";
+
+// 🌐 Language Switching
+"Confirm_LanguageChange_Title"  = "Change Language";
+"Confirm_LanguageChange_Msg"    = "Do you want to switch the app language?";
+"Language changed successfully" = "Language changed successfully";
+
+// 📊 Dashboard / Root
+"AdminDashboard"           = "Admin Dashboard";
+"UsersSection"             = "Users";
+"StoreSection"             = "Store";
+"BannerSection"            = "Banners & Offers";
+"FoodSection"              = "Food";
+"NotificationsSection"     = "Notifications";
+
+// ⚙️ General
+"Confirm"                  = "Confirm";
+"Cancel"                   = "Cancel";
+
+"EditName"      = "Edit Name";
+"EnterYourName" = "Enter your name";
+"Saved"         = "Saved";
+
+/// English
+"RememberMe" = "Remember Me";
+"SignInWithGoogle" = "Sign in with Google";
+"NotificationsDashboard_Subtitle" = "Review admin notifications and delivery history.";
+"ForgotPassword" = "Forgot your password?";
+"EnterEmailFirst" = "Please enter your email first.";
+"PasswordResetEmailSent" = "A reset link has been sent to your email.";
+
+// In Language.strings (English)
+"UserRoleUser"          = "User";
+"UserRoleOwner"         = "Owner";
+"UserRoleVet"           = "Vet";
+"UserRoleModerator"     = "Moderator";
+"UserRoleAdmin"         = "Admin";
+"UserRoleStoreManager"  = "Store Manager";
+"UserRoleFoodManager"   = "Food Manager";
+
+/// English
+"PermPostAds"      = "Post Ads";
+"PermSellNew"      = "Sell New Accessories";
+"PermSellUsed"     = "Sell Used Accessories";
+"PermAdoption"     = "Pet Adoption";
+
+"PermManageStore"  = "Manage Store";
+"PermManageFood"   = "Manage Food";
+"PermSellFood"     = "Sell Food";
+
+"PermModeration"   = "Moderation";
+"PermAdminAll"     = "Admin All";
+
+// open list → pick a user → jump straight into Roles+Permissions editor
+"EditRolePermsDirect_Title"      = "Edit Roles & Permissions";
+"EditRolePermsDirect_Subtitle"   = "Pick a user and update access";
+
+// open list → pick a user → account-only editor (name, email, phone…)
+"EditMyAccount_Title"            = "Edit User Account";
+"EditMyAccount_Subtitle"         = "Name, email & phone for selected user";
+
+// list row that opens the “users list” filtered for roles+perms work
+"EditRolePerms_Title"            = "Users: Roles & Permissions";
+"EditRolePerms_Subtitle"         = "Review and change user roles & access";
+
+// list row that opens the “admin toggle” list
+"AdminToggleList_Title"          = "Admin Toggle (Users)";
+"AdminToggleList_Subtitle"       = "Grant or revoke admin for users";
+
+// generic users list entry
+"SetPermissions"                 = "Users (List)";
+"SetPermissionsSubtitle"         = "Search, view, and manage users";
+
+// —— Optional extras (useful dashboard rows) ——
+"EditUsersAccount_List_Title"    = "Users: Account Only";
+"EditUsersAccount_List_Subtitle" = "Edit name, email & phone";
+
+"EditUsersRolePerms_List_Title"  = "Users: Roles & Permissions";
+"EditUsersRolePerms_List_Subtitle" = "Assign roles, set permissions";
+
+/* Pick / upload flow */
+"Please login first" = "Please login first";
+"Preparing…" = "Preparing…";
+"Downloading from iCloud…" = "Downloading from iCloud…";
+"Uploading…" = "Uploading…";
+"Please wait..." = "Please wait…";
+"Upload failed" = "Upload failed";
+"Image load failed" = "Image load failed";
+"Saved" = "Saved";
+"Done" = "Done";
+"Failed" = "Failed";
+"BlockUser" =  "Block User";
+
+"SetStatusUnBlocked"="Unblock User";
+
+
+/* Header avatar + picker */
+"Add Photo" = "Add Photo";
+"Add profile photo" = "Add profile photo";
+
+/* Generic/status */
+"Saving" = "Saving";
+"Please wait..." = "Please wait…";
+"Preparing…" = "Preparing…";
+"Uploading…" = "Uploading…";
+"Downloading from iCloud…" = "Downloading from iCloud…";
+"Done" = "Done";
+"Failed" = "Failed";
+"Saved" = "Saved";
+"Upload failed" = "Upload failed";
+"Image load failed" = "Image load failed";
+"Please login first" = "Please login first";
+
+/* Alerts common */
+"Confirm" = "Confirm";
+"Cancel" = "Cancel";
+"Error_Title" = "Error";
+"Success_Title" = "Success";
+"Success" = "Success";
+"StatusSaveFailed" = "Saving failed";
+
+/* AddUser nav/title + result */
+"AddUser" = "New User";
+"UserAdded" = "User created successfully";
+
+/* Section titles & fields */
+"InfoSectionTitle" = "Basic info";
+"UsernamePlaceholder" = "Username";
+"EmailPlaceholder" = "Email";
+"PhonePlaceholder" = "Phone";
+"PasswordPlaceholder" = "Password";
+
+
+/* Permissions */
+"Permissions_Title" = "Permissions";
+"Perm_PostAds" = "Post Ads";
+"Perm_PostAds_Desc" = "Create and manage public ads.";
+"Perm_SellNew" = "Sell New";
+"Perm_SellNew_Desc" = "Add and sell new products";
+"Perm_SellUsed" = "Sell Used";
+"Perm_SellUsed_Desc" = "Create and manage used-item listings.";
+"Perm_Adoption" = "Adoption";
+"Perm_Adoption_Desc" = "Create and manage adoption posts.";
+"Perm_ManageStore" = "Manage Store";
+"Perm_ManageStore_Desc" = "Manage inventory and orders";
+"Perm_Moderation" = "Moderation";
+"Perm_Moderation_Desc" = "Review reports and content";
+"Perm_ManageFood" = "Manage Food";
+"Perm_ManageFood_Desc" = "Manage food catalog and food listings.";
+"Perm_ManageServices" = "Manage Services";
+"Perm_ManageServices_Desc" = "Create and manage service offers and veterinarians.";
+"Perm_Production" = "Production";
+"Perm_Production_Desc" = "Access production-only operational tools.";
+"Perm_SellFood" = "Sell Food";
+"Perm_AdminAll" = "Admin: Full access";
+
+/* AdminAll confirmation */
+"Confirm_AdminAll_Title" = "Enable full admin access?";
+"Confirm_AdminAll_Msg" = "This grants the user every permission. Are you sure?";
+
+/* Misc used elsewhere */
+"pp_me_guest" = "Guest";
+"EditName" = "Edit name";
+"EnterYourName" = "Enter your name";
+
+/* Quick actions & stats (dashboard) */
+"pp_q_add_user" = "Add user";
+"pp_q_new_accessory" = "New accessory";
+"pp_q_new_ad" = "New ad";
+"pp_stats_ads" = "Ads";
+"pp_stats_accessories" = "Accessories";
+"pp_stats_users" = "Users";
+
+
+"Role_Title" = "Role";
+
+"Role_User" = "User";
+"Role_User_Desc" = "Can browse and use basic features";
+
+"Role_Owner" = "Owner";
+"Role_Owner_Desc" = "Can sell and manage own items";
+
+"Role_Vet" = "Vet";
+"Role_Vet_Desc" = "Manages veterinary clinic services";
+
+"Role_Moderator" = "Moderator";
+"Role_Moderator_Desc" = "Reviews content and reports";
+
+"Role_Admin" = "Admin";
+"Role_Admin_Desc" = "Full control over the app";
+
+"Role_StoreManager" = "Store Manager";
+"Role_StoreManager_Desc" = "Manages accessories and stock";
+
+"Role_FoodManager" = "Food Manager";
+"Role_FoodManager_Desc" = "Manages food products";
+
+"Role_SuperAdmin" = "Super Admin";
+"Role_SuperAdmin_Desc" = "Full permissions including admin management";
+"Update" = "Update";
+// English
+"manageFood"          = "Manage Food";
+"manageFoodSubtitle"  = "View, add, and update pet food items";
+
+
+// English
+"ItemType"       = "Item Type";
+"Accessory"      = "Accessory";
+"Food"           = "Food";
+"AddAccessory"   = "Add Accessory";
+"EditAccessory"  = "Edit Accessory";
+"AddFood"        = "Add Food";
+"EditFood"       = "Edit Food";
+
+
+
+//=================================================================== BANNERS
+
+/* Banners list: titles, actions, messages */
+/* en.lproj/Localizable.strings */
+
+/* Titles / Nav */
+"Banners_Manage_Title"                    = "Manage Banners";
+"Manage Banners"                          = "Manage Banners";
+
+/* Search / Filter */
+"Search banners, IDs, child titles…"      = "Search banners, IDs, child titles…";
+"Filter coming soon"                      = "Filter coming soon";
+
+/* Row labels */
+"Visible"                                 = "Visible";
+"Hidden"                                  = "Hidden";
+"child"                                   = "child";
+
+/* Swipe actions */
+"Update"                                  = "Update";
+"Offer"                                   = "Offer";
+"Delete"                                  = "Delete";
+
+/* Alerts / HUD */
+"Error"                                   = "Error";
+"Updated"                                 = "Updated";
+"Visibility changed"                      = "Visibility changed";
+"Confirm Delete"                          = "Confirm Delete";
+"Delete this banner view and its children?"= "Delete this banner view and its children?";
+"Cancel"                                  = "Cancel";
+"Deleting"                                = "Deleting";
+"Deleted"                                 = "Deleted";
+"Banner removed"                          = "Banner removed";
+
+/* Holders */
+"Main"                                    = "Main";
+"Accessories"                             = "Accessories";
+"Ads"                                     = "Ads";
+"Food"                                    = "Food";
+"Vets"                                    = "Vets";
+
+"Banners_Manage_Subtitle" = "Create, edit, and organize banners across the app.";
+
+
+
+
+"Edit Banner" = "Edit Banner";
+"Edit Banner Group" = "Edit Banner Group";
+"Add Banner Group" = "Add Banner Group";
+"Group Settings" = "Group Settings";
+"Banner Group ID" = "Banner Group ID";
+"Auto if empty" = "Auto if empty";
+"Visible" = "Visible";
+"Holder" = "Holder";
+"Main" = "Main";
+"Accessories" = "Accessories";
+"Ads" = "Ads";
+"Food" = "Food";
+"Vets" = "Vets";
+"Position" = "Position";
+"Top" = "Top";
+"Center" = "Center";
+"Bottom" = "Bottom";
+"Transition" = "Transition";
+"Scroll" = "Scroll";
+"Fade" = "Fade";
+"Replace" = "Replace";
+"Banner Content" = "Banner Content";
+"Title (EN)" = "Title (EN)";
+"Enter English title" = "Enter English title";
+"Title (AR)" = "Title (AR)";
+"Enter Arabic title" = "Enter Arabic title";
+"Description (EN)" = "Description (EN)";
+"Enter English description" = "Enter English description";
+"Description (AR)" = "Description (AR)";
+"Enter Arabic description" = "Enter Arabic description";
+"Post Date" = "Post Date";
+"Text Color" = "Text Color";
+"White" = "White";
+"Black" = "Black";
+"On Tap Action" = "On Tap Action";
+"View Accessory" = "View Accessory";
+"View Ad" = "View Ad";
+"Open URL" = "Open URL";
+"Call" = "Call";
+"WhatsApp" = "WhatsApp";
+"On Tap Value" = "On Tap Value";
+"ID / URL / Phone" = "ID / URL / Phone";
+"Validity (optional)" = "Validity (optional)";
+"Days" = "Days";
+"Hours" = "Hours";
+"Minutes" = "Minutes";
+"Expire At" = "Expire At";
+"Images" = "Images";
+"Background" = "Background";
+"Sample" = "Sample";
+"Badge" = "Badge";
+"Error" = "Error";
+"Title required" = "Title required";
+"Uploading" = "Uploading";
+"PleaseWait" = "Please wait...";
+"Saved" = "Saved";
+"Banner saved" = "Banner saved";
+
+
+"Banners_Tap_Select_BG" = "Tap to select bg photo";
+"Banners_Tap_Select_Sample" = "Tap to select sample photo";
+"Banners_Tap_Select_Badge" = "Tap to select badge photo";
+
+"filter.normal" = "Normal";
+"filter.mono" = "Mono";
+"filter.noir" = "Noir";
+"filter.fade" = "Fade";
+"filter.chrome" = "Chrome";
+"filter.instant" = "Instant";
+"filter.process" = "Process";
+"filter.transfer" = "Transfer";
+
+// English
+"editor.rotate" = "Rotate 90°";
+"editor.flip"   = "Flip";
+"editor.crop"   = "Crop";
+"editor.processing" = "Processing...";
+"editor.done" = "Done";
+"editor.reset" = "Reset";
+
+
+//=================================================================== CLI
+
+/* No comment provided by engineer. */
+"CLAdjustmentTool_DefaultTitle" = "Adjustment";
+
+/* No comment provided by engineer. */
+"CLBloomEffect_DefaultTitle" = "Bloom";
+
+/* No comment provided by engineer. */
+"CLBlurEffect_DefaultTitle" = "Blur & Focus";
+
+/* No comment provided by engineer. */
+"CLBlurEffect_MenuItemBand" = "Band";
+
+/* No comment provided by engineer. */
+"CLBlurEffect_MenuItemCircle" = "Circle";
+
+/* No comment provided by engineer. */
+"CLBlurEffect_MenuItemNormal" = "Normal";
+
+/* No comment provided by engineer. */
+"CLClippingTool_DefaultTitle" = "Crop";
+
+/* No comment provided by engineer. */
+"CLClippingTool_ItemMenuCustom" = "Custom";
+
+/* No comment provided by engineer. */
+"CLDefaultChromeFilter_DefaultTitle" = "Chrome";
+
+/* No comment provided by engineer. */
+"CLDefaultCurveFilter_DefaultTitle" = "Curve";
+
+/* No comment provided by engineer. */
+"CLDefaultEmptyFilter_DefaultTitle" = "None";
+
+/* No comment provided by engineer. */
+"CLDefaultFadeFilter_DefaultTitle" = "Fade";
+
+/* No comment provided by engineer. */
+"CLDefaultInstantFilter_DefaultTitle" = "Instant";
+
+/* No comment provided by engineer. */
+"CLDefaultInvertFilter_DefaultTitle" = "Invert";
+
+/* No comment provided by engineer. */
+"CLDefaultLinearFilter_DefaultTitle" = "Linear";
+
+/* No comment provided by engineer. */
+"CLDefaultMonoFilter_DefaultTitle" = "Mono";
+
+/* No comment provided by engineer. */
+"CLDefaultNoirFilter_DefaultTitle" = "Noir";
+
+/* No comment provided by engineer. */
+"CLDefaultProcessFilter_DefaultTitle" = "Process";
+
+/* No comment provided by engineer. */
+"CLDefaultSepiaFilter_DefaultTitle" = "Sepia";
+
+/* No comment provided by engineer. */
+"CLDefaultTonalFilter_DefaultTitle" = "Tonal";
+
+/* No comment provided by engineer. */
+"CLDefaultTransferFilter_DefaultTitle" = "Transfer";
+
+/* No comment provided by engineer. */
+"CLDefaultVignetteFilter_DefaultTitle" = "Vignette";
+
+/* No comment provided by engineer. */
+"CLDrawTool_DefaultTitle" = "Draw";
+
+/* No comment provided by engineer. */
+"CLEffectBase_DefaultTitle" = "None";
+
+/* No comment provided by engineer. */
+"CLEffectTool_DefaultTitle" = "Effect";
+
+/* No comment provided by engineer. */
+"CLFilterTool_DefaultTitle" = "Filter";
+
+/* No comment provided by engineer. */
+"CLGloomEffect_DefaultTitle" = "Gloom";
+
+/* No comment provided by engineer. */
+"CLHighlightSadowEffect_DefaultTitle" = "Highlight";
+
+/* No comment provided by engineer. */
+"CLHueEffect_DefaultTitle" = "Hue";
+
+/* No comment provided by engineer. */
+"CLImageEditor_BackBtnTitle" = "Back";
+
+/* No comment provided by engineer. */
+"CLImageEditor_DefaultTitle" = "Edit";
+
+/* No comment provided by engineer. */
+"CLImageEditor_OKBtnTitle" = "OK";
+
+/* No comment provided by engineer. */
+"CLImageEditor_DoneBtnTitle" = "Done";
+
+/* No comment provided by engineer. */
+"CLPixellateEffect_DefaultTitle" = "Pixelate";
+
+/* No comment provided by engineer. */
+"CLPosterizeEffect_DefaultTitle" = "Posterize";
+
+/* No comment provided by engineer. */
+"CLResizeTool_DefaultTitle" = "Resize";
+
+/* No comment provided by engineer. */
+"CLResizeTool_InfoPanelTextNewSize" = "New Image Size:";
+
+/* No comment provided by engineer. */
+"CLResizeTool_InfoPanelTextOriginalSize" = "Original Image Size:";
+
+/* No comment provided by engineer. */
+"CLRotateTool_DefaultTitle" = "Rotate";
+
+/* No comment provided by engineer. */
+"CLRotateTool_MenuItemFlipTitle1" = " ";
+
+/* No comment provided by engineer. */
+"CLRotateTool_MenuItemFlipTitle2" = " ";
+
+/* No comment provided by engineer. */
+"CLRotateTool_MenuItemRotateTitle" = " ";
+
+/* No comment provided by engineer. */
+"CLSplashTool_DefaultTitle" = "Splash";
+
+/* No comment provided by engineer. */
+"CLSpotEffect_DefaultTitle" = "Spot";
+
+/* No comment provided by engineer. */
+"CLStickerTool_DefaultTitle" = "Sticker";
+
+/* No comment provided by engineer. */
+"CLEmoticonTool_DefaultTitle" = "Emoticons";
+
+/* No comment provided by engineer. */
+"CLTextTool_DefaultTitle" = "Text";
+
+/* No comment provided by engineer. */
+"CLTextTool_EmptyText" = "Text";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemAlignCenter" = " ";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemAlignLeft" = " ";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemAlignRight" = " ";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemColor" = "Color";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemFont" = "Font";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemNew" = "New";
+
+/* No comment provided by engineer. */
+"CLTextTool_MenuItemText" = "Text";
+
+/* No comment provided by engineer. */
+"CLToneCurveTool_DefaultTitle" = "ToneCurve";
+
+"Banners_Tap_Select_BG"      = "Tap to select bg photo";
+"Banners_Tap_Select_Sample"  = "Tap to select sample photo";
+"Banners_Tap_Select_Badge"   = "Tap to select badge photo";
+
+"Photo Library Access Denied" = "Photo Library Access Denied";
+"Please enable photo library access in Settings to select photos." = "Please enable photo library access in Settings to select photos.";
+"Settings" = "Settings";
+"Cancel" = "Cancel";
+
+
+"screen"="Viewer";
+
+
+"Edit Banner Group" = "Edit Banner Group";
+"Delete" = "Delete";
+"Confirm Delete" = "Confirm Delete";
+"Delete this entire banner group?" = "Delete this entire banner group?";
+"Cancel" = "Cancel";
+"Deleting" = "Deleting…";
+"Error" = "Error";
+"Deleted" = "Deleted";
+"Group removed" = "Group removed";
+"Toggle Visibility" = "Toggle Visibility";
+"Updated" = "Updated";
+"Group hidden" = "Group hidden";
+"Group visible" = "Group visible";
+"Updating" = "Updating…";
+"GrouphiddenActionHide" = "Hide group";
+"GrouphiddenActionShow" = "Show group";
+"Add banner to group" = "Add banner to group";
+"IncreaseQty" = "+1 Qty";
+"DecreaseQty" = "-1 Qty";
+"StockUpdated" = "Stock quantity updated";
+"Accessory removed" = "Accessory removed";
+"Perm_ManageUsers" = "Manage Users";
+"Perm_ManageUsers_Desc" = "Allow adding, blocking, and managing users.";
+"Perm_ManageFood_Desc" = "Allow listing and adding food products.";
+"Perm_ManageNotificatiuons" = "Manage Notifications";
+"Perm_ManageNotificatiuons_Desc" = "Allow composing push notifications and managing topics.";
+"Perm_ManageBanners" = "Manage Banners";
+"Perm_ManageBanners_Desc" = "Allow creating and editing home banners.";
+
+/* ===================== Payment Management ===================== */
+"PaymentMgmt_Title_List" = "Payment Management";
+"PaymentMgmt_Title_Details" = "Payment Details";
+"PaymentMgmt_Dashboard_Title" = "Payment Management";
+"PaymentMgmt_Dashboard_Subtitle" = "Review orders, refunds, returns, and payment history";
+"PaymentMgmt_Dashboard_Settings_Title" = "Payment Basics";
+"PaymentMgmt_Dashboard_Settings_Subtitle" = "Control delivery fee and which checkout methods stay available";
+"PaymentMgmt_Settings_Title" = "Payment Basics";
+"PaymentMgmt_Settings_Loading" = "Loading payment basics";
+"PaymentMgmt_Settings_Section_Pricing" = "Pricing";
+"PaymentMgmt_Settings_Section_Methods" = "Checkout Methods";
+"PaymentMgmt_Settings_Field_DeliveryFee" = "Delivery Fee";
+"PaymentMgmt_Settings_Field_CashOnDelivery" = "Cash on Delivery";
+"PaymentMgmt_Settings_Field_OnlinePayments" = "Online Payments";
+"PaymentMgmt_Settings_Save" = "Save";
+"PaymentMgmt_Settings_Saved" = "Payment basics updated successfully";
+"PaymentMgmt_Settings_Error_InvalidDeliveryFee" = "Enter a valid delivery fee greater than or equal to 0.";
+"PaymentMgmt_Settings_Error_NoMethodEnabled" = "Enable at least one checkout payment method.";
+"PaymentMgmt_Settings_Footer_DeliveryFee" = "The delivery fee is written by the backend into every new order so totals stay consistent in both apps.";
+"PaymentMgmt_Settings_Footer_Methods" = "Disabling a method immediately hides it in checkout and blocks new orders from using it.";
+"PaymentMgmt_Settings_Footer_Metadata" = "Loading current payment settings…";
+"PaymentMgmt_Settings_Footer_Metadata_Format" = "Last updated: %@\nUpdated by: %@";
+"PaymentMgmt_Value_NotAvailable" = "Not available";
+"PaymentMgmt_Value_SystemDefault" = "System default";
+"PaymentMgmt_Search_Placeholder" = "Search order, user, payment method";
+
+"PaymentMgmt_Filter_Title" = "Filters";
+"PaymentMgmt_Filter_Message" = "Refine payments by status, date, or payment method.";
+"PaymentMgmt_Filter_Status" = "Status";
+"PaymentMgmt_Filter_Method" = "Payment Method";
+"PaymentMgmt_Filter_Date" = "Date Range";
+"PaymentMgmt_Filter_Reset" = "Reset Filters";
+"PaymentMgmt_Filter_AllStatuses" = "All statuses";
+"PaymentMgmt_Filter_AllMethods" = "All methods";
+
+"PaymentMgmt_Date_AllDates" = "All dates";
+"PaymentMgmt_Date_Today" = "Today";
+"PaymentMgmt_Date_Last7Days" = "Last 7 days";
+"PaymentMgmt_Date_Last30Days" = "Last 30 days";
+"PaymentMgmt_Date_Last90Days" = "Last 90 days";
+
+"PaymentMgmt_Section_Overview" = "Overview";
+"PaymentMgmt_Section_Payments" = "Payments";
+"PaymentMgmt_Section_AdminActions" = "Admin Actions";
+"PaymentMgmt_Section_Items" = "Items";
+"PaymentMgmt_Section_Requests" = "Requests";
+"PaymentMgmt_Section_Timeline" = "Timeline";
+"PaymentMgmt_Section_Audit" = "Audit Trail";
+"PaymentMgmt_Section_Summary" = "Summary";
+"PaymentMgmt_Section_RequestedItems" = "Requested Items";
+"PaymentMgmt_Section_Attachments" = "Attachments";
+"PaymentMgmt_Section_Actions" = "Actions";
+
+"PaymentMgmt_Loading_Payments" = "Fetching payments";
+"PaymentMgmt_Loading_PaymentDetails" = "Refreshing payment details";
+"PaymentMgmt_Loading_Request" = "Refreshing request";
+"PaymentMgmt_Loading_Updating" = "Updating";
+"PaymentMgmt_Loading_OrderUpdate" = "Applying payment change";
+"PaymentMgmt_Loading_RequestUpdate" = "Applying request decision";
+
+"PaymentMgmt_Placeholder_LoadingTitle" = "Loading payments";
+"PaymentMgmt_Placeholder_LoadingSubtitle" = "Pull to refresh at any time.";
+"PaymentMgmt_Placeholder_NoPaymentsTitle" = "No payments found";
+"PaymentMgmt_Placeholder_NoPaymentsIdleTitle" = "Payments will appear here";
+"PaymentMgmt_Placeholder_NoPaymentsSubtitle" = "Try a different search or filter, or pull to refresh.";
+"PaymentMgmt_Placeholder_NoItemsTitle" = "No items";
+"PaymentMgmt_Placeholder_NoItemsSubtitle" = "This order does not have any item snapshots.";
+"PaymentMgmt_Placeholder_NoRequestsTitle" = "No requests";
+"PaymentMgmt_Placeholder_NoRequestsSubtitle" = "No refund, return, or support requests are attached to this order.";
+"PaymentMgmt_Placeholder_NoTimelineTitle" = "No timeline yet";
+"PaymentMgmt_Placeholder_NoTimelineSubtitle" = "Order timeline events will appear here when payment or request updates are recorded.";
+"PaymentMgmt_Placeholder_NoAuditTitle" = "No admin history";
+"PaymentMgmt_Placeholder_NoAuditSubtitle" = "Admin actions for this order will be recorded here.";
+"PaymentMgmt_Placeholder_NoRequestHistoryTitle" = "No request history";
+"PaymentMgmt_Placeholder_NoRequestHistorySubtitle" = "Request timeline events will appear here.";
+"PaymentMgmt_Placeholder_NoRequestActionsTitle" = "No admin actions available";
+"PaymentMgmt_Placeholder_NoRequestActionsSubtitle" = "This request is already in its final state.";
+
+"PaymentMgmt_Summary_Status_Format" = "Status: %@";
+"PaymentMgmt_Summary_Method_Format" = "Method: %@";
+"PaymentMgmt_Summary_Date_Format" = "Date: %@";
+"PaymentMgmt_Summary_Search_Format" = "Search: %@";
+"PaymentMgmt_Summary_AllPayments" = "All payments";
+"PaymentMgmt_Summary_OpenReviews_Format" = "Open reviews: %ld";
+"PaymentMgmt_Summary_Refunded_Format" = "Refunded: %ld";
+"PaymentMgmt_Summary_MoreResults" = "More results available";
+"PaymentMgmt_Summary_Loaded_Singular" = "1 payment loaded";
+"PaymentMgmt_Summary_Loaded_Plural" = "%ld payments loaded";
+
+"PaymentMgmt_Field_Workflow" = "Workflow";
+"PaymentMgmt_Field_OrderStatus" = "Order Status";
+"PaymentMgmt_Field_OrderReference" = "Order Number";
+"PaymentMgmt_Field_Customer" = "Customer";
+"PaymentMgmt_Field_Email" = "Email";
+"PaymentMgmt_Field_Total" = "Total";
+"PaymentMgmt_Field_PaymentMethod" = "Payment Method";
+"PaymentMgmt_Field_Verification" = "Verification";
+"PaymentMgmt_Field_Transaction" = "Transaction";
+"PaymentMgmt_Field_FailureReason" = "Failure Reason";
+"PaymentMgmt_Field_RefundStatus" = "Refund Status";
+"PaymentMgmt_Field_ReturnStatus" = "Return Status";
+"PaymentMgmt_Field_Created" = "Created";
+"PaymentMgmt_Field_Updated" = "Updated";
+"PaymentMgmt_Field_PaidAt" = "Paid At";
+"PaymentMgmt_Field_ProcessedAt" = "Processing Started";
+"PaymentMgmt_Field_ShippedAt" = "Shipped At";
+"PaymentMgmt_Field_DeliveredAt" = "Delivered At";
+"PaymentMgmt_Field_Shipping" = "Shipping";
+"PaymentMgmt_Field_Status" = "Status";
+"PaymentMgmt_Field_Type" = "Type";
+"PaymentMgmt_Field_Reason" = "Reason";
+"PaymentMgmt_Field_Subject" = "Subject";
+"PaymentMgmt_Field_Category" = "Category";
+"PaymentMgmt_Field_Submitted" = "Submitted";
+"PaymentMgmt_Field_Resolved" = "Resolved";
+"PaymentMgmt_Field_FinalResolution" = "Final Resolution";
+"PaymentMgmt_Field_ResolvedAmount" = "Resolved Amount";
+"PaymentMgmt_Field_Notes" = "Notes";
+"PaymentMgmt_Field_LastReview" = "Last Review";
+
+"PaymentMgmt_Action_ApprovePayment_Title" = "Approve payment";
+"PaymentMgmt_Action_ApprovePayment_Subtitle" = "Marks the order as paid, verifies the payment, and deducts inventory.";
+"PaymentMgmt_Action_MarkProcessing_Title" = "Mark processing";
+"PaymentMgmt_Action_MarkProcessing_Subtitle" = "Moves the order into processing after payment is secured.";
+"PaymentMgmt_Action_MarkShipped_Title" = "Mark shipped";
+"PaymentMgmt_Action_MarkShipped_Subtitle" = "Confirms the order has left fulfillment and is on the way.";
+"PaymentMgmt_Action_MarkDelivered_Title" = "Mark delivered";
+"PaymentMgmt_Action_MarkDelivered_Subtitle" = "Closes fulfillment by confirming delivery to the customer.";
+"PaymentMgmt_Action_CancelOrder_Title" = "Cancel order";
+"PaymentMgmt_Action_CancelOrder_Subtitle" = "Cancels the order safely and restocks inventory when required.";
+"PaymentMgmt_Action_ApproveRequest_Title" = "Approve request";
+"PaymentMgmt_Action_ApproveRequest_Subtitle" = "Moves the request into an approved state.";
+"PaymentMgmt_Action_RejectRequest_Title" = "Reject request";
+"PaymentMgmt_Action_RejectRequest_Subtitle" = "Rejects the request with an audit note.";
+"PaymentMgmt_Action_CompleteRequest_Title" = "Complete request";
+"PaymentMgmt_Action_CompleteRequest_Subtitle" = "Marks the request workflow complete.";
+"PaymentMgmt_Action_CompleteReturnRequest_Subtitle" = "Marks the return flow complete and restocks the returned items.";
+"PaymentMgmt_Action_RefundFull_Title" = "Refund full amount";
+"PaymentMgmt_Action_RefundFull_Subtitle" = "Marks this request as fully refunded.";
+"PaymentMgmt_Action_RefundPartial_Title" = "Refund partial amount";
+"PaymentMgmt_Action_RefundPartial_Subtitle" = "Refunds part of the order total with validation.";
+"PaymentMgmt_Action_CloseRequest_Title" = "Close request";
+"PaymentMgmt_Action_CloseRequest_Subtitle" = "Closes this request after the final state has been reached.";
+"PaymentMgmt_Action_UpdateRequest_Title" = "Update request";
+
+"PaymentMgmt_Prompt_OrderApproveNote" = "Add an admin note for this approval.";
+"PaymentMgmt_Prompt_OrderProcessingNote" = "Add an admin note for moving this order into processing.";
+"PaymentMgmt_Prompt_OrderShippedNote" = "Add an admin note for marking this order as shipped.";
+"PaymentMgmt_Prompt_OrderDeliveredNote" = "Add an admin note for marking this order as delivered.";
+"PaymentMgmt_Prompt_OrderCancelNote" = "Add an admin note explaining this cancellation.";
+"PaymentMgmt_Prompt_RequestNote_Subtitle" = "Add an admin note for the audit trail.";
+"PaymentMgmt_Prompt_NoteRequired_Title" = "Note Required";
+"PaymentMgmt_Prompt_NoteRequired_Subtitle" = "Please add a short note before continuing.";
+"PaymentMgmt_Prompt_PartialRefund_Title" = "Partial refund";
+"PaymentMgmt_Prompt_PartialRefund_Subtitle" = "Enter the refund amount.";
+"PaymentMgmt_Prompt_InvalidAmount_Title" = "Invalid Amount";
+"PaymentMgmt_Prompt_InvalidAmount_Subtitle" = "Enter a value greater than zero and lower than the order total.";
+"PaymentMgmt_Prompt_Continue" = "Continue";
+
+"PaymentMgmt_Confirm_OrderApprove" = "This will mark the order as paid and deduct inventory if it has not already been deducted.";
+"PaymentMgmt_Confirm_OrderProcessing" = "This will move the order into processing and ensure inventory has been deducted.";
+"PaymentMgmt_Confirm_OrderShipped" = "This will move the order into the shipped state.";
+"PaymentMgmt_Confirm_OrderDelivered" = "This will mark the order as delivered and finalize fulfillment.";
+"PaymentMgmt_Confirm_OrderCancel" = "This will cancel the order and restock inventory if needed.";
+"PaymentMgmt_Confirm_RequestApprove" = "This request will move to the approved state.";
+"PaymentMgmt_Confirm_RequestReject" = "This request will move to the rejected state.";
+"PaymentMgmt_Confirm_RequestComplete" = "This request will move to the completed state.";
+"PaymentMgmt_Confirm_RequestCompleteReturn" = "This will complete the return workflow and restock the returned inventory.";
+"PaymentMgmt_Confirm_RequestRefund" = "This request will be marked as fully refunded.";
+"PaymentMgmt_Confirm_RequestPartialRefund_Format" = "This request will be marked as partially refunded for %@ %.2f.";
+"PaymentMgmt_Confirm_RequestClose" = "This request will be closed.";
+"PaymentMgmt_Confirm_RequestUpdate" = "This request will be updated.";
+
+"PaymentMgmt_Success_OrderApprove" = "Payment approved successfully.";
+"PaymentMgmt_Success_OrderProcessing" = "Order moved to processing successfully.";
+"PaymentMgmt_Success_OrderShipped" = "Order marked as shipped successfully.";
+"PaymentMgmt_Success_OrderDelivered" = "Order marked as delivered successfully.";
+"PaymentMgmt_Success_OrderCancel" = "Order cancelled successfully.";
+"PaymentMgmt_Success_RequestUpdate" = "Request updated successfully.";
+
+"PaymentMgmt_Error_LoadPayments" = "Unable to load payments.";
+"PaymentMgmt_Error_NoManagePermission" = "You do not have permission to manage payments.";
+"PaymentMgmt_Error_LoadPaymentDetails" = "Unable to load payment details.";
+"PaymentMgmt_Error_LoadRequest" = "Unable to load the request.";
+"PaymentMgmt_Error_LoadRequestHistory" = "Unable to load request history.";
+"PaymentMgmt_Error_UpdateOrder" = "Unable to update the order.";
+"PaymentMgmt_Error_UpdateRequest" = "Unable to update the request.";
+"PaymentMgmt_Error_NoViewPaymentsPermission" = "You do not have permission to view payments.";
+"PaymentMgmt_Error_NoViewPaymentDetailsPermission" = "You do not have permission to view payment details.";
+"PaymentMgmt_Error_ServiceReleased" = "Payment service was released unexpectedly.";
+"PaymentMgmt_Error_MissingOrderID" = "Missing order ID.";
+"PaymentMgmt_Error_OrderNotFound" = "Order was not found.";
+"PaymentMgmt_Error_MissingRequestReference" = "Missing request reference.";
+"PaymentMgmt_Error_OrderApproveTransition" = "This order can no longer be approved.";
+"PaymentMgmt_Error_OrderProcessingTransition" = "This order cannot move to processing from its current state.";
+"PaymentMgmt_Error_OrderShippedTransition" = "This order must be processing before it can be marked as shipped.";
+"PaymentMgmt_Error_OrderDeliveredTransition" = "This order must be shipped before it can be marked as delivered.";
+"PaymentMgmt_Error_OrderCancelTransition" = "This order cannot be cancelled from its current state.";
+"PaymentMgmt_Error_AdminNoteRequired" = "A short admin note is required for this action.";
+"PaymentMgmt_Error_RequestNotFound" = "Request was not found.";
+"PaymentMgmt_Error_InvalidRequestTransition" = "This request cannot move to the selected state.";
+"PaymentMgmt_Error_InvalidInventoryDeductionItems" = "Order items are invalid for inventory deduction.";
+"PaymentMgmt_Error_StoreItemMissing" = "A store item referenced by this order no longer exists.";
+"PaymentMgmt_Error_InventoryInsufficient" = "Inventory is no longer sufficient to approve this order.";
+"PaymentMgmt_Error_InvalidInventoryRestockItems" = "Order items are invalid for inventory restocking.";
+"PaymentMgmt_Error_InvalidOrderTotalForRefund" = "Order total is invalid for refund resolution.";
+"PaymentMgmt_Error_PartialRefundTooHigh" = "Partial refund amount must be less than the order total.";
+"PaymentMgmt_Error_UnsupportedResolution" = "Unsupported request resolution.";
+"PaymentMgmt_Error_InvalidTransition" = "Invalid payment transition.";
+
+"PaymentMgmt_Record_UnknownUser" = "Unknown user";
+"PaymentMgmt_Record_Updated_Format" = "Updated %@";
+"PaymentMgmt_Record_NeedsReview" = "Needs review";
+"PaymentMgmt_Record_RequestStatus_Format" = "%@ request";
+"PaymentMgmt_Record_OrderId_Format" = "#%@";
+
+"PaymentMgmt_Item_Qty_Format" = "Qty %ld";
+"PaymentMgmt_Item_UnitPrice_Format" = "Unit %.2f";
+"PaymentMgmt_Item_Id_Format" = "ID %@";
+
+"PaymentMgmt_Value_Unknown" = "Unknown";
+"PaymentMgmt_Value_StoreItem" = "Store item";
+"PaymentMgmt_Value_RequestedItem" = "Requested item";
+"PaymentMgmt_Value_Attachment" = "Attachment";
+"PaymentMgmt_Value_Amount" = "Amount";
+"PaymentMgmt_Value_AdminNote" = "Required admin note";
+
+"PaymentMgmt_RequestStatus_PendingReview" = "Pending review";
+"PaymentMgmt_RequestStatus_Approved" = "Approved";
+"PaymentMgmt_RequestStatus_Rejected" = "Rejected";
+"PaymentMgmt_RequestStatus_Completed" = "Completed";
+"PaymentMgmt_RequestStatus_Refunded" = "Refunded";
+"PaymentMgmt_RequestStatus_PartiallyRefunded" = "Partially refunded";
+"PaymentMgmt_RequestStatus_Cancelled" = "Cancelled";
+"PaymentMgmt_RequestStatus_Closed" = "Closed";
+
+"PaymentMgmt_RequestType_Cancellation" = "Cancellation";
+"PaymentMgmt_RequestType_Return" = "Return";
+"PaymentMgmt_RequestType_Refund" = "Refund";
+"PaymentMgmt_RequestType_Replacement" = "Replacement";
+"PaymentMgmt_RequestType_Complaint" = "Complaint";
+"PaymentMgmt_RequestType_Support" = "Support";
+
+"PaymentMgmt_WorkflowStatus_Pending" = "Pending";
+"PaymentMgmt_WorkflowStatus_Paid" = "Paid";
+"PaymentMgmt_WorkflowStatus_Failed" = "Failed";
+"PaymentMgmt_WorkflowStatus_Cancelled" = "Cancelled";
+"PaymentMgmt_WorkflowStatus_Refunded" = "Refunded";
+"PaymentMgmt_WorkflowStatus_PartiallyRefunded" = "Partially refunded";
+
+"PaymentMgmt_Resolution_Approve" = "Approve";
+"PaymentMgmt_Resolution_Reject" = "Reject";
+"PaymentMgmt_Resolution_Complete" = "Complete";
+"PaymentMgmt_Resolution_Refund" = "Refund";
+"PaymentMgmt_Resolution_PartialRefund" = "Partial refund";
+"PaymentMgmt_Resolution_Close" = "Close";
+
+"PaymentMgmt_Method_QIB" = "QIB";
+"PaymentMgmt_Method_Card" = "Card";
+"PaymentMgmt_Method_Cash" = "Cash";
+"PaymentMgmt_Method_Manual" = "Manual";
+"PaymentMgmt_Method_Wallet" = "Wallet";
+"PaymentMgmt_Method_BankTransfer" = "Bank Transfer";
+
+"PaymentMgmt_OrderStatus_Pending" = "Pending";
+"PaymentMgmt_OrderStatus_VerificationPending" = "Verification pending";
+"PaymentMgmt_OrderStatus_Paid" = "Paid";
+"PaymentMgmt_OrderStatus_Processing" = "Processing";
+"PaymentMgmt_OrderStatus_Preparing" = "Preparing";
+"PaymentMgmt_OrderStatus_Packed" = "Packed";
+"PaymentMgmt_OrderStatus_Shipped" = "Shipped";
+"PaymentMgmt_OrderStatus_Shipping" = "Shipping";
+"PaymentMgmt_OrderStatus_InTransit" = "In transit";
+"PaymentMgmt_OrderStatus_OutForDelivery" = "Out for delivery";
+"PaymentMgmt_OrderStatus_Delivered" = "Delivered";
+"PaymentMgmt_OrderStatus_Completed" = "Completed";
+"PaymentMgmt_OrderStatus_Failed" = "Failed";
+"PaymentMgmt_OrderStatus_Cancelled" = "Cancelled";
+"PaymentMgmt_OrderStatus_Refunded" = "Refunded";
+"PaymentMgmt_OrderStatus_PartiallyRefunded" = "Partially refunded";
+
+"PaymentMgmt_Verification_Verified" = "Verified";
+"PaymentMgmt_Verification_Pending" = "Pending";
+"PaymentMgmt_Verification_Unverified" = "Unverified";
+"PaymentMgmt_Verification_Failed" = "Failed";
+"PaymentMgmt_Verification_RequiresReview" = "Requires review";
+
+"PaymentMgmt_FailureReason_CancelledByAdmin" = "Cancelled by admin";
+"PaymentMgmt_FailureReason_PaymentFailed" = "Payment failed";
+"PaymentMgmt_FailureReason_PaymentDeclined" = "Payment declined";
+"PaymentMgmt_FailureReason_PaymentExpired" = "Payment expired";
+"PaymentMgmt_FailureReason_PaymentTimeout" = "Payment timed out";
+
+"PaymentMgmt_Category_Payment" = "Payment";
+"PaymentMgmt_Category_Delivery" = "Delivery";
+"PaymentMgmt_Category_ItemQuality" = "Item quality";
+"PaymentMgmt_Category_WrongItem" = "Wrong item";
+"PaymentMgmt_Category_MissingItem" = "Missing item";
+"PaymentMgmt_Category_DamagedItem" = "Damaged item";
+"PaymentMgmt_Category_Return" = "Return";
+"PaymentMgmt_Category_Refund" = "Refund";
+"PaymentMgmt_Category_Replacement" = "Replacement";
+"PaymentMgmt_Category_Support" = "Support";
+
+"PaymentMgmt_Actor_Admin" = "Admin";
+"PaymentMgmt_Actor_System" = "System";
+"PaymentMgmt_Actor_Customer" = "Customer";
+"PaymentMgmt_Actor_PaymentGateway" = "Payment gateway";
+
+"PaymentMgmt_Event_PaymentApproved" = "Payment approved by admin";
+"PaymentMgmt_Event_OrderProcessing" = "Order moved to processing";
+"PaymentMgmt_Event_OrderShipped" = "Order marked as shipped";
+"PaymentMgmt_Event_OrderDelivered" = "Order marked as delivered";
+"PaymentMgmt_Event_OrderCancelled" = "Order cancelled by admin";
+"PaymentMgmt_Event_RequestMoved_Format" = "Request moved to %@";
+"PaymentMgmt_Event_TypedRequestMoved_Format" = "%@ request moved to %@";
+"PaymentMgmt_Event_PaymentUpdated" = "Payment updated";
+"PaymentMgmt_Event_RequestUpdated" = "Request updated";
+
+"PaymentMgmt_Audit_OrderApprove" = "Approve payment";
+"PaymentMgmt_Audit_OrderProcessing" = "Move order to processing";
+"PaymentMgmt_Audit_OrderShipped" = "Mark order as shipped";
+"PaymentMgmt_Audit_OrderDelivered" = "Mark order as delivered";
+"PaymentMgmt_Audit_OrderCancel" = "Cancel order";
+"PaymentMgmt_Audit_RequestApprove_Format" = "Approve %@ request";
+"PaymentMgmt_Audit_RequestReject_Format" = "Reject %@ request";
+"PaymentMgmt_Audit_RequestComplete_Format" = "Complete %@ request";
+"PaymentMgmt_Audit_RequestClose_Format" = "Close %@ request";
+"PaymentMgmt_Audit_RequestRefundFull" = "Refund full amount";
+"PaymentMgmt_Audit_RequestRefundPartial" = "Refund partial amount";
+"PaymentMgmt_Audit_PaymentUpdate" = "Payment update";
+"PaymentMgmt_Audit_RequestUpdate" = "Request update";
+"PaymentMgmt_Audit_StatusTransition_Format" = "%@ -> %@";
+"PaymentMgmt_Field_PaymentStatus" = "Payment status";
+"PaymentMgmt_Field_PaymentCollectedAt" = "Payment collected";
+"PaymentMgmt_Action_CollectPayment_Title" = "Collect payment";
+"PaymentMgmt_Action_CollectPayment_Subtitle" = "Mark this cash-on-delivery order as collected.";
+"PaymentMgmt_Prompt_OrderCollectPaymentNote" = "Add a short note about the cash collection.";
+"PaymentMgmt_Confirm_OrderCollectPayment" = "Confirm that the cash payment was collected for this delivered order.";
+"PaymentMgmt_Success_OrderCollectPayment" = "Payment collection saved.";
+"PaymentMgmt_Error_OrderCollectPaymentTransition" = "Cash payment can only be collected after delivery.";
+"PaymentMgmt_Notification_NewOrder_Title" = "New order";
+"PaymentMgmt_Notification_NewOrder_Body_Format" = "Open %@ in Payments Management.";
+"PaymentMgmt_Notification_PaymentPaid_Title" = "Payment confirmed";
+"PaymentMgmt_Notification_PaymentPaid_Body_Format" = "Payment was confirmed for %@.";
+"PaymentMgmt_Notification_CashCollected_Title" = "Cash collected";
+"PaymentMgmt_Notification_CashCollected_Body_Format" = "Cash collection was confirmed for %@.";
+"PaymentMgmt_Notification_PaymentFailed_Title" = "Payment failed";
+"PaymentMgmt_Notification_PaymentFailed_Body_Format" = "Payment failed for %@.";
+"PaymentMgmt_Notification_PaymentCancelled_Title" = "Payment cancelled";
+"PaymentMgmt_Notification_PaymentCancelled_Body_Format" = "Payment was cancelled for %@.";
+
+/* ===================== Veterinarians Section ===================== */
+"Vet_Section_Title"              = "Veterinarians";
+"Vet_Manage_Title"               = "Manage Veterinarians";
+"Vet_Manage_Subtitle"            = "View, edit and control all vets";
+"Vet_Add_Title"                  = "Add Veterinarian";
+"Vet_Add_Subtitle"               = "Register a new veterinarian";
+"Vet_Edit_Title"                 = "Edit Veterinarian";
+"Vet_Detail_Title"               = "Veterinarian Details";
+"Vet_Search_Placeholder"         = "Search veterinarians...";
+"Vet_Empty_List"                 = "No veterinarians found.\nTap + to add one.";
+
+/* ── Filters ── */
+"Vet_Filter_All"                 = "All";
+"Vet_Filter_Active"              = "Active";
+"Vet_Filter_Disabled"            = "Disabled";
+
+/* ── Fields ── */
+"Vet_Field_Name"                 = "Name";
+"Vet_Field_Type"                 = "Type";
+"Vet_Field_Phone"                = "Phone";
+"Vet_Field_Whatsapp"             = "WhatsApp";
+"Vet_Field_Description"          = "Description";
+"Vet_Field_Cost"                 = "Consultation Cost";
+"Vet_Field_AvailableDate"        = "Available Date";
+"Vet_Field_PetKindID"            = "Pet Kind ID";
+"Vet_Field_Status"               = "Status";
+"Vet_Field_CreatedAt"            = "Created At";
+
+/* ── Types ── */
+"Vet_Type_Personal"              = "Personal";
+"Vet_Type_Company"               = "Company";
+
+/* ── Status ── */
+"Vet_Status_Active"              = "Active";
+"Vet_Status_Disabled"            = "Disabled";
+
+/* ── Actions ── */
+"Vet_Action_Save"                = "Save";
+"Vet_Action_Enable"              = "Enable";
+"Vet_Action_Disable"             = "Disable";
+"Vet_Subscription"               = "Subscription";
+"Vet_Saving"                     = "Saving...";
+"Vet_Updating"                   = "Updating...";
+
+/* ── Confirmations ── */
+"Vet_Confirm_Disable_Title"      = "Disable Veterinarian?";
+"Vet_Confirm_Disable_Msg"        = "This veterinarian will be hidden from users.";
+"Vet_Confirm_Enable_Title"       = "Enable Veterinarian?";
+"Vet_Confirm_Enable_Msg"         = "This veterinarian will be visible to users again.";
+"Vet_Confirm_Delete_Title"       = "Delete Veterinarian?";
+"Vet_Confirm_Delete_Msg"         = "This action cannot be undone. All data will be permanently removed.";
+
+/* ── Success ── */
+"Vet_Added_Success"              = "Veterinarian added successfully.";
+"Vet_Updated_Success"            = "Veterinarian updated successfully.";
+"Vet_Deleted_Success"            = "Veterinarian deleted successfully.";
+"Vet_Disabled_Success"           = "Veterinarian has been disabled.";
+"Vet_Enabled_Success"            = "Veterinarian has been enabled.";
+
+/* ── Errors ── */
+"Vet_No_Phone"                   = "No phone number available.";
+
+/* ── Subscription ── */
+"Vet_Sub_Management"             = "Subscription Management";
+"Vet_Sub_Tier_Section"           = "Subscription Tier";
+"Vet_Sub_Tier"                   = "Tier";
+"Vet_Sub_Free"                   = "Free";
+"Vet_Sub_Basic"                  = "Basic";
+"Vet_Sub_Premium"                = "Premium";
+"Vet_Sub_Status_Section"         = "Subscription Status";
+"Vet_Sub_Active_Toggle"          = "Subscription Active";
+"Vet_Sub_Active_Label"           = "Active Subscription";
+"Vet_Sub_Inactive"               = "Subscription Inactive";
+"Vet_Sub_Expired"                = "Expired";
+"Vet_Sub_Dates_Section"          = "Subscription Period";
+"Vet_Sub_StartDate"              = "Start Date";
+"Vet_Sub_EndDate"                = "End Date";
+"Vet_Sub_Quick_Section"          = "Quick Duration";
+"Vet_Sub_1Month"                 = "1 Month";
+"Vet_Sub_3Months"                = "3 Months";
+"Vet_Sub_6Months"                = "6 Months";
+"Vet_Sub_1Year"                  = "1 Year";
+"Vet_Sub_Save"                   = "Save Subscription";
+"Vet_Sub_Updated_Success"        = "Subscription updated successfully.";
+"Vet_Sub_Error_DateOrder"        = "End date must be after start date.";
+
+/* ── Services ── */
+"Service_Section_Title"                = "Services";
+"Service_Manage_Title"                 = "Manage Services";
+"Service_Manage_Subtitle"              = "Review, update, verify, and moderate service offers.";
+"Service_Add_Title"                    = "Add Service";
+"Service_Add_Subtitle"                 = "Create a new service offer using the iOS-compatible contract.";
+"Service_Edit_Title"                   = "Edit Service";
+"Service_Detail_Title"                 = "Service Details";
+"Service_Moderation_Title"             = "Service Moderation";
+"Service_Search_Placeholder"           = "Search by title, owner, category, or service ID";
+"Service_Loading"                      = "Loading services...";
+"Service_Saving"                       = "Saving service...";
+"Service_Updating"                     = "Updating service...";
+"Service_Empty_Title"                  = "No services yet";
+"Service_Empty_Subtitle"               = "Create the first service offer or wait for Firestore updates to arrive.";
+"Service_Empty_Filtered_Title"         = "No services match these filters";
+"Service_Empty_Filtered_Subtitle"      = "Try a different search, status filter, or sort option.";
+"Service_Error_LoadTitle"              = "Couldn't load services";
+"Service_Error_Generic"                = "Something went wrong while processing this service.";
+"Service_Error_NoPermission"           = "You don't have permission to manage services.";
+"Service_Error_MissingID"              = "Service ID is missing.";
+"Service_Error_NotFound"               = "Service not found.";
+"Service_Error_TitleRequired"          = "Service title is required.";
+"Service_Error_DescriptionRequired"    = "Service description is required.";
+"Service_Error_OwnerRequired"          = "Service owner ID is required.";
+"Service_Error_CategoryRequired"       = "Category or category ID is required.";
+"Service_Error_InvalidPrice"           = "Price must be zero or greater.";
+"Service_Error_ImageUpload"            = "Couldn't prepare the selected image for upload.";
+"Service_Error_SubscriptionDateOrder"  = "Subscription end date must be after the start date.";
+"Service_Error_ExtraJSONInvalid"       = "Extra fields must be valid JSON object text.";
+"Service_Error_FlagsJSONInvalid"       = "Service flags must be valid JSON object text.";
+
+"Service_Stat_Total"                   = "Total";
+"Service_Stat_Live"                    = "Live";
+"Service_Stat_Review"                  = "Needs Review";
+"Service_Stat_Archived"                = "Archived";
+
+"Service_Filter_All"                   = "All";
+"Service_Filter_Live"                  = "Live";
+"Service_Filter_Archived"              = "Archived";
+"Service_Filter_Any"                   = "Any state";
+"Service_Filter_NeedsReview"           = "Needs review";
+"Service_Filter_Verified"              = "Verified";
+"Service_Filter_Pending"               = "Pending";
+"Service_Filter_Blocked"               = "Blocked";
+"Service_Filter_Disabled"              = "Disabled";
+"Service_ClearFilters"                 = "Clear Filters";
+
+"Service_Refine_Title"                 = "Refine";
+"Service_Refine_Sort"                  = "Change Sort";
+"Service_Refine_Filter"                = "Change Filter";
+"Service_Sort_Updated"                 = "Latest Updates";
+"Service_Sort_Title"                   = "Title A-Z";
+"Service_Sort_PriceHigh"               = "Price High-Low";
+"Service_Sort_PriceLow"                = "Price Low-High";
+"Service_Sort_Available"               = "Available Soonest";
+
+"Service_Action_View"                  = "View";
+"Service_Action_Edit"                  = "Edit";
+"Service_Action_Moderate"              = "Moderate";
+"Service_Action_Disable"               = "Disable";
+"Service_Action_Enable"                = "Enable";
+"Service_Action_Block"                 = "Block";
+"Service_Action_Unblock"               = "Unblock";
+"Service_Action_Archive"               = "Archive";
+"Service_Action_Restore"               = "Restore";
+"Service_Action_Save"                  = "Save Service";
+"Service_Action_SaveModeration"        = "Save Moderation";
+
+"Service_Confirm_Disable_Title"        = "Disable service?";
+"Service_Confirm_Disable_Subtitle"     = "The service stays in Firestore but will be marked as disabled for Admin review.";
+"Service_Confirm_Enable_Title"         = "Enable service?";
+"Service_Confirm_Enable_Subtitle"      = "This restores the service to the active state.";
+"Service_Confirm_Block_Title"          = "Block service?";
+"Service_Confirm_Block_Subtitle"       = "Blocking marks this service for moderation and removes it from the live state.";
+"Service_Confirm_Unblock_Title"        = "Unblock service?";
+"Service_Confirm_Unblock_Subtitle"     = "This clears the blocked state and returns the service to its previous live state.";
+"Service_Confirm_Archive_Title"        = "Archive service?";
+"Service_Confirm_Archive_Subtitle"     = "Archiving is the safe delete path. The record stays available for audit and restore.";
+"Service_Confirm_Restore_Title"        = "Restore service?";
+"Service_Confirm_Restore_Subtitle"     = "This removes the archived state and makes the record manageable again.";
+"Service_Confirm_Delete_Title"         = "Delete permanently?";
+"Service_Confirm_Delete_Subtitle"      = "This permanently removes the service document after a final confirmation.";
+
+"Service_Added_Success"                = "Service created successfully.";
+"Service_Updated_Success"              = "Service updated successfully.";
+"Service_Disabled_Success"             = "Service disabled successfully.";
+"Service_Enabled_Success"              = "Service enabled successfully.";
+"Service_Blocked_Success"              = "Service blocked successfully.";
+"Service_Unblocked_Success"            = "Service unblocked successfully.";
+"Service_Archived_Success"             = "Service archived successfully.";
+"Service_Restored_Success"             = "Service restored successfully.";
+"Service_Deleted_Success"              = "Service deleted successfully.";
+"Service_Moderation_Updated_Success"   = "Service moderation settings updated.";
+
+"Service_Form_ImageHint"               = "Tap to choose a service image";
+"Service_Form_BasicSection"            = "Basic Information";
+"Service_Form_ClassificationSection"   = "Classification";
+"Service_Form_OwnershipSection"        = "Ownership & Media";
+"Service_Form_AdvancedSection"         = "Advanced & Future Fields";
+
+"Service_Moderation_StatusSection"     = "State & Verification";
+"Service_Moderation_SubscriptionSection" = "Subscription";
+"Service_Moderation_FlagsSection"      = "Flags & Audit";
+
+"Service_Field_ID"                     = "Service ID";
+"Service_Field_Title"                  = "Title";
+"Service_Field_Description"            = "Description";
+"Service_Field_Price"                  = "Price";
+"Service_Field_Type"                   = "Type";
+"Service_Field_Category"               = "Category";
+"Service_Field_CategoryID"             = "Category ID";
+"Service_Field_OwnerID"                = "Owner ID";
+"Service_Field_PetMainKindID"          = "Pet Main Kind ID";
+"Service_Field_AvailableDate"          = "Available Date";
+"Service_Field_Timestamp"              = "Created / Published At";
+"Service_Field_ImageURL"               = "Image URL";
+"Service_Field_BlurHash"               = "Blur Hash";
+"Service_Field_Status"                 = "Status";
+"Service_Field_VerificationStatus"     = "Verification Status";
+"Service_Field_SubscriptionType"       = "Subscription Type";
+"Service_Field_SubscriptionPlan"       = "Subscription Plan";
+"Service_Field_SubscriptionStatus"     = "Subscription Status";
+"Service_Field_SubscriptionActive"     = "Subscription Active";
+"Service_Field_SubscriptionStart"      = "Subscription Start";
+"Service_Field_SubscriptionEnd"        = "Subscription End";
+"Service_Field_ServiceFlags"           = "Service Flags (JSON)";
+"Service_Field_ServiceFlags_Placeholder" = "{\"featured\": true}";
+"Service_Field_ExtraJSON"              = "Extra Fields (JSON)";
+"Service_Field_ExtraJSON_Placeholder"  = "{\"futureField\": \"value\"}";
+"Service_Field_AuditNote"              = "Audit Note";
+"Service_Field_AuditNote_Placeholder"  = "Optional note for the admin audit trail";
+"Service_Field_IsDisabled"             = "Disabled";
+"Service_Field_IsBlocked"              = "Blocked";
+"Service_Field_CreatedAt"              = "Created At";
+"Service_Field_UpdatedAt"              = "Updated At";
+
+"Service_Type_Training"                = "Training";
+"Service_Type_Grooming"                = "Grooming";
+
+"Service_Status_Active"                = "Active";
+"Service_Status_Disabled"              = "Disabled";
+"Service_Status_Blocked"               = "Blocked";
+"Service_Status_Archived"              = "Archived";
+
+"Service_Verification_NotSet"          = "Not Set";
+"Service_Verification_Pending"         = "Pending";
+"Service_Verification_Verified"        = "Verified";
+"Service_Verification_Rejected"        = "Rejected";
+"Service_Verification_Unverified"      = "Unverified";
+
+"Service_Subscription_None"            = "No Plan";
+"Service_Subscription_Active"          = "Active";
+"Service_Subscription_Inactive"        = "Inactive";
+"Service_Value_NotSpecified"           = "Not specified";
+"AdminWebApp_Section_Title"            = "Web App";
+"AdminWebApp_Row_Title"                = "Open Web App";
+"AdminWebApp_Row_Subtitle"             = "Open the live Pure Pets dashboard in-app";
+"AdminWebApp_Title"                    = "Web App";
+"AdminWebApp_Error_Title"              = "Unable to Load Web App";
+"AdminWebApp_Error_Message"            = "Check your connection and try again.";
+"AdminWebApp_Retry"                    = "Retry";
+
+/* ===================== Dashboard Refresh ===================== */
+"AdminDashboard_Badge" = "Pure Pets Admin";
+"AdminDashboard_Hero_Subtitle" = "People. Inventory. Payments. One controlled surface.";
+"AdminDashboard_AccessCount_Format" = "%ld tools ready";
+"AdminDashboard_Section_Users_Description" = "Create accounts, review users, and adjust roles with less friction.";
+"AdminDashboard_Section_Stock_Description" = "Inventory synchronized across every product line.";
+"AdminDashboard_Section_Services_Description" = "Review service offers and keep provider quality under control.";
+"AdminDashboard_Section_Vets_Description" = "Moderate veterinarian profiles and subscription state.";
+"AdminDashboard_Section_Banners_Description" = "Curate the first visual surfaces users see across the app.";
+"AdminDashboard_Section_Payments_Description" = "Track payment flow and checkout rules from one calm workspace.";
+"AdminDashboard_Section_Notifications_Description" = "Review delivery history, send updates, and refine notification behavior.";
+"AdminDashboard_Section_Web_Description" = "Jump into the wider Pure Pets console whenever the task needs it.";
+"AdminDashboard_Section_Settings_Description" = "Keep your own profile, language, and access aligned.";
+
+/* ===================== Home Control Section ===================== */
+"HomeControl_Title" = "Home Control";
+"HomeControl_Subtitle" = "Control home screen sections, visibility, and feature toggles";
+"HomeControl_Saved" = "Home configuration saved successfully";
+"HomeControl_GlobalSettings" = "Global Settings";
+"HomeControl_TitleViewMode" = "Title View Mode";
+"HomeControl_SectionOrder" = "Section Order & Visibility";
+
+/* ===================== Fulfillment Section ===================== */
+"Fulfillment_Title" = "Fulfillment Orders";
+"Fulfillment_Subtitle" = "Manage provider-subcontracted fulfillment orders";
+"Fulfillment_SearchPlaceholder" = "Search fulfillment orders...";
+"Fulfillment_Empty" = "No fulfillment orders found";
+
+/* ===================== Delivery Section ===================== */
+"Delivery_Title" = "Delivery Management";
+"Delivery_Subtitle" = "Manage delivery requests, drivers, and company fleet";
+"Delivery_All" = "All";
+"Delivery_Active" = "Active";
+"Delivery_Completed" = "Completed";
+"Delivery_Cancelled" = "Cancelled";
+"Delivery_Empty" = "No delivery requests found";
+"Delivery_UnknownCustomer" = "Unknown customer";
+"Delivery_Actions" = "Actions";
+"Delivery_AssignDriver" = "Assign Driver";
+"Delivery_EnterDriverUID" = "Enter Driver UID";
+"Delivery_MarkCompleted" = "Mark Completed";
+"Delivery_CancelRequest" = "Cancel Request";
+
+/* ===================== Accounting Section ===================== */
+"Accounting_Title" = "Accounting";
+"Accounting_Subtitle" = "Track revenue, expenses, and profit";
+"Accounting_ThisMonth" = "This Month";
+"Accounting_AllTime" = "All Time";
+"Accounting_Overview" = "Overview";
+"Accounting_Transactions" = "Transactions";
+"Accounting_Expenses" = "Expenses";
+"Accounting_Revenue" = "Revenue";
+"Accounting_Profit" = "Profit";
+"Accounting_QAR" = "QAR";
+"Accounting_AddExpense" = "Add Expense";
+"Accounting_Amount" = "Amount";
+"Accounting_Description" = "Description";
+"Accounting_Category" = "Category";
+"Accounting_InvalidAmount" = "Please enter a valid amount greater than zero.";
+"Accounting_NoTransactions" = "No transactions found";
+"Accounting_NoExpenses" = "No expenses found";
+"Accounting_Cat_salary" = "Salary";
+"Accounting_Cat_rent" = "Rent";
+"Accounting_Cat_supplies" = "Supplies";
+"Accounting_Cat_utilities" = "Utilities";
+"Accounting_Cat_marketing" = "Marketing";
+"Accounting_Cat_other" = "Other";
+
+/* ===================== Providers Section ===================== */
+"Providers_Section_Title" = "Providers";
+"AdminDashboard_Section_Providers_Description" = "Manage provider applications, plans, features, and commissions";
+"Providers_Applications_Title" = "Applications";
+"Providers_Applications_Subtitle" = "Review and approve provider applications";
+"Providers_Plans_Title" = "Plans";
+"Providers_Plans_Subtitle" = "Manage provider subscription plans";
+"Providers_Features_Title" = "Feature Access";
+"Providers_Features_Subtitle" = "Control feature access for provider types";
+"Providers_Accounting_Title" = "Provider Accounting";
+"Providers_Accounting_Subtitle" = "View provider commissions and ledger";
+"Providers_All" = "All";
+"Providers_Pending" = "Pending";
+"Providers_Approved" = "Approved";
+"Providers_Rejected" = "Rejected";
+"Providers_Applications_Empty" = "No applications found";
+"Providers_Review" = "Review Application";
+"Providers_MarkUnderReview" = "Mark Under Review";
+"Providers_Approve" = "Approve";
+"Providers_Reject" = "Reject";
+"Providers_ReviewNotes" = "Review Notes";
+"Providers_ReviewNotesPlaceholder" = "Optional notes...";
+"Providers_Plans_New" = "New Plan";
+"Providers_Plans_NameEn" = "Name (English)";
+"Providers_Plans_NameAr" = "Name (Arabic)";
+"Providers_Plans_Price" = "Price";
+"Providers_Plans_CommissionRate" = "Commission Rate";
+"Providers_Plans_Empty" = "No plans found";
+"Providers_Plans_Actions" = "Plan Actions";
+"Providers_Features_Empty" = "No features configured";
+"Providers_Accounting_Empty" = "No commission records found";
+"Providers_Accounting_Commission" = "Commission";
+
+/* ===================== POS Section ===================== */
+"POS_Section_Title" = "POS";
+"AdminDashboard_Section_POS_Description" = "Fast point-of-sale and transaction history";
+"POS_Title" = "Fast Sell";
+"POS_Subtitle" = "Quick point-of-sale checkout";
+"POS_History_Title" = "POS History";
+"POS_History_Subtitle" = "View completed POS transactions";
+"POS_History_Empty" = "No POS transactions found";
+"POS_Clear" = "Clear";
+"POS_Checkout" = "Checkout";
+"POS_EmptyCart" = "Cart is empty";
+"POS_Cash" = "Cash";
+"POS_Card" = "Card";
+"POS_OrderCreated" = "Order #%@ created successfully";
+"POS_AddItem" = "Add Item";
+"POS_ScanOrSearch" = "Scan or search item";
+"POS_Cart" = "Cart";
+"POS_CartEmpty" = "Cart is empty";
+"POS_ItemName" = "Item name";
+"POS_ItemPrice" = "Price";
+"POS_ItemQty" = "Quantity";
+"POS_Total" = "Total";
+"POS_PaymentMethod" = "Payment Method";
+"POS_Items" = "Items";
+"POS_Add" = "Add";
+
+/* ===================== Dashboard Features Section ===================== */
+"AdminDashboard_Section_Features" = "Features";
+"AdminDashboard_Section_Features_Description" = "Home control, fulfillment, delivery, and accounting tools";
+
+/* ===================== Dashboard Connections ===================== */
+"ManageAccessoriesSubtitle" = "View, add, and update accessory inventory.";
+"ManageLivePetsSubtitle" = "Manage live-pet catalog items and their availability.";
+"NotificationSettings_Subtitle" = "Tune delivery categories and quiet the noise.";
+
+/* ===================== Notifications Settings ===================== */
+"Notification Settings" = "Notification Settings";
+"Categories" = "Categories";
+"Orders" = "Orders";
+"Warnings" = "Warnings";
+
+"AddStaffMember" = "Add Staff Member";
+"AddStaffMemberSubtitle" = "Create a new staff account";
+
+/* ===================== Delivery Company (Phase 21G) ===================== */
+"DC_Dashboard_Title" = "Delivery Company";
+"DC_Entry_Title" = "Delivery Company";
+"DC_Entry_Subtitle" = "Manage company deliveries, drivers, and requests";
+"DC_Applications_Title" = "Company Applications";
+"DC_Applications_Subtitle" = "Review delivery-company onboarding, approve new fleet companies, and copy generated company IDs.";
+"DC_Applications_Eyebrow" = "Provider approvals";
+"DC_Applications_HeroTitle" = "Review fleet company onboarding";
+"DC_Applications_HeroSubtitle" = "Approve real delivery companies, create the owner membership automatically, and keep company IDs ready for Pro setup.";
+"DC_Applications_Filter_Pending" = "Pending";
+"DC_Applications_Filter_Approved" = "Approved";
+"DC_Applications_Filter_Rejected" = "Rejected";
+"DC_Applications_Empty" = "No applications in this filter yet.";
+"DC_Applications_LoadFailed" = "Could not load delivery company applications.";
+"DC_Applications_Approve" = "Approve";
+"DC_Applications_Approved" = "Application approved";
+"DC_Applications_Reject" = "Reject";
+"DC_Applications_Rejected" = "Application rejected";
+"DC_Applications_RejectPrompt" = "Add a clear reason for rejection before sending it back to the applicant.";
+"DC_Applications_RejectPlaceholder" = "Enter rejection reason";
+"DC_Applications_RejectReasonRequired" = "A rejection reason is required.";
+"DC_Applications_CopyCompanyID" = "Copy company ID";
+"DC_Applications_CompanyIDCopied" = "Company ID copied";
+"DC_Applications_Applicant" = "Applicant";
+"DC_Applications_Status" = "Status";
+"DC_Applications_UnknownApplicant" = "Unknown applicant";
+"ProviderCompanyNameField" = "Company name";
+"ProviderLegalNameField" = "Legal name";
+"ProviderPhoneField" = "Mobile number";
+"ProviderEmailField" = "Email";
+"ProviderAddressField" = "Address";
+"ProviderLicenseNumberField" = "License number";
+"ProviderCommercialRegistrationField" = "Commercial registration";
+"DC_Config_Title" = "Delivery Company Setup";
+"DC_Config_Subtitle" = "Enter your delivery company ID to connect your account.";
+"DC_Config_Field_Placeholder" = "Company ID";
+"DC_Config_Verify" = "Verify & Connect";
+"DC_Config_Skip" = "Skip, set up later";
+"DC_Config_Error_Empty" = "Please enter a company ID";
+"DC_Config_Error_Invalid" = "Could not verify company membership";
+"DC_Config_NotMember" = "You are not a member of this company";
+"DC_Config_Success" = "Company connected successfully";
+"DC_Tab_New" = "New";
+"DC_Tab_Accepted" = "Accepted";
+"DC_Tab_Assigned" = "Assigned";
+"DC_Tab_InProgress" = "In Progress";
+"DC_Tab_Delivered" = "Delivered";
+"DC_Tab_Completed" = "Completed";
+"DC_Tab_Cancelled" = "Cancelled";
+"DC_Tab_Members" = "Members";
+"DC_Tab_MyAssigned" = "My Deliveries";
+"DC_Status_Offered" = "Offered";
+"DC_Status_Accepted" = "Accepted";
+"DC_Status_Assigned" = "Assigned";
+"DC_Status_PickedUp" = "Picked Up";
+"DC_Status_InTransit" = "In Transit";
+"DC_Status_Delivered" = "Delivered";
+"DC_Status_Completed" = "Completed";
+"DC_Status_Rejected" = "Rejected";
+"DC_Status_Cancelled" = "Cancelled";
+"DC_Status_Failed" = "Failed";
+"DC_Status_Expired" = "Expired";
+"DC_Role_Owner" = "Owner";
+"DC_Role_Dispatcher" = "Dispatcher";
+"DC_Role_Driver" = "Driver";
+"DC_Role_Viewer" = "Viewer";
+"DC_NoPickup" = "No pickup address";
+"DC_NoDropoff" = "No dropoff address";
+"DC_Unassigned" = "Unassigned";
+"DC_Empty_Title" = "No requests yet";
+"DC_Empty_Subtitle" = "Delivery requests will appear here once they are created.";
+"DC_Error_Load" = "Could not load requests";
+"DC_Stats_Summary" = "📦 %ld new · 🚚 %ld active · ✅ %ld done · ❌ %ld closed";
+"DC_Detail_Order" = "Order";
+"DC_Detail_Status" = "Status";
+"DC_Detail_Pickup" = "Pickup";
+"DC_Detail_Dropoff" = "Dropoff";
+"DC_Detail_Customer" = "Customer";
+"DC_Detail_Fee" = "Delivery Fee";
+"DC_Detail_Note" = "Note";
+"DC_Detail_Driver" = "Driver";
+"DC_Timeline" = "Timeline";
+"DC_Actions" = "Actions";
+"DC_Action_Accept" = "Accept Request";
+"DC_Action_Reject" = "Reject Request";
+"DC_Action_AssignDriver" = "Assign Driver";
+"DC_Action_PickedUp" = "Mark as Picked Up";
+"DC_Action_InTransit" = "Mark as In Transit";
+"DC_Action_Delivered" = "Mark as Delivered";
+"DC_Action_Complete" = "Complete Delivery";
+"DC_Action_Cancel" = "Cancel Request";
+"DC_Reject_Reason" = "Rejection Reason";
+"DC_Cancel_Reason" = "Cancellation Reason";
+"DC_Reason_Placeholder" = "Optional reason...";
+"DC_Processing" = "Processing...";
+"DC_Loading_Drivers" = "Loading drivers...";
+"DC_NoDrivers" = "No available drivers found";
+"DC_Select_Driver" = "Select Driver";
+"DC_Members_Title" = "Company Members";
+"DC_Members_Empty_Title" = "No members yet";
+"DC_Members_Empty_Subtitle" = "Members will appear once they are added.";
+"DC_Member_Active" = "Active";
+"DC_Member_Disabled" = "Disabled";
+"DC_Deliveries_Active" = "📍 %ld active";
+"DC_Invite_Title" = "Invite Member";
+"DC_Invite_Subtitle" = "Enter the user UID to invite";
+"DC_Invite_Placeholder" = "User UID";
+"DC_Invite" = "Invite";
+"DC_Select_Role" = "Select Role";
+"DC_Disable_Member_Title" = "Disable Member";
+"DC_Disable_Member_Msg" = "Disable %@ from this company?";
+"DC_Disable" = "Disable";
+"DC_Cannot_Disable_Last_Owner" = "Cannot disable the only active owner";
+"DC_Cannot_Disable_Self" = "You cannot disable yourself";
+"DC_Settings_Title" = "Delivery Company";
+"DC_Refresh" = "Refresh";
+"DC_Disconnect" = "Disconnect Company";
+"DC_SAR" = "SAR";
+"DC_Setup_Title" = "Configure Company";

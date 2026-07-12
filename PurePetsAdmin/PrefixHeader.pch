@@ -1,0 +1,494 @@
+//
+//  PrefixHeader.pch
+//  PurePetsAdmin
+//
+//  Created by Mohammed Ahmed on 20/08/2025.
+//
+
+#ifndef PrefixHeader_pch
+#define PrefixHeader_pch
+
+
+// ===== System Frameworks =====
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
+#import <CoreMotion/CoreMotion.h>
+#import <AudioToolbox/AudioToolbox.h>
+@import QuartzCore;                  // CACurrentMediaTime
+@import AudioToolbox;               // AudioServicesPlaySystemSound
+#import <Security/Security.h>
+
+
+@import LocalAuthentication;
+
+//NS_ASSUME_NONNULL_BEGIN
+//NS_ASSUME_NONNULL_END
+// ===== Firebase =====
+// Keep Firebase imports file-local to avoid PCH/module resolution issues.
+// ===== Notification =====
+// Keep notification headers file-local to avoid heavy module chains in PCH.
+
+// ===== Third-party =====
+#import "XLForm.h"
+#import "Language.h"
+#import "YYKit.h"
+#import "SSZipArchive.h"
+#import <objc/runtime.h>
+
+#import "JGProgressHUD.h"
+#import "CLImageEditor.h"
+#import "PPMediaPickerDemoVC.h"
+// ===== App-wide Headers =====
+#import "AppDelegate.h"
+#import "AppManager.h"
+#import "Styling.h"
+#import "UIView.h"
+#import "UIImageView.h"
+#import "SceneDelegate.h"
+// HXPhotoPicker removed — replaced by PPImageCollection
+#import "GSIndeterminateProgressView.h"
+#import "AlertHelper.h"
+
+
+
+
+@class PodsDummy_ShowTime;
+// ===== Admin Dashboard =====
+#import "AdminDashboardViewController.h"
+
+// ===== Users =====
+#import "AddUserViewController.h"
+#import "AdminLoginViewController.h"
+#import "UserManager+Refs.h"
+#import "SetUserPermissionsRolesViewController.h"
+#import "PPNavigationController.h"
+
+// ===== PP NavBar Hider =====
+
+// ===== PP Accessories =====
+#import "PetAccessory.h"
+#import "AccessoryManager.h"
+#import "AccessoriesListViewController.h"
+#import "PetAccessory.h"
+#import "AddAccessoryViewController.h"
+#import "AccessoryCell.h"
+// HXPhotoPicker removed — replaced by PPImageCollection
+#import "PPCellWithButtons.h"
+// ===== PP Basic Models =====
+#import "MainKindsModel.h"
+
+// ===== PP Cells =====
+#import "XLAdminCell.h"
+#import "XLFormSubtitleSwitchCell.h"
+#import "XLFormRowDescriptor+Extras.h"
+#import "RoleSelectorCell.h"
+#import "RoleSummaryCell.h"
+#import "XLFormOptionsObject+Extras.h"
+#import "RoleOptionCell.h"
+#import "RoleOptionsViewController.h"
+#import "BlockUserViewController.h"
+// Old XLFormXHPhotoCell removed — replaced by PPImageCollectionRow
+#import "UIViewController+PVCMotal.h"
+#import "SetUserPermissionViewController.h"
+#import "TOCropViewController.h"
+
+
+
+// ========================= PP ===========================
+#import "PPSymbolHelper.h"
+#import "RoundedPhotoCell.h"
+#import "PPOptionsViewController.h"
+#import "PPFunc.h"
+#import "PPFunc+Haptics.h"
+#import "PPFormBaseViewController.h"
+#import "PPEmailFieldCell.h"
+#import "PPSelectOptionViewController.h"
+#import "PPOptionCell.h"
+#import "PPButtonHelper.h"
+#import "PPS.h"
+#import "PPToast.h"
+#import "PPPickOptionCell.h"
+#import "PPAdminButton.h"
+#import "PPGuardianBorder.h"
+#import "PPTextFieldCell.h"
+#import "PPTextField.h"
+#import "PPSubtitleSwitchCell.h"
+#import "PPQuickActionsView.h"
+#import "PPParallax.h"
+#import "PPHUD.h"
+#import "AdminService.h"
+#import "PPItem.h"
+#import "PPBottomBar.h"
+#import "PPImageCacheHelper.h"
+#import "PPImageManager.h"
+#import "PPNotificationsManager.h"
+#import "PPQAccessBar.h"
+
+
+@import Firebase;
+@import FirebaseFirestore;
+@import FirebaseCore;
+@import FirebaseStorage;
+@import FirebaseMessaging;
+@import FirebaseFunctions;
+@import FirebaseInstallations;
+
+#import "PPBannersListVC.h"
+#import "PPColorUtils.h"
+#import "PPBannersManager.h"
+#import "MainBannerModel.h"
+#import "PPBannerViewModel.h"
+#import "PPAddBannerViewController.h"
+
+// ===== PP Branch & Agent Section =====
+#import "PPBranchModel.h"
+#import "PPAgentModel.h"
+#import "PPImageCollection.h"
+#import "PPPickerAssetManager.h"
+#import "PPImageCollectionRow.h"
+
+#import "SplashViewController.h"
+#import "PPBiometric.h"
+#import "PPUserCell.h"
+#import "RPManager.h"
+#import "FUManager.h"
+#import "PPRolePermission.h"
+
+#import "UIViewController+PPNavBar.h"
+#import <objc/message.h>
+
+// ===== PP Global Variables =====
+#define PPUserPlaceholderImageAssest          [UIImage systemImageNamed:@"person.crop.circle.fill"]
+#define PPUserPlaceholderImageName            @"person.crop.circle.fill"
+
+
+// ===== Shortcuts =====
+#define kAppDelegate ((AppDelegate *)[UIApplication sharedApplication].delegate)
+#define kPPScreenWidth   ([UIScreen mainScreen].bounds.size.width)
+#define kPPScreenHeight  ([UIScreen mainScreen].bounds.size.height)
+
+
+
+#define PPFontBold(size)    [UIFont fontWithName:@"Beiruti-Bold" size:(size)]
+#define PPFontMedium(size)  [UIFont fontWithName:@"Beiruti-Medium" size:(size)]
+#define PPFontRegular(size) [UIFont fontWithName:@"Beiruti-Regular" size:(size)]
+
+
+// ===== Logging =====
+#ifdef DEBUG
+    #define DLog(fmt, ...) NSLog((@"[DEBUG] %s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__)
+#else
+    #define DLog(...)
+#endif
+
+// ===== Localization =====
+//#define kLang(key) NSLocalizedString((key), nil)
+
+// ===== Colors =====
+#define AppBackgroundClrShiner         [UIColor colorNamed:@"AppBackgroundClrShiner"]                                                 // Main brand color
+#define AppBackgroundClrDarker         [UIColor colorNamed:@"AppBackgroundClrDarker"]
+#define AppPrimaryClr                   [UIColor colorNamed:@"AppPrimaryClr"]                                                 // Main brand color
+#define AppPrimaryClrDarker              [UIColor colorNamed:@"AppPrimaryClrDarker"]                                           // Main brand color Darker
+#define AppPrimaryClrShiner               [UIColor colorNamed:@"AppPrimaryClrShiner"]                                           // Main brand color Shiner
+#define AppSecondaryClr                   [UIColor systemTealColor]                                                             // Accent / secondary
+#define AppBackgroundClr                [UIColor colorNamed:@"AppBackgroundClr"]                                              // Background
+#define PrimaryTextClr                [UIColor colorNamed:@"PrimaryTextClr"]                                                // Text color
+#define SeconderyTextClr                  [UIColor colorNamed:@"SeconderyTextClr"]                                              // Secondary text color
+#define AppForgroundColr                   [UIColor colorNamed:@"AppForgroundColr"]                                              // Custom Foreground
+#define AppShadowColor                [UIColor blackColor]                                                                  // Accent / secondary
+#define AppShadowClr                  AppShadowColor                                                                        // Alias for iOS compat
+#define AppPrimaryTextClr             PrimaryTextClr                                                                        // Alias for iOS compat
+#define AppClearClr                [UIColor clearColor]                                                                  // Accent / secondary
+#define AppPrimaryClr_CG              [UIColor colorNamed:@"AppPrimaryClr"].CGColor                                         // Main brand color
+#define AppPrimaryClrWithAlpha(alpha)         [[UIColor colorNamed:@"AppPrimaryClr"] colorWithAlphaComponent:alpha]
+
+// Heights are dynamic — compute them when you need them.
+// Call after the view is on screen (e.g. viewDidLayoutSubviews / viewDidAppear).
+#define NAVIGATION_BAR_HEIGHT   (self.navigationController.isNavigationBarHidden ? 0.0 : self.navigationController.navigationBar.frame.size.height)
+#define TOP_BAR_HEIGHT          (STATUS_BAR_HEIGHT + NAVIGATION_BAR_HEIGHT)
+
+//how can i hide navigation bar left and right views on load  and show again one i left from cureent cuntroller
+//is there any thirdpart navbar libarary i can use
+
+// ===== Utilities =====
+#define kIsIPhoneXSeries   (UIApplication.sharedApplication.windows.firstObject.safeAreaInsets.bottom > 0)
+#define kSafeAreaInsets    (UIApplication.sharedApplication.windows.firstObject.safeAreaInsets)
+
+
+
+// ===== Error Handling =====
+#define ShowError(err) do { \
+    if (err) { \
+        NSString *msg = [err localizedDescription] ?: @"Unknown error"; \
+        dispatch_async(dispatch_get_main_queue(), ^{ \
+            UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Error") \
+                                                                           message:msg \
+                                                                    preferredStyle:UIAlertControllerStyleAlert]; \
+            [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil]]; \
+            \
+            UIWindow *window = nil; \
+            for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) { \
+                if (scene.activationState == UISceneActivationStateForegroundActive) { \
+                    window = scene.windows.firstObject; \
+                    break; \
+                } \
+            } \
+            if (!window) window = UIApplication.sharedApplication.windows.firstObject; \
+            [window.rootViewController presentViewController:alert animated:YES completion:nil]; \
+        }); \
+        DLog(@"❌ Error: %@", msg); \
+    } \
+} while (0)
+
+static inline CGFloat StatusBarHeight(void) {
+    CGFloat h = 0;
+    if (@available(iOS 13.0, *)) {
+        UIWindow *window = UIApplication.sharedApplication.windows.firstObject;
+        UIStatusBarManager *m = window.windowScene.statusBarManager;
+        h = m ? m.statusBarFrame.size.height : 0;
+    } else {
+        h = UIApplication.sharedApplication.statusBarFrame.size.height;
+    }
+    return h;
+}
+
+#define STATUS_BAR_HEIGHT ({ \
+    CGFloat h = 0; \
+    if (@available(iOS 13.0, *)) { \
+        UIWindow *window = UIApplication.sharedApplication.windows.firstObject; \
+        UIStatusBarManager *m = window.windowScene.statusBarManager; \
+        h = m ? m.statusBarFrame.size.height : 0; \
+    } else { \
+        h = UIApplication.sharedApplication.statusBarFrame.size.height; \
+    } \
+    h; \
+})
+
+#endif /* PrefixHeader_pch */
+//m.m.m.samray@gmail.com
+
+// PPMacros.h
+
+#ifndef PPMacros_h
+#define PPMacros_h
+
+// Weakify / Strongify pattern (safe for ARC + MRC)
+#define PPweakify(object) __weak __typeof__(object) weak##_##object = object;
+#define PPstrongify(object) __strong __typeof__(object) object = weak##_##object;
+
+
+static inline NSString *PPSafeString(id v) { return [v isKindOfClass:NSString.class] ? v : @""; }
+static inline NSString *PPStringOrNil(id v) { return [v isKindOfClass:NSString.class] ? v : nil; }
+static inline NSURL *PPURLOrNil(id v) {
+    NSString *s = PPStringOrNil(v);
+    return s.length ? [NSURL URLWithString:s] : nil;
+}
+
+
+// In Helpers.h
+static inline NSString *PPFillValueFor(id primary, id fallback) {
+    // Ensure strings only, strip NSNull
+    NSString *p = ([primary isKindOfClass:NSString.class] ? primary : nil);
+    NSString *f = ([fallback isKindOfClass:NSString.class] ? fallback : nil);
+    
+    if (p.length) return p;   // ✅ prefer primary if non-empty
+    if (f.length) return f;   // ✅ else fallback
+    return nil;               // ❌ nothing valid
+}
+
+// Small helpers
+static inline NSString *PPJoinNames(NSString *first, NSString *last) {
+    if (first.length && last.length) return [NSString stringWithFormat:@"%@ %@", first, last];
+    return first.length ? first : (last.length ? last : @"");
+}
+
+
+
+
+
+
+// Safe number
+static inline NSNumber *PPSafeNumber(id v) {
+    return [v isKindOfClass:[NSNumber class]] ? v : nil;
+}
+
+// Safe integer
+static inline NSInteger PPSafeInteger(id v) {
+    return [v isKindOfClass:[NSNumber class]] ? [v integerValue] : 0;
+}
+
+// New helper for XLForm numeric fields
+static inline NSInteger PPSafeFormInteger(id v) {
+    if ([v isKindOfClass:[XLFormOptionsObject class]]) {
+        return [((XLFormOptionsObject *)v).formValue integerValue];
+    } else if ([v isKindOfClass:[NSNumber class]]) {
+        return [(NSNumber *)v integerValue];
+    } else if ([v isKindOfClass:[NSString class]]) {
+        return [(NSString *)v integerValue];
+    }
+    
+    return 0; // default
+}
+
+
+
+// Safe double
+static inline double PPSafeDouble(id v) {
+    return [v isKindOfClass:[NSNumber class]] ? [v doubleValue] : 0.0;
+}
+
+// Safe date
+static inline NSDate *PPSafeDate(id v) {
+    return [v isKindOfClass:[NSDate class]] ? v : nil;
+}
+
+// Safe array
+static inline NSArray *PPSafeArray(id v) {
+    return [v isKindOfClass:[NSArray class]] ? v : @[];
+}
+
+// Safe dictionary
+static inline NSDictionary *PPSafeDict(id v) {
+    return [v isKindOfClass:[NSDictionary class]] ? v : @{};
+}
+
+// Safe UUID joiner
+static inline NSString *UUIDJoin(NSString *string) {
+    return [NSString stringWithFormat:@"%@-%@",
+            string ?: @"",
+            [[NSUUID UUID] UUIDString]];
+}
+
+/// Universal safe integer extractor
+static inline NSInteger PPSafeIntegerUniversal(id v) {
+    if (!v || v == [NSNull null]) return 0;
+    
+    // XLFormOptionsObject case
+    if ([v isKindOfClass:NSClassFromString(@"XLFormOptionsObject")]) {
+        id formValue = [v valueForKey:@"formValue"];
+        if ([formValue respondsToSelector:@selector(integerValue)]) {
+            return [formValue integerValue];
+        }
+    }
+    
+    // NSNumber / NSString fallback
+    if ([v respondsToSelector:@selector(integerValue)]) {
+        return [v integerValue];
+    }
+    
+    return 0;
+}
+
+static inline BOOL PPIOS26(void) {
+    if (@available(iOS 26.0, *)) return YES;
+    return NO;
+}
+
+
+#define PPTotalBarHeight \
+({ \
+    CGFloat _statusH = 0; \
+    if (@available(iOS 13.0, *)) { \
+        UIWindow *win = UIApplication.sharedApplication.windows.firstObject; \
+        UIStatusBarManager *mgr = win.windowScene.statusBarManager; \
+        _statusH = mgr.statusBarFrame.size.height; \
+    } else { \
+        _statusH = UIApplication.sharedApplication.statusBarFrame.size.height; \
+    } \
+    CGFloat _navH = 44.0; \
+    UIViewController *_rootVC = UIApplication.sharedApplication.keyWindow.rootViewController; \
+    UINavigationController *_nav = (_rootVC && [_rootVC isKindOfClass:UINavigationController.class]) ? \
+                                   (UINavigationController *)_rootVC : \
+                                   _rootVC.navigationController; \
+    if (_nav && !_nav.navigationBar.hidden) { \
+        _navH = _nav.navigationBar.frame.size.height; \
+    } \
+    (_statusH + _navH); \
+})
+
+
+// Convert anything into NSURL safely
+static inline NSURL * _Nullable PPSafeURL(id value) {
+    if (!value || value == (id)[NSNull null]) return nil;
+
+    // If it's already NSURL, return directly
+    if ([value isKindOfClass:[NSURL class]]) {
+        return (NSURL *)value;
+    }
+
+    // If it's NSString, try to build NSURL
+    if ([value isKindOfClass:[NSString class]]) {
+        NSString *s = [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (s.length == 0) return nil;
+        NSURL *u = [NSURL URLWithString:s];
+        return u;
+    }
+
+    // If it's NSNumber, convert to string
+    if ([value isKindOfClass:[NSNumber class]]) {
+        NSString *s = [(NSNumber *)value stringValue];
+        NSURL *u = [NSURL URLWithString:s];
+        return u;
+    }
+
+    // Fallback: try description
+    if ([value respondsToSelector:@selector(description)]) {
+        NSString *s = [[value description] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (s.length > 0) {
+            NSURL *u = [NSURL URLWithString:s];
+            return u;
+        }
+    }
+
+    return nil;
+}
+
+
+
+
+static inline UIImage *PPSYSImage(id _Nonnull v) { return [UIImage systemImageNamed:v]; }
+static inline UIImage *PPImage(id _Nonnull v) { return [UIImage imageNamed:v]; }
+ 
+#define MKM [MainKindsArrayManager shared]
+#define PPMainKindsArray MainKindsArrayManager.shared.MainKindsArray
+#define PPMainKindsManager MainKindsArrayManager.shared
+#define PPCurrentUser [UserManager sharedManager].currentUser
+
+
+
+#define MKM [MainKindsArrayManager shared]
+#define PPMainKindsArray MainKindsArrayManager.shared.MainKindsArray
+#define PPMainKindsManager MainKindsArrayManager.shared
+#define PPCurrentUser [UserManager sharedManager].currentUser
+
+
+
+
+
+
+
+
+
+
+
+
+
+static NSString * const XLFormRowDescriptorTypePPXHImage = @"XLFormRowPPXHImage";
+#define FUM [FUManager shared]
+#define FUM_CLS [FUManager Class]
+
+// RTL helper (matches iOS PPIsRL)
+#define PPIsRL (UIApplication.sharedApplication.userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft)
+
+// Missing color variant (matches iOS)
+#define AppBackgroundClrLigter [UIColor colorNamed:@"AppBackgroundColorLigter"]
+
+#endif /* PPMacros_h */
+
+/*
+ // ===== Weak/Strong Macros =====
+ #define weakify(var) __weak typeof(var) weakSelf = var;
+ #define strongify(var) __strong typeof(var) strongSelf = var;
+ */
+// Auto (PPNavBarBaseLayoutAuto): uses Language.isRTL or system direction
+// RTL base = [button][Title][back], LTR base = [back][Title][button]
