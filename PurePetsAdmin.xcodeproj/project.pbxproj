@@ -41,7 +41,7 @@
 		F217998F2E6BD23A00AB5017 /* AdminService.m in Sources */ = {isa = PBXBuildFile; fileRef = F217998E2E6BD23A00AB5017 /* AdminService.m */; };
 		F21799B42E6D63F100AB5017 /* PPNavigationController.m in Sources */ = {isa = PBXBuildFile; fileRef = F21799B32E6D63F100AB5017 /* PPNavigationController.m */; };
 		F21799B72E6D85B300AB5017 /* PPCellWithButtons.m in Sources */ = {isa = PBXBuildFile; fileRef = F21799B62E6D859A00AB5017 /* PPCellWithButtons.m */; };
-		F224823C2E57B34E0018025A /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F224823B2E57B34E0018025A /* AddUserViewController.m */; };
+		F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3E6A1002FA1000100A1D001 /* AddUserViewController.m */; };
 		F22482452E57C8980018025A /* AdminCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F22482442E57C8890018025A /* AdminCell.m */; };
 		F22482482E57C9210018025A /* XLAdminCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F22482472E57C9120018025A /* XLAdminCell.m */; };
 		F23BF91B2E62811000D7BA85 /* FCAlertView.m in Sources */ = {isa = PBXBuildFile; fileRef = F23BF9192E62810F00D7BA85 /* FCAlertView.m */; };
@@ -208,6 +208,8 @@
 		F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A347D62E58689900C6713D /* AccessoryCell.m */; };
 		F2A347DA2E58807200C6713D /* AlertHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A347D92E58807200C6713D /* AlertHelper.m */; };
 		F2B198472E6049FE0023ABAF /* PPSubtitleSwitchCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */; };
+		F2C23F3330055AD6005E31C6 /* PPChatsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */; };
+		F2C23F3630055AD6005E31C6 /* PPSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3530055AD6005E31C6 /* PPSettingsViewController.m */; };
 		F2C71B1C2F97412900716209 /* StaffRolesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C71B1B2F97412900716209 /* StaffRolesViewController.m */; };
 		F2C71B1D2F97412900716209 /* StaffMembersViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C71B172F97412900716209 /* StaffMembersViewController.m */; };
 		F2C71B1E2F97412900716209 /* StaffRoleEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C71B192F97412900716209 /* StaffRoleEditorViewController.m */; };
@@ -232,6 +234,11 @@
 		F2D542F92E5AABF0004F6B9F /* PPSelectOptionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542F82E5AABC9004F6B9F /* PPSelectOptionViewController.m */; };
 		F2D542FC2E5ABB5D004F6B9F /* PPOptionCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542FB2E5ABB5D004F6B9F /* PPOptionCell.m */; };
 		F2D543022E5AD22A004F6B9F /* PPButtonHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D543012E5AD22A004F6B9F /* PPButtonHelper.m */; };
+		F2E33F2530055AD6005E31C6 /* PPHero.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2430055AD6005E31C6 /* PPHero.m */; };
+		F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */; };
+		F2E33F2B30055F98005E31C6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F2E33F2930055F98005E31C6 /* README.md */; };
+		F2E33F2C30055F98005E31C6 /* PPFormEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2730055F98005E31C6 /* PPFormEngine.m */; };
+		F2E33F2D30055F98005E31C6 /* PPFormEngineUsageExample.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */; };
 		F2E8EDD52F77CBB700530CA4 /* PPMediaPicker.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCD2F77CBB700530CA4 /* PPMediaPicker.m */; };
 		F2E8EDD62F77CBB700530CA4 /* PPMediaPickerDemoVC.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCF2F77CBB700530CA4 /* PPMediaPickerDemoVC.m */; };
 		F2E8EDD72F77CBB700530CA4 /* PPMediaItem.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCB2F77CBB700530CA4 /* PPMediaItem.m */; };
@@ -345,8 +352,8 @@
 		F21799B32E6D63F100AB5017 /* PPNavigationController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPNavigationController.m; sourceTree = "<group>"; };
 		F21799B52E6D855700AB5017 /* PPCellWithButtons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPCellWithButtons.h; sourceTree = "<group>"; };
 		F21799B62E6D859A00AB5017 /* PPCellWithButtons.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPCellWithButtons.m; sourceTree = "<group>"; };
-		F224823A2E57B3460018025A /* AddUserViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AddUserViewController.h; sourceTree = "<group>"; };
-		F224823B2E57B34E0018025A /* AddUserViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AddUserViewController.m; sourceTree = "<group>"; };
+		F3E6A0FF2FA1000100A1D001 /* AddUserViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AddUserViewController.h; sourceTree = "<group>"; };
+		F3E6A1002FA1000100A1D001 /* AddUserViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AddUserViewController.m; sourceTree = "<group>"; };
 		F22482432E57C8820018025A /* AdminCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdminCell.h; sourceTree = "<group>"; };
 		F22482442E57C8890018025A /* AdminCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdminCell.m; sourceTree = "<group>"; };
 		F22482462E57C90C0018025A /* XLAdminCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = XLAdminCell.h; sourceTree = "<group>"; };
@@ -659,6 +666,10 @@
 		F2A8FA362E6E233300ED3B1E /* PurePetsAdmin-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PurePetsAdmin-Bridging-Header.h"; sourceTree = "<group>"; };
 		F2B198452E6049F50023ABAF /* PPSubtitleSwitchCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPSubtitleSwitchCell.h; sourceTree = "<group>"; };
 		F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPSubtitleSwitchCell.m; sourceTree = "<group>"; };
+		F2C23F3130055AD6005E31C6 /* PPChatsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPChatsViewController.h; sourceTree = "<group>"; };
+		F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPChatsViewController.m; sourceTree = "<group>"; };
+		F2C23F3430055AD6005E31C6 /* PPSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPSettingsViewController.h; sourceTree = "<group>"; };
+		F2C23F3530055AD6005E31C6 /* PPSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPSettingsViewController.m; sourceTree = "<group>"; };
 		F2C71B162F97412900716209 /* StaffMembersViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StaffMembersViewController.h; sourceTree = "<group>"; };
 		F2C71B172F97412900716209 /* StaffMembersViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = StaffMembersViewController.m; sourceTree = "<group>"; };
 		F2C71B182F97412900716209 /* StaffRoleEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StaffRoleEditorViewController.h; sourceTree = "<group>"; };
@@ -706,6 +717,16 @@
 		F2D542FB2E5ABB5D004F6B9F /* PPOptionCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPOptionCell.m; sourceTree = "<group>"; };
 		F2D543002E5AD21E004F6B9F /* PPButtonHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPButtonHelper.h; sourceTree = "<group>"; };
 		F2D543012E5AD22A004F6B9F /* PPButtonHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPButtonHelper.m; sourceTree = "<group>"; };
+		F2E33F2330055AD6005E31C6 /* PPHero.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPHero.h; sourceTree = "<group>"; };
+		F2E33F2430055AD6005E31C6 /* PPHero.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPHero.m; sourceTree = "<group>"; };
+		F2E33F2630055AD6005E31C6 /* PPDesignTokens.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPDesignTokens.h; sourceTree = "<group>"; };
+		F2E33F2630055F98005E31C6 /* PPFormEngine.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFormEngine.h; sourceTree = "<group>"; };
+		F2E33F2730055AD6005E31C6 /* PPMarketplaceHeroCardStyle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMarketplaceHeroCardStyle.h; sourceTree = "<group>"; };
+		F2E33F2730055F98005E31C6 /* PPFormEngine.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFormEngine.m; sourceTree = "<group>"; };
+		F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFormEngineUsageExample.m; sourceTree = "<group>"; };
+		F2E33F2930055AD6005E31C6 /* PPThemeRefresh.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPThemeRefresh.h; sourceTree = "<group>"; };
+		F2E33F2930055F98005E31C6 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPThemeRefresh.m; sourceTree = "<group>"; };
 		F2E8EDCA2F77CBB700530CA4 /* PPMediaItem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaItem.h; sourceTree = "<group>"; };
 		F2E8EDCB2F77CBB700530CA4 /* PPMediaItem.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPMediaItem.m; sourceTree = "<group>"; };
 		F2E8EDCC2F77CBB700530CA4 /* PPMediaPicker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaPicker.h; sourceTree = "<group>"; };
@@ -867,6 +888,10 @@
 				F29D114B2E70E2BC001A3F2E /* PPhxPhotosReferences */,
 				F2A346382E580F2C00C6713D /* RoleOptionsViewController.h */,
 				F2A346392E580F3200C6713D /* RoleOptionsViewController.m */,
+				F2C23F3130055AD6005E31C6 /* PPChatsViewController.h */,
+				F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */,
+				F2C23F3430055AD6005E31C6 /* PPSettingsViewController.h */,
+				F2C23F3530055AD6005E31C6 /* PPSettingsViewController.m */,
 				F2A346352E580E5A00C6713D /* RoleOptionCell.h */,
 				F2A346362E580E6000C6713D /* RoleOptionCell.m */,
 				F22482462E57C90C0018025A /* XLAdminCell.h */,
@@ -945,8 +970,8 @@
 				F27434F42E5EBEE60054C091 /* SetUserPermissionViewController.m */,
 				F2A3463B2E583FFB00C6713D /* BlockUserViewController.h */,
 				F2A3463C2E58400000C6713D /* BlockUserViewController.m */,
-				F224823A2E57B3460018025A /* AddUserViewController.h */,
-				F224823B2E57B34E0018025A /* AddUserViewController.m */,
+				F3E6A0FF2FA1000100A1D001 /* AddUserViewController.h */,
+				F3E6A1002FA1000100A1D001 /* AddUserViewController.m */,
 				F28AE1172E569026007279F5 /* AdminLoginViewController.h */,
 				F28AE1182E569026007279F5 /* AdminLoginViewController.m */,
 			);
@@ -1618,6 +1643,13 @@
 		F2D542E32E5A3FEF004F6B9F /* PPStyles */ = {
 			isa = PBXGroup;
 			children = (
+				F2E33F2A30055F98005E31C6 /* PPFormEngine */,
+				F2E33F2630055AD6005E31C6 /* PPDesignTokens.h */,
+				F2E33F2330055AD6005E31C6 /* PPHero.h */,
+				F2E33F2430055AD6005E31C6 /* PPHero.m */,
+				F2E33F2730055AD6005E31C6 /* PPMarketplaceHeroCardStyle.h */,
+				F2E33F2930055AD6005E31C6 /* PPThemeRefresh.h */,
+				F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */,
 				F2A1BB0C2E752EBF00B86BF9 /* PPImageManager.h */,
 				F2A1BB0D2E752EC700B86BF9 /* PPImageManager.m */,
 				F2A1BB092E75204200B86BF9 /* PPImageCacheHelper.h */,
@@ -1672,6 +1704,17 @@
 				3523049A7A294AF29967D4A0 /* PPFunc+Haptics.m */,
 			);
 			path = PPStyles;
+			sourceTree = "<group>";
+		};
+		F2E33F2A30055F98005E31C6 /* PPFormEngine */ = {
+			isa = PBXGroup;
+			children = (
+				F2E33F2630055F98005E31C6 /* PPFormEngine.h */,
+				F2E33F2730055F98005E31C6 /* PPFormEngine.m */,
+				F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */,
+				F2E33F2930055F98005E31C6 /* README.md */,
+			);
+			path = PPFormEngine;
 			sourceTree = "<group>";
 		};
 		F2E8EDD42F77CBB700530CA4 /* PPMediaPicker */ = {
@@ -1850,6 +1893,7 @@
 				F28AE2862E57A1EA007279F5 /* DeviceAdministrator.json in Resources */,
 				F28AE2722E56D5D5007279F5 /* Beiruti-Medium.ttf in Resources */,
 				F28AE12F2E569026007279F5 /* Assets.xcassets in Resources */,
+				F2E33F2B30055F98005E31C6 /* README.md in Resources */,
 				F29D11E22E730B52001A3F2E /* CLImageEditor.bundle in Resources */,
 				F23BF9282E62F36700D7BA85 /* UserRoles.json in Resources */,
 				F23BF9222E62851900D7BA85 /* checkmark-round.png in Resources */,
@@ -1962,6 +2006,8 @@
 				2260E2338E45DC3B89B24190 /* QBVideoIndicatorView.m in Sources */,
 				F20B38612E60DEC2007465EE /* PPQuickActionsView.m in Sources */,
 				F28AE1352E569026007279F5 /* AdminLoginViewController.m in Sources */,
+				F2E33F2C30055F98005E31C6 /* PPFormEngine.m in Sources */,
+				F2E33F2D30055F98005E31C6 /* PPFormEngineUsageExample.m in Sources */,
 				F3D100052F9A100100000001 /* PPProLoginCoordinator.m in Sources */,
 				F3D100022F9A100100000001 /* PPProLoginHostingController.swift in Sources */,
 				F28AE1512E56AFEE007279F5 /* AdminDashboardViewController.m in Sources */,
@@ -2064,6 +2110,8 @@
 				F28A76632E68956200D40BCF /* PPHUD.m in Sources */,
 				F25AF32F2E674BCD00DD9787 /* FUManager.m in Sources */,
 				F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */,
+				F2E33F2530055AD6005E31C6 /* PPHero.m in Sources */,
+				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,
 				F2D542E62E5A400C004F6B9F /* UIViewController+PPNavBar.m in Sources */,
 				F2A1BB072E74AC8600B86BF9 /* PPBottomBar.m in Sources */,
 				F266CCAC2E5F8DF100AB5935 /* PPAdminButton.m in Sources */,
@@ -2102,9 +2150,11 @@
 				F2C71B212F97412900716209 /* PPStaffManagementViewController.m in Sources */,
 				F2C71B242F97412900716209 /* PPStaffPreviewViewController.m in Sources */,
 				F2D543022E5AD22A004F6B9F /* PPButtonHelper.m in Sources */,
-				F224823C2E57B34E0018025A /* AddUserViewController.m in Sources */,
+				F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */,
 				F28B83F02E70A49100697671 /* PPBannersListVC.m in Sources */,
 				F2A3463A2E580F3200C6713D /* RoleOptionsViewController.m in Sources */,
+				F2C23F3330055AD6005E31C6 /* PPChatsViewController.m in Sources */,
+				F2C23F3630055AD6005E31C6 /* PPSettingsViewController.m in Sources */,
 				F28AE14B2E56A0B1007279F5 /* UserModel.m in Sources */,
 				F2D542E92E5A44A0004F6B9F /* PPFunc.m in Sources */,
 				93E4C4B825184049A053BDDE /* PPFunc+Haptics.m in Sources */,

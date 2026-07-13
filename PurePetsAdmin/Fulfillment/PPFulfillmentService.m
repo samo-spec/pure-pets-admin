@@ -65,7 +65,8 @@
 
 - (void)adminOverrideFulfillment:(NSString *)fulfillmentID targetStatus:(NSString *)status reason:(NSString *)reason note:(nullable NSString *)note notify:(BOOL)notify completion:(void(^)(NSError *))completion {
     FIRFunctions *functions = [FIRFunctions functions];
-    [functions callFunction:@"adminOverrideFulfillment" parameters:@{
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"adminOverrideFulfillment"];
+    [callable callWithObject:@{
         @"fulfillmentID": fulfillmentID,
         @"targetStatus": status,
         @"reason": reason,

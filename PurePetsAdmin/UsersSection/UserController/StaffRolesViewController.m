@@ -11,6 +11,7 @@
 #import "AlertHelper.h"
 #import "PPToast.h"
 #import "PPStaffAuth.h"
+#import "PPHero.h"
 
 static NSString * const PPStaffRoleCardCellID = @"PPStaffRoleCardCell";
 
@@ -244,6 +245,8 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
 @property (nonatomic, strong) UILabel *builtInCountLabel;
 @property (nonatomic, strong) UILabel *customCountLabel;
 @property (nonatomic, assign) CGFloat headerWidth;
+@property (nonatomic, strong) PPHero *heroBackground;
+@property (nonatomic, strong) NSMutableSet<NSString *> *animatedRoleIDs;
 @end
 
 @implementation StaffRolesViewController
@@ -253,6 +256,7 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
   //  self.title = kLang(@"StaffRoles_Title");
     self.view.backgroundColor = PPStaffRolesBackgroundColor();
     self.customRoles = @[];
+    self.animatedRoleIDs = [NSMutableSet set];
 
    
     [self pp_configureTableView];
@@ -262,7 +266,28 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
+    if ([self pp_isEmbeddedInStaffManagement]) {
+        [self pp_removeNavBar];
+        return;
+    }
     [self pp_configureNavigationBar];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self.heroBackground startAnimations];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self.heroBackground stopAnimations];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+        [self.heroBackground reapplyPalette];
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -279,6 +304,10 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
 - (void)pp_configureNavigationBar {
     UIButton *addButton = [self pp_ButtonWithSystemName:@"plus" action:@selector(didTapAddRole)];
     [self pp_navBarWithOtherButton:addButton title:kLang(@"StaffRoles_Title")];
+}
+
+- (BOOL)pp_isEmbeddedInStaffManagement {
+    return [self.parentViewController isKindOfClass:NSClassFromString(@"PPStaffManagementViewController")];
 }
 
 - (void)pp_configureTableView {
@@ -316,22 +345,18 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
 
     UIView *card = [[UIView alloc] initWithFrame:CGRectInset(header.bounds, horizontalInset, 8.0)];
     card.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    card.backgroundColor = PPStaffRolesSurfaceColor();
-    card.layer.cornerRadius = 30.0;
-    card.layer.borderWidth = 1.0;
-    card.layer.borderColor = PPStaffRolesBorderColor().CGColor;
-    card.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1.0].CGColor;
-    card.layer.shadowOpacity = 0.08;
-    card.layer.shadowRadius = 24.0;
-    card.layer.shadowOffset = CGSizeMake(0, 14);
-    card.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:card.bounds cornerRadius:30.0].CGPath;
+    card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
 
-    UIView *halo = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 130.0, -24.0, 120.0, 120.0)];
-    halo.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    halo.backgroundColor = [PPStaffRolesPrimaryColor() colorWithAlphaComponent:0.09];
-    halo.layer.cornerRadius = 60.0;
-    [card addSubview:halo];
+    PPHero *hero = [PPHero new];
+    hero.frame = card.bounds;
+    hero.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    hero.accentColorOverride = PPStaffRolesPrimaryColor();
+    hero.accentStyle = PPHeroGlassAccentStyleCornerGlow;
+    hero.cornerGlowOpacityMultiplier = 0.58;
+    [card addSubview:hero];
+    self.heroBackground = hero;
+    [self.heroBackground startAnimations];
 
     UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(22.0, 24.0, 52.0, 52.0)];
     iconShell.backgroundColor = [PPStaffRolesPrimaryColor() colorWithAlphaComponent:0.12];
@@ -599,6 +624,31 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
     StaffRoleTemplate *role = self.customRoles[indexPath.row];
     StaffRoleEditorViewController *vc = [[StaffRoleEditorViewController alloc] initWithRole:role];
     [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (UIAccessibilityIsReduceMotionEnabled()) return;
+
+    NSString *identifier = nil;
+    if (indexPath.section == 0 && indexPath.row < self.systemRoles.count) {
+        identifier = [NSString stringWithFormat:@"system-%@", self.systemRoles[indexPath.row][@"key"] ?: @(indexPath.row)];
+    } else if (indexPath.section == 1 && indexPath.row < self.customRoles.count) {
+        StaffRoleTemplate *role = self.customRoles[indexPath.row];
+        identifier = [NSString stringWithFormat:@"custom-%@", role.id ?: @(indexPath.row)];
+    }
+    if (identifier.length == 0 || [self.animatedRoleIDs containsObject:identifier]) return;
+    [self.animatedRoleIDs addObject:identifier];
+
+    cell.contentView.alpha = 0.0;
+    cell.contentView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
+    NSTimeInterval delay = MIN(indexPath.row, 8) * 0.025;
+    [UIView animateWithDuration:0.32
+                          delay:delay
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        cell.contentView.alpha = 1.0;
+        cell.contentView.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {

@@ -59,7 +59,7 @@
 
 - (void)fetchPlansWithCompletion:(void(^)(NSArray<PPProviderPlan *> *, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
-    [[[db collectionWithPath:@"providerPlans"] queryOrderedByField:@"price" ascending:YES]
+    [[[db collectionWithPath:@"providerPlans"] queryOrderedByField:@"price" descending:NO]
      getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
         if (error) { if (completion) completion(@[], error); return; }
         NSMutableArray *plans = [NSMutableArray array];
@@ -72,7 +72,8 @@
 
 - (void)reviewApplication:(NSString *)appID status:(NSString *)status notes:(nullable NSString *)notes completion:(void(^)(NSError *))completion {
     FIRFunctions *functions = [FIRFunctions functions];
-    [functions callFunction:@"reviewProviderApplication" parameters:@{
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reviewProviderApplication"];
+    [callable callWithObject:@{
         @"applicationId": appID,
         @"status": status,
         @"reviewNotes": notes ?: @""
@@ -83,14 +84,16 @@
 
 - (void)savePlan:(NSDictionary *)planData completion:(void(^)(NSString *, NSError *))completion {
     FIRFunctions *functions = [FIRFunctions functions];
-    [functions callFunction:@"saveProviderPlan" parameters:planData completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"saveProviderPlan"];
+    [callable callWithObject:planData completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         if (completion) completion(result.data[@"planId"] ?: @"", error);
     }];
 }
 
 - (void)deletePlan:(NSString *)planID completion:(void(^)(NSError *))completion {
     FIRFunctions *functions = [FIRFunctions functions];
-    [functions callFunction:@"deleteProviderPlan" parameters:@{@"planId": planID} completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"deleteProviderPlan"];
+    [callable callWithObject:@{@"planId": planID} completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         if (completion) completion(error);
     }];
 }

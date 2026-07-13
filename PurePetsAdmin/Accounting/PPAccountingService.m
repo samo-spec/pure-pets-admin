@@ -133,7 +133,7 @@
         @"date": [FIRTimestamp timestampWithDate:[NSDate date]],
         @"status": @"active",
         @"createdAt": [FIRTimestamp timestampWithDate:[NSDate date]]
-    } completion:^(FIRDocumentReference *ref, NSError *error) {
+    } completion:^(NSError *error) {
         if (completion) completion(error);
     }];
 }

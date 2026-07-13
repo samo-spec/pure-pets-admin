@@ -70,25 +70,24 @@ typedef NS_ENUM(NSInteger, PPHomeSectionID) {
 @implementation PPHomeControlPanelViewController
 
 static NSArray<PPHomeSectionMeta *> *PPBuildHomeCatalog(void) {
-    return @[
-        [PPHomeSectionMetaWithValues(PPHomeSectionPremiumSearch, @"PPHomeSectionPremiumSearch", @"Premium Search Bar", @"شريط البحث المتميز", @"In-feed premium search slot.", @"موضع البحث المتميز داخل الصفحة الرئيسية.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionMarketplaceHero, @"PPHomeSectionMarketplaceHero", @"Marketplace Hero", @"بطاقة السوق الرئيسية", @"Provider marketplace hero card.", @"بطاقة السوق الرئيسية للمزودين.", NO, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionProviderCategoryNav, @"PPHomeSectionProviderCategoryNav", @"Provider Categories", @"فئات المزودين", @"Provider marketplace navigation.", @"شريط تنقل فئات المزودين.", NO, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionHero, @"PPHomeSectionHero", @"Hero Banner", @"البانر الرئيسي", @"Top welcome card.", @"بطاقة الترحيب العلوية.", YES, YES, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionPremiumCare, @"PPHomeSectionPremiumCare", @"Premium Pet Care", @"الرعاية المتميزة", @"Premium pet-care gateway.", @"بطاقة بوابة الرعاية المتميزة.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionQuickActions, @"PPHomeSectionQuickActions", @"Quick Actions", @"الإجراءات السريعة", @"Horizontal shortcuts row.", @"صف اختصارات سريعة.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionMainKinds, @"PPHomeSectionMainKinds", @"Pet Categories", @"أنواع الحيوانات", @"Pet category grid.", @"شبكة فئات الحيوانات.", YES, YES, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionCurrentOrders, @"PPHomeSectionCurrentOrders", @"Current Orders", @"الطلبات الحالية", @"Live order status.", @"حالة الطلبات المباشرة.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionAccessories, @"PPHomeSectionAccessories", @"Pet Accessories", @"إكسسوارات الحيوانات", @"Accessories grid.", @"شبكة إكسسوارات.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionSuggestions, @"PPHomeSectionSuggestions", @"Smart Suggestions", @"اقتراحات ذكية", @"Personalized suggestions.", @"اقتراحات شخصية.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionCarousel, @"PPHomeSectionCarousel", @"Promo Carousel", @"شريط العروض", @"Auto-scrolling banners.", @"بانرات ترويجية متحركة.", YES, YES, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionLastFood, @"PPHomeSectionLastFood", @"Recent Food", @"آخر الأطعمة", @"Recently added food.", @"آخر أصناف الطعام.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionAdsNearBy, @"PPHomeSectionAdsNearBy", @"Ads Nearby", @"إعلانات قريبة", @"Location-based ads.", @"إعلانات قريبة من الموقع.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionPetProfile, @"PPHomeSectionPetProfile", @"Pet Profile Card", @"بطاقة ملف الحيوان", @"Primary pet profile.", @"ملف الحيوان الرئيسي.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionNearbyServices, @"PPHomeSectionNearbyServices", @"Nearby Services", @"خدمات قريبة", @"Geo-aware providers.", @"مزودو الخدمات حسب الموقع.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionAdopt, @"PPHomeSectionAdopt", @"Adopt a Pet", @"تبني حيوان", @"Adoption CTA card.", @"بطاقة دعوة للتبني.", YES, NO, NO)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionBuyAgain, @"PPHomeSectionBuyAgain", @"Buy It Again", @"اشترِ مرة أخرى", @"Re-order shortcut.", @"اختصار إعادة الطلب.", YES, NO, YES)],
-        [PPHomeSectionMetaWithValues(PPHomeSectionServices, @"PPHomeSectionServices", @"Professional Services", @"خدمات احترافية", @"Service shortcuts.", @"اختصارات الخدمات.", NO, NO, NO)],
+    return @[ PPHomeSectionMetaWithValues(PPHomeSectionPremiumSearch, @"PPHomeSectionPremiumSearch", @"Premium Search Bar", @"شريط البحث المتميز", @"In-feed premium search slot.", @"موضع البحث المتميز داخل الصفحة الرئيسية.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionMarketplaceHero, @"PPHomeSectionMarketplaceHero", @"Marketplace Hero", @"بطاقة السوق الرئيسية", @"Provider marketplace hero card.", @"بطاقة السوق الرئيسية للمزودين.", NO, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionProviderCategoryNav, @"PPHomeSectionProviderCategoryNav", @"Provider Categories", @"فئات المزودين", @"Provider marketplace navigation.", @"شريط تنقل فئات المزودين.", NO, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionHero, @"PPHomeSectionHero", @"Hero Banner", @"البانر الرئيسي", @"Top welcome card.", @"بطاقة الترحيب العلوية.", YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionPremiumCare, @"PPHomeSectionPremiumCare", @"Premium Pet Care", @"الرعاية المتميزة", @"Premium pet-care gateway.", @"بطاقة بوابة الرعاية المتميزة.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionQuickActions, @"PPHomeSectionQuickActions", @"Quick Actions", @"الإجراءات السريعة", @"Horizontal shortcuts row.", @"صف اختصارات سريعة.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionMainKinds, @"PPHomeSectionMainKinds", @"Pet Categories", @"أنواع الحيوانات", @"Pet category grid.", @"شبكة فئات الحيوانات.", YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionCurrentOrders, @"PPHomeSectionCurrentOrders", @"Current Orders", @"الطلبات الحالية", @"Live order status.", @"حالة الطلبات المباشرة.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAccessories, @"PPHomeSectionAccessories", @"Pet Accessories", @"إكسسوارات الحيوانات", @"Accessories grid.", @"شبكة إكسسوارات.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionSuggestions, @"PPHomeSectionSuggestions", @"Smart Suggestions", @"اقتراحات ذكية", @"Personalized suggestions.", @"اقتراحات شخصية.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionCarousel, @"PPHomeSectionCarousel", @"Promo Carousel", @"شريط العروض", @"Auto-scrolling banners.", @"بانرات ترويجية متحركة.", YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionLastFood, @"PPHomeSectionLastFood", @"Recent Food", @"آخر الأطعمة", @"Recently added food.", @"آخر أصناف الطعام.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAdsNearBy, @"PPHomeSectionAdsNearBy", @"Ads Nearby", @"إعلانات قريبة", @"Location-based ads.", @"إعلانات قريبة من الموقع.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionPetProfile, @"PPHomeSectionPetProfile", @"Pet Profile Card", @"بطاقة ملف الحيوان", @"Primary pet profile.", @"ملف الحيوان الرئيسي.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionNearbyServices, @"PPHomeSectionNearbyServices", @"Nearby Services", @"خدمات قريبة", @"Geo-aware providers.", @"مزودو الخدمات حسب الموقع.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAdopt, @"PPHomeSectionAdopt", @"Adopt a Pet", @"تبني حيوان", @"Adoption CTA card.", @"بطاقة دعوة للتبني.", YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionBuyAgain, @"PPHomeSectionBuyAgain", @"Buy It Again", @"اشترِ مرة أخرى", @"Re-order shortcut.", @"اختصار إعادة الطلب.", YES, NO, YES),
+        PPHomeSectionMetaWithValues(PPHomeSectionServices, @"PPHomeSectionServices", @"Professional Services", @"خدمات احترافية", @"Service shortcuts.", @"اختصارات الخدمات.", NO, NO, NO)
     ];
 }
 
@@ -115,7 +114,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"SwitchCell"];
     
     self.catalog = PPBuildHomeCatalog();
-    self.configRef = [[FIRFirestore firestore] collectionWithPath:@"AppConfigCol"] documentWithPath:@"HomeConfig"];
+    self.configRef = [[[FIRFirestore firestore] collectionWithPath:@"AppConfigCol"] documentWithPath:@"HomeConfig"];
     
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithTitle:kLang(@"Save") style:UIBarButtonItemStyleDone target:self action:@selector(didTapSave)];
     self.navigationItem.rightBarButtonItem = saveBtn;

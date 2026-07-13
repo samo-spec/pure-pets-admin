@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class PPServiceModel;
 
-@interface PPAddEditServiceViewController : XLFormViewController
+@interface PPAddEditServiceViewController : UIViewController
 
 - (instancetype)initWithService:(nullable PPServiceModel *)service;
 

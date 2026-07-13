@@ -4,6 +4,7 @@
 //
 
 #import "StaffMembersViewController.h"
+#import "PPHero.h"
 #import "UserModel.h"
 #import "FUManager.h"
 #import "Styling.h"
@@ -316,6 +317,8 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 @property (nonatomic, strong) UILabel *heroTotalLabel;
 @property (nonatomic, strong) UIView *emptyStateView;
 @property (nonatomic, assign) CGFloat headerWidth;
+@property (nonatomic, strong) PPHero *heroGlassBG;
+@property (nonatomic, strong) NSMutableSet<NSString *> *animatedStaffIDs;
 @end
 
 @implementation StaffMembersViewController
@@ -331,6 +334,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
     self.allStaff = [NSMutableArray array];
     self.filteredStaff = [NSMutableArray array];
+    self.animatedStaffIDs = [NSMutableSet set];
     self.currentQuery = @"";
 
     __weak typeof(self) weakSelf = self;
@@ -346,11 +350,32 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
+    if ([self pp_isEmbeddedInStaffManagement]) {
+        [self pp_removeNavBar];
+        return;
+    }
     [self pp_configureNavigationBar];
+}
+
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    [self.heroGlassBG startAnimations];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self.heroGlassBG stopAnimations];
 }
 
 - (void)dealloc {
     [self.staffReg remove];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+        [self.heroGlassBG reapplyPalette];
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -369,6 +394,10 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     UIButton *addButton = [self pp_ButtonWithSystemName:@"plus" action:@selector(didTapAddStaff)];
     [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:addButton title:kLang(@"StaffMembers_Title") showBack:YES];
      
+}
+
+- (BOOL)pp_isEmbeddedInStaffManagement {
+    return [self.parentViewController isKindOfClass:NSClassFromString(@"PPStaffManagementViewController")];
 }
 
 - (void)pp_configureTableView {
@@ -415,22 +444,14 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
     UIView *card = [[UIView alloc] initWithFrame:CGRectMake(horizontalInset, 8.0, width - (horizontalInset * 2.0), 194.0)];
     card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    card.backgroundColor = PPStaffMembersSurfaceColor();
-    card.layer.cornerRadius = 30.0;
-    card.layer.borderWidth = 1.0;
-    card.layer.borderColor = PPStaffMembersBorderColor().CGColor;
-    card.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1.0].CGColor;
-    card.layer.shadowOpacity = 0.08;
-    card.layer.shadowRadius = 24.0;
-    card.layer.shadowOffset = CGSizeMake(0, 14);
-    card.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:card.bounds cornerRadius:30.0].CGPath;
+    card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
 
-    UIView *halo = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 138.0, -20.0, 128.0, 128.0)];
-    halo.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin | UIViewAutoresizingFlexibleBottomMargin;
-    halo.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.08];
-    halo.layer.cornerRadius = 64.0;
-    [card addSubview:halo];
+    PPHero *glassBG = [PPHero new];
+    glassBG.frame = card.bounds;
+    glassBG.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [card addSubview:glassBG];
+    self.heroGlassBG = glassBG;
 
     UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 94.0, 22.0, 72.0, 72.0)];
     countShell.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
@@ -669,6 +690,26 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     UserModel *user = self.filteredStaff[indexPath.row];
     AddUserViewController *vc = [[AddUserViewController alloc] initWithStaffMember:user];
     [self.navigationController pushViewController:vc animated:YES];
+}
+
+- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (indexPath.row >= self.filteredStaff.count || UIAccessibilityIsReduceMotionEnabled()) return;
+
+    UserModel *user = self.filteredStaff[indexPath.row];
+    NSString *identifier = user.uid.length ? user.uid : [NSString stringWithFormat:@"%ld", (long)indexPath.row];
+    if ([self.animatedStaffIDs containsObject:identifier]) return;
+    [self.animatedStaffIDs addObject:identifier];
+
+    cell.contentView.alpha = 0.0;
+    cell.contentView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
+    NSTimeInterval delay = MIN(indexPath.row, 8) * 0.025;
+    [UIView animateWithDuration:0.32
+                          delay:delay
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        cell.contentView.alpha = 1.0;
+        cell.contentView.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 #pragma mark - Swipe Actions

@@ -96,6 +96,10 @@ typedef void (^PPAlertSimpleActionBlock)(void);
 
 + (void)showAlertIn:(UIViewController *)vc
               title:(NSString *)title
+           subtitle:(NSString *)subtitle;
+
++ (void)showAlertIn:(UIViewController *)vc
+              title:(NSString *)title
            subtitle:(NSString *)subtitle
         placeholder:(NSString *)placeholder
            withType:(NSString *)type;

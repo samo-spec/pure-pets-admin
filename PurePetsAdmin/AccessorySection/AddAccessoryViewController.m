@@ -687,6 +687,12 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
     */
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.showsHorizontalScrollIndicator = NO;
+    
+    // Premium Form TableView Styling
+    self.tableView.backgroundColor = AppBackgroundClr;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
+    self.tableView.separatorColor = [UIColor colorWithWhite:0 alpha:0.04];
+    self.tableView.contentInset = UIEdgeInsetsMake(12, 0, 30, 0);
 }
 
 -(void)viewWillAppear:(BOOL)animated
@@ -952,7 +958,53 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
     return nil;
 }
 
+#pragma mark - Subview Finder
+
+- (UIView *)findSubviewOfClass:(Class)cls inView:(UIView *)view {
+    if ([view isKindOfClass:cls]) return view;
+    for (UIView *subview in view.subviews) {
+        UIView *found = [self findSubviewOfClass:cls inView:subview];
+        if (found) return found;
+    }
+    return nil;
+}
+
+#pragma mark - TableView Custom Headers & Footers
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)sectionIndex {
+    XLFormSectionDescriptor *section = self.form.formSections[sectionIndex];
+    if (section.title.length == 0) return 12.0;
+    return 36.0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)sectionIndex {
+    XLFormSectionDescriptor *section = self.form.formSections[sectionIndex];
+    if (section.title.length == 0) return nil;
+    
+    UIView *header = [[UIView alloc] init];
+    header.backgroundColor = UIColor.clearColor;
+    
+    UILabel *label = [[UILabel alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [UIFont fontWithName:@"Beiruti-Medium" size:13] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    label.textColor = SeconderyTextClr;
+    label.text = [section.title uppercaseString];
+    label.textAlignment = Language.isRTL ? NSTextAlignmentRight : NSTextAlignmentLeft;
+    
+    [header addSubview:label];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [label.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20.0],
+        [label.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20.0],
+        [label.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-6.0]
+    ]];
+    
+    return header;
+}
+
 #pragma mark - Table BG
+
+static const void *kHasAnimatedFormCellKey = &kHasAnimatedFormCellKey;
 
 - (void)tableView:(UITableView *)tableView
   willDisplayCell:(UITableViewCell *)cell
@@ -960,9 +1012,60 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
 
     [Styling applyBackgroundStyleForTableView:tableView cell:cell indexPath:indexPath useRowCardMode:NO];
 
-    // PPImageCollectionRow handles its own layout — no manual attachment needed.
+    // Dynamic Premium Font and Color Overrides for Form Rows
+    cell.textLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:15] ?: [UIFont systemFontOfSize:15];
+    cell.textLabel.textColor = PrimaryTextClr;
+    
+    cell.detailTextLabel.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+    cell.detailTextLabel.textColor = SeconderyTextClr;
+    
+    UITextField *textField = (UITextField *)[self findSubviewOfClass:[UITextField class] inView:cell];
+    if (textField) {
+        textField.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+        textField.textColor = PrimaryTextClr;
+    }
+    
+    UITextView *textView = (UITextView *)[self findSubviewOfClass:[UITextView class] inView:cell];
+    if (textView) {
+        textView.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+        textView.textColor = PrimaryTextClr;
+    }
+    
+    UISegmentedControl *segmented = (UISegmentedControl *)[self findSubviewOfClass:[UISegmentedControl class] inView:cell];
+    if (segmented) {
+        segmented.selectedSegmentTintColor = AppPrimaryClr;
+        
+        NSDictionary *normalAttributes = @{
+            NSFontAttributeName: [UIFont fontWithName:@"Beiruti-Medium" size:13] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium],
+            NSForegroundColorAttributeName: SeconderyTextClr
+        };
+        NSDictionary *selectedAttributes = @{
+            NSFontAttributeName: [UIFont fontWithName:@"Beiruti-Bold" size:13] ?: [UIFont boldSystemFontOfSize:13],
+            NSForegroundColorAttributeName: [UIColor whiteColor]
+        };
+        [segmented setTitleTextAttributes:normalAttributes forState:UIControlStateNormal];
+        [segmented setTitleTextAttributes:selectedAttributes forState:UIControlStateSelected];
+        segmented.layer.cornerRadius = 10.0;
+        segmented.clipsToBounds = YES;
+    }
+
+    // Spring Staggered Entrance Animation for Form Rows
+    if (!objc_getAssociatedObject(cell, kHasAnimatedFormCellKey)) {
+        objc_setAssociatedObject(cell, kHasAnimatedFormCellKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        
+        cell.alpha = 0.0;
+        cell.transform = CGAffineTransformMakeTranslation(0, 16.0);
+        
+        [UIView animateWithDuration:0.5
+                              delay:0.03 * indexPath.row
+             usingSpringWithDamping:0.85
+              initialSpringVelocity:0.0
+                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                         animations:^{
+            cell.alpha = 1.0;
+            cell.transform = CGAffineTransformIdentity;
+        } completion:nil];
+    }
 }
-
-
 
 @end

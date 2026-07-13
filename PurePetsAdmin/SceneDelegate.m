@@ -10,6 +10,11 @@
 #import "ThirdParty/PPStyles/PPHUD.h"
 #import "ThirdParty/Styling/AlertHelper.h"
 #import "PPStaffAuth.h"
+#import "AdminDashboardViewController.h"
+#import "HomeControl/PPHomeControlPanelViewController.h"
+#import "NotificationsSection/NotificationsListViewController.h"
+#import "ThirdParty/PPCells/PPChatsViewController.h"
+#import "ThirdParty/PPCells/PPSettingsViewController.h"
 #import "PurePetsAdmin-Swift.h"
 @import Firebase;
 @import FirebaseAuth;
@@ -207,32 +212,101 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      }];
  }
 
+- (UITabBarController *)pp_buildDashboardTabBarController {
+     UIImageSymbolConfiguration *iconConfig = [UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightMedium];
+
+     AdminDashboardViewController *dashVC = [[AdminDashboardViewController alloc] init];
+     UINavigationController *dashNav = [[UINavigationController alloc] initWithRootViewController:dashVC];
+     dashNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"AdminDashboard") ?: @"Dashboard"
+                                                       image:[UIImage systemImageNamed:@"square.grid.2x2" withConfiguration:iconConfig]
+                                               selectedImage:[UIImage systemImageNamed:@"square.grid.2x2.fill" withConfiguration:iconConfig]];
+
+     PPChatsViewController *chatsVC = [[PPChatsViewController alloc] init];
+     UINavigationController *chatsNav = [[UINavigationController alloc] initWithRootViewController:chatsVC];
+     chatsNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Chats") ?: @"Chats"
+                                                       image:[UIImage systemImageNamed:@"bubble.left.and.bubble.right" withConfiguration:iconConfig]
+                                               selectedImage:[UIImage systemImageNamed:@"bubble.left.and.bubble.right.fill" withConfiguration:iconConfig]];
+
+     NotificationsListViewController *notifVC = [[NotificationsListViewController alloc] init];
+     UINavigationController *notifNav = [[UINavigationController alloc] initWithRootViewController:notifVC];
+     notifNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Notifications") ?: @"Notifications"
+                                                       image:[UIImage systemImageNamed:@"bell" withConfiguration:iconConfig]
+                                               selectedImage:[UIImage systemImageNamed:@"bell.fill" withConfiguration:iconConfig]];
+
+     PPSettingsViewController *settingsVC = [[PPSettingsViewController alloc] init];
+     UINavigationController *settingsNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+     settingsNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Settings") ?: @"Settings"
+                                                       image:[UIImage systemImageNamed:@"gearshape" withConfiguration:iconConfig]
+                                               selectedImage:[UIImage systemImageNamed:@"gearshape.fill" withConfiguration:iconConfig]];
+
+     UITabBarController *tabBarController = [[UITabBarController alloc] init];
+     tabBarController.viewControllers = @[dashNav, chatsNav, notifNav, settingsNav];
+     
+     UIColor *tintColor = AppPrimaryClr ?: [UIColor colorWithRed:0.20 green:0.66 blue:0.48 alpha:1.0];
+     UIColor *unselectedColor = [UIColor.labelColor colorWithAlphaComponent:0.4];
+
+     NSDictionary *normalAttrs = @{
+          NSFontAttributeName: [Styling fontMedium:10.0],
+          NSForegroundColorAttributeName: unselectedColor
+     };
+     NSDictionary *selectedAttrs = @{
+          NSFontAttributeName: [Styling fontMedium:10.0],
+          NSForegroundColorAttributeName: tintColor
+     };
+
+     if (@available(iOS 15.0, *)) {
+          UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
+          [appearance configureWithDefaultBackground];
+          appearance.backgroundEffect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial];
+          
+          appearance.stackedLayoutAppearance.normal.titleTextAttributes = normalAttrs;
+          appearance.stackedLayoutAppearance.selected.titleTextAttributes = selectedAttrs;
+          appearance.inlineLayoutAppearance.normal.titleTextAttributes = normalAttrs;
+          appearance.inlineLayoutAppearance.selected.titleTextAttributes = selectedAttrs;
+          appearance.compactInlineLayoutAppearance.normal.titleTextAttributes = normalAttrs;
+          appearance.compactInlineLayoutAppearance.selected.titleTextAttributes = selectedAttrs;
+          
+          tabBarController.tabBar.standardAppearance = appearance;
+          tabBarController.tabBar.scrollEdgeAppearance = appearance;
+     } else {
+          [[UITabBarItem appearance] setTitleTextAttributes:normalAttrs forState:UIControlStateNormal];
+          [[UITabBarItem appearance] setTitleTextAttributes:selectedAttrs forState:UIControlStateSelected];
+     }
+     
+     tabBarController.tabBar.tintColor = tintColor;
+     tabBarController.tabBar.unselectedItemTintColor = unselectedColor;
+     
+     return tabBarController;
+}
+
 - (void)pp_setRoot:(AppRoot)target userModel:(UserModel * _Nullable)userModel animated:(BOOL)animated {
      if (target == self.currentRoot && self.window.rootViewController) return;
      self.currentRoot = target;
+     
+     if (target == AppRootDashboard) {
+          UITabBarController *tabBarController = [self pp_buildDashboardTabBarController];
+          self.window.rootViewController = tabBarController;
+          [self.window makeKeyAndVisible];
+          return;
+     }
      
      UIViewController *root;
      switch (target) {
           case AppRootSplash:    root = [SplashViewController new]; break;
           case AppRootLogin:     root = PPAdminCreateLoginRootController(); break;
-          case AppRootDashboard: root = [[AdminDashboardViewController alloc] init]; break;
+          default:               root = [SplashViewController new]; break;
      }
      
      UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root];
      self.window.rootViewController = nav;
      [self.window makeKeyAndVisible];
-     
-     return;
-     
 }
 
-
 - (void)pp_setRootDashboardWithUser:(UserModel *)model animated:(BOOL)animated {
-     AdminDashboardViewController *dash = [[AdminDashboardViewController alloc] init];
-     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:dash];
+     UITabBarController *tabBarController = [self pp_buildDashboardTabBarController];
      
      UIViewController *old = self.window.rootViewController;
-     self.window.rootViewController = nav;
+     self.window.rootViewController = tabBarController;
      if (animated && old) {
           [old.presentedViewController dismissViewControllerAnimated:NO completion:nil];
           [UIView transitionWithView:self.window duration:0.25
@@ -241,7 +315,6 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      }
      [self pp_tryHandlePendingPaymentOrderRouteAnimated:NO];
 }
-
 
 #pragma mark - Flow
 
@@ -284,17 +357,21 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      if (target == self.currentRoot && self.window.rootViewController) return;
      self.currentRoot = target;
      
-     UIViewController *root;
-     switch (target) {
-          case AppRootSplash:    root = [SplashViewController new]; break;
-          case AppRootLogin:     root = PPAdminCreateLoginRootController(); break;
-          case AppRootDashboard: root = [[AdminDashboardViewController alloc]init]; break;
-          default:               root = [SplashViewController new]; break;
+     UIViewController *rootController;
+     if (target == AppRootDashboard) {
+          rootController = [self pp_buildDashboardTabBarController];
+     } else {
+          UIViewController *root;
+          switch (target) {
+               case AppRootSplash:    root = [SplashViewController new]; break;
+               case AppRootLogin:     root = PPAdminCreateLoginRootController(); break;
+               default:               root = [SplashViewController new]; break;
+          }
+          rootController = [[UINavigationController alloc] initWithRootViewController:root];
      }
-     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root];
      
      UIViewController *old = self.window.rootViewController;
-     self.window.rootViewController = nav;
+     self.window.rootViewController = rootController;
      
      if (animated && old) {
           [old.presentedViewController dismissViewControllerAnimated:NO completion:nil];

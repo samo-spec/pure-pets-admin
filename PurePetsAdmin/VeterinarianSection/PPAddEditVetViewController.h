@@ -9,7 +9,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class PPVetModel;
 
-@interface PPAddEditVetViewController : XLFormViewController
+@interface PPAddEditVetViewController : UIViewController
 @property (nonatomic, strong, nullable) PPVetModel *vetToEdit;
 - (instancetype)initWithVet:(PPVetModel * _Nullable)vet;
 @end

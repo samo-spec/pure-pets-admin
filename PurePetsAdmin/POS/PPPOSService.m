@@ -48,14 +48,14 @@
 - (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items total:(double)total paymentMethod:(NSString *)paymentMethod completion:(void(^)(NSString *, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     NSString *uid = [FIRAuth auth].currentUser.uid ?: @"unknown";
-    [[db collectionWithPath:@"POSOrders"] addDocumentWithData:@{
+    __block FIRDocumentReference *ref = [[db collectionWithPath:@"POSOrders"] addDocumentWithData:@{
         @"items": items ?: @[],
         @"total": @(total),
         @"paymentMethod": paymentMethod ?: @"cash",
         @"createdBy": uid,
         @"status": @"completed",
         @"createdAt": [FIRTimestamp timestampWithDate:[NSDate date]]
-    } completion:^(FIRDocumentReference *ref, NSError *error) {
+    } completion:^(NSError *error) {
         if (completion) completion(ref.documentID, error);
     }];
 }

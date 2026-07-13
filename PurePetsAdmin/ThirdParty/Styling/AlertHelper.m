@@ -1006,6 +1006,12 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
 
 + (void)showAlertIn:(UIViewController *)vc
               title:(NSString *)title
+           subtitle:(NSString *)subtitle {
+    [self showAlertIn:vc title:title subtitle:subtitle placeholder:nil withType:@"error"];
+}
+
++ (void)showAlertIn:(UIViewController *)vc
+              title:(NSString *)title
            subtitle:(NSString *)subtitle
         placeholder:(NSString *)placeholder
            withType:(NSString *)type {

@@ -186,7 +186,7 @@
     self.iconContainerView.backgroundColor = [tint colorWithAlphaComponent:isDark ? 0.16 : 0.10];
     self.iconContainerView.layer.borderColor = [tint colorWithAlphaComponent:isDark ? 0.20 : 0.12].CGColor;
     self.iconView.tintColor = tint;
-    self.trailingPlateView.backgroundColor = [UIColor.secondarySystemFillColor colorWithAlphaComponent:isDark ? 0.34 : 0.42];
+    self.trailingPlateView.backgroundColor = [AppBackgroundClr colorWithAlphaComponent:isDark ? 0.34 : 0.42];
     self.chevronView.tintColor = [SeconderyTextClr colorWithAlphaComponent:0.50];
     self.dividerView.backgroundColor = [UIColor.separatorColor colorWithAlphaComponent:isDark ? 0.22 : 0.34];
     self.titleLabel.textColor = PrimaryTextClr;

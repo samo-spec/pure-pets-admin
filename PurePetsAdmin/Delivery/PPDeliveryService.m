@@ -31,7 +31,8 @@ static NSString * const kPPCompanyID = @"purepets_deliveries";
 
 - (void)callFunction:(NSString *)name params:(NSDictionary *)params completion:(void(^)(id result, NSError *error))completion {
     FIRFunctions *functions = [FIRFunctions functions];
-    [functions callFunction:name parameters:params completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:name];
+    [callable callWithObject:params completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         if (completion) completion(result.data, error);
     }];
 }

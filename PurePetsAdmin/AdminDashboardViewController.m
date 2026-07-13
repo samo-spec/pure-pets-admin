@@ -4,6 +4,7 @@
 //
 
 #import "AdminDashboardViewController.h"
+#import "PPHero.h"
 #import "PPFirebaseCompat.h"
 #import "NotificationComposerViewController.h"
 #import "NotificationSettingsViewController.h"
@@ -39,7 +40,7 @@
 @import Firebase;
 @import FirebaseAuth;
 
-static CGFloat const kPPAdminDashboardHeaderHeight = 392.0;
+static CGFloat const kPPAdminDashboardHeaderHeight = 322.0;
 static CGFloat const kPPAdminDashboardRowHeight = 84.0;
 static CGFloat const kPPAdminDashboardSectionInset = 20.0;
 
@@ -58,28 +59,84 @@ static UIColor *PPAdminDashboardCanvasColor(UITraitCollection *traits) {
     : [UIColor colorWithRed:0.965 green:0.970 blue:0.965 alpha:1.0];
 }
 
-static UIColor *PPAdminDashboardHeroColor(void) {
-    return [UIColor colorWithWhite:1.0 alpha:0.72];
+static UIColor *PPAdminDashboardColor(uint32_t hex, CGFloat alpha) {
+    return [UIColor colorWithRed:((hex >> 16) & 0xFF) / 255.0
+                           green:((hex >> 8) & 0xFF) / 255.0
+                            blue:(hex & 0xFF) / 255.0
+                           alpha:alpha];
+}
+
+static BOOL PPAdminDashboardIsDark(UITraitCollection *traits) {
+    if (@available(iOS 13.0, *)) {
+        return (traits ?: UITraitCollection.currentTraitCollection).userInterfaceStyle == UIUserInterfaceStyleDark;
+    }
+    return NO;
+}
+
+static UIColor *PPAdminDashboardResolvedColor(UIColor *color, UITraitCollection *traits) {
+    if (!color) return UIColor.clearColor;
+    if (@available(iOS 13.0, *)) {
+        return [color resolvedColorWithTraitCollection:(traits ?: UITraitCollection.currentTraitCollection)];
+    }
+    return color;
+}
+
+static UIColor *PPAdminDashboardDynamicColor(uint32_t lightHex, uint32_t darkHex, CGFloat lightAlpha, CGFloat darkAlpha) {
+    if (@available(iOS 13.0, *)) {
+        return [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
+            return PPAdminDashboardColor(traits.userInterfaceStyle == UIUserInterfaceStyleDark ? darkHex : lightHex,
+                                         traits.userInterfaceStyle == UIUserInterfaceStyleDark ? darkAlpha : lightAlpha);
+        }];
+    }
+    return PPAdminDashboardColor(lightHex, lightAlpha);
+}
+
+static UIColor *PPAdminDashboardHeroSignatureColor(UITraitCollection *traits) {
+    return PPAdminDashboardIsDark(traits)
+    ? PPAdminDashboardColor(0x8DD9BF, 1.0)
+    : PPAdminDashboardColor(0x2F7259, 1.0);
 }
 
 static UIColor *PPAdminDashboardHeroInkColor(void) {
-    return [UIColor colorWithRed:0.075 green:0.086 blue:0.082 alpha:1.0];
+    return PPAdminDashboardDynamicColor(0x131614, 0xF4F7F5, 1.0, 1.0);
 }
 
 static UIColor *PPAdminDashboardHeroSecondaryInkColor(void) {
-    return [UIColor colorWithRed:0.260 green:0.292 blue:0.276 alpha:1.0];
+    return PPAdminDashboardDynamicColor(0x3F4A45, 0xC4CEC8, 1.0, 1.0);
 }
 
 static UIColor *PPAdminDashboardHeroTertiaryInkColor(void) {
-    return [UIColor colorWithRed:0.430 green:0.464 blue:0.444 alpha:1.0];
+    return PPAdminDashboardDynamicColor(0x68736D, 0x9FAAA4, 1.0, 1.0);
 }
 
 static UIColor *PPAdminDashboardHeroLiquidBorderColor(void) {
-    return [[UIColor whiteColor] colorWithAlphaComponent:0.86];
+    return PPAdminDashboardDynamicColor(0xFFFFFF, 0xFFFFFF, 0.78, 0.14);
 }
 
 static UIColor *PPAdminDashboardHeroHairlineColor(void) {
-    return [[UIColor colorWithRed:0.680 green:0.735 blue:0.700 alpha:1.0] colorWithAlphaComponent:0.22];
+    return PPAdminDashboardDynamicColor(0xB6C3BC, 0xFFFFFF, 0.28, 0.12);
+}
+
+static UIColor *PPAdminDashboardHeroPanelColor(UITraitCollection *traits) {
+    BOOL dark = PPAdminDashboardIsDark(traits);
+    if (UIAccessibilityIsReduceTransparencyEnabled()) {
+        return dark ? PPAdminDashboardColor(0x171D1A, 1.0) : UIColor.whiteColor;
+    }
+    return dark ? PPAdminDashboardColor(0x17201C, 0.72) : PPAdminDashboardColor(0xFFFFFF, 0.64);
+}
+
+static UIColor *PPAdminDashboardHeroControlColor(UITraitCollection *traits) {
+    BOOL dark = PPAdminDashboardIsDark(traits);
+    if (UIAccessibilityIsReduceTransparencyEnabled()) {
+        return dark ? PPAdminDashboardColor(0x1B2420, 1.0) : UIColor.whiteColor;
+    }
+    return dark ? PPAdminDashboardColor(0x1B2420, 0.76) : PPAdminDashboardColor(0xFFFFFF, 0.70);
+}
+
+static UIColor *PPAdminDashboardHeroCriticalTintColor(UITraitCollection *traits) {
+    return PPAdminDashboardIsDark(traits)
+    ? PPAdminDashboardColor(0xF0A4A0, 1.0)
+    : PPAdminDashboardColor(0xA9453E, 1.0);
 }
 
 static UIFont *PPAdminDashboardScaledFont(UIFont *font, UIFontTextStyle textStyle) {
@@ -279,13 +336,20 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 @property (nonatomic, strong) UILabel *heroSummaryLabel;
 @property (nonatomic, strong) UILabel *heroAccessLabel;
 @property (nonatomic, strong) UIView *heroBadgeContainer;
+@property (nonatomic, strong) UIView *heroStatusDotView;
+@property (nonatomic, strong) UIView *heroAccessPill;
+@property (nonatomic, strong) UIImageView *heroAccessIconView;
 @property (nonatomic, strong) UIView *heroIdentityContainer;
 @property (nonatomic, strong) UIView *heroStatsContainer;
+@property (nonatomic, strong) UIView *heroStatsAccentView;
 @property (nonatomic, strong) UIView *heroSurfaceView;
 @property (nonatomic, strong) UIView *heroShadowView;
-@property (nonatomic, strong) UIView *heroGradientView;
+@property (nonatomic, strong) UIView *heroAvatarShellView;
+@property (nonatomic, strong) UIButton *heroAvatarEditButton;
 @property (nonatomic, strong) UIView *avatarBadgeView;
-@property (nonatomic, strong) UIImageView *heroBrandMarkView;
+@property (nonatomic, strong) PPHero *heroGlassBG;
+@property (nonatomic, strong) UIButton *heroLanguageButton;
+@property (nonatomic, strong) UIButton *heroLogoutButton;
 @property (nonatomic, strong) UILabel *statAdsValueLbl;
 @property (nonatomic, strong) UILabel *statAccValueLbl;
 @property (nonatomic, strong) UILabel *statUsersValueLbl;
@@ -431,15 +495,14 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self.dashboardBackdropView startMotionIfNeeded];
+    [self.heroGlassBG startAnimations];
     [self pp_animateHeaderIntroIfNeeded];
     [self pp_animateVisibleCellsModern];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:kLang(@"AdminDashboard") showBack:YES];
-    [self pp_navBarSetRightIcon:@"globe" key:kPPKeyBaseBack target:self action:@selector(didTapLanguage) tap:nil];
-    [self pp_navBarSetLeftIcon:@"power.circle" key:kPPKeyBaseButton target:self action:@selector(didTapAuthButton) tap:nil];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
 
     [self updateHeaderWithUser:UsrMgr.currentUser];
     [self pp_rebuildDashboardFormPreservingOffset:YES];
@@ -448,7 +511,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
     [self.dashboardBackdropView stopMotion];
+    [self.heroGlassBG stopAnimations];
 }
 
 - (void)dealloc {
@@ -480,68 +545,29 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     heroShadowView.layer.cornerRadius = 32.0;
     heroShadowView.layer.cornerCurve = kCACornerCurveContinuous;
     heroShadowView.layer.shadowColor = [UIColor blackColor].CGColor;
-    heroShadowView.layer.shadowOpacity = 0.085;
-    heroShadowView.layer.shadowRadius = 28.0;
-    heroShadowView.layer.shadowOffset = CGSizeMake(0.0, 16.0);
-    [header addSubview:heroShadowView];
+    heroShadowView.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.28 : 0.10;
+    heroShadowView.layer.shadowRadius = 30.0;
+    heroShadowView.layer.shadowOffset = CGSizeMake(0.0, 18.0);
+    // We insert heroShadowView directly into self.view so it remains fixed
+    [self.view addSubview:heroShadowView];
     self.heroShadowView = heroShadowView;
 
     UIView *heroSurfaceView = [UIView new];
     heroSurfaceView.translatesAutoresizingMaskIntoConstraints = NO;
-    heroSurfaceView.backgroundColor = PPAdminDashboardHeroColor();
-    heroSurfaceView.layer.cornerRadius = 32.0;
-    heroSurfaceView.layer.cornerCurve = kCACornerCurveContinuous;
-    heroSurfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    heroSurfaceView.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
-    heroSurfaceView.clipsToBounds = YES;
+    heroSurfaceView.backgroundColor = UIColor.clearColor;
+    heroSurfaceView.clipsToBounds = NO;
     [heroShadowView addSubview:heroSurfaceView];
     self.heroSurfaceView = heroSurfaceView;
 
-    self.parallax = [[PPParallax alloc] initWithFrame:CGRectZero];
-    self.parallax.translatesAutoresizingMaskIntoConstraints = NO;
-    self.parallax.contentMode = UIViewContentModeScaleAspectFill;
-    self.parallax.clipsToBounds = YES;
-    self.parallax.backgroundColor = PPAdminDashboardHeroColor();
-    self.parallax.userInteractionEnabled = NO;
-    [heroSurfaceView addSubview:self.parallax];
+    PPHero *glassBG = [PPHero new];
+    glassBG.translatesAutoresizingMaskIntoConstraints = NO;
+    glassBG.accentStyle = PPHeroGlassAccentStyleCornerGlow;
+    glassBG.cornerGlowOpacityMultiplier = 0.34;
+    glassBG.accentColorOverride = PPAdminDashboardHeroSignatureColor(self.traitCollection);
+    [heroSurfaceView addSubview:glassBG];
+    self.heroGlassBG = glassBG;
 
-    UIColor *accentColor = AppPrimaryClr ?: [UIColor colorWithRed:0.20 green:0.66 blue:0.48 alpha:1.0];
-
-    UIVisualEffectView *materialView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialLight]];
-    materialView.translatesAutoresizingMaskIntoConstraints = NO;
-    materialView.userInteractionEnabled = NO;
-    materialView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.42];
-    [heroSurfaceView addSubview:materialView];
-    self.heroGradientView = materialView;
-
-    UIView *liquidBorderView = [UIView new];
-    liquidBorderView.translatesAutoresizingMaskIntoConstraints = NO;
-    liquidBorderView.userInteractionEnabled = NO;
-    liquidBorderView.backgroundColor = UIColor.clearColor;
-    liquidBorderView.layer.cornerRadius = 32.0;
-    liquidBorderView.layer.cornerCurve = kCACornerCurveContinuous;
-    liquidBorderView.layer.borderWidth = 1.0;
-    liquidBorderView.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
-    [heroSurfaceView addSubview:liquidBorderView];
-
-    UIView *topSheen = [UIView new];
-    topSheen.translatesAutoresizingMaskIntoConstraints = NO;
-    topSheen.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.92];
-    topSheen.userInteractionEnabled = NO;
-    [heroSurfaceView addSubview:topSheen];
-
-    UIImage *brandImage = [UIImage imageNamed:@"pure shelid icon filled full size"];
-    if (!brandImage) {
-        brandImage = [UIImage imageNamed:@"AD_LOGO"];
-    }
-    UIImageView *brandMarkView = [[UIImageView alloc] initWithImage:brandImage];
-    brandMarkView.translatesAutoresizingMaskIntoConstraints = NO;
-    brandMarkView.contentMode = UIViewContentModeScaleAspectFit;
-    brandMarkView.alpha = 0.035;
-    brandMarkView.userInteractionEnabled = NO;
-    brandMarkView.accessibilityElementsHidden = YES;
-    [heroSurfaceView addSubview:brandMarkView];
-    self.heroBrandMarkView = brandMarkView;
+    UIColor *accentColor = PPAdminDashboardHeroSignatureColor(self.traitCollection);
 
     UIView *contentOverlay = [UIView new];
     contentOverlay.translatesAutoresizingMaskIntoConstraints = NO;
@@ -560,6 +586,8 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     badgeLabel.adjustsFontForContentSizeCategory = YES;
     badgeLabel.textColor = PPAdminDashboardHeroSecondaryInkColor();
     badgeLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    badgeLabel.numberOfLines = 1;
+    badgeLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     self.heroBadgeLabel = badgeLabel;
 
     UIView *badgeDot = [UIView new];
@@ -567,6 +595,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     badgeDot.backgroundColor = [accentColor colorWithAlphaComponent:0.96];
     badgeDot.layer.cornerRadius = 3.0;
     badgeDot.layer.cornerCurve = kCACornerCurveContinuous;
+    self.heroStatusDotView = badgeDot;
 
     UIStackView *badgeStack = [[UIStackView alloc] initWithArrangedSubviews:@[badgeDot, badgeLabel]];
     badgeStack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -578,18 +607,21 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *accessPill = [UIView new];
     accessPill.translatesAutoresizingMaskIntoConstraints = NO;
-    accessPill.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.58];
-    accessPill.layer.cornerRadius = 16.0;
+    accessPill.backgroundColor = PPAdminDashboardHeroControlColor(self.traitCollection);
+    accessPill.layer.cornerRadius = 17.0;
     accessPill.layer.cornerCurve = kCACornerCurveContinuous;
     accessPill.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     accessPill.layer.borderColor = PPAdminDashboardHeroHairlineColor().CGColor;
-    [contentOverlay addSubview:accessPill];
+    accessPill.isAccessibilityElement = YES;
+    accessPill.accessibilityTraits = UIAccessibilityTraitStaticText;
+    self.heroAccessPill = accessPill;
 
     UIImageView *accessIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"key.fill"]];
     accessIcon.translatesAutoresizingMaskIntoConstraints = NO;
     accessIcon.tintColor = [accentColor colorWithAlphaComponent:0.92];
     accessIcon.contentMode = UIViewContentModeScaleAspectFit;
     [accessPill addSubview:accessIcon];
+    self.heroAccessIconView = accessIcon;
 
     UILabel *accessLabel = [UILabel new];
     accessLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -598,8 +630,31 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     accessLabel.textColor = PPAdminDashboardHeroSecondaryInkColor();
     accessLabel.textAlignment = NSTextAlignmentNatural;
     accessLabel.numberOfLines = 1;
+    accessLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    accessLabel.accessibilityElementsHidden = YES;
     [accessPill addSubview:accessLabel];
     self.heroAccessLabel = accessLabel;
+
+    UIButton *languageButton = [self pp_makeHeroIconButtonWithSystemName:@"globe"
+                                                       accessibilityLabel:kLang(@"Confirm_LanguageChange_Title")
+                                                                   action:@selector(didTapLanguage)
+                                                                 critical:NO];
+    self.heroLanguageButton = languageButton;
+
+    UIButton *logoutButton = [self pp_makeHeroIconButtonWithSystemName:@"power"
+                                                     accessibilityLabel:kLang(@"Logout")
+                                                                 action:@selector(didTapAuthButton)
+                                                               critical:YES];
+    self.heroLogoutButton = logoutButton;
+
+    UIStackView *topActionStack = [[UIStackView alloc] initWithArrangedSubviews:@[accessPill, languageButton, logoutButton]];
+    topActionStack.translatesAutoresizingMaskIntoConstraints = NO;
+    topActionStack.axis = UILayoutConstraintAxisHorizontal;
+    topActionStack.alignment = UIStackViewAlignmentCenter;
+    topActionStack.distribution = UIStackViewDistributionFill;
+    topActionStack.spacing = 8.0;
+    topActionStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [contentOverlay addSubview:topActionStack];
 
     UIView *identityContainer = [UIView new];
     identityContainer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -609,20 +664,21 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *avatarShell = [UIView new];
     avatarShell.translatesAutoresizingMaskIntoConstraints = NO;
-    avatarShell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.70];
-    avatarShell.layer.cornerRadius = 36.0;
+    avatarShell.backgroundColor = PPAdminDashboardHeroControlColor(self.traitCollection);
+    avatarShell.layer.cornerRadius = 38.0;
     avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
     avatarShell.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     avatarShell.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
     avatarShell.layer.shadowColor = [UIColor blackColor].CGColor;
-    avatarShell.layer.shadowOpacity = 0.075;
-    avatarShell.layer.shadowRadius = 16.0;
-    avatarShell.layer.shadowOffset = CGSizeMake(0.0, 10.0);
+    avatarShell.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.085;
+    avatarShell.layer.shadowRadius = 18.0;
+    avatarShell.layer.shadowOffset = CGSizeMake(0.0, 12.0);
     avatarShell.clipsToBounds = NO;
+    self.heroAvatarShellView = avatarShell;
 
     UIImageView *avatar = [UIImageView new];
     avatar.translatesAutoresizingMaskIntoConstraints = NO;
-    avatar.layer.cornerRadius = 31.0;
+    avatar.layer.cornerRadius = 33.0;
     avatar.clipsToBounds = YES;
     avatar.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     avatar.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
@@ -636,9 +692,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIButton *editAvatarButton = [UIButton buttonWithType:UIButtonTypeSystem];
     editAvatarButton.translatesAutoresizingMaskIntoConstraints = NO;
-    editAvatarButton.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.86];
+    editAvatarButton.backgroundColor = PPAdminDashboardHeroControlColor(self.traitCollection);
     editAvatarButton.tintColor = PPAdminDashboardHeroInkColor();
-    editAvatarButton.layer.cornerRadius = 12.0;
+    editAvatarButton.layer.cornerRadius = 14.0;
     editAvatarButton.layer.cornerCurve = kCACornerCurveContinuous;
     editAvatarButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     editAvatarButton.layer.borderColor = PPAdminDashboardHeroHairlineColor().CGColor;
@@ -647,6 +703,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     [editAvatarButton setImage:[UIImage systemImageNamed:@"pencil" withConfiguration:smallSymbol] forState:UIControlStateNormal];
     [editAvatarButton addTarget:self action:@selector(didTapAddProfilePhoto) forControlEvents:UIControlEventTouchUpInside];
     [avatarShell addSubview:editAvatarButton];
+    self.heroAvatarEditButton = editAvatarButton;
 
     UIView *avatarBadgeView = [UIView new];
     avatarBadgeView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -670,12 +727,13 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UILabel *nameLabel = [UILabel new];
     nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    nameLabel.font = PPAdminDashboardScaledFont([Styling fontBold:31], UIFontTextStyleLargeTitle);
+    nameLabel.font = PPAdminDashboardScaledFont([Styling fontBold:33], UIFontTextStyleLargeTitle);
     nameLabel.adjustsFontForContentSizeCategory = YES;
     nameLabel.textColor = PPAdminDashboardHeroInkColor();
     nameLabel.textAlignment = [Language alignmentForCurrentLanguage];
     nameLabel.numberOfLines = 2;
     nameLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    nameLabel.allowsDefaultTighteningForTruncation = YES;
     self.adminNameLabel = nameLabel;
 
     UILabel *roleLabel = [UILabel new];
@@ -694,6 +752,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     summaryLabel.textColor = PPAdminDashboardHeroTertiaryInkColor();
     summaryLabel.textAlignment = [Language alignmentForCurrentLanguage];
     summaryLabel.numberOfLines = 2;
+    summaryLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     self.heroSummaryLabel = summaryLabel;
 
     UIStackView *copyStack = [[UIStackView alloc] initWithArrangedSubviews:@[nameLabel, roleLabel, summaryLabel]];
@@ -714,7 +773,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *statsPanel = [UIView new];
     statsPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    statsPanel.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.64];
+    statsPanel.backgroundColor = PPAdminDashboardHeroPanelColor(self.traitCollection);
     statsPanel.layer.cornerRadius = 22.0;
     statsPanel.layer.cornerCurve = kCACornerCurveContinuous;
     statsPanel.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
@@ -728,6 +787,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     statsTopLine.backgroundColor = [accentColor colorWithAlphaComponent:0.52];
     statsTopLine.userInteractionEnabled = NO;
     [statsPanel addSubview:statsTopLine];
+    self.heroStatsAccentView = statsTopLine;
 
     UIStackView *statsStack = [UIStackView new];
     statsStack.axis = UILayoutConstraintAxisHorizontal;
@@ -760,40 +820,20 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
 
     [NSLayoutConstraint activateConstraints:@[
-        [heroShadowView.topAnchor constraintEqualToAnchor:header.topAnchor constant:8.0],
-        [heroShadowView.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
-        [heroShadowView.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
-        [heroShadowView.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-18.0],
+        [heroShadowView.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:0.0],
+        [heroShadowView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16.0],
+        [heroShadowView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16.0],
+        [heroShadowView.heightAnchor constraintEqualToConstant:kPPAdminDashboardHeaderHeight - 16.0],
 
         [heroSurfaceView.topAnchor constraintEqualToAnchor:heroShadowView.topAnchor],
         [heroSurfaceView.leadingAnchor constraintEqualToAnchor:heroShadowView.leadingAnchor],
         [heroSurfaceView.trailingAnchor constraintEqualToAnchor:heroShadowView.trailingAnchor],
         [heroSurfaceView.bottomAnchor constraintEqualToAnchor:heroShadowView.bottomAnchor],
 
-        [self.parallax.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor],
-        [self.parallax.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor],
-        [self.parallax.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
-        [self.parallax.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
-
-        [materialView.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor],
-        [materialView.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor],
-        [materialView.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
-        [materialView.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
-
-        [liquidBorderView.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor],
-        [liquidBorderView.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor],
-        [liquidBorderView.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
-        [liquidBorderView.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
-
-        [topSheen.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor],
-        [topSheen.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor constant:30.0],
-        [topSheen.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor constant:-30.0],
-        [topSheen.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
-
-        [brandMarkView.widthAnchor constraintEqualToConstant:196.0],
-        [brandMarkView.heightAnchor constraintEqualToConstant:196.0],
-        [brandMarkView.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor constant:48.0],
-        [brandMarkView.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor constant:34.0],
+        [self.heroGlassBG.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor],
+        [self.heroGlassBG.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor],
+        [self.heroGlassBG.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
+        [self.heroGlassBG.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
 
         [contentOverlay.topAnchor constraintEqualToAnchor:heroSurfaceView.safeAreaLayoutGuide.topAnchor constant:20.0],
         [contentOverlay.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor constant:22.0],
@@ -802,7 +842,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
         [badgeView.topAnchor constraintEqualToAnchor:contentOverlay.topAnchor],
         [badgeView.leadingAnchor constraintEqualToAnchor:contentOverlay.leadingAnchor],
-        [badgeView.trailingAnchor constraintLessThanOrEqualToAnchor:accessPill.leadingAnchor constant:-12.0],
+        [badgeView.trailingAnchor constraintLessThanOrEqualToAnchor:topActionStack.leadingAnchor constant:-12.0],
 
         [badgeStack.topAnchor constraintEqualToAnchor:badgeView.topAnchor constant:7.0],
         [badgeStack.leadingAnchor constraintEqualToAnchor:badgeView.leadingAnchor],
@@ -812,8 +852,10 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [badgeDot.widthAnchor constraintEqualToConstant:6.0],
         [badgeDot.heightAnchor constraintEqualToConstant:6.0],
 
-        [accessPill.topAnchor constraintEqualToAnchor:contentOverlay.topAnchor],
-        [accessPill.trailingAnchor constraintEqualToAnchor:contentOverlay.trailingAnchor],
+        [topActionStack.topAnchor constraintEqualToAnchor:contentOverlay.topAnchor],
+        [topActionStack.trailingAnchor constraintEqualToAnchor:contentOverlay.trailingAnchor],
+        [topActionStack.heightAnchor constraintGreaterThanOrEqualToConstant:36.0],
+
         [accessPill.heightAnchor constraintGreaterThanOrEqualToConstant:32.0],
 
         [accessIcon.leadingAnchor constraintEqualToAnchor:accessPill.leadingAnchor constant:11.0],
@@ -825,28 +867,34 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [accessLabel.topAnchor constraintEqualToAnchor:accessPill.topAnchor constant:7.0],
         [accessLabel.bottomAnchor constraintEqualToAnchor:accessPill.bottomAnchor constant:-7.0],
 
-        [identityContainer.topAnchor constraintEqualToAnchor:badgeView.bottomAnchor constant:22.0],
+        [languageButton.widthAnchor constraintEqualToConstant:40.0],
+        [languageButton.heightAnchor constraintEqualToConstant:40.0],
+        [logoutButton.widthAnchor constraintEqualToConstant:40.0],
+        [logoutButton.heightAnchor constraintEqualToConstant:40.0],
+
+        [identityContainer.topAnchor constraintEqualToAnchor:topActionStack.bottomAnchor constant:16.0],
+
         [identityContainer.leadingAnchor constraintEqualToAnchor:contentOverlay.leadingAnchor],
         [identityContainer.trailingAnchor constraintEqualToAnchor:contentOverlay.trailingAnchor],
-        [identityContainer.bottomAnchor constraintLessThanOrEqualToAnchor:statsPanel.topAnchor constant:-16.0],
+        [identityContainer.bottomAnchor constraintLessThanOrEqualToAnchor:statsPanel.topAnchor constant:-12.0],
 
         [identityStack.topAnchor constraintEqualToAnchor:identityContainer.topAnchor],
         [identityStack.leadingAnchor constraintEqualToAnchor:identityContainer.leadingAnchor],
         [identityStack.trailingAnchor constraintEqualToAnchor:identityContainer.trailingAnchor],
         [identityStack.bottomAnchor constraintLessThanOrEqualToAnchor:identityContainer.bottomAnchor],
 
-        [avatarShell.widthAnchor constraintEqualToConstant:72.0],
-        [avatarShell.heightAnchor constraintEqualToConstant:72.0],
+        [avatarShell.widthAnchor constraintEqualToConstant:76.0],
+        [avatarShell.heightAnchor constraintEqualToConstant:76.0],
 
         [avatar.topAnchor constraintEqualToAnchor:avatarShell.topAnchor constant:5.0],
         [avatar.leadingAnchor constraintEqualToAnchor:avatarShell.leadingAnchor constant:5.0],
         [avatar.trailingAnchor constraintEqualToAnchor:avatarShell.trailingAnchor constant:-5.0],
         [avatar.bottomAnchor constraintEqualToAnchor:avatarShell.bottomAnchor constant:-5.0],
 
-        [editAvatarButton.widthAnchor constraintEqualToConstant:24.0],
-        [editAvatarButton.heightAnchor constraintEqualToConstant:24.0],
-        [editAvatarButton.topAnchor constraintEqualToAnchor:avatarShell.topAnchor constant:4.0],
-        [editAvatarButton.leadingAnchor constraintEqualToAnchor:avatarShell.leadingAnchor constant:4.0],
+        [editAvatarButton.widthAnchor constraintEqualToConstant:28.0],
+        [editAvatarButton.heightAnchor constraintEqualToConstant:28.0],
+        [editAvatarButton.topAnchor constraintEqualToAnchor:avatarShell.topAnchor constant:3.0],
+        [editAvatarButton.leadingAnchor constraintEqualToAnchor:avatarShell.leadingAnchor constant:3.0],
 
         [avatarBadgeView.widthAnchor constraintEqualToConstant:24.0],
         [avatarBadgeView.heightAnchor constraintEqualToConstant:24.0],
@@ -861,7 +909,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [statsPanel.leadingAnchor constraintEqualToAnchor:contentOverlay.leadingAnchor],
         [statsPanel.trailingAnchor constraintEqualToAnchor:contentOverlay.trailingAnchor],
         [statsPanel.bottomAnchor constraintEqualToAnchor:contentOverlay.bottomAnchor],
-        [statsPanel.heightAnchor constraintEqualToConstant:82.0],
+        [statsPanel.heightAnchor constraintEqualToConstant:76.0],
 
         [statsTopLine.topAnchor constraintEqualToAnchor:statsPanel.topAnchor],
         [statsTopLine.leadingAnchor constraintEqualToAnchor:statsPanel.leadingAnchor constant:24.0],
@@ -874,14 +922,19 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [statsStack.bottomAnchor constraintEqualToAnchor:statsPanel.bottomAnchor constant:-10.0]
     ]];
 
-    [heroSurfaceView bringSubviewToFront:liquidBorderView];
+    [heroSurfaceView bringSubviewToFront:contentOverlay];
 
     [avatarShell setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [avatarShell setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [accessPill setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [accessPill setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [languageButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [logoutButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [accessPill setContentHuggingPriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [accessPill setContentCompressionResistancePriority:UILayoutPriorityDefaultHigh forAxis:UILayoutConstraintAxisHorizontal];
+    [badgeLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [accessLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
 
     self.tableView.tableHeaderView = header;
+    [self pp_refreshHeroPalette];
     [self pp_sizeTableHeaderToFit];
     [self pp_updateHeroGradientFrame];
     [self updateHeaderWithUser:curUser];
@@ -893,13 +946,117 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
 }
 
+- (UIButton *)pp_makeHeroIconButtonWithSystemName:(NSString *)systemName
+                              accessibilityLabel:(NSString *)accessibilityLabel
+                                          action:(SEL)action
+                                        critical:(BOOL)critical {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    button.tag = critical ? 1 : 0;
+    button.backgroundColor = PPAdminDashboardHeroControlColor(self.traitCollection);
+    button.tintColor = critical ? PPAdminDashboardHeroCriticalTintColor(self.traitCollection) : PPAdminDashboardHeroSecondaryInkColor();
+    button.layer.cornerRadius = 20.0;
+    button.layer.cornerCurve = kCACornerCurveContinuous;
+    button.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    button.layer.borderColor = PPAdminDashboardHeroHairlineColor().CGColor;
+    button.clipsToBounds = YES;
+    button.adjustsImageWhenHighlighted = NO;
+    button.accessibilityLabel = accessibilityLabel;
+    button.accessibilityTraits = UIAccessibilityTraitButton;
+
+    UIImageSymbolConfiguration *symbol = [UIImageSymbolConfiguration configurationWithPointSize:14.0
+                                                                                         weight:UIImageSymbolWeightSemibold];
+    UIImage *image = [UIImage systemImageNamed:systemName withConfiguration:symbol] ?: [UIImage systemImageNamed:systemName];
+    [button setImage:image forState:UIControlStateNormal];
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [button addTarget:self action:@selector(pp_heroControlTouchDown:) forControlEvents:UIControlEventTouchDown | UIControlEventTouchDragEnter];
+    [button addTarget:self action:@selector(pp_heroControlTouchUp:) forControlEvents:UIControlEventTouchUpInside | UIControlEventTouchCancel | UIControlEventTouchDragExit | UIControlEventTouchUpOutside];
+    return button;
+}
+
+- (void)pp_heroControlTouchDown:(UIButton *)sender {
+    if (UIAccessibilityIsReduceMotionEnabled()) return;
+    [UIView animateWithDuration:0.08
+                          delay:0.0
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        sender.transform = CGAffineTransformMakeScale(0.94, 0.94);
+    } completion:nil];
+}
+
+- (void)pp_heroControlTouchUp:(UIButton *)sender {
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        sender.transform = CGAffineTransformIdentity;
+        return;
+    }
+    [UIView animateWithDuration:0.18
+                          delay:0.0
+         usingSpringWithDamping:0.84
+          initialSpringVelocity:0.36
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        sender.transform = CGAffineTransformIdentity;
+    } completion:nil];
+}
+
+- (void)pp_refreshHeroPalette {
+    UIColor *accent = PPAdminDashboardHeroSignatureColor(self.traitCollection);
+    UIColor *hairline = PPAdminDashboardHeroHairlineColor();
+    UIColor *liquidBorder = PPAdminDashboardHeroLiquidBorderColor();
+    UIColor *panel = PPAdminDashboardHeroPanelColor(self.traitCollection);
+    UIColor *control = PPAdminDashboardHeroControlColor(self.traitCollection);
+    BOOL dark = PPAdminDashboardIsDark(self.traitCollection);
+
+    self.heroGlassBG.accentColorOverride = accent;
+    self.heroGlassBG.cornerGlowOpacityMultiplier = dark ? 0.42 : 0.30;
+    [self.heroGlassBG reapplyPalette];
+
+    self.heroShadowView.layer.shadowOpacity = dark ? 0.28 : 0.10;
+    self.heroShadowView.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.heroStatusDotView.backgroundColor = [accent colorWithAlphaComponent:0.94];
+    self.heroAccessPill.backgroundColor = control;
+    self.heroAccessPill.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
+    self.heroAccessIconView.tintColor = [accent colorWithAlphaComponent:dark ? 0.88 : 0.92];
+    self.heroAvatarShellView.backgroundColor = control;
+    self.heroAvatarShellView.layer.borderColor = PPAdminDashboardResolvedColor(liquidBorder, self.traitCollection).CGColor;
+    self.heroAvatarShellView.layer.shadowOpacity = dark ? 0.24 : 0.085;
+    self.avatarIMV.layer.borderColor = PPAdminDashboardResolvedColor(liquidBorder, self.traitCollection).CGColor;
+    self.heroAvatarEditButton.backgroundColor = control;
+    self.heroAvatarEditButton.tintColor = PPAdminDashboardHeroInkColor();
+    self.heroAvatarEditButton.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
+    self.avatarBadgeView.backgroundColor = [accent colorWithAlphaComponent:0.96];
+    self.avatarBadgeView.layer.borderColor = PPAdminDashboardResolvedColor(liquidBorder, self.traitCollection).CGColor;
+    self.heroStatsContainer.backgroundColor = panel;
+    self.heroStatsContainer.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
+    self.heroStatsAccentView.backgroundColor = [accent colorWithAlphaComponent:dark ? 0.42 : 0.50];
+
+    self.heroBadgeLabel.textColor = PPAdminDashboardHeroSecondaryInkColor();
+    self.heroAccessLabel.textColor = PPAdminDashboardHeroSecondaryInkColor();
+    self.adminNameLabel.textColor = PPAdminDashboardHeroInkColor();
+    self.roleLabel.textColor = PPAdminDashboardHeroSecondaryInkColor();
+    self.heroSummaryLabel.textColor = PPAdminDashboardHeroTertiaryInkColor();
+    self.statAdsValueLbl.textColor = PPAdminDashboardHeroInkColor();
+    self.statAccValueLbl.textColor = PPAdminDashboardHeroInkColor();
+    self.statUsersValueLbl.textColor = PPAdminDashboardHeroInkColor();
+
+    NSMutableArray<UIButton *> *buttons = [NSMutableArray arrayWithCapacity:2];
+    if (self.heroLanguageButton) [buttons addObject:self.heroLanguageButton];
+    if (self.heroLogoutButton) [buttons addObject:self.heroLogoutButton];
+    for (UIButton *button in buttons) {
+        button.backgroundColor = control;
+        button.tintColor = (button.tag == 1) ? PPAdminDashboardHeroCriticalTintColor(self.traitCollection) : PPAdminDashboardHeroSecondaryInkColor();
+        button.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
+    }
+}
+
 - (UIView *)pp_makeHeroStatItemWithTitle:(NSString *)title valueLabel:(UILabel *)valueLabel {
     UIView *container = [UIView new];
     container.translatesAutoresizingMaskIntoConstraints = NO;
     container.isAccessibilityElement = YES;
 
     valueLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    valueLabel.font = PPAdminDashboardScaledFont([UIFont monospacedDigitSystemFontOfSize:25.0 weight:UIFontWeightSemibold], UIFontTextStyleTitle2);
+    valueLabel.font = PPAdminDashboardScaledFont([Styling fontBold:26],
+                                                 UIFontTextStyleTitle2);
     valueLabel.adjustsFontForContentSizeCategory = YES;
     valueLabel.textColor = PPAdminDashboardHeroInkColor();
     valueLabel.textAlignment = NSTextAlignmentCenter;
@@ -949,10 +1106,12 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     NSString *roleTitle = [self pp_currentRoleDisplayNameForUser:user];
     self.roleLabel.text = roleTitle.length > 0 ? roleTitle : kLang(@"pp_role_admin");
     self.heroAccessLabel.text = accessText;
+    self.heroAccessPill.accessibilityLabel = accessText;
 
     self.adminNameLabel.text = [user PPBestDisplayName] ?: kLang(@"AdminDashboard");
 
     self.avatarIMV.accessibilityLabel = kLang(@"EditMyAccount_Title");
+    [self pp_refreshHeroPalette];
 
     NSURL *url = nil;
     if ([user.UserImageUrl isKindOfClass:NSURL.class]) {
@@ -1897,47 +2056,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 }
 
 - (void)pp_applyHeaderMotionForOffset:(CGFloat)offsetY {
-    if (!self.headerRoot) {
-        return;
-    }
-    if (self.hasPreparedHeaderIntro && !self.hasAnimatedHeaderIntro) {
-        return;
-    }
-    if (UIAccessibilityIsReduceMotionEnabled()) {
-        self.parallax.transform = CGAffineTransformIdentity;
-        self.heroIdentityContainer.transform = CGAffineTransformIdentity;
-        self.heroStatsContainer.transform = CGAffineTransformIdentity;
-        self.avatarIMV.transform = CGAffineTransformIdentity;
-        self.heroBrandMarkView.transform = CGAffineTransformIdentity;
-        self.heroBadgeContainer.alpha = 1.0;
-        self.heroSummaryLabel.alpha = 1.0;
-        self.avatarBadgeView.transform = CGAffineTransformIdentity;
-        return;
-    }
-
-    CGFloat pullDistance = MAX(-offsetY, 0.0);
-    CGFloat pushDistance = MAX(offsetY, 0.0);
-    CGFloat stretchProgress = MIN(pullDistance / 140.0, 1.0);
-    CGFloat compressProgress = MIN(pushDistance / 220.0, 1.0);
-
-    if (pullDistance > 0.0) {
-        CGFloat scale = 1.0 + (0.045 * stretchProgress);
-        self.parallax.transform = CGAffineTransformMakeScale(scale, scale);
-        self.heroIdentityContainer.transform = CGAffineTransformMakeTranslation(0.0, pullDistance * 0.045);
-        self.heroStatsContainer.transform = CGAffineTransformMakeTranslation(0.0, pullDistance * 0.018);
-        self.avatarIMV.transform = CGAffineTransformMakeScale(1.0 + (0.025 * stretchProgress), 1.0 + (0.025 * stretchProgress));
-        self.heroBrandMarkView.transform = CGAffineTransformMakeScale(1.0 + (0.035 * stretchProgress), 1.0 + (0.035 * stretchProgress));
-    } else {
-        self.parallax.transform = CGAffineTransformMakeTranslation(0.0, -pushDistance * 0.08);
-        self.heroIdentityContainer.transform = CGAffineTransformMakeTranslation(0.0, -pushDistance * 0.035);
-        self.heroStatsContainer.transform = CGAffineTransformMakeTranslation(0.0, -pushDistance * 0.018);
-        self.avatarIMV.transform = CGAffineTransformIdentity;
-        self.heroBrandMarkView.transform = CGAffineTransformMakeTranslation(0.0, -pushDistance * 0.045);
-    }
-
-    self.heroBadgeContainer.alpha = 1.0 - (compressProgress * 0.12);
-    self.heroSummaryLabel.alpha = 1.0 - (compressProgress * 0.22);
-    self.avatarBadgeView.transform = CGAffineTransformMakeScale(1.0 - (compressProgress * 0.025), 1.0 - (compressProgress * 0.025));
+    return; // Completely stop hero content from scrolling/moving with tableview
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -1952,8 +2071,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     if (colorChanged) {
         self.view.backgroundColor = PPAdminDashboardCanvasColor(self.traitCollection);
         [self.dashboardBackdropView refreshPalette];
-        self.heroShadowView.layer.shadowOpacity = 0.085;
-        self.heroSurfaceView.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
+        [self pp_refreshHeroPalette];
         self.dashboardLoadingView.backgroundColor = [UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:UIAccessibilityIsReduceTransparencyEnabled() ? 1.0 : 0.92];
         self.dashboardLoadingView.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.24].CGColor;
         self.dashboardLoadingView.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.08;

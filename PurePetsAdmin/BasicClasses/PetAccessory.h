@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "PetImageItem.h"
+
 typedef NS_ENUM(NSInteger, AccessConditions)
 {
     AccessConditionsNew = 1,
@@ -11,7 +12,9 @@ typedef NS_ENUM(NSInteger, AccessKindType)
 {
     AccessTypeAccessory = 1,
     AccessTypeFood = 2,
-    AccessTypeLivePets = 3
+    AccessTypeLivePets = 3,
+    AccessTypeLivePet = 3,       // iOS App alias
+    AccessTypePetMedicine = 4
 };
 
 NS_ASSUME_NONNULL_BEGIN
@@ -30,20 +33,26 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSNumber *discountPercent;  // % discount (0–100)
 @property (nonatomic, strong, nullable) NSNumber *discountAmount;   // Absolute discount (e.g. 15.0)
 @property (nonatomic, readonly) NSNumber *finalPrice;               // Auto-calculated final price
+@property (nonatomic, copy, nullable) NSString *weightText;          // Display-ready package weight, e.g. "2 kg"
+@property (nonatomic, strong, nullable) NSNumber *weight;            // Numeric package weight when stored separately
+@property (nonatomic, copy, nullable) NSString *weightUnit;          // Unit for numeric package weight
 
 @property (nonatomic, strong) NSArray<NSString *> *imageURLsArray;
 @property (nonatomic, copy, nullable) NSArray<NSDictionary *> *imageMeta;
 @property (nonatomic, copy, readonly)  NSArray<PetImageItem *> *imageItems;
 
-
 @property (nonatomic, assign) NSInteger petMainCategoryID;
 @property (nonatomic, assign) NSInteger petSubCategoryID;
+@property (nonatomic, copy, nullable) NSString *AccessoryCategoryID;
+@property (nonatomic, assign) NSInteger cityID;
 
 @property (nonatomic, strong) NSDate *createdAt;
-@property (nonatomic, strong, nullable) NSDate *expiryDate; // Expiry date for food/accessories (nil = no expiry)
+@property (nonatomic, strong, nullable) NSDate *expiryDate;
 @property (nonatomic, strong) NSString *ownerID;
-@property (nonatomic, copy) NSString *storeID;
-@property (nonatomic, copy) NSString *storeName;
+@property (nonatomic, copy, nullable) NSString *storeID;
+@property (nonatomic, copy, nullable) NSString *storeName;
+@property (nonatomic, strong, nullable) NSString *ownerType;
+@property (nonatomic, strong, nullable) NSString *source;
 @property (nonatomic, assign) AccessKindType accessKindType;
 @property (nonatomic, assign) AccessConditions condition;
 @property (nonatomic, assign) NSInteger quantity; // how many in stock
@@ -52,6 +61,15 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)stockStatusText;
 @property (nonatomic, assign) BOOL isNew;
 @property (nonatomic, assign) BOOL hasOffer;
+@property (nonatomic, assign) BOOL showInAppMarket;
+@property (nonatomic, assign) BOOL isBlocked;
+@property (nonatomic, assign) BOOL isDeleted;
+@property (nonatomic, assign) BOOL isDisabled;
+
+// Computed type helpers
+@property (nonatomic, readonly) BOOL isLivePet;
+@property (nonatomic, readonly) BOOL isFood;
+@property (nonatomic, readonly) BOOL isPetMedicine;
 
 // Firestore helpers
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
@@ -62,10 +80,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSInteger)normalizedQuantity;
 - (void)normalizeInventoryState;
 
-
-
-
-
 + (nullable NSURL *)firstImageURLForAccessory:(PetAccessory *)accessory;
 + (NSString *)typeTextForAccessory:(PetAccessory *)accessory;
 + (NSString *)conditionTextForAccessory:(PetAccessory *)accessory;
@@ -75,14 +89,10 @@ NS_ASSUME_NONNULL_BEGIN
              discountPercent:(NSNumber *)discountPercent;
 + (NSString *)shareMessageForAccessory:(PetAccessory *)accessory;
 + (void)sharePetAccessory:(PetAccessory *)accessory
-       fromViewController:(UIViewController *)vc
-               sourceView:(nullable UIView *)sourceView;
+        fromViewController:(UIViewController *)vc
+                sourceView:(nullable UIView *)sourceView;
 + (void)sharePetAccessory:(PetAccessory *)accessory fromViewController:(UIViewController *)vc;
-
-
 
 @end
 
 NS_ASSUME_NONNULL_END
-
-

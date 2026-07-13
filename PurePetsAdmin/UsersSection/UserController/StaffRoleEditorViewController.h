@@ -3,13 +3,13 @@
 //  PurePetsAdmin
 //
 
-#import "XLFormViewController.h"
+#import <UIKit/UIKit.h>
 #import "RPManager.h"
 #import "PPRolePermission.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface StaffRoleEditorViewController : XLFormViewController
+@interface StaffRoleEditorViewController : UIViewController
 
 @property (nonatomic, strong, nullable) StaffRoleTemplate *roleTemplate;
 
