@@ -21,7 +21,11 @@
 @property (nonatomic, strong) UIImageView *avatarIMV;
 @property (nonatomic, strong) UILabel *nameLabel;
 @property (nonatomic, strong) UILabel *roleLabel;
+@property (nonatomic, strong) UILabel *emailLabel;
+@property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) NSArray<NSDictionary *> *settingsItems;
+@property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
+@property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 
 @end
 
@@ -39,7 +43,7 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:kLang(@"Settings") ?: @"Settings" showBack:NO];
+    [self pp_applyNoNavigationBarAnimated:animated];
     [self updateProfileInfo];
 }
 
@@ -51,6 +55,7 @@
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self.heroGlassBG stopAnimations];
+    [self pp_restoreNavigationBarIfNeededAnimated:animated];
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -90,6 +95,21 @@
 
 #pragma mark - UI Setup
 
+- (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
+    if (!self.navigationController) return;
+    if (!self.didCaptureNavigationBarHiddenState) {
+        self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
+        self.didCaptureNavigationBarHiddenState = YES;
+    }
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+}
+
+- (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
+    if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
+    self.didCaptureNavigationBarHiddenState = NO;
+}
+
 - (void)setupTableView {
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -116,8 +136,9 @@
     
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 220.0)];
     header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     
-    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(16.0, 8.0, width - 32.0, 204.0)];
+    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(16.0, 12.0, width - 32.0, 204.0)];
     card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
@@ -134,11 +155,11 @@
     [card addSubview:content];
     
     UIView *avatarShell = [[UIView alloc] initWithFrame:CGRectMake(24.0, 32.0, 72.0, 72.0)];
-    avatarShell.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.7];
+    avatarShell.backgroundColor = [AppBackgroundClrShiner colorWithAlphaComponent:0.78];
     avatarShell.layer.cornerRadius = 36.0;
     avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
     avatarShell.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    avatarShell.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.4].CGColor;
+    avatarShell.layer.borderColor = PPLiquidBorderColor().CGColor;
     [content addSubview:avatarShell];
     
     self.avatarIMV = [[UIImageView alloc] initWithFrame:CGRectMake(5.0, 5.0, 62.0, 62.0)];
@@ -146,7 +167,7 @@
     self.avatarIMV.clipsToBounds = YES;
     self.avatarIMV.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarIMV.image = [UIImage systemImageNamed:@"person.crop.circle.fill"];
-    self.avatarIMV.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    self.avatarIMV.tintColor = AppPrimaryClr;
     [avatarShell addSubview:self.avatarIMV];
     
     CGFloat textX = CGRectGetMaxX(avatarShell.frame) + 16.0;
@@ -155,16 +176,35 @@
     self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, 36.0, textW, 32.0)];
     self.nameLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.nameLabel.font = [Styling fontBold:24];
-    self.nameLabel.textColor = PrimaryTextClr ?: UIColor.labelColor;
+    self.nameLabel.textColor = PrimaryTextClr;
     self.nameLabel.text = @"—";
     [content addSubview:self.nameLabel];
     
     self.roleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, CGRectGetMaxY(self.nameLabel.frame) + 4.0, textW, 20.0)];
     self.roleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     self.roleLabel.font = [Styling fontMedium:14];
-    self.roleLabel.textColor = SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    self.roleLabel.textColor = SeconderyTextClr;
     self.roleLabel.text = @"—";
     [content addSubview:self.roleLabel];
+
+    self.emailLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, CGRectGetMaxY(self.roleLabel.frame) + 2.0, textW, 20.0)];
+    self.emailLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.emailLabel.font = [Styling fontRegular:12];
+    self.emailLabel.textColor = PPTextTertiaryColor();
+    self.emailLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.emailLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    self.emailLabel.text = @"—";
+    [content addSubview:self.emailLabel];
+
+    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 150.0, 108.0, 32.0)];
+    self.statusLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;
+    self.statusLabel.font = [Styling fontBold:12];
+    self.statusLabel.textColor = PPPrimaryColor();
+    self.statusLabel.textAlignment = NSTextAlignmentCenter;
+    self.statusLabel.backgroundColor = [PPPrimaryColor() colorWithAlphaComponent:0.10];
+    self.statusLabel.layer.cornerRadius = 16.0;
+    self.statusLabel.layer.masksToBounds = YES;
+    [content addSubview:self.statusLabel];
     
     self.tableView.tableHeaderView = header;
 }
@@ -182,6 +222,11 @@
     } else {
         self.roleLabel.text = curUser.role ? [PPRolePermission localizedRoleName:curUser.role] : (kLang(@"pp_role_admin") ?: @"Admin");
     }
+
+    self.emailLabel.text = curUser.UserEmail.length ? curUser.UserEmail : @"—";
+    self.statusLabel.text = curUser.isBlocked ? (kLang(@"Blocked") ?: @"Blocked") : (kLang(@"Active") ?: @"Active");
+    self.statusLabel.textColor = curUser.isBlocked ? PPCriticalColor() : PPPrimaryColor();
+    self.statusLabel.backgroundColor = [self.statusLabel.textColor colorWithAlphaComponent:0.10];
     
     if (curUser.UserImageUrl.absoluteString.length > 0) {
         [self.avatarIMV setImageFromUrl:curUser.UserImageUrl.absoluteString Blr:NO Shimmering:YES];

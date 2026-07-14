@@ -18,7 +18,7 @@
 #define RPM [RPManager shared]
 
 static CGFloat const PPUsersListHorizontalInset = 16.0;
-static CGFloat const PPUsersListHeaderCardHeight = 288.0;
+static CGFloat const PPUsersListHeaderCardHeight = 272.0;
 static CGFloat const PPUsersListRowHeight = 104.0;
 
 static UIColor *PPUsersListBackgroundColor(void) {
@@ -109,7 +109,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     
     UILabel *val = [UILabel new];
     val.text = @"0";
-    val.font = [UIFont monospacedDigitSystemFontOfSize:18.0 weight:UIFontWeightBold];
+    val.font = [Styling fontBold:18.0];
     val.textColor = PPUsersListPrimaryTextColor();
     val.textAlignment = [Language alignmentForCurrentLanguage];
     val.adjustsFontSizeToFitWidth = YES;
@@ -382,7 +382,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.heroCountLabel = [UILabel new];
     self.heroCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCountLabel.font = [UIFont monospacedDigitSystemFontOfSize:13.0 weight:UIFontWeightSemibold];
+    self.heroCountLabel.font = [Styling fontBold:13.0];
     self.heroCountLabel.textColor = PPUsersListPrimaryColor();
     self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
     self.heroCountLabel.backgroundColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.09];
@@ -467,7 +467,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
         [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
         [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
         [self.summaryHeader.topAnchor constraintEqualToAnchor:self.heroCountLabel.bottomAnchor constant:10.0],
-        [self.summaryHeader.heightAnchor constraintEqualToConstant:82.0],
+        [self.summaryHeader.heightAnchor constraintEqualToConstant:68.0],
 
         [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
         [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],

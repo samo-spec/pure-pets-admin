@@ -12,6 +12,32 @@
 
 @implementation PPNavigationController
 
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self pp_applyPurePetsNavigationAppearance];
+}
+
+- (void)pp_applyPurePetsNavigationAppearance {
+    UIFont *titleFont = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:20.0]];
+    NSDictionary *titleAttributes = @{
+        NSFontAttributeName: titleFont,
+        NSForegroundColorAttributeName: PrimaryTextClr ?: UIColor.labelColor
+    };
+
+    UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
+    [appearance configureWithTransparentBackground];
+    appearance.backgroundColor = UIColor.clearColor;
+    appearance.shadowColor = UIColor.clearColor;
+    appearance.titleTextAttributes = titleAttributes;
+    appearance.largeTitleTextAttributes = titleAttributes;
+
+    self.navigationBar.standardAppearance = appearance;
+    self.navigationBar.scrollEdgeAppearance = appearance;
+    self.navigationBar.compactAppearance = appearance;
+    self.navigationBar.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    self.navigationBar.prefersLargeTitles = NO;
+}
+
 #pragma mark - Background Button Factory
 
 + (UIButton *)setButtonAsBackroundButtonWithStyle:(UIButtonConfigurationCornerStyle)style {

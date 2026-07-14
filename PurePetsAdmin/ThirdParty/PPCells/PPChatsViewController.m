@@ -653,6 +653,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @property (nonatomic, strong) id<FIRListenerRegistration> messagesListener;
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, assign) BOOL isSending;
+@property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
+@property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 - (instancetype)initWithThread:(NSDictionary *)thread currentUID:(NSString *)currentUID canManageSupport:(BOOL)canManageSupport;
 @end
 
@@ -686,7 +688,27 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:PPChatsL(@"SupportChats_ThreadTitle") showBack:YES];
+    [self pp_applyNoNavigationBarAnimated:animated];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self pp_restoreNavigationBarIfNeededAnimated:animated];
+}
+
+- (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
+    if (!self.navigationController) return;
+    if (!self.didCaptureNavigationBarHiddenState) {
+        self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
+        self.didCaptureNavigationBarHiddenState = YES;
+    }
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+}
+
+- (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
+    if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
+    self.didCaptureNavigationBarHiddenState = NO;
 }
 
 - (void)setupTableView {
@@ -771,12 +793,25 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     CGFloat width = MAX(CGRectGetWidth(self.view.bounds), UIScreen.mainScreen.bounds.size.width);
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 126.0)];
     header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     UIView *card = [UIView new];
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = PPChatsSurfaceColor();
     PPChatsApplySoftCardChrome(card, 22.0);
     [header addSubview:card];
+
+    UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backSymbol = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightSemibold];
+    NSString *backSymbolName = Language.isRTL ? @"chevron.right" : @"chevron.left";
+    [backButton setImage:[UIImage systemImageNamed:backSymbolName withConfiguration:backSymbol] forState:UIControlStateNormal];
+    backButton.tintColor = PPChatsPrimaryTextColor();
+    backButton.backgroundColor = [PPChatsSurfaceColor() colorWithAlphaComponent:0.96];
+    PPChatsApplySoftCardChrome(backButton, 22.0);
+    backButton.accessibilityLabel = PPChatsL(@"Back");
+    [backButton addTarget:self action:@selector(backTapped) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:backButton];
 
     UILabel *name = [UILabel new];
     name.translatesAutoresizingMaskIntoConstraints = NO;
@@ -815,12 +850,17 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-10.0],
 
         [name.topAnchor constraintEqualToAnchor:card.topAnchor constant:16.0],
-        [name.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0],
+        [name.leadingAnchor constraintEqualToAnchor:backButton.trailingAnchor constant:10.0],
         [name.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0],
 
         [subtitle.topAnchor constraintEqualToAnchor:name.bottomAnchor constant:4.0],
         [subtitle.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
         [subtitle.trailingAnchor constraintEqualToAnchor:name.trailingAnchor],
+
+        [backButton.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0],
+        [backButton.topAnchor constraintEqualToAnchor:card.topAnchor constant:14.0],
+        [backButton.widthAnchor constraintEqualToConstant:44.0],
+        [backButton.heightAnchor constraintEqualToConstant:44.0],
 
         [self.statusControl.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:12.0],
         [self.statusControl.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
@@ -829,6 +869,10 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     ]];
 
     self.tableView.tableHeaderView = header;
+}
+
+- (void)backTapped {
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)refreshStatusControl {
@@ -1078,6 +1122,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @property (nonatomic, assign) BOOL hasManagePermission;
 @property (nonatomic, assign) BOOL didPrepareEntrance;
 @property (nonatomic, assign) BOOL didRunEntrance;
+@property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
+@property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 
 @end
 
@@ -1104,7 +1150,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:PPChatsL(@"SupportChats_Title") showBack:NO];
+    [self pp_applyNoNavigationBarAnimated:animated];
     [self prepareEntranceState];
 }
 
@@ -1125,6 +1171,9 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     [self.heroGlassBG stopAnimations];
+    if (![self.navigationController.topViewController isKindOfClass:PPSupportThreadViewController.class]) {
+        [self pp_restoreNavigationBarIfNeededAnimated:animated];
+    }
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -1136,6 +1185,21 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 }
 
 #pragma mark - UI Setup
+
+- (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
+    if (!self.navigationController) return;
+    if (!self.didCaptureNavigationBarHiddenState) {
+        self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
+        self.didCaptureNavigationBarHiddenState = YES;
+    }
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+}
+
+- (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
+    if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
+    self.didCaptureNavigationBarHiddenState = NO;
+}
 
 - (void)setupTableView {
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
@@ -1255,7 +1319,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     [card addSubview:self.searchBar];
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:10.0],
+        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:12.0],
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
         [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-12.0],

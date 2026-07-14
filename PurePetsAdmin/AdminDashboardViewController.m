@@ -829,7 +829,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [self.heroGlassBG.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
         [self.heroGlassBG.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
 
-        [contentOverlay.topAnchor constraintEqualToAnchor:heroSurfaceView.safeAreaLayoutGuide.topAnchor constant:20.0],
+        [contentOverlay.topAnchor constraintEqualToAnchor:heroSurfaceView.safeAreaLayoutGuide.topAnchor constant:12.0],
         [contentOverlay.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor constant:22.0],
         [contentOverlay.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor constant:-22.0],
         [contentOverlay.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor constant:-20.0],

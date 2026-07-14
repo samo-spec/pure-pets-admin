@@ -5,9 +5,12 @@
 #import "AlertHelper.h"
 #import "PPFunc+Haptics.h"
 
+static NSString *const kPPProviderPlanCellID = @"PPProviderPlanCell";
+
 @interface PPProviderPlansViewController ()
 @property (nonatomic, strong) NSArray<PPProviderPlan *> *plans;
 @property (nonatomic, assign) BOOL isLoading;
+@property (nonatomic, copy) NSString *errorMessage;
 @end
 
 @implementation PPProviderPlansViewController
@@ -15,11 +18,16 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = kLang(@"Providers_Plans_Title");
+    self.view.backgroundColor = AppBackgroundClr;
+    self.tableView.backgroundColor = AppBackgroundClr;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.tableView.separatorInset = UIEdgeInsetsZero;
-    [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"Cell"];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 86.0;
+    self.tableView.contentInset = UIEdgeInsetsMake(12.0, 0.0, 24.0, 0.0);
 
     UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(didTapAdd)];
+    addBtn.accessibilityLabel = kLang(@"Providers_Plans_New");
     self.navigationItem.rightBarButtonItem = addBtn;
 
     [self loadData];
@@ -27,15 +35,19 @@
 
 - (void)loadData {
     self.isLoading = YES;
+    self.errorMessage = nil;
+    [self.tableView reloadData];
     __weak typeof(self) weakSelf = self;
     [[PPProviderService shared] fetchPlansWithCompletion:^(NSArray<PPProviderPlan *> *plans, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.isLoading = NO;
             if (error) {
+                weakSelf.errorMessage = error.localizedDescription;
+                [weakSelf.tableView reloadData];
                 [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 return;
             }
-            weakSelf.plans = plans;
+            weakSelf.plans = plans ?: @[];
             [weakSelf.tableView reloadData];
         });
     }];
@@ -93,26 +105,58 @@
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Cell" forIndexPath:indexPath];
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kPPProviderPlanCellID];
+    if (!cell) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:kPPProviderPlanCellID];
+        cell.backgroundColor = UIColor.clearColor;
+        cell.contentView.backgroundColor = AppForgroundColr;
+        cell.contentView.layer.cornerRadius = 22.0;
+        cell.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        cell.contentView.layer.masksToBounds = YES;
+        cell.textLabel.numberOfLines = 1;
+        cell.detailTextLabel.numberOfLines = 2;
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
+    }
     cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    cell.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    cell.detailTextLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    cell.textLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:18.0]];
+    cell.detailTextLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:13.5]];
+    cell.textLabel.textColor = PrimaryTextClr;
+    cell.detailTextLabel.textColor = SeconderyTextClr;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
 
     if (self.plans.count == 0) {
-        cell.textLabel.text = self.isLoading ? kLang(@"Loading") : kLang(@"Providers_Plans_Empty");
+        cell.textLabel.text = self.isLoading ? kLang(@"Loading") : (self.errorMessage.length ? kLang(@"Error_Title") : kLang(@"Providers_Plans_Empty"));
+        cell.detailTextLabel.text = self.errorMessage.length ? self.errorMessage : kLang(@"Providers_Plans_Subtitle");
         cell.textLabel.textAlignment = NSTextAlignmentCenter;
-        cell.textLabel.textColor = UIColor.secondaryLabelColor;
+        cell.detailTextLabel.textAlignment = NSTextAlignmentCenter;
+        cell.textLabel.textColor = self.errorMessage.length ? UIColor.systemRedColor : SeconderyTextClr;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType = UITableViewCellAccessoryNone;
+        cell.imageView.image = nil;
         return cell;
     }
 
     PPProviderPlan *plan = self.plans[indexPath.row];
     NSString *langCode = [Language currentLanguageCode];
     NSString *planName = [langCode isEqualToString:@"ar"] ? plan.name[@"ar"] : plan.name[@"en"];
-    cell.textLabel.text = [NSString stringWithFormat:@"%@ — %.2f", planName ?: plan.planID, plan.price.doubleValue];
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ | %.0f%%", plan.billingInterval, plan.commissionRate * 100];
-    cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+    cell.textLabel.text = planName.length ? planName : plan.planID;
+    cell.detailTextLabel.text = [NSString stringWithFormat:@"%.2f %@  ·  %@  ·  %.0f%%",
+                                 plan.price.doubleValue,
+                                 kLang(@"Accounting_QAR"),
+                                 plan.billingInterval.length ? plan.billingInterval : @"-",
+                                 plan.commissionRate * 100.0];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightSemibold];
+    cell.imageView.image = [[UIImage systemImageNamed:@"rectangle.stack.badge.person.crop" withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    cell.imageView.tintColor = AppPrimaryClr;
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return self.plans.count == 0 ? 104.0 : 88.0;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {

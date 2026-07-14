@@ -33,7 +33,8 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = AppForgroundColr;
+    self.view.backgroundColor = AppBackgroundClr;
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.dateFormatter = [NSDateFormatter new];
     self.dateFormatter.dateStyle = NSDateFormatterMediumStyle;
     self.dateFormatter.timeStyle = NSDateFormatterNoStyle;
@@ -128,6 +129,8 @@
     self.headerTitleLabel.font = [Styling fontBold:28];
     self.headerTitleLabel.textColor = UIColor.whiteColor;
     self.headerTitleLabel.numberOfLines = 2;
+    self.headerTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.headerTitleLabel.adjustsFontForContentSizeCategory = YES;
     [overlay addSubview:self.headerTitleLabel];
 
     self.headerMetaLabel = [UILabel new];
@@ -135,12 +138,15 @@
     self.headerMetaLabel.font = [Styling fontMedium:13];
     self.headerMetaLabel.textColor = [UIColor.whiteColor colorWithAlphaComponent:0.92];
     self.headerMetaLabel.numberOfLines = 2;
+    self.headerMetaLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.headerMetaLabel.adjustsFontForContentSizeCategory = YES;
     [overlay addSubview:self.headerMetaLabel];
 
     self.headerStatusLabel = [UILabel new];
     self.headerStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerStatusLabel.font = [Styling fontBold:12];
     self.headerStatusLabel.textAlignment = NSTextAlignmentCenter;
+    self.headerStatusLabel.adjustsFontForContentSizeCategory = YES;
     self.headerStatusLabel.layer.cornerRadius = 14.0;
     self.headerStatusLabel.layer.cornerCurve = kCACornerCurveContinuous;
     self.headerStatusLabel.clipsToBounds = YES;
@@ -188,12 +194,15 @@
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.backgroundColor = UIColor.clearColor;
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 64.0;
     self.tableView.tableHeaderView = self.headerImageView;
     self.tableView.showsVerticalScrollIndicator = NO;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 14.0, 0.0);
     [self.view addSubview:self.tableView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -207,7 +216,11 @@
 - (void)setupActionBar {
     self.actionBar = [UIView new];
     self.actionBar.translatesAutoresizingMaskIntoConstraints = NO;
-    self.actionBar.backgroundColor = AppForgroundColr;
+    self.actionBar.backgroundColor = [AppForgroundColr colorWithAlphaComponent:0.94];
+    self.actionBar.layer.shadowColor = AppShadowColor.CGColor;
+    self.actionBar.layer.shadowOpacity = 0.08;
+    self.actionBar.layer.shadowRadius = 18.0;
+    self.actionBar.layer.shadowOffset = CGSizeMake(0.0, -8.0);
     [self.view addSubview:self.actionBar];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -233,14 +246,16 @@
         button.translatesAutoresizingMaskIntoConstraints = NO;
         button.tintColor = UIColor.whiteColor;
         button.backgroundColor = colors[idx];
-        button.layer.cornerRadius = 22.0;
+        button.layer.cornerRadius = 25.0;
+        button.layer.cornerCurve = kCACornerCurveContinuous;
         button.clipsToBounds = YES;
         [button setImage:[UIImage systemImageNamed:icons[idx]] forState:UIControlStateNormal];
         [button addTarget:self action:NSSelectorFromString(selectors[idx]) forControlEvents:UIControlEventTouchUpInside];
         [NSLayoutConstraint activateConstraints:@[
-            [button.widthAnchor constraintEqualToConstant:44],
-            [button.heightAnchor constraintEqualToConstant:44]
+            [button.widthAnchor constraintEqualToConstant:50],
+            [button.heightAnchor constraintEqualToConstant:50]
         ]];
+        [PPButtonHelper attachTapAnimationToButton:button style:PPButtonAnimationStylePulse];
         [stack addArrangedSubview:button];
     }
 
@@ -326,21 +341,35 @@
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"detailCell"];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"detailCell"];
+        cell.backgroundColor = UIColor.clearColor;
+        cell.contentView.backgroundColor = AppForgroundColr;
+        cell.contentView.layer.cornerRadius = 18.0;
+        cell.contentView.layer.cornerCurve = kCACornerCurveContinuous;
+        cell.contentView.layer.masksToBounds = YES;
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
     }
 
     NSDictionary *row = self.rows[indexPath.row];
     cell.textLabel.text = row[@"title"];
-    cell.textLabel.font = [Styling fontMedium:13];
+    cell.textLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:13]];
     cell.textLabel.textColor = SeconderyTextClr;
+    cell.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
 
     cell.detailTextLabel.text = row[@"value"];
-    cell.detailTextLabel.font = [Styling fontBold:14];
+    cell.detailTextLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:15]];
     cell.detailTextLabel.textColor = PrimaryTextClr;
     cell.detailTextLabel.numberOfLines = [row[@"long"] boolValue] ? 0 : 2;
     cell.detailTextLabel.lineBreakMode = NSLineBreakByWordWrapping;
-    cell.backgroundColor = AppForgroundColr;
+    cell.detailTextLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     return cell;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    NSDictionary *row = self.rows[indexPath.row];
+    return [row[@"long"] boolValue] ? UITableViewAutomaticDimension : 74.0;
 }
 
 #pragma mark - Helpers

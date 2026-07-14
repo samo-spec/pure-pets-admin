@@ -46,6 +46,10 @@ static BOOL PPIsRTL(UIViewController *vc) {
     return Language.isRTL;// (dir == UIUserInterfaceLayoutDirectionRightToLeft);
 }
 
+static NSString *PPNavBackSymbolName(void) {
+    return Language.isRTL ? @"chevron.right" : @"chevron.left";
+}
+
 
 
 @implementation UIViewController (PPNavBar)
@@ -76,10 +80,11 @@ static BOOL PPIsRTL(UIViewController *vc) {
     
     UILabel *titleLbl = [UILabel new];
     titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLbl.font = [Styling fontBold:22];
+    titleLbl.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22]];
     titleLbl.textColor = PrimaryTextClr;
     titleLbl.textAlignment = NSTextAlignmentCenter;
     titleLbl.adjustsFontSizeToFitWidth = YES;
+    titleLbl.adjustsFontForContentSizeCategory = YES;
     titleLbl.minimumScaleFactor = 0.75;
     
     UIStackView *right = [[UIStackView alloc] init];
@@ -176,7 +181,7 @@ static BOOL PPIsRTL(UIViewController *vc) {
     
     // Ensure default back on LEFT (your old behavior)
     if (!PPDictForVC(self, NO)[kPPKeyBaseBack]) {
-        UIButton *back = [self pp_ButtonWithSystemName:@"chevron.backward" action:@selector(onBack)];
+        UIButton *back = [self pp_ButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
         [self _pp_addLeftButton:back key:kPPKeyBaseBack];
     }
     
@@ -212,11 +217,8 @@ static BOOL PPIsRTL(UIViewController *vc) {
     // Attach (or reuse)
     UIView *bar = [self pp_navBarAttachWithTitle:title];
     
-    // Decide layout
-    //BOOL isRTL = (layout == PPNavBarBaseLayoutRTL)
-    //           || (layout == PPNavBarBaseLayoutAuto && PPIsRTL(self));
-    
-    //BOOL isRTL = Language.isRTL;
+    BOOL isRTL = (layout == PPNavBarBaseLayoutRTL)
+        || (layout == PPNavBarBaseLayoutAuto && PPIsRTL(self));
     
     
     // Clean current base items
@@ -224,16 +226,23 @@ static BOOL PPIsRTL(UIViewController *vc) {
     [self pp_navBarRemoveButtonForKey:kPPKeyBaseButton];
     
    
-    // Ensure default back on LEFT (your old behavior)
     if (showBack) {
         if (!PPDictForVC(self, NO)[kPPKeyBaseBack]) {
-            UIButton *back = [self pp_ButtonWithSystemName:@"chevron.backward" action:@selector(onBack)];
-            [self _pp_addLeftButton:back key:kPPKeyBaseBack];
+            UIButton *back = [self pp_ButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
+            if (isRTL) {
+                [self _pp_addRightButton:back key:kPPKeyBaseBack];
+            } else {
+                [self _pp_addLeftButton:back key:kPPKeyBaseBack];
+            }
         }
     }
     
     if (button) {
-        [self _pp_addRightButton:button key:kPPKeyBaseButton];
+        if (isRTL) {
+            [self _pp_addLeftButton:button key:kPPKeyBaseButton];
+        } else {
+            [self _pp_addRightButton:button key:kPPKeyBaseButton];
+        }
     } else {
         [self pp_navBarRemoveButtonForKey:kPPKeyBaseButton];
     }
@@ -347,14 +356,14 @@ static BOOL PPIsRTL(UIViewController *vc) {
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
         
         // ✅ Set background color through configuration
-        cfg.background.backgroundColor = AppBackgroundClrShiner ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        cfg.background.backgroundColor = AppForgroundColr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
         cfg.background.cornerRadius = 22;
         
         btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
     } else {
         btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
-        btn.backgroundColor = AppBackgroundClrShiner ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        btn.backgroundColor = AppForgroundColr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
         btn.layer.cornerRadius = 22;
     }
 
@@ -705,4 +714,3 @@ static BOOL PPIsRTL(UIViewController *vc) {
  
  and sure this supporting (RTL,LTR)
  */
-
