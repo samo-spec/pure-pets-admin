@@ -1,11 +1,6 @@
 PODS:
-  - DynamicBlurView (4.1.0)
   - IQKeyboardManager (6.5.19)
-  - JDStatusBarNotification (2.2.3)
-  - JGProgressHUD (2.2)
   - lottie-ios (2.5.3)
-  - PopupDialog (1.1.1):
-    - DynamicBlurView (~> 4.0)
   - SDWebImage (5.21.1):
     - SDWebImage/Core (= 5.21.1)
   - SDWebImage/Core (5.21.1)
@@ -19,10 +14,7 @@ PODS:
 
 DEPENDENCIES:
   - IQKeyboardManager
-  - JDStatusBarNotification
-  - JGProgressHUD
   - lottie-ios (~> 2.5.3)
-  - PopupDialog (~> 1.1)
   - SDWebImage
   - ShowTime
   - SSZipArchive
@@ -32,12 +24,8 @@ DEPENDENCIES:
 
 SPEC REPOS:
   trunk:
-    - DynamicBlurView
     - IQKeyboardManager
-    - JDStatusBarNotification
-    - JGProgressHUD
     - lottie-ios
-    - PopupDialog
     - SDWebImage
     - ShowTime
     - SSZipArchive
@@ -46,12 +34,8 @@ SPEC REPOS:
     - YYKit
 
 SPEC CHECKSUMS:
-  DynamicBlurView: 58e18fae80bb614e34681a4486870e7d257b62e8
   IQKeyboardManager: c8665b3396bd0b79402b4c573eac345a31c7d485
-  JDStatusBarNotification: 13e81a2fd3dcc89c629657706190dcba81b8f174
-  JGProgressHUD: d83d7a981b85d11205e19ff8ad5bb9c40571c847
   lottie-ios: a50d5c0160425cd4b01b852bb9578963e6d92d31
-  PopupDialog: 720c92befd8bc23c13442254945213db5612f149
   SDWebImage: f29024626962457f3470184232766516dee8dfea
   ShowTime: 06cc9dc79886274b21041fe19b79c9eff59b9714
   SSZipArchive: fe6a26b2a54d5a0890f2567b5cc6de5caa600aef
@@ -59,6 +43,6 @@ SPEC CHECKSUMS:
   XLForm: a439f9512078ed538e8335c8b06d3f3286bbfd37
   YYKit: 7cda43304a8dc3696c449041e2cb3107b4e236e7
 
-PODFILE CHECKSUM: ad0f7e2802f353d48d58143d025f69cdd17ed1f4
+PODFILE CHECKSUM: b38945a340aeb9657acab95ef6091e9b9bb2e730
 
 COCOAPODS: 1.16.2

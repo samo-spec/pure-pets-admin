@@ -23,6 +23,8 @@
 		A1B98EB5C2A444FEAD22B7D2 /* PPPaymentDetailsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2D8F7AF776AA4C3E863F0BF5 /* PPPaymentDetailsViewController.m */; };
 		A22ADAB757A42E12B1A246AA /* QBAlbumCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 25E15FC04EA34A25500E2A8F /* QBAlbumCell.m */; };
 		A3088EA6E670D8BABF21EACD /* QBAlbumsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 63514318000226D7F46DE080 /* QBAlbumsViewController.m */; };
+		A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E100012FF1000100A5E001 /* PPHeroApex.swift */; };
+		A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A9F100B12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */; };
 		A9F100B22F70000100C0DE01 /* PPMarketplaceSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A42F70000100C0DE01 /* PPMarketplaceSettingsViewController.m */; };
@@ -41,7 +43,6 @@
 		F217998F2E6BD23A00AB5017 /* AdminService.m in Sources */ = {isa = PBXBuildFile; fileRef = F217998E2E6BD23A00AB5017 /* AdminService.m */; };
 		F21799B42E6D63F100AB5017 /* PPNavigationController.m in Sources */ = {isa = PBXBuildFile; fileRef = F21799B32E6D63F100AB5017 /* PPNavigationController.m */; };
 		F21799B72E6D85B300AB5017 /* PPCellWithButtons.m in Sources */ = {isa = PBXBuildFile; fileRef = F21799B62E6D859A00AB5017 /* PPCellWithButtons.m */; };
-		F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3E6A1002FA1000100A1D001 /* AddUserViewController.m */; };
 		F22482452E57C8980018025A /* AdminCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F22482442E57C8890018025A /* AdminCell.m */; };
 		F22482482E57C9210018025A /* XLAdminCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F22482472E57C9120018025A /* XLAdminCell.m */; };
 		F23BF91B2E62811000D7BA85 /* FCAlertView.m in Sources */ = {isa = PBXBuildFile; fileRef = F23BF9192E62810F00D7BA85 /* FCAlertView.m */; };
@@ -70,7 +71,7 @@
 		F266CCAF2E5FBBAC00AB5935 /* PPGuardianBorder.m in Sources */ = {isa = PBXBuildFile; fileRef = F266CCAE2E5FBBAC00AB5935 /* PPGuardianBorder.m */; };
 		F266CCB42E60030400AB5935 /* PPTextFieldCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F266CCB32E6002F300AB5935 /* PPTextFieldCell.m */; };
 		F266CCB52E60032600AB5935 /* PPTextField.m in Sources */ = {isa = PBXBuildFile; fileRef = F266CCB12E6002E200AB5935 /* PPTextField.m */; };
-		F266CCB82E60071800AB5935 /* SetUserPermissionsRolesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F266CCB72E60070200AB5935 /* SetUserPermissionsRolesViewController.m */; };
+		F266CCB82E60071800AB5935 /* UserManagementController.m in Sources */ = {isa = PBXBuildFile; fileRef = F266CCB72E60070200AB5935 /* UserManagementController.m */; };
 		F266EA312E5AFEDE0072C2C2 /* PPS.m in Sources */ = {isa = PBXBuildFile; fileRef = F266EA302E5AFE7F0072C2C2 /* PPS.m */; };
 		F266EA352E5B2C220072C2C2 /* NotificationModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F266EA342E5B2C220072C2C2 /* NotificationModel.m */; };
 		F266EA382E5B2C390072C2C2 /* NotificationManager.m in Sources */ = {isa = PBXBuildFile; fileRef = F266EA372E5B2C390072C2C2 /* NotificationManager.m */; };
@@ -91,7 +92,7 @@
 		F27434E82E5E49A00054C091 /* PPItem.m in Sources */ = {isa = PBXBuildFile; fileRef = F27434E72E5E49A00054C091 /* PPItem.m */; };
 		F27434F12E5EBEB70054C091 /* UIActivityIndicator.m in Sources */ = {isa = PBXBuildFile; fileRef = F27434ED2E5EBEB70054C091 /* UIActivityIndicator.m */; };
 		F27434F22E5EBEB70054C091 /* UIViewController+PVCMotal.m in Sources */ = {isa = PBXBuildFile; fileRef = F27434EF2E5EBEB70054C091 /* UIViewController+PVCMotal.m */; };
-		F27434F52E5EBEE60054C091 /* SetUserPermissionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F27434F42E5EBEE60054C091 /* SetUserPermissionViewController.m */; };
+		F27434F52E5EBEE60054C091 /* UsersListVC.m in Sources */ = {isa = PBXBuildFile; fileRef = F27434F42E5EBEE60054C091 /* UsersListVC.m */; };
 		F28A76602E68838500D40BCF /* PPParallax.m in Sources */ = {isa = PBXBuildFile; fileRef = F28A765F2E6878B100D40BCF /* PPParallax.m */; };
 		F28A76632E68956200D40BCF /* PPHUD.m in Sources */ = {isa = PBXBuildFile; fileRef = F28A76622E68956200D40BCF /* PPHUD.m */; };
 		F28AE12F2E569026007279F5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F28AE11E2E569026007279F5 /* Assets.xcassets */; };
@@ -184,14 +185,6 @@
 		F2A24B033003C4D3003AB79D /* PPProviderService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF63003C4D3003AB79D /* PPProviderService.m */; };
 		F2A24B043003C4D3003AB79D /* PPProviderAccountingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AEE3003C4D3003AB79D /* PPProviderAccountingViewController.m */; };
 		F2A24B053003C4D3003AB79D /* PPAccountingService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AD83003C4D3003AB79D /* PPAccountingService.m */; };
-		F2A24B183003C4FF003AB79D /* PPPaymentManagementViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B163003C4FF003AB79D /* PPPaymentManagementViewController.m */; };
-		F2A24B193003C4FF003AB79D /* PPMarketplaceSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B0A3003C4FF003AB79D /* PPMarketplaceSettingsViewController.m */; };
-		F2A24B1A3003C4FF003AB79D /* PPPaymentManagementRecordCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B123003C4FF003AB79D /* PPPaymentManagementRecordCell.m */; };
-		F2A24B1B3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B0C3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.m */; };
-		F2A24B1C3003C4FF003AB79D /* PPPaymentDetailsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B0E3003C4FF003AB79D /* PPPaymentDetailsViewController.m */; };
-		F2A24B1D3003C4FF003AB79D /* PPPaymentManagementService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B143003C4FF003AB79D /* PPPaymentManagementService.m */; };
-		F2A24B1E3003C4FF003AB79D /* PPPaymentManagementModels.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B103003C4FF003AB79D /* PPPaymentManagementModels.m */; };
-		F2A24B1F3003C4FF003AB79D /* PPBranchModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B073003C4FF003AB79D /* PPBranchModel.m */; };
 		F2A3462E2E58056E00C6713D /* RoleSelectorCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A3462C2E58052300C6713D /* RoleSelectorCell.m */; };
 		F2A346312E5807CB00C6713D /* RoleSummaryCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A346302E5807BB00C6713D /* RoleSummaryCell.m */; };
 		F2A346342E58084300C6713D /* XLFormOptionsObject+Extras.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A346332E58084300C6713D /* XLFormOptionsObject+Extras.m */; };
@@ -234,11 +227,20 @@
 		F2D542F92E5AABF0004F6B9F /* PPSelectOptionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542F82E5AABC9004F6B9F /* PPSelectOptionViewController.m */; };
 		F2D542FC2E5ABB5D004F6B9F /* PPOptionCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542FB2E5ABB5D004F6B9F /* PPOptionCell.m */; };
 		F2D543022E5AD22A004F6B9F /* PPButtonHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D543012E5AD22A004F6B9F /* PPButtonHelper.m */; };
-		F2E33F2530055AD6005E31C6 /* PPHero.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2430055AD6005E31C6 /* PPHero.m */; };
 		F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */; };
 		F2E33F2B30055F98005E31C6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F2E33F2930055F98005E31C6 /* README.md */; };
 		F2E33F2C30055F98005E31C6 /* PPFormEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2730055F98005E31C6 /* PPFormEngine.m */; };
 		F2E33F2D30055F98005E31C6 /* PPFormEngineUsageExample.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */; };
+		F2E33F323005D48C005E31C6 /* PPBranchesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */; };
+		F2E33F333005D496005E31C6 /* PPBranchEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */; };
+		F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */; };
+		F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */; };
+		F2E33F3C3005E7FB005E31C6 /* PPListingsAdminViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F3B3005E7FB005E31C6 /* PPListingsAdminViewController.m */; };
+		F2E33F4A3005E8D6005E31C6 /* PPAuditLogEntryModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F413005E8D6005E31C6 /* PPAuditLogEntryModel.m */; };
+		F2E33F4B3005E8D6005E31C6 /* PPCategoryEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F473005E8D6005E31C6 /* PPCategoryEditorViewController.m */; };
+		F2E33F4C3005E8D6005E31C6 /* PPAuditLogViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F433005E8D6005E31C6 /* PPAuditLogViewController.m */; };
+		F2E33F4D3005E8D6005E31C6 /* PPContentModerationViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F493005E8D6005E31C6 /* PPContentModerationViewController.m */; };
+		F2E33F4E3005E8D6005E31C6 /* PPCategoriesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F453005E8D6005E31C6 /* PPCategoriesViewController.m */; };
 		F2E8EDD52F77CBB700530CA4 /* PPMediaPicker.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCD2F77CBB700530CA4 /* PPMediaPicker.m */; };
 		F2E8EDD62F77CBB700530CA4 /* PPMediaPickerDemoVC.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCF2F77CBB700530CA4 /* PPMediaPickerDemoVC.m */; };
 		F2E8EDD72F77CBB700530CA4 /* PPMediaItem.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E8EDCB2F77CBB700530CA4 /* PPMediaItem.m */; };
@@ -254,6 +256,7 @@
 		F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */; };
 		F3D100022F9A100100000001 /* PPProLoginHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D100012F9A100100000001 /* PPProLoginHostingController.swift */; };
 		F3D100052F9A100100000001 /* PPProLoginCoordinator.m in Sources */ = {isa = PBXBuildFile; fileRef = F3D100042F9A100100000001 /* PPProLoginCoordinator.m */; };
+		F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3E6A1002FA1000100A1D001 /* AddUserViewController.m */; };
 		FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */ = {isa = PBXBuildFile; fileRef = 48315371333844CE99A6638A /* PPVetModel.m */; };
 		FB2EBAA84B72D8DD66303849 /* PPImageCollection.m in Sources */ = {isa = PBXBuildFile; fileRef = FF8490CE958C77FF7170D4E9 /* PPImageCollection.m */; };
 		FF6F85FD74CEF7C068844948 /* QBAssetCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 5049D2B95AC57DD90700A7C7 /* QBAssetCell.m */; };
@@ -278,12 +281,15 @@
 
 /* Begin PBXFileReference section */
 		068FBBDA955D966F979652B5 /* QBVideoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBVideoIconView.m; sourceTree = "<group>"; };
+		"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.objc; fileEncoding = 4; name = PPListingsAdminViewController.m; path = CategoriesSection/PPListingsAdminViewController.m; sourceTree = "<group>"; };
 		07DD358CFAD6FBBAB5CD3504 /* QB.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QB.m; sourceTree = "<group>"; };
 		082A9B2BA901B0ABA362FD29 /* QB.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QB.h; sourceTree = "<group>"; };
 		09ACEFCC8F7A4CF99078A5AF /* PPAddEditVetViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAddEditVetViewController.h; sourceTree = "<group>"; };
+		"0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentsViewController.m; sourceTree = "<group>"; };
 		125AB814B9EC46368E0C94A1 /* PPPaymentManagementViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementViewController.h; sourceTree = "<group>"; };
 		182F72E6E816B4EAEC09C61A /* QBAlbumsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAlbumsViewController.h; sourceTree = "<group>"; };
 		1F4961B9BADF9C82FBB7B6FC /* ImageViewerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImageViewerController.m; sourceTree = "<group>"; };
+		"212FE7C5-E995-4213-B192-DF42AFA0D185" /* PPAgentEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentEditorViewController.h; sourceTree = "<group>"; };
 		2386A136072F4716BF45E2BE /* PPPaymentManagementModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementModels.m; sourceTree = "<group>"; };
 		25E15FC04EA34A25500E2A8F /* QBAlbumCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumCell.m; sourceTree = "<group>"; };
 		26522282B0D8531E702B2277 /* QBAlbumCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAlbumCell.h; sourceTree = "<group>"; };
@@ -304,8 +310,10 @@
 		4D2191B785CC472BBAF4447F /* PPPaymentManagementViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementViewController.m; sourceTree = "<group>"; };
 		4FB5C3BC68A541BBACAADE46 /* PPPaymentDetailsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentDetailsViewController.h; sourceTree = "<group>"; };
 		5049D2B95AC57DD90700A7C7 /* QBAssetCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetCell.m; sourceTree = "<group>"; };
+		"5180A33C-6D47-48AC-90BB-A3ECA9946F74" /* PPBranchEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchEditorViewController.h; sourceTree = "<group>"; };
 		5AF3BB8E18684C34BF70BE83 /* PPVetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetCell.h; sourceTree = "<group>"; };
 		63514318000226D7F46DE080 /* QBAlbumsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumsViewController.m; sourceTree = "<group>"; };
+		"6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchEditorViewController.m; sourceTree = "<group>"; };
 		7020D445371E4CC79C849CA0 /* PPPaymentManagementService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementService.h; sourceTree = "<group>"; };
 		704DED2A8C08AC77378B7093 /* PPPickerAssetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPickerAssetManager.h; sourceTree = "<group>"; };
 		70515340F318451EA70F47F6 /* PPVetCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetCell.m; sourceTree = "<group>"; };
@@ -318,6 +326,10 @@
 		98D40889C7DB786D327F9792 /* QBAssetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetCell.h; sourceTree = "<group>"; };
 		9A0C834C2B4F42FEB58566DF /* PPVetsListViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetsListViewController.h; sourceTree = "<group>"; };
 		A1E5604CF63D542D8056E8CC /* QBSlomoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBSlomoIconView.h; sourceTree = "<group>"; };
+		"A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchesViewController.m; sourceTree = "<group>"; };
+		A5E100012FF1000100A5E001 /* PPHeroApex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPHeroApex.swift; sourceTree = "<group>"; };
+		A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPHeroApexBridge.m; sourceTree = "<group>"; };
+		"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentsViewController.h; sourceTree = "<group>"; };
 		A9F100A12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentBasicsSettingsViewController.h; sourceTree = "<group>"; };
 		A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentBasicsSettingsViewController.m; sourceTree = "<group>"; };
 		A9F100A32F70000100C0DE01 /* PPMarketplaceSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMarketplaceSettingsViewController.h; sourceTree = "<group>"; };
@@ -340,6 +352,7 @@
 		EF6EFC6E14664F16AB54D315 /* PPVetSubscriptionViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetSubscriptionViewController.m; sourceTree = "<group>"; };
 		EFBAA62442349371CE398FC6 /* PPPickerAssetManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPickerAssetManager.m; sourceTree = "<group>"; };
 		F18B2ED8BBF11FC7A093DEDC /* QBImagePicker.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = QBImagePicker.storyboard; sourceTree = "<group>"; };
+		"F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentEditorViewController.m; sourceTree = "<group>"; };
 		F2052C822F7E175300C06FDF /* PPPaddingLabel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaddingLabel.h; sourceTree = "<group>"; };
 		F2052C832F7E175A00C06FDF /* PPPaddingLabel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaddingLabel.m; sourceTree = "<group>"; };
 		F20B385F2E60DEAD007465EE /* PPQuickActionsView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPQuickActionsView.h; sourceTree = "<group>"; };
@@ -352,8 +365,6 @@
 		F21799B32E6D63F100AB5017 /* PPNavigationController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPNavigationController.m; sourceTree = "<group>"; };
 		F21799B52E6D855700AB5017 /* PPCellWithButtons.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPCellWithButtons.h; sourceTree = "<group>"; };
 		F21799B62E6D859A00AB5017 /* PPCellWithButtons.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPCellWithButtons.m; sourceTree = "<group>"; };
-		F3E6A0FF2FA1000100A1D001 /* AddUserViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AddUserViewController.h; sourceTree = "<group>"; };
-		F3E6A1002FA1000100A1D001 /* AddUserViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AddUserViewController.m; sourceTree = "<group>"; };
 		F22482432E57C8820018025A /* AdminCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AdminCell.h; sourceTree = "<group>"; };
 		F22482442E57C8890018025A /* AdminCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AdminCell.m; sourceTree = "<group>"; };
 		F22482462E57C90C0018025A /* XLAdminCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = XLAdminCell.h; sourceTree = "<group>"; };
@@ -391,8 +402,8 @@
 		F266CCB12E6002E200AB5935 /* PPTextField.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPTextField.m; sourceTree = "<group>"; };
 		F266CCB22E6002EB00AB5935 /* PPTextFieldCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPTextFieldCell.h; sourceTree = "<group>"; };
 		F266CCB32E6002F300AB5935 /* PPTextFieldCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPTextFieldCell.m; sourceTree = "<group>"; };
-		F266CCB62E6006A800AB5935 /* SetUserPermissionsRolesViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SetUserPermissionsRolesViewController.h; sourceTree = "<group>"; };
-		F266CCB72E60070200AB5935 /* SetUserPermissionsRolesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SetUserPermissionsRolesViewController.m; sourceTree = "<group>"; };
+		F266CCB62E6006A800AB5935 /* UserManagementController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UserManagementController.h; sourceTree = "<group>"; };
+		F266CCB72E60070200AB5935 /* UserManagementController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UserManagementController.m; sourceTree = "<group>"; };
 		F266EA2F2E5AFE720072C2C2 /* PPS.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPS.h; sourceTree = "<group>"; };
 		F266EA302E5AFE7F0072C2C2 /* PPS.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPS.m; sourceTree = "<group>"; };
 		F266EA332E5B2C110072C2C2 /* NotificationModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NotificationModel.h; sourceTree = "<group>"; };
@@ -433,8 +444,8 @@
 		F27434ED2E5EBEB70054C091 /* UIActivityIndicator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UIActivityIndicator.m; sourceTree = "<group>"; };
 		F27434EE2E5EBEB70054C091 /* UIViewController+PVCMotal.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "UIViewController+PVCMotal.h"; sourceTree = "<group>"; };
 		F27434EF2E5EBEB70054C091 /* UIViewController+PVCMotal.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "UIViewController+PVCMotal.m"; sourceTree = "<group>"; };
-		F27434F32E5EBEDD0054C091 /* SetUserPermissionViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SetUserPermissionViewController.h; sourceTree = "<group>"; };
-		F27434F42E5EBEE60054C091 /* SetUserPermissionViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SetUserPermissionViewController.m; sourceTree = "<group>"; };
+		F27434F32E5EBEDD0054C091 /* UsersListVC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UsersListVC.h; sourceTree = "<group>"; };
+		F27434F42E5EBEE60054C091 /* UsersListVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UsersListVC.m; sourceTree = "<group>"; };
 		F28A765E2E68788800D40BCF /* PPParallax.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPParallax.h; sourceTree = "<group>"; };
 		F28A765F2E6878B100D40BCF /* PPParallax.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPParallax.m; sourceTree = "<group>"; };
 		F28A76612E68955500D40BCF /* PPHUD.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPHUD.h; sourceTree = "<group>"; };
@@ -616,22 +627,6 @@
 		F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderPlansViewController.m; sourceTree = "<group>"; };
 		F2A24AF53003C4D3003AB79D /* PPProviderService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderService.h; sourceTree = "<group>"; };
 		F2A24AF63003C4D3003AB79D /* PPProviderService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderService.m; sourceTree = "<group>"; };
-		F2A24B063003C4FF003AB79D /* PPBranchModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchModel.h; sourceTree = "<group>"; };
-		F2A24B073003C4FF003AB79D /* PPBranchModel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchModel.m; sourceTree = "<group>"; };
-		F2A24B093003C4FF003AB79D /* PPMarketplaceSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMarketplaceSettingsViewController.h; sourceTree = "<group>"; };
-		F2A24B0A3003C4FF003AB79D /* PPMarketplaceSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPMarketplaceSettingsViewController.m; sourceTree = "<group>"; };
-		F2A24B0B3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentBasicsSettingsViewController.h; sourceTree = "<group>"; };
-		F2A24B0C3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentBasicsSettingsViewController.m; sourceTree = "<group>"; };
-		F2A24B0D3003C4FF003AB79D /* PPPaymentDetailsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentDetailsViewController.h; sourceTree = "<group>"; };
-		F2A24B0E3003C4FF003AB79D /* PPPaymentDetailsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentDetailsViewController.m; sourceTree = "<group>"; };
-		F2A24B0F3003C4FF003AB79D /* PPPaymentManagementModels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementModels.h; sourceTree = "<group>"; };
-		F2A24B103003C4FF003AB79D /* PPPaymentManagementModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementModels.m; sourceTree = "<group>"; };
-		F2A24B113003C4FF003AB79D /* PPPaymentManagementRecordCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementRecordCell.h; sourceTree = "<group>"; };
-		F2A24B123003C4FF003AB79D /* PPPaymentManagementRecordCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementRecordCell.m; sourceTree = "<group>"; };
-		F2A24B133003C4FF003AB79D /* PPPaymentManagementService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementService.h; sourceTree = "<group>"; };
-		F2A24B143003C4FF003AB79D /* PPPaymentManagementService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementService.m; sourceTree = "<group>"; };
-		F2A24B153003C4FF003AB79D /* PPPaymentManagementViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementViewController.h; sourceTree = "<group>"; };
-		F2A24B163003C4FF003AB79D /* PPPaymentManagementViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementViewController.m; sourceTree = "<group>"; };
 		F2A3462C2E58052300C6713D /* RoleSelectorCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RoleSelectorCell.m; sourceTree = "<group>"; };
 		F2A3462D2E58053800C6713D /* RoleSelectorCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RoleSelectorCell.h; sourceTree = "<group>"; };
 		F2A3462F2E5807B400C6713D /* RoleSummaryCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RoleSummaryCell.h; sourceTree = "<group>"; };
@@ -727,6 +722,19 @@
 		F2E33F2930055AD6005E31C6 /* PPThemeRefresh.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPThemeRefresh.h; sourceTree = "<group>"; };
 		F2E33F2930055F98005E31C6 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPThemeRefresh.m; sourceTree = "<group>"; };
+		F2E33F3A3005E7FB005E31C6 /* PPListingsAdminViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPListingsAdminViewController.h; sourceTree = "<group>"; };
+		F2E33F3B3005E7FB005E31C6 /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPListingsAdminViewController.m; sourceTree = "<group>"; };
+		F2E33F403005E8D6005E31C6 /* PPAuditLogEntryModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAuditLogEntryModel.h; sourceTree = "<group>"; };
+		F2E33F413005E8D6005E31C6 /* PPAuditLogEntryModel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAuditLogEntryModel.m; sourceTree = "<group>"; };
+		F2E33F423005E8D6005E31C6 /* PPAuditLogViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAuditLogViewController.h; sourceTree = "<group>"; };
+		F2E33F433005E8D6005E31C6 /* PPAuditLogViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAuditLogViewController.m; sourceTree = "<group>"; };
+		F2E33F443005E8D6005E31C6 /* PPCategoriesViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPCategoriesViewController.h; sourceTree = "<group>"; };
+		F2E33F453005E8D6005E31C6 /* PPCategoriesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPCategoriesViewController.m; sourceTree = "<group>"; };
+		F2E33F463005E8D6005E31C6 /* PPCategoryEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPCategoryEditorViewController.h; sourceTree = "<group>"; };
+		F2E33F473005E8D6005E31C6 /* PPCategoryEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPCategoryEditorViewController.m; sourceTree = "<group>"; };
+		F2E33F483005E8D6005E31C6 /* PPContentModerationViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPContentModerationViewController.h; sourceTree = "<group>"; };
+		F2E33F493005E8D6005E31C6 /* PPContentModerationViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPContentModerationViewController.m; sourceTree = "<group>"; };
+		F2E33F503005EDF4005E31C6 /* PurePetsColorPattle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PurePetsColorPattle.h; sourceTree = "<group>"; };
 		F2E8EDCA2F77CBB700530CA4 /* PPMediaItem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaItem.h; sourceTree = "<group>"; };
 		F2E8EDCB2F77CBB700530CA4 /* PPMediaItem.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPMediaItem.m; sourceTree = "<group>"; };
 		F2E8EDCC2F77CBB700530CA4 /* PPMediaPicker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaPicker.h; sourceTree = "<group>"; };
@@ -754,8 +762,11 @@
 		F3D100012F9A100100000001 /* PPProLoginHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPProLoginHostingController.swift; sourceTree = "<group>"; };
 		F3D100032F9A100100000001 /* PPProLoginCoordinator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProLoginCoordinator.h; sourceTree = "<group>"; };
 		F3D100042F9A100100000001 /* PPProLoginCoordinator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProLoginCoordinator.m; sourceTree = "<group>"; };
+		F3E6A0FF2FA1000100A1D001 /* AddUserViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AddUserViewController.h; sourceTree = "<group>"; };
+		F3E6A1002FA1000100A1D001 /* AddUserViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AddUserViewController.m; sourceTree = "<group>"; };
 		F6E33AEDD7F445E88CB23B22 /* PPFunc+Haptics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PPFunc+Haptics.h"; sourceTree = "<group>"; };
 		F7A2866DF1B7B110976975AC /* QBAssetsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetsViewController.h; sourceTree = "<group>"; };
+		"FD8B57D0-2463-4DA5-861F-5EA766F2A37F" /* PPBranchesViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchesViewController.h; sourceTree = "<group>"; };
 		FDA9A31358CA7D77ACEC6933 /* Pods-PurePetsAdmin.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PurePetsAdmin.debug.xcconfig"; path = "Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin.debug.xcconfig"; sourceTree = "<group>"; };
 		FF8490CE958C77FF7170D4E9 /* PPImageCollection.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPImageCollection.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -862,6 +873,25 @@
 			path = Payments;
 			sourceTree = "<group>";
 		};
+		"C6983AD2-C833-4E69-8BBD-6C718C5934AC" /* CategoriesSection */ = {
+			isa = PBXGroup;
+			children = (
+				F2E33F3A3005E7FB005E31C6 /* PPListingsAdminViewController.h */,
+				F2E33F3B3005E7FB005E31C6 /* PPListingsAdminViewController.m */,
+				F2E33F403005E8D6005E31C6 /* PPAuditLogEntryModel.h */,
+				F2E33F413005E8D6005E31C6 /* PPAuditLogEntryModel.m */,
+				F2E33F423005E8D6005E31C6 /* PPAuditLogViewController.h */,
+				F2E33F433005E8D6005E31C6 /* PPAuditLogViewController.m */,
+				F2E33F443005E8D6005E31C6 /* PPCategoriesViewController.h */,
+				F2E33F453005E8D6005E31C6 /* PPCategoriesViewController.m */,
+				F2E33F463005E8D6005E31C6 /* PPCategoryEditorViewController.h */,
+				F2E33F473005E8D6005E31C6 /* PPCategoryEditorViewController.m */,
+				F2E33F483005E8D6005E31C6 /* PPContentModerationViewController.h */,
+				F2E33F493005E8D6005E31C6 /* PPContentModerationViewController.m */,
+			);
+			path = CategoriesSection;
+			sourceTree = "<group>";
+		};
 		D477AF9E737C43FC89A024EC /* Pods */ = {
 			isa = PBXGroup;
 			children = (
@@ -931,6 +961,10 @@
 			children = (
 				F23DDE672F8BEC360020D4F4 /* PPBranchModel.h */,
 				F23DDE682F8BEC360020D4F4 /* PPBranchModel.m */,
+				"FD8B57D0-2463-4DA5-861F-5EA766F2A37F" /* PPBranchesViewController.h */,
+				"A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */,
+				"5180A33C-6D47-48AC-90BB-A3ECA9946F74" /* PPBranchEditorViewController.h */,
+				"6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */,
 			);
 			path = BranchSection;
 			sourceTree = "<group>";
@@ -940,6 +974,10 @@
 			children = (
 				F23DDE6B2F8BEC670020D4F4 /* PPAgentModel.h */,
 				F23DDE6C2F8BEC670020D4F4 /* PPAgentModel.m */,
+				"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */,
+				"0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */,
+				"212FE7C5-E995-4213-B192-DF42AFA0D185" /* PPAgentEditorViewController.h */,
+				"F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */,
 			);
 			path = AgentSection;
 			sourceTree = "<group>";
@@ -962,12 +1000,12 @@
 				F3D100012F9A100100000001 /* PPProLoginHostingController.swift */,
 				F29E001A2E7889DE00793E7F /* PPQAccessBar.h */,
 				F29E001B2E7889E700793E7F /* PPQAccessBar.m */,
-				F266CCB62E6006A800AB5935 /* SetUserPermissionsRolesViewController.h */,
-				F266CCB72E60070200AB5935 /* SetUserPermissionsRolesViewController.m */,
+				F266CCB62E6006A800AB5935 /* UserManagementController.h */,
+				F266CCB72E60070200AB5935 /* UserManagementController.m */,
 				F25AF3302E674E3000DD9787 /* UsersPermissionsVC.h */,
 				F25AF3312E674E4200DD9787 /* UsersPermissionsVC.m */,
-				F27434F32E5EBEDD0054C091 /* SetUserPermissionViewController.h */,
-				F27434F42E5EBEE60054C091 /* SetUserPermissionViewController.m */,
+				F27434F32E5EBEDD0054C091 /* UsersListVC.h */,
+				F27434F42E5EBEE60054C091 /* UsersListVC.m */,
 				F2A3463B2E583FFB00C6713D /* BlockUserViewController.h */,
 				F2A3463C2E58400000C6713D /* BlockUserViewController.m */,
 				F3E6A0FF2FA1000100A1D001 /* AddUserViewController.h */,
@@ -1063,9 +1101,8 @@
 		F28AE12E2E569026007279F5 /* PurePetsAdmin */ = {
 			isa = PBXGroup;
 			children = (
-				F2A24B083003C4FF003AB79D /* BranchSection */,
-				F2A24B173003C4FF003AB79D /* Payments */,
 				F2A24ADB3003C4D3003AB79D /* Accounting */,
+				"C6983AD2-C833-4E69-8BBD-6C718C5934AC" /* CategoriesSection */,
 				F2A24AE03003C4D3003AB79D /* Delivery */,
 				F2A24AE53003C4D3003AB79D /* Fulfillment */,
 				F2A24AEC3003C4D3003AB79D /* POS */,
@@ -1128,6 +1165,7 @@
 		F28AE1442E5690D0007279F5 /* ThirdParty */ = {
 			isa = PBXGroup;
 			children = (
+				F2E33F503005EDF4005E31C6 /* PurePetsColorPattle.h */,
 				A0D748145397FB48759DC863 /* PPImagePicker+Viewer */,
 				F29D11BB2E72F535001A3F2E /* CLImageEditor */,
 				F27434EB2E5EBEA00054C091 /* OtherLib */,
@@ -1491,36 +1529,6 @@
 			path = Providers;
 			sourceTree = "<group>";
 		};
-		F2A24B083003C4FF003AB79D /* BranchSection */ = {
-			isa = PBXGroup;
-			children = (
-				F2A24B063003C4FF003AB79D /* PPBranchModel.h */,
-				F2A24B073003C4FF003AB79D /* PPBranchModel.m */,
-			);
-			path = BranchSection;
-			sourceTree = "<group>";
-		};
-		F2A24B173003C4FF003AB79D /* Payments */ = {
-			isa = PBXGroup;
-			children = (
-				F2A24B093003C4FF003AB79D /* PPMarketplaceSettingsViewController.h */,
-				F2A24B0A3003C4FF003AB79D /* PPMarketplaceSettingsViewController.m */,
-				F2A24B0B3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.h */,
-				F2A24B0C3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.m */,
-				F2A24B0D3003C4FF003AB79D /* PPPaymentDetailsViewController.h */,
-				F2A24B0E3003C4FF003AB79D /* PPPaymentDetailsViewController.m */,
-				F2A24B0F3003C4FF003AB79D /* PPPaymentManagementModels.h */,
-				F2A24B103003C4FF003AB79D /* PPPaymentManagementModels.m */,
-				F2A24B113003C4FF003AB79D /* PPPaymentManagementRecordCell.h */,
-				F2A24B123003C4FF003AB79D /* PPPaymentManagementRecordCell.m */,
-				F2A24B133003C4FF003AB79D /* PPPaymentManagementService.h */,
-				F2A24B143003C4FF003AB79D /* PPPaymentManagementService.m */,
-				F2A24B153003C4FF003AB79D /* PPPaymentManagementViewController.h */,
-				F2A24B163003C4FF003AB79D /* PPPaymentManagementViewController.m */,
-			);
-			path = Payments;
-			sourceTree = "<group>";
-		};
 		F2A346602E58513600C6713D /* RelativeDateDescriptor */ = {
 			isa = PBXGroup;
 			children = (
@@ -1602,6 +1610,7 @@
 				F28AE1122E568FE4007279F5 /* PurePetsAdminTests.xctest */,
 				F28AE1132E568FE4007279F5 /* PurePetsAdminUITests.xctest */,
 				4CA6DBD4B98B228FE77852BD /* Frameworks */,
+				F2E33F393005E14C005E31C6 /* Recovered References */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1647,6 +1656,8 @@
 				F2E33F2630055AD6005E31C6 /* PPDesignTokens.h */,
 				F2E33F2330055AD6005E31C6 /* PPHero.h */,
 				F2E33F2430055AD6005E31C6 /* PPHero.m */,
+				A5E100012FF1000100A5E001 /* PPHeroApex.swift */,
+				A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */,
 				F2E33F2730055AD6005E31C6 /* PPMarketplaceHeroCardStyle.h */,
 				F2E33F2930055AD6005E31C6 /* PPThemeRefresh.h */,
 				F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */,
@@ -1715,6 +1726,14 @@
 				F2E33F2930055F98005E31C6 /* README.md */,
 			);
 			path = PPFormEngine;
+			sourceTree = "<group>";
+		};
+		F2E33F393005E14C005E31C6 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */,
+			);
+			name = "Recovered References";
 			sourceTree = "<group>";
 		};
 		F2E8EDD42F77CBB700530CA4 /* PPMediaPicker */ = {
@@ -1989,6 +2008,8 @@
 				F3C100052F9A000100000001 /* PPAddEditServiceViewController.m in Sources */,
 				F3C100062F9A000100000001 /* PPServiceModerationViewController.m in Sources */,
 				F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */,
+				F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */,
+				F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */,
 				C54AFB88580CEB55093C550F /* ImageViewerController.m in Sources */,
 				FB2EBAA84B72D8DD66303849 /* PPImageCollection.m in Sources */,
 				F365046C8B45B516F5C8261B /* PPImageCollectionRow.m in Sources */,
@@ -2035,6 +2056,11 @@
 				F2D542F62E5AA257004F6B9F /* PPEmailFieldCell.m in Sources */,
 				F28B84082E70BA1B00697671 /* PPAddBannerViewController.m in Sources */,
 				F27434DC2E5C8C610054C091 /* PPToast.m in Sources */,
+				F2E33F4A3005E8D6005E31C6 /* PPAuditLogEntryModel.m in Sources */,
+				F2E33F4B3005E8D6005E31C6 /* PPCategoryEditorViewController.m in Sources */,
+				F2E33F4C3005E8D6005E31C6 /* PPAuditLogViewController.m in Sources */,
+				F2E33F4D3005E8D6005E31C6 /* PPContentModerationViewController.m in Sources */,
+				F2E33F4E3005E8D6005E31C6 /* PPCategoriesViewController.m in Sources */,
 				F266EA512E5B582B0072C2C2 /* NotificationManager+Targets.m in Sources */,
 				F266EA412E5B2C790072C2C2 /* NotificationDetailViewController.m in Sources */,
 				F29D11652E72DCC8001A3F2E /* PPImageEditor.m in Sources */,
@@ -2092,14 +2118,6 @@
 				F2A347B82E5858AA00C6713D /* GSIndeterminateProgressView.m in Sources */,
 				F2D542D22E58D83C004F6B9F /* RoundedPhotoCell.m in Sources */,
 				F27434F12E5EBEB70054C091 /* UIActivityIndicator.m in Sources */,
-				F2A24B183003C4FF003AB79D /* PPPaymentManagementViewController.m in Sources */,
-				F2A24B193003C4FF003AB79D /* PPMarketplaceSettingsViewController.m in Sources */,
-				F2A24B1A3003C4FF003AB79D /* PPPaymentManagementRecordCell.m in Sources */,
-				F2A24B1B3003C4FF003AB79D /* PPPaymentBasicsSettingsViewController.m in Sources */,
-				F2A24B1C3003C4FF003AB79D /* PPPaymentDetailsViewController.m in Sources */,
-				F2A24B1D3003C4FF003AB79D /* PPPaymentManagementService.m in Sources */,
-				F2A24B1E3003C4FF003AB79D /* PPPaymentManagementModels.m in Sources */,
-				F2A24B1F3003C4FF003AB79D /* PPBranchModel.m in Sources */,
 				F27434F22E5EBEB70054C091 /* UIViewController+PVCMotal.m in Sources */,
 				F2D542F32E5A7BB3004F6B9F /* PPFormBaseViewController.m in Sources */,
 				F2A347DA2E58807200C6713D /* AlertHelper.m in Sources */,
@@ -2110,7 +2128,8 @@
 				F28A76632E68956200D40BCF /* PPHUD.m in Sources */,
 				F25AF32F2E674BCD00DD9787 /* FUManager.m in Sources */,
 				F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */,
-				F2E33F2530055AD6005E31C6 /* PPHero.m in Sources */,
+				A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */,
+				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,
 				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,
 				F2D542E62E5A400C004F6B9F /* UIViewController+PPNavBar.m in Sources */,
 				F2A1BB072E74AC8600B86BF9 /* PPBottomBar.m in Sources */,
@@ -2123,12 +2142,15 @@
 				F28B83FD2E70A52300697671 /* PPBannerViewModel.m in Sources */,
 				F28B83FE2E70A52300697671 /* PPBannerCell.m in Sources */,
 				F28B84052E70AAC700697671 /* PPColorUtils.m in Sources */,
+				F2E33F323005D48C005E31C6 /* PPBranchesViewController.m in Sources */,
 				F28B83FF2E70A52300697671 /* PPBannersManager.m in Sources */,
 				F28B84002E70A52300697671 /* PPBannersCollection.m in Sources */,
 				F28B84012E70A52300697671 /* PPBannerView.m in Sources */,
 				F28B84022E70A52300697671 /* MainBannerModel.m in Sources */,
 				F28AE1392E569026007279F5 /* SceneDelegate.m in Sources */,
-				F266CCB82E60071800AB5935 /* SetUserPermissionsRolesViewController.m in Sources */,
+				F266CCB82E60071800AB5935 /* UserManagementController.m in Sources */,
+				F2E33F333005D496005E31C6 /* PPBranchEditorViewController.m in Sources */,
+				F2E33F3C3005E7FB005E31C6 /* PPListingsAdminViewController.m in Sources */,
 				F2A3462E2E58056E00C6713D /* RoleSelectorCell.m in Sources */,
 				F2B198472E6049FE0023ABAF /* PPSubtitleSwitchCell.m in Sources */,
 				F2D33AE72F3FB0420007EC75 /* ArabicNormalizer.m in Sources */,
@@ -2176,7 +2198,7 @@
 				F2A1BB0B2E75205900B86BF9 /* PPImageCacheHelper.m in Sources */,
 				F28AE1482E5690E3007279F5 /* Language.m in Sources */,
 				F28A76602E68838500D40BCF /* PPParallax.m in Sources */,
-				F27434F52E5EBEE60054C091 /* SetUserPermissionViewController.m in Sources */,
+				F27434F52E5EBEE60054C091 /* UsersListVC.m in Sources */,
 				F266EA442E5B2CA10072C2C2 /* NotificationComposerViewController.m in Sources */,
 				F22482452E57C8980018025A /* AdminCell.m in Sources */,
 				F27434E52E5E31CD0054C091 /* PPPickOptionCell.m in Sources */,

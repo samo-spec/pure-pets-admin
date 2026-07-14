@@ -41,6 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)toFirestoreDictionary;  // Helper to convert model to Firestore data
 - (SubKindModel *)subKindForID:(NSInteger)subID;
 + (MainKindsModel *)mainKindModelForID:(NSInteger)kindID;
+@property (nonatomic, assign) BOOL is_visible_in_user_app;
 @property (nonatomic, strong) UIImage *image;
 //LightenAmount:(float)LightenAmount IconName:(NSString *)iconName
 - (instancetype)initWithDict:(NSDictionary *)data ;

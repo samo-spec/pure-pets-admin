@@ -11,7 +11,7 @@
 #import "RPManager.h"
 #import "AdminService.h"
 #import "PPStaffAuth.h"
-#import "SetUserPermissionViewController.h"
+#import "UsersListVC.h"
 #import "PPImageCollection.h"
 #import "PPHero.h"
 #import "PPFormEngine.h"
@@ -569,8 +569,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     PPFormStyle *style = [PPFormStyle defaultStyle];
     style.accentColor = PPAddUserPrimaryColor();
     style.cardBackgroundColor = PPAddUserSurfaceColor();
-    style.fieldBackgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.055];
-    style.primaryTextColor = PPAddUserPrimaryTextColor();
+     style.primaryTextColor = PPAddUserPrimaryTextColor();
     style.secondaryTextColor = PPAddUserSecondaryTextColor();
     style.cardBorderColor = PPAddUserBorderColor();
     style.fieldBorderColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.10];
@@ -917,7 +916,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
     [self pp_setMode:AddUserModeAssign disabled:self.editExistingStaff];
 
-    SetUserPermissionViewController *picker = [[SetUserPermissionViewController alloc] initWithViewFor:ViewForPicker];
+    UsersListVC *picker = [[UsersListVC alloc] initWithViewFor:ViewForPicker];
     picker.searchPlaceholderText = kLang(@"Staff_Select_User_Search_Placeholder");
 
     __weak typeof(self) weakSelf = self;

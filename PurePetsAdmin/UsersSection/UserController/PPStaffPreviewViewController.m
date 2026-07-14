@@ -116,6 +116,7 @@ static UIColor *PPStaffPreviewBorderColor(void) {
             [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:18.0],
             [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-18.0],
             [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-5.0],
+            [_surfaceView.heightAnchor constraintGreaterThanOrEqualToConstant:78.0],
 
             [_iconShellView.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:16.0],
             [_iconShellView.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
@@ -142,6 +143,7 @@ static UIColor *PPStaffPreviewBorderColor(void) {
             [_subtitleLabel.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
             [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_statusLabel.leadingAnchor constant:-10.0],
             [_subtitleLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:4.0],
+            [_subtitleLabel.bottomAnchor constraintLessThanOrEqualToAnchor:_surfaceView.bottomAnchor constant:-16.0],
         ]];
     }
     return self;
@@ -156,6 +158,8 @@ static UIColor *PPStaffPreviewBorderColor(void) {
     [super prepareForReuse];
     self.contentView.alpha = 1.0;
     self.contentView.transform = CGAffineTransformIdentity;
+    self.surfaceView.transform = CGAffineTransformIdentity;
+    self.surfaceView.alpha = 1.0;
 }
 
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {

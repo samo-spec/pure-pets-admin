@@ -16,8 +16,8 @@
 #import "PPServicesListViewController.h"
 #import "PPAdminWebAppViewController.h"
 #import "AccessoriesListViewController.h"
-#import "SetUserPermissionViewController.h"
-#import "SetUserPermissionsRolesViewController.h"
+#import "UsersListVC.h"
+#import "UserManagementController.h"
 #import "AdminLoginViewController.h"
 #import "AddUserViewController.h"
 #import "BlockUserViewController.h"
@@ -26,6 +26,10 @@
 #import "PPStaffAuth.h"
 #import "UsersSection/UserController/PPStaffManagementViewController.h"
 #import "HomeControl/PPHomeControlPanelViewController.h"
+#import "CategoriesSection/PPCategoriesViewController.h"
+#import "CategoriesSection/PPListingsAdminViewController.h"
+#import "BranchSection/PPBranchesViewController.h"
+#import "AgentSection/PPAgentsViewController.h"
 #import "Fulfillment/PPFulfillmentOrdersViewController.h"
 #import "Delivery/PPDeliveryManagementViewController.h"
 #import "Accounting/PPAccountingViewController.h"
@@ -35,8 +39,11 @@
 #import "Providers/PPProviderAccountingViewController.h"
 #import "POS/PPPOSFastSellViewController.h"
 #import "POS/PPPOSHistoryViewController.h"
+#import "CategoriesSection/PPContentModerationViewController.h"
+#import "CategoriesSection/PPAuditLogViewController.h"
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
+#import "PPBranchesViewController.h"
 @import Firebase;
 @import FirebaseAuth;
 
@@ -54,16 +61,8 @@ static NSString * const kPPDashboardItemIconKey = @"icon";
 static NSString * const kPPDashboardItemTintKey = @"tint";
 
 static UIColor *PPAdminDashboardCanvasColor(UITraitCollection *traits) {
-    return traits.userInterfaceStyle == UIUserInterfaceStyleDark
-    ? [UIColor colorWithRed:0.026 green:0.030 blue:0.029 alpha:1.0]
-    : [UIColor colorWithRed:0.965 green:0.970 blue:0.965 alpha:1.0];
-}
-
-static UIColor *PPAdminDashboardColor(uint32_t hex, CGFloat alpha) {
-    return [UIColor colorWithRed:((hex >> 16) & 0xFF) / 255.0
-                           green:((hex >> 8) & 0xFF) / 255.0
-                            blue:(hex & 0xFF) / 255.0
-                           alpha:alpha];
+    (void)traits;
+    return AppBackgroundClr;
 }
 
 static BOOL PPAdminDashboardIsDark(UITraitCollection *traits) {
@@ -74,69 +73,57 @@ static BOOL PPAdminDashboardIsDark(UITraitCollection *traits) {
 }
 
 static UIColor *PPAdminDashboardResolvedColor(UIColor *color, UITraitCollection *traits) {
-    if (!color) return UIColor.clearColor;
+    if (!color) return AppClearClr;
     if (@available(iOS 13.0, *)) {
         return [color resolvedColorWithTraitCollection:(traits ?: UITraitCollection.currentTraitCollection)];
     }
     return color;
 }
 
-static UIColor *PPAdminDashboardDynamicColor(uint32_t lightHex, uint32_t darkHex, CGFloat lightAlpha, CGFloat darkAlpha) {
-    if (@available(iOS 13.0, *)) {
-        return [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
-            return PPAdminDashboardColor(traits.userInterfaceStyle == UIUserInterfaceStyleDark ? darkHex : lightHex,
-                                         traits.userInterfaceStyle == UIUserInterfaceStyleDark ? darkAlpha : lightAlpha);
-        }];
-    }
-    return PPAdminDashboardColor(lightHex, lightAlpha);
-}
-
 static UIColor *PPAdminDashboardHeroSignatureColor(UITraitCollection *traits) {
-    return PPAdminDashboardIsDark(traits)
-    ? PPAdminDashboardColor(0x8DD9BF, 1.0)
-    : PPAdminDashboardColor(0x2F7259, 1.0);
+    (void)traits;
+    return AppPrimaryClr ?: AppSecondaryClr;
 }
 
 static UIColor *PPAdminDashboardHeroInkColor(void) {
-    return PPAdminDashboardDynamicColor(0x131614, 0xF4F7F5, 1.0, 1.0);
+    return PrimaryTextClr;
 }
 
 static UIColor *PPAdminDashboardHeroSecondaryInkColor(void) {
-    return PPAdminDashboardDynamicColor(0x3F4A45, 0xC4CEC8, 1.0, 1.0);
+    return SeconderyTextClr;
 }
 
 static UIColor *PPAdminDashboardHeroTertiaryInkColor(void) {
-    return PPAdminDashboardDynamicColor(0x68736D, 0x9FAAA4, 1.0, 1.0);
+    return PPTextTertiaryColor();
 }
 
 static UIColor *PPAdminDashboardHeroLiquidBorderColor(void) {
-    return PPAdminDashboardDynamicColor(0xFFFFFF, 0xFFFFFF, 0.78, 0.14);
+    return PPLiquidBorderColor();
 }
 
 static UIColor *PPAdminDashboardHeroHairlineColor(void) {
-    return PPAdminDashboardDynamicColor(0xB6C3BC, 0xFFFFFF, 0.28, 0.12);
+    return PPHairlineColor();
 }
 
 static UIColor *PPAdminDashboardHeroPanelColor(UITraitCollection *traits) {
     BOOL dark = PPAdminDashboardIsDark(traits);
     if (UIAccessibilityIsReduceTransparencyEnabled()) {
-        return dark ? PPAdminDashboardColor(0x171D1A, 1.0) : UIColor.whiteColor;
+        return AppBackgroundClrShiner;
     }
-    return dark ? PPAdminDashboardColor(0x17201C, 0.72) : PPAdminDashboardColor(0xFFFFFF, 0.64);
+    return [AppBackgroundClrShiner colorWithAlphaComponent:dark ? 0.72 : 0.64];
 }
 
 static UIColor *PPAdminDashboardHeroControlColor(UITraitCollection *traits) {
     BOOL dark = PPAdminDashboardIsDark(traits);
     if (UIAccessibilityIsReduceTransparencyEnabled()) {
-        return dark ? PPAdminDashboardColor(0x1B2420, 1.0) : UIColor.whiteColor;
+        return AppForgroundColr;
     }
-    return dark ? PPAdminDashboardColor(0x1B2420, 0.76) : PPAdminDashboardColor(0xFFFFFF, 0.70);
+    return [AppForgroundColr colorWithAlphaComponent:dark ? 0.76 : 0.70];
 }
 
 static UIColor *PPAdminDashboardHeroCriticalTintColor(UITraitCollection *traits) {
-    return PPAdminDashboardIsDark(traits)
-    ? PPAdminDashboardColor(0xF0A4A0, 1.0)
-    : PPAdminDashboardColor(0xA9453E, 1.0);
+    (void)traits;
+    return AppPrimaryClrDarker ?: AppPrimaryClr ?: AppSecondaryClr;
 }
 
 static UIFont *PPAdminDashboardScaledFont(UIFont *font, UIFontTextStyle textStyle) {
@@ -147,48 +134,57 @@ static UIFont *PPAdminDashboardScaledFont(UIFont *font, UIFontTextStyle textStyl
 static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     if ([tag isEqualToString:@"staffList"] || [tag isEqualToString:@"staffManagement"] || [tag isEqualToString:@"addUser"] || [tag isEqualToString:@"staffRoles"] ||
         [tag isEqualToString:@"usersList"] || [tag isEqualToString:@"usersRolePermissions"] || [tag isEqualToString:@"blockUser"]) {
-        return [UIColor colorWithRed:0.24 green:0.48 blue:0.90 alpha:1.0];
+        return AppPrimaryClr;
     }
     if ([tag isEqualToString:@"accessories"] || [tag isEqualToString:@"food"] || [tag isEqualToString:@"livePets"]) {
-        return [UIColor colorWithRed:0.88 green:0.50 blue:0.18 alpha:1.0];
+        return AppSecondaryClr ?: AppPrimaryClr;
     }
     if ([tag isEqualToString:@"services"]) {
-        return [UIColor colorWithRed:0.12 green:0.61 blue:0.54 alpha:1.0];
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"vets"]) {
-        return [UIColor colorWithRed:0.47 green:0.37 blue:0.86 alpha:1.0];
+        return AppPrimaryClrDarker;
+    }
+    if ([tag isEqualToString:@"listings"]) {
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"banners"]) {
-        return [UIColor colorWithRed:0.83 green:0.31 blue:0.53 alpha:1.0];
+        return AppPrimaryClrDarker ?: AppPrimaryClr;
     }
     if ([tag isEqualToString:@"payments"] || [tag isEqualToString:@"paymentBasics"]) {
-        return [UIColor colorWithRed:0.17 green:0.58 blue:0.36 alpha:1.0];
+        return AppSecondaryClr;
     }
     if ([tag hasPrefix:@"notification"]) {
-        return [UIColor colorWithRed:0.34 green:0.45 blue:0.82 alpha:1.0];
+        return AppPrimaryClrDarker;
     }
     if ([tag isEqualToString:@"adminWebApp"]) {
-        return [UIColor colorWithRed:0.18 green:0.55 blue:0.67 alpha:1.0];
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"homeControl"]) {
-        return [UIColor colorWithRed:0.85 green:0.42 blue:0.22 alpha:1.0];
+        return AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
     }
     if ([tag isEqualToString:@"fulfillment"]) {
-        return [UIColor colorWithRed:0.35 green:0.55 blue:0.85 alpha:1.0];
+        return AppPrimaryClr;
     }
     if ([tag isEqualToString:@"delivery"]) {
-        return [UIColor colorWithRed:0.12 green:0.72 blue:0.62 alpha:1.0];
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"accounting"]) {
-        return [UIColor colorWithRed:0.90 green:0.68 blue:0.18 alpha:1.0];
+        return AppSecondaryClr ?: AppPrimaryClr;
     }
     if ([tag isEqualToString:@"providers"]) {
-        return [UIColor colorWithRed:0.55 green:0.35 blue:0.85 alpha:1.0];
+        return AppPrimaryClrDarker ?: AppPrimaryClr;
     }
     if ([tag isEqualToString:@"pos"] || [tag isEqualToString:@"posHistory"]) {
-        return [UIColor colorWithRed:0.85 green:0.32 blue:0.45 alpha:1.0];
+        return AppPrimaryClrDarker ?: AppSecondaryClr ?: AppPrimaryClr;
     }
-    return AppPrimaryClr ?: [UIColor colorWithRed:0.20 green:0.62 blue:0.46 alpha:1.0];
+    if ([tag isEqualToString:@"moderation"]) {
+        return AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
+    }
+    if ([tag isEqualToString:@"audit"]) {
+        return AppPrimaryClrDarker;
+    }
+    return AppPrimaryClr;
 }
 
 @interface PPAdminDashboardBackdropView : UIView
@@ -247,11 +243,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 - (void)refreshPalette {
     BOOL isDark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
     UIColor *canvas = PPAdminDashboardCanvasColor(self.traitCollection);
-    UIColor *secondary = isDark
-    ? [UIColor colorWithRed:0.042 green:0.050 blue:0.047 alpha:1.0]
-    : [UIColor colorWithRed:0.925 green:0.940 blue:0.930 alpha:1.0];
-    UIColor *signature = [UIColor colorWithRed:0.19 green:0.52 blue:0.39 alpha:1.0];
-    UIColor *warm = [UIColor colorWithRed:0.72 green:0.62 blue:0.42 alpha:1.0];
+    UIColor *secondary = AppBackgroundClrDarker;
+    UIColor *signature = AppPrimaryClr ?: AppSecondaryClr;
+    UIColor *warm = AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
 
     self.backgroundColor = canvas;
     self.baseLayer.colors = @[(id)canvas.CGColor, (id)secondary.CGColor, (id)canvas.CGColor];
@@ -259,12 +253,12 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     self.topLightLayer.colors = @[
         (id)[signature colorWithAlphaComponent:isDark ? 0.11 : 0.075].CGColor,
         (id)[signature colorWithAlphaComponent:isDark ? 0.035 : 0.020].CGColor,
-        (id)[UIColor.clearColor CGColor]
+        (id)AppClearClr.CGColor
     ];
     self.lowerLightLayer.colors = @[
         (id)[warm colorWithAlphaComponent:isDark ? 0.065 : 0.050].CGColor,
         (id)[warm colorWithAlphaComponent:0.018].CGColor,
-        (id)[UIColor.clearColor CGColor]
+        (id)AppClearClr.CGColor
     ];
 }
 
@@ -388,7 +382,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [self.dashboardBackdropView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
-    self.tableView.backgroundColor = UIColor.clearColor;
+    self.tableView.backgroundColor = AppClearClr;
     self.tableView.backgroundView = nil;
     self.tableView.opaque = NO;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
@@ -534,17 +528,17 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
 
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.view.bounds), kPPAdminDashboardHeaderHeight)];
-    header.backgroundColor = UIColor.clearColor;
+    header.backgroundColor = AppClearClr;
     header.clipsToBounds = NO;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.headerRoot = header;
 
     UIView *heroShadowView = [UIView new];
     heroShadowView.translatesAutoresizingMaskIntoConstraints = NO;
-    heroShadowView.backgroundColor = UIColor.clearColor;
+    heroShadowView.backgroundColor = AppClearClr;
     heroShadowView.layer.cornerRadius = 32.0;
     heroShadowView.layer.cornerCurve = kCACornerCurveContinuous;
-    heroShadowView.layer.shadowColor = [UIColor blackColor].CGColor;
+    heroShadowView.layer.shadowColor = AppShadowColor.CGColor;
     heroShadowView.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.28 : 0.10;
     heroShadowView.layer.shadowRadius = 30.0;
     heroShadowView.layer.shadowOffset = CGSizeMake(0.0, 18.0);
@@ -554,7 +548,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *heroSurfaceView = [UIView new];
     heroSurfaceView.translatesAutoresizingMaskIntoConstraints = NO;
-    heroSurfaceView.backgroundColor = UIColor.clearColor;
+    heroSurfaceView.backgroundColor = AppClearClr;
     heroSurfaceView.clipsToBounds = NO;
     [heroShadowView addSubview:heroSurfaceView];
     self.heroSurfaceView = heroSurfaceView;
@@ -576,7 +570,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *badgeView = [UIView new];
     badgeView.translatesAutoresizingMaskIntoConstraints = NO;
-    badgeView.backgroundColor = UIColor.clearColor;
+    badgeView.backgroundColor = AppClearClr;
     [contentOverlay addSubview:badgeView];
     self.heroBadgeContainer = badgeView;
 
@@ -669,7 +663,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
     avatarShell.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     avatarShell.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
-    avatarShell.layer.shadowColor = [UIColor blackColor].CGColor;
+    avatarShell.layer.shadowColor = AppShadowColor.CGColor;
     avatarShell.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.085;
     avatarShell.layer.shadowRadius = 18.0;
     avatarShell.layer.shadowOffset = CGSizeMake(0.0, 12.0);
@@ -712,7 +706,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     avatarBadgeView.layer.cornerCurve = kCACornerCurveContinuous;
     avatarBadgeView.layer.borderWidth = 1.5;
     avatarBadgeView.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
-    avatarBadgeView.layer.shadowColor = [UIColor blackColor].CGColor;
+    avatarBadgeView.layer.shadowColor = AppShadowColor.CGColor;
     avatarBadgeView.layer.shadowOpacity = 0.12;
     avatarBadgeView.layer.shadowRadius = 12.0;
     avatarBadgeView.layer.shadowOffset = CGSizeMake(0.0, 8.0);
@@ -721,7 +715,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIImageView *avatarBadgeIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"]];
     avatarBadgeIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    avatarBadgeIcon.tintColor = UIColor.whiteColor;
+    avatarBadgeIcon.tintColor = PPOnPrimaryColor();
     avatarBadgeIcon.contentMode = UIViewContentModeScaleAspectFit;
     [avatarBadgeView addSubview:avatarBadgeIcon];
 
@@ -1012,7 +1006,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     [self.heroGlassBG reapplyPalette];
 
     self.heroShadowView.layer.shadowOpacity = dark ? 0.28 : 0.10;
-    self.heroShadowView.layer.shadowColor = UIColor.blackColor.CGColor;
+    self.heroShadowView.layer.shadowColor = AppShadowColor.CGColor;
     self.heroStatusDotView.backgroundColor = [accent colorWithAlphaComponent:0.94];
     self.heroAccessPill.backgroundColor = control;
     self.heroAccessPill.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
@@ -1327,14 +1321,12 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
                                       subtitleKey:@"SetPermissionsSubtitle"
                                          iconName:@"person.2.fill"]];
     }
-    /* Users section temporarily hidden
     if (userItems.count > 0) {
         [sections addObject:[self pp_sectionWithTitleKey:@"UsersSection"
                                           descriptionKey:@"AdminDashboard_Section_Users_Description"
                                                    items:userItems]];
         actionCount += userItems.count;
     }
-    */
 
     NSMutableArray<NSDictionary<NSString *, id> *> *mgmtItems = [NSMutableArray array];
     if ([self pp_canAccessAnyPermissions:@[kStaffPermStaffView, kStaffPermStaffManage, kStaffPermUsersView, kPermModeration, kPermAdminAll]]) {
@@ -1344,7 +1336,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
                                          iconName:@"person.3.sequence.fill"]];
     }
     if (mgmtItems.count > 0) {
-        [sections addObject:[self pp_sectionWithTitleKey:@"ManagementSection"
+        [sections addObject:[self pp_sectionWithTitleKey:@"Permissions_Title"
                                           descriptionKey:@"AdminDashboard_Section_Management_Description"
                                                    items:mgmtItems]];
         actionCount += mgmtItems.count;
@@ -1387,6 +1379,36 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
 
     if ([self pp_canAccessAnyPermissions:@[
+        kPermAdminAll,
+        kStaffPermBranchesView,
+        kStaffPermBranchesManage
+    ]]) {
+        NSArray *items = @[[self pp_itemWithTag:@"branches"
+                                       titleKey:@"Branches_Title"
+                                    subtitleKey:@"Branches_Subtitle"
+                                       iconName:@"building.2"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Branches_Title"
+                                          descriptionKey:@"Branches_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
+    }
+
+    if ([self pp_canAccessAnyPermissions:@[
+        kPermAdminAll,
+        kStaffPermAgentsView,
+        kStaffPermAgentsManage
+    ]]) {
+        NSArray *items = @[[self pp_itemWithTag:@"agents"
+                                       titleKey:@"Agents_Title"
+                                    subtitleKey:@"Agents_Subtitle"
+                                       iconName:@"person.text.rectangle"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Agents_Title"
+                                          descriptionKey:@"Agents_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
+    }
+
+    if ([self pp_canAccessAnyPermissions:@[
         kPermManageServices,
         kPermAdminAll,
         kStaffPermServicesView,
@@ -1421,18 +1443,69 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
 
     if ([self pp_canAccessAnyPermissions:@[
-        kPermPostAds,
         kPermAdminAll,
-        kStaffPermBannersManage
+        kStaffPermCategoriesView,
+        kStaffPermCategoriesManage
     ]]) {
-        NSArray *items = @[[self pp_itemWithTag:@"banners"
-                                       titleKey:@"Banners_Manage_Title"
-                                    subtitleKey:@"Banners_Manage_Subtitle"
-                                       iconName:@"square.3.layers.3d.middle.filled"]];
-        [sections addObject:[self pp_sectionWithTitleKey:@"BannerSection"
-                                          descriptionKey:@"AdminDashboard_Section_Banners_Description"
+        NSArray *items = @[[self pp_itemWithTag:@"categories"
+                                       titleKey:@"Categories_Title"
+                                    subtitleKey:@"Categories_Subtitle"
+                                       iconName:@"square.grid.2x2"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Categories_Title"
+                                          descriptionKey:@"Categories_Subtitle"
                                                    items:items]];
         actionCount += items.count;
+    }
+
+    if ([self pp_canAccessAnyPermissions:@[
+        kPermAdminAll,
+        kStaffPermModerationView,
+        kStaffPermModerationManage,
+        kStaffPermListingsModerate
+    ]]) {
+        NSArray *items = @[[self pp_itemWithTag:@"moderation"
+                                        titleKey:@"Moderation_Title"
+                                     subtitleKey:@"Moderation_Subtitle"
+                                        iconName:@"shield.lefthalf.filled"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Staff_Module_Moderation"
+                                          descriptionKey:@"Moderation_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
+    }
+
+    if ([self pp_canAccessAnyPermissions:@[
+        kPermPostAds,
+        kPermAdminAll,
+        kStaffPermBannersManage,
+        kStaffPermListingsView,
+        kStaffPermListingsManage,
+        kStaffPermListingsModerate
+    ]]) {
+        NSMutableArray *listingItems = [NSMutableArray array];
+        if ([self pp_canAccessAnyPermissions:@[
+            kStaffPermListingsView,
+            kStaffPermListingsManage,
+            kStaffPermListingsModerate
+        ]]) {
+            [listingItems addObject:[self pp_itemWithTag:@"listings"
+                                               titleKey:@"Staff_Module_Listings"
+                                            subtitleKey:@"ListingsAdmin_Dashboard_Subtitle"
+                                               iconName:@"list.bullet.clipboard"]];
+        }
+        if ([self pp_canAccessAnyPermissions:@[
+            kStaffPermBannersManage
+        ]]) {
+            [listingItems addObject:[self pp_itemWithTag:@"banners"
+                                               titleKey:@"Staff_Module_Banners"
+                                            subtitleKey:@"Banners_Manage_Subtitle"
+                                               iconName:@"square.3.layers.3d.middle.filled"]];
+        }
+        if (listingItems.count > 0) {
+            [sections addObject:[self pp_sectionWithTitleKey:@"Staff_Module_Listings"
+                                              descriptionKey:@"AdminDashboard_Section_Banners_Description"
+                                                       items:listingItems.copy]];
+            actionCount += listingItems.count;
+        }
     }
 
     NSMutableArray<NSDictionary<NSString *, id> *> *paymentItems = [NSMutableArray array];
@@ -1511,30 +1584,45 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         actionCount += notificationItems.count;
     }
 
-    NSMutableArray<NSDictionary<NSString *, id> *> *featureItems = [NSMutableArray array];
-    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermDashboardView]]) {
-        [featureItems addObject:[self pp_itemWithTag:@"homeControl"
-                                            titleKey:@"HomeControl_Title"
-                                         subtitleKey:@"HomeControl_Subtitle"
-                                            iconName:@"switch.radio"]];
+    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermSettingsView, kStaffPermSettingsManage]]) {
+        NSArray *items = @[[self pp_itemWithTag:@"homeControl"
+                                       titleKey:@"HomeControl_Title"
+                                    subtitleKey:@"HomeControl_Subtitle"
+                                       iconName:@"switch.radio"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"HomeControl_Title"
+                                          descriptionKey:@"HomeControl_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
     }
     if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
-        [featureItems addObject:[self pp_itemWithTag:@"fulfillment"
-                                            titleKey:@"Fulfillment_Title"
-                                         subtitleKey:@"Fulfillment_Subtitle"
-                                            iconName:@"shippingbox"]];
+        NSArray *items = @[[self pp_itemWithTag:@"fulfillment"
+                                       titleKey:@"Fulfillment_Title"
+                                    subtitleKey:@"Fulfillment_Subtitle"
+                                       iconName:@"shippingbox"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Fulfillment_Title"
+                                          descriptionKey:@"Fulfillment_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
     }
     if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
-        [featureItems addObject:[self pp_itemWithTag:@"delivery"
-                                            titleKey:@"Delivery_Title"
-                                         subtitleKey:@"Delivery_Subtitle"
-                                            iconName:@"truck"]];
+        NSArray *items = @[[self pp_itemWithTag:@"delivery"
+                                       titleKey:@"Delivery_Title"
+                                    subtitleKey:@"Delivery_Subtitle"
+                                       iconName:@"truck"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Delivery_Title"
+                                          descriptionKey:@"Delivery_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
     }
     if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermAccountingView, kStaffPermAccountingManage]]) {
-        [featureItems addObject:[self pp_itemWithTag:@"accounting"
-                                            titleKey:@"Accounting_Title"
-                                         subtitleKey:@"Accounting_Subtitle"
-                                            iconName:@"dollarsign.circle"]];
+        NSArray *items = @[[self pp_itemWithTag:@"accounting"
+                                       titleKey:@"Accounting_Title"
+                                    subtitleKey:@"Accounting_Subtitle"
+                                       iconName:@"dollarsign.circle"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Accounting_Title"
+                                          descriptionKey:@"Accounting_Subtitle"
+                                                   items:items]];
+        actionCount += items.count;
     }
     NSMutableArray<NSDictionary<NSString *, id> *> *providerItems = [NSMutableArray array];
     if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermProvidersView, kStaffPermProvidersManage]]) {
@@ -1554,12 +1642,6 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
                                             titleKey:@"Providers_Accounting_Title"
                                          subtitleKey:@"Providers_Accounting_Subtitle"
                                             iconName:@"chart.pie"]];
-    }
-    if (featureItems.count > 0) {
-        [sections addObject:[self pp_sectionWithTitleKey:@"AdminDashboard_Section_Features"
-                                          descriptionKey:@"AdminDashboard_Section_Features_Description"
-                                                   items:featureItems]];
-        actionCount += featureItems.count;
     }
     if (providerItems.count > 0) {
         [sections addObject:[self pp_sectionWithTitleKey:@"Providers_Section_Title"
@@ -1590,18 +1672,13 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         actionCount += posItems.count;
     }
 
-    if ([self pp_canAccessAnyPermissions:@[
-        kStaffPermDashboardView,
-        kStaffPermSettingsView,
-        kStaffPermSettingsManage,
-        kPermAdminAll
-    ]]) {
-        NSArray *items = @[[self pp_itemWithTag:@"adminWebApp"
-                                       titleKey:@"AdminWebApp_Row_Title"
-                                    subtitleKey:@"AdminWebApp_Row_Subtitle"
-                                       iconName:@"safari"]];
-        [sections addObject:[self pp_sectionWithTitleKey:@"AdminWebApp_Section_Title"
-                                          descriptionKey:@"AdminDashboard_Section_Web_Description"
+    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermAuditView]]) {
+        NSArray *items = @[[self pp_itemWithTag:@"audit"
+                                        titleKey:@"Audit_Title"
+                                     subtitleKey:@"Staff_Module_Audit"
+                                        iconName:@"doc.text.magnifyingglass"]];
+        [sections addObject:[self pp_sectionWithTitleKey:@"Staff_Module_Audit"
+                                          descriptionKey:@"AdminDashboard_Section_Audit_Description"
                                                    items:items]];
         actionCount += items.count;
     }
@@ -1650,7 +1727,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         @"icon": icon ?: [UIImage new],
         @"title": itemInfo[kPPDashboardItemTitleKey] ?: @"",
         @"subtitle": itemInfo[kPPDashboardItemSubtitleKey] ?: @"",
-        @"tint": itemInfo[kPPDashboardItemTintKey] ?: (AppPrimaryClr ?: UIColor.systemGreenColor)
+        @"tint": itemInfo[kPPDashboardItemTintKey] ?: AppPrimaryClr
     };
 
     __weak typeof(self) weakSelf = self;
@@ -1682,7 +1759,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
 - (UIViewController *)pp_viewControllerForDashboardTag:(NSString *)tag {
     if ([tag isEqualToString:@"usersList"]) {
-        return [[SetUserPermissionViewController alloc] initWithViewFor:ViewForEditAccount];
+        return [[UsersListVC alloc] initWithViewFor:ViewForEditAccount];
     }
     if ([tag isEqualToString:@"staffManagement"]) {
         return [PPStaffManagementViewController new];
@@ -1691,7 +1768,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return [BlockUserViewController new];
     }
     if ([tag isEqualToString:@"usersRolePermissions"]) {
-        return [[SetUserPermissionViewController alloc] initWithViewFor:ViewForEditRoleAndPermissions];
+        return [[UsersListVC alloc] initWithViewFor:ViewForEditRoleAndPermissions];
     }
     if ([tag isEqualToString:@"accessories"]) {
         return [[AccessoriesListViewController alloc] initWithKind:AccessTypeAccessory];
@@ -1707,6 +1784,21 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     }
     if ([tag isEqualToString:@"vets"]) {
         return [PPVetsListViewController new];
+    }
+    if ([tag isEqualToString:@"branches"]) {
+        return [PPBranchesViewController new];
+    }
+    if ([tag isEqualToString:@"agents"]) {
+        return [PPAgentsViewController new];
+    }
+    if ([tag isEqualToString:@"categories"]) {
+        return [PPCategoriesViewController new];
+    }
+    if ([tag isEqualToString:@"moderation"]) {
+        return [PPContentModerationViewController new];
+    }
+    if ([tag isEqualToString:@"listings"]) {
+        return [PPListingsAdminViewController new];
     }
     if ([tag isEqualToString:@"banners"]) {
         return [PPBannersListVC new];
@@ -1759,6 +1851,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     if ([tag isEqualToString:@"posHistory"]) {
         return [PPPOSHistoryViewController new];
     }
+    if ([tag isEqualToString:@"audit"]) {
+        return [PPAuditLogViewController new];
+    }
     return nil;
 }
 
@@ -1767,7 +1862,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return;
     }
 
-    UIViewController *editor = [SetUserPermissionsRolesViewController accountEditorForUser:UsrMgr.currentUser];
+    UIViewController *editor = [UserManagementController accountEditorForUser:UsrMgr.currentUser];
     [self.navigationController pushViewController:editor animated:YES];
 }
 
@@ -1786,12 +1881,12 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIView *loadingView = [UIView new];
     loadingView.translatesAutoresizingMaskIntoConstraints = NO;
-    loadingView.backgroundColor = [UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:UIAccessibilityIsReduceTransparencyEnabled() ? 1.0 : 0.92];
+    loadingView.backgroundColor = [AppBackgroundClrShiner colorWithAlphaComponent:UIAccessibilityIsReduceTransparencyEnabled() ? 1.0 : 0.92];
     loadingView.layer.cornerRadius = 24.0;
     loadingView.layer.cornerCurve = kCACornerCurveContinuous;
     loadingView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    loadingView.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.24].CGColor;
-    loadingView.layer.shadowColor = [UIColor blackColor].CGColor;
+    loadingView.layer.borderColor = [PPHairlineColor() colorWithAlphaComponent:0.24].CGColor;
+    loadingView.layer.shadowColor = AppShadowColor.CGColor;
     loadingView.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.08;
     loadingView.layer.shadowRadius = 20.0;
     loadingView.layer.shadowOffset = CGSizeMake(0.0, 12.0);
@@ -1803,7 +1898,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
     UIActivityIndicatorView *indicator = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     indicator.translatesAutoresizingMaskIntoConstraints = NO;
-    indicator.color = AppPrimaryClr ?: UIColor.systemGreenColor;
+    indicator.color = AppPrimaryClr;
     [loadingView addSubview:indicator];
     self.dashboardLoadingIndicator = indicator;
 
@@ -1977,10 +2072,10 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     XLFormSectionDescriptor *sectionDescriptor = self.form.formSections[section];
 
     UIView *container = [UIView new];
-    container.backgroundColor = UIColor.clearColor;
+    container.backgroundColor = AppClearClr;
     container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIColor *sectionTint = AppPrimaryClr ?: UIColor.systemGreenColor;
+    UIColor *sectionTint = AppPrimaryClr;
     XLFormRowDescriptor *firstRow = sectionDescriptor.formRows.firstObject;
     NSDictionary *firstValue = [firstRow.value isKindOfClass:NSDictionary.class] ? (NSDictionary *)firstRow.value : nil;
     if ([firstValue[@"tint"] isKindOfClass:UIColor.class]) {
@@ -2035,13 +2130,13 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 
 - (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section {
     UIView *footer = [UIView new];
-    footer.backgroundColor = UIColor.clearColor;
+    footer.backgroundColor = AppClearClr;
     return footer;
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    cell.backgroundColor = UIColor.clearColor;
-    cell.contentView.backgroundColor = UIColor.clearColor;
+    cell.backgroundColor = AppClearClr;
+    cell.contentView.backgroundColor = AppClearClr;
     NSString *tag = nil;
     if ([cell isKindOfClass:XLFormBaseCell.class]) {
         tag = ((XLFormBaseCell *)cell).rowDescriptor.tag;
@@ -2072,8 +2167,8 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         self.view.backgroundColor = PPAdminDashboardCanvasColor(self.traitCollection);
         [self.dashboardBackdropView refreshPalette];
         [self pp_refreshHeroPalette];
-        self.dashboardLoadingView.backgroundColor = [UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:UIAccessibilityIsReduceTransparencyEnabled() ? 1.0 : 0.92];
-        self.dashboardLoadingView.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.24].CGColor;
+        self.dashboardLoadingView.backgroundColor = [AppBackgroundClrShiner colorWithAlphaComponent:UIAccessibilityIsReduceTransparencyEnabled() ? 1.0 : 0.92];
+        self.dashboardLoadingView.layer.borderColor = [PPHairlineColor() colorWithAlphaComponent:0.24].CGColor;
         self.dashboardLoadingView.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.08;
     }
     if (contentSizeChanged) {

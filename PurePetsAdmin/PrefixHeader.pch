@@ -35,7 +35,7 @@
 #import "SSZipArchive.h"
 #import <objc/runtime.h>
 
-#import "JGProgressHUD.h"
+
 #import "CLImageEditor.h"
 #import "PPMediaPickerDemoVC.h"
 // ===== App-wide Headers =====
@@ -43,6 +43,7 @@
 #import "AppManager.h"
 #import "Styling.h"
 #import "PPDesignTokens.h"
+#import "PurePetsColorPattle.h"
 #import "PPThemeRefresh.h"
 #import "UIView.h"
 #import "UIImageView.h"
@@ -52,7 +53,10 @@
 #import "AlertHelper.h"
 
 
-
+@import Firebase;
+@import FirebaseAuth;
+@import FirebaseMessaging;
+@import FirebaseAuth;
 
 @class PodsDummy_ShowTime;
 // ===== Admin Dashboard =====
@@ -62,7 +66,7 @@
 #import "AddUserViewController.h"
 #import "AdminLoginViewController.h"
 #import "UserManager+Refs.h"
-#import "SetUserPermissionsRolesViewController.h"
+#import "UserManagementController.h"
 #import "PPNavigationController.h"
 
 // ===== PP NavBar Hider =====
@@ -91,7 +95,7 @@
 #import "BlockUserViewController.h"
 // Old XLFormXHPhotoCell removed — replaced by PPImageCollectionRow
 #import "UIViewController+PVCMotal.h"
-#import "SetUserPermissionViewController.h"
+#import "UsersListVC.h"
 #import "TOCropViewController.h"
 
 
@@ -187,22 +191,22 @@
 //#define kLang(key) NSLocalizedString((key), nil)
 
 // ===== Colors =====
-#define AppBackgroundClrShiner         [UIColor colorNamed:@"AppBackgroundClrShiner"]                                                 // Main brand color
-#define AppBackgroundClrDarker         [UIColor colorNamed:@"AppBackgroundClrDarker"]
-#define AppPrimaryClr                   [UIColor colorNamed:@"AppPrimaryClr"]                                                 // Main brand color
-#define AppPrimaryClrDarker              [UIColor colorNamed:@"AppPrimaryClrDarker"]                                           // Main brand color Darker
-#define AppPrimaryClrShiner               [UIColor colorNamed:@"AppPrimaryClrShiner"]                                           // Main brand color Shiner
-#define AppSecondaryClr                   [UIColor systemTealColor]                                                             // Accent / secondary
-#define AppBackgroundClr                [UIColor colorNamed:@"AppBackgroundClr"]                                              // Background
-#define PrimaryTextClr                [UIColor colorNamed:@"PrimaryTextClr"]                                                // Text color
-#define SeconderyTextClr                  [UIColor colorNamed:@"SeconderyTextClr"]                                              // Secondary text color
-#define AppForgroundColr                   [UIColor colorNamed:@"AppForgroundColr"]                                              // Custom Foreground
-#define AppShadowColor                [UIColor blackColor]                                                                  // Accent / secondary
-#define AppShadowClr                  AppShadowColor                                                                        // Alias for iOS compat
-#define AppPrimaryTextClr             PrimaryTextClr                                                                        // Alias for iOS compat
-#define AppClearClr                [UIColor clearColor]                                                                  // Accent / secondary
-#define AppPrimaryClr_CG              [UIColor colorNamed:@"AppPrimaryClr"].CGColor                                         // Main brand color
-#define AppPrimaryClrWithAlpha(alpha)         [[UIColor colorNamed:@"AppPrimaryClr"] colorWithAlphaComponent:alpha]
+#define AppBackgroundClrShiner         PPElevatedSurfaceColor()
+#define AppBackgroundClrDarker         PPDisabledFillColor()
+#define AppPrimaryClr                  PPPrimaryColor()
+#define AppPrimaryClrDarker            PPPrimaryPressedColor()
+#define AppPrimaryClrShiner            PPPrimaryContainerColor()
+#define AppSecondaryClr                PPSecondaryAccentColor()
+#define AppBackgroundClr               PPBackgroundColor()
+#define PrimaryTextClr                 PPTextPrimaryColor()
+#define SeconderyTextClr               PPTextSecondaryColor()
+#define AppForgroundColr               PPSurfaceColor()
+#define AppShadowColor                 PPDeepCharcoalColor()
+#define AppShadowClr                   AppShadowColor
+#define AppPrimaryTextClr              PrimaryTextClr
+#define AppClearClr                    PPColorFromRGB(0x000000, 0.0)
+#define AppPrimaryClr_CG               AppPrimaryClr.CGColor
+#define AppPrimaryClrWithAlpha(alpha)  [AppPrimaryClr colorWithAlphaComponent:(alpha)]
 
 // Heights are dynamic — compute them when you need them.
 // Call after the view is on screen (e.g. viewDidLayoutSubviews / viewDidAppear).
@@ -482,8 +486,8 @@ static NSString * const XLFormRowDescriptorTypePPXHImage = @"XLFormRowPPXHImage"
 // RTL helper (matches iOS PPIsRL)
 #define PPIsRL (UIApplication.sharedApplication.userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionRightToLeft)
 
-// Missing color variant (matches iOS)
-#define AppBackgroundClrLigter [UIColor colorNamed:@"AppBackgroundColorLigter"]
+// Legacy spelling retained for compatibility; now resolved by the shared palette.
+#define AppBackgroundClrLigter PPElevatedSurfaceColor()
 
 #endif /* PPMacros_h */
 

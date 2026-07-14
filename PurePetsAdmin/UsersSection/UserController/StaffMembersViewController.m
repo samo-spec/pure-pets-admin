@@ -439,12 +439,14 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
 - (void)pp_installHeaderViewForWidth:(CGFloat)width withText:(NSString *)text {
     CGFloat horizontalInset = width > 800.0 ? 28.0 : 18.0;
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 214.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 228.0)];
     header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(horizontalInset, 8.0, width - (horizontalInset * 2.0), 194.0)];
+    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(horizontalInset, 8.0, width - (horizontalInset * 2.0), 208.0)];
     card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     card.backgroundColor = UIColor.clearColor;
+    card.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:card];
 
     PPHero *glassBG = [PPHero new];
@@ -453,7 +455,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     [card addSubview:glassBG];
     self.heroGlassBG = glassBG;
 
-    UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 94.0, 22.0, 72.0, 72.0)];
+    UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 94.0, 28.0, 72.0, 72.0)];
     countShell.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
     countShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.1];
     countShell.layer.cornerRadius = 24.0;
@@ -475,7 +477,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     self.heroTotalLabel.text = @"/ 0";
     [countShell addSubview:self.heroTotalLabel];
 
-    UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(22.0, 24.0, 52.0, 52.0)];
+    UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(22.0, 32.0, 52.0, 52.0)];
     iconShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.12];
     iconShell.layer.cornerRadius = 18.0;
     [card addSubview:iconShell];
@@ -487,15 +489,20 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     [iconShell addSubview:iconView];
 
-    CGFloat textWidth = CGRectGetMinX(countShell.frame) - CGRectGetMaxX(iconShell.frame) - 26.0;
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(CGRectGetMaxX(iconShell.frame) + 14.0, 26.0, textWidth, 28.0)];
+    CGFloat textLeading = CGRectGetMaxX(iconShell.frame) + 16.0;
+    CGFloat textTrailingPadding = 14.0;
+    CGFloat textWidth = MAX(120.0, CGRectGetMinX(countShell.frame) - textLeading - textTrailingPadding);
+    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, 34.0, textWidth, 32.0)];
     titleLabel.font = [Styling fontBold:24];
     titleLabel.textColor = PPStaffMembersPrimaryTextColor();
     titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    titleLabel.numberOfLines = 1;
+    titleLabel.adjustsFontSizeToFitWidth = YES;
+    titleLabel.minimumScaleFactor = 0.78;
     titleLabel.text = kLang(@"StaffMembers_Title");
     [card addSubview:titleLabel];
 
-    UILabel *subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(titleLabel.frame.origin.x, CGRectGetMaxY(titleLabel.frame) + 8.0, CGRectGetWidth(card.bounds) - titleLabel.frame.origin.x - 22.0, 38.0)];
+    UILabel *subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, CGRectGetMaxY(titleLabel.frame) + 10.0, textWidth, 40.0)];
     subtitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
     subtitleLabel.font = [Styling fontRegular:14];
     subtitleLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.9];
@@ -504,7 +511,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     subtitleLabel.text = kLang(@"EditUsersRolePerms_List_Subtitle");
     [card addSubview:subtitleLabel];
 
-    self.searchView = [[PPS alloc] initWithFrame:CGRectMake(18.0, CGRectGetHeight(card.bounds) - 68.0, CGRectGetWidth(card.bounds) - 36.0, 50.0)];
+    self.searchView = [[PPS alloc] initWithFrame:CGRectMake(18.0, CGRectGetHeight(card.bounds) - 70.0, CGRectGetWidth(card.bounds) - 36.0, 50.0)];
     self.searchView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
     self.searchView.delegate = self;
     self.searchView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];

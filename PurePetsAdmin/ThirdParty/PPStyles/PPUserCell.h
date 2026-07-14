@@ -25,6 +25,7 @@ typedef NS_ENUM(NSInteger, ViewFor) {
 
 @interface PPUserCell : UITableViewCell
 
+@property (nonatomic, strong) UIView *surfaceView;
 @property (nonatomic, strong) UIImageView *avatarImageView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;

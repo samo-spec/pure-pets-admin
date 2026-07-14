@@ -7,7 +7,7 @@
 
 
 #import "ImageViewerController.h"
-#import "JGProgressHUD.h"
+ 
 #import <SDWebImage/UIImageView+WebCache.h>
 
 @interface ImageViewerController () <UIScrollViewDelegate>
@@ -177,14 +177,14 @@
         // Load image depending on source type
         if (self.sourceType == ImageViewerSourceTypeURLs) {
             NSString *urlString = self.items[i];
-            JGProgressHUD *hud = [JGProgressHUD progressHUDWithStyle:JGProgressHUDStyleDark];
-            [hud showInView:imageView];
+           // JGProgressHUD *hud = [JGProgressHUD progressHUDWithStyle:JGProgressHUDStyleDark];
+            [PPHUD showRingIn:imageView title:@""];
             
             [imageView sd_setImageWithURL:[NSURL URLWithString:urlString]
                           placeholderImage:[UIImage imageNamed:@"placeholder"]
                                  completed:^(UIImage * _Nullable image, NSError * _Nullable error, SDImageCacheType cacheType, NSURL * _Nullable imageURL) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [hud dismiss];
+                    [PPHUD dismiss];
                     if (image) {
                         [self.images addObject:image];
                         imageView.image = image;

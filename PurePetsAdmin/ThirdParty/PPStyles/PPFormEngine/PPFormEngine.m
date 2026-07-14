@@ -35,7 +35,7 @@ static NSTextAlignment PPFormEngineTextAlignment(void) {
 
     style.cardBackgroundColor = UIColor.whiteColor;
     style.fieldBackgroundColor = [[UIColor colorWithWhite:0.96 alpha:1.0] colorWithAlphaComponent:0.42];
-    style.accentColor = UIColor.systemTealColor;
+    style.accentColor = AppPrimaryClr;
     style.primaryTextColor = [UIColor colorWithWhite:0.08 alpha:1.0];
     style.secondaryTextColor = [UIColor colorWithWhite:0.43 alpha:1.0];
     style.errorColor = UIColor.systemRedColor;
@@ -43,15 +43,15 @@ static NSTextAlignment PPFormEngineTextAlignment(void) {
     style.fieldBorderColor = [UIColor.systemTealColor colorWithAlphaComponent:0.09];
     style.shadowColor = UIColor.blackColor;
 
-    style.titleFont = [UIFont systemFontOfSize:11.5 weight:UIFontWeightBold];
-    style.inputFont = [UIFont systemFontOfSize:15.0 weight:UIFontWeightMedium];
-    style.placeholderFont = [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium];
-    style.errorFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
-    style.attachmentTitleFont = [UIFont systemFontOfSize:12.5 weight:UIFontWeightBold];
-    style.attachmentSubtitleFont = [UIFont systemFontOfSize:11.0 weight:UIFontWeightMedium];
+    style.titleFont = [Styling fontBold:12.5];
+    style.inputFont = [Styling fontMedium:12.5];
+    style.placeholderFont = [Styling fontRegular:14];
+    style.errorFont =  [Styling fontMedium:11.5];
+    style.attachmentTitleFont = [Styling fontBold:12.5];
+    style.attachmentSubtitleFont =  [Styling fontMedium:11.5];
 
-    style.stackSpacing = 12.0;
-    style.cardCornerRadius = 20.0;
+    style.stackSpacing = 8.0;
+    style.cardCornerRadius = 18.0;
     style.fieldCornerRadius = 16.0;
     style.attachmentThumbCornerRadius = 14.0;
     style.cardBorderWidth = PPFormPixel();

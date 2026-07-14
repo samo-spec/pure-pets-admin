@@ -394,8 +394,7 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
 - (PPFormStyle *)pp_formStyle {
     PPFormStyle *style = [PPFormStyle defaultStyle];
     style.cardBackgroundColor = PPRoleEditorSurfaceColor();
-    style.fieldBackgroundColor = [PPRoleEditorBackgroundColor() colorWithAlphaComponent:0.62];
-    style.accentColor = PPRoleEditorPrimaryColor();
+     style.accentColor = PPRoleEditorPrimaryColor();
     style.primaryTextColor = PPRoleEditorPrimaryTextColor();
     style.secondaryTextColor = PPRoleEditorSecondaryTextColor();
     style.cardBorderColor = PPRoleEditorBorderColor();

@@ -246,8 +246,7 @@ static UIColor *PPServiceAccentColor(void) {
 - (PPFormStyle *)pp_formStyle {
     PPFormStyle *style = [PPFormStyle defaultStyle];
     style.cardBackgroundColor = PPServiceSurfaceColor();
-    style.fieldBackgroundColor = [PPServiceAccentColor() colorWithAlphaComponent:0.05];
-    style.cardBorderColor = [PPServiceAccentColor() colorWithAlphaComponent:0.08];
+     style.cardBorderColor = [PPServiceAccentColor() colorWithAlphaComponent:0.08];
     style.fieldBorderColor = [PPServiceAccentColor() colorWithAlphaComponent:0.10];
     style.accentColor = PPServiceAccentColor();
     style.primaryTextColor = PrimaryTextClr ?: UIColor.labelColor;

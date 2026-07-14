@@ -15,13 +15,10 @@ target 'PurePetsAdmin' do
   
   
   pod 'SSZipArchive'
-  pod 'PopupDialog', '~> 1.1'
  
   pod 'ShowTime'
      
-  pod 'JGProgressHUD'
-  pod 'JDStatusBarNotification'
-  pod 'TOCropViewController'
+   pod 'TOCropViewController'
   
 end
 
@@ -33,8 +30,7 @@ post_install do |installer|
     '${PODS_ROOT}/HXPhotoPickerObjC/HXPhotoPicker/**',
     '${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController',
     '${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController/**',
-    '${PODS_ROOT}/JGProgressHUD/JGProgressHUD/JGProgressHUD/include',
-    '${PODS_ROOT}/YYKit/YYKit',
+     '${PODS_ROOT}/YYKit/YYKit',
     '${PODS_ROOT}/YYKit/YYKit/**',
     '${PODS_ROOT}/SSZipArchive/SSZipArchive',
     '${PODS_ROOT}/SSZipArchive/SSZipArchive/**',

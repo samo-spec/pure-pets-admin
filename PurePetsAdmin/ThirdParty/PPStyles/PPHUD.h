@@ -9,7 +9,7 @@
 //  PPHUD.h
 //  PurePetsAdmin
 //
-//  Lightweight global HUD wrapper around JGProgressHUD.
+//  Lightweight global UIKit HUD with native material, progress, and terminal states.
 //  Usage (anywhere):
 //    [PPHUD showIndeterminateIn:self.view title:kLang(@"Please wait") subtitle:nil];
 //    [PPHUD showRingIn:self.view title:kLang(@"Uploading…") subtitle:nil];
@@ -50,6 +50,11 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)showError:(nullable NSString *)title;
 + (void)showError:(nullable NSString *)title subtitle:(nullable NSString *)subtitle;
 + (void)showError:(nullable NSString *)title subtitle:(nullable NSString *)subtitle delay:(NSTimeInterval)delay;
+
+/// Show a neutral informational state and auto-dismiss (default 1.2s).
++ (void)showInfo:(nullable NSString *)title;
++ (void)showInfo:(nullable NSString *)title subtitle:(nullable NSString *)subtitle;
++ (void)showInfo:(nullable NSString *)title subtitle:(nullable NSString *)subtitle delay:(NSTimeInterval)delay;
 
 /// Dismiss if visible (safe to call anytime).
 + (void)dismiss;

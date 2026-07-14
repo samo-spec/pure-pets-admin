@@ -119,7 +119,8 @@
         // ✅ Correct type conversion
         self.LightenAmount = [snapshot.data[@"LightenAmount"] floatValue];
         self.professionalAngle = [snapshot.data[@"professionalAngle"] floatValue];
-        //NSLog(@"LightenAmount ----- >>>> %.2f", self.LightenAmount);
+        self.is_visible_in_user_app = [snapshot.data[@"is_visible_in_user_app"] boolValue];
+        if (snapshot.data[@"is_visible_in_user_app"] == nil) self.is_visible_in_user_app = YES;
         
         self.SubKindsArray = [[NSMutableArray<SubKindModel *> alloc] init];
         NSMutableDictionary *dic = snapshot.data[@"SubKindsArray"];
@@ -151,7 +152,8 @@
         // ✅ Correct type conversion
         self.LightenAmount = [data[@"LightenAmount"] floatValue];
         self.professionalAngle = [data[@"professionalAngle"] floatValue];
-        //NSLog(@"LightenAmount ----- >>>> %.2f", self.LightenAmount);
+        self.is_visible_in_user_app = [data[@"is_visible_in_user_app"] boolValue];
+        if (data[@"is_visible_in_user_app"] == nil) self.is_visible_in_user_app = YES;
         
         self.SubKindsArray = [[NSMutableArray<SubKindModel *> alloc] init];
         NSMutableDictionary *dic = data[@"SubKindsArray"];
@@ -196,6 +198,7 @@
     dict[@"KindImageUrl"] = self.KindImageUrl ?: @"";
     dict[@"LightenAmount"] = @(self.LightenAmount);
     dict[@"professionalAngle"] = @(self.professionalAngle);
+    dict[@"is_visible_in_user_app"] = @(self.is_visible_in_user_app);
     
     // Convert SubKindsArray to an array of dictionaries
     NSMutableArray *subKindsData = [NSMutableArray array];

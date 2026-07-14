@@ -11,6 +11,24 @@
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
     if (self = [super initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuseIdentifier ?: PPUserCell.reuseIdentifier]) {
         self.selectionStyle = UITableViewCellSelectionStyleNone;
+        self.backgroundColor = UIColor.clearColor;
+        self.contentView.backgroundColor = UIColor.clearColor;
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        self.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+        _surfaceView = [[UIView alloc] init];
+        _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
+        _surfaceView.backgroundColor = AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+        _surfaceView.layer.cornerRadius = 22.0;
+        _surfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        _surfaceView.layer.borderColor = [AppPrimaryClr colorWithAlphaComponent:0.07].CGColor;
+        _surfaceView.layer.shadowColor = UIColor.blackColor.CGColor;
+        _surfaceView.layer.shadowOpacity = 0.055;
+        _surfaceView.layer.shadowRadius = 14.0;
+        _surfaceView.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+        if (@available(iOS 13.0, *)) {
+            _surfaceView.layer.cornerCurve = kCACornerCurveContinuous;
+        }
 
         _avatarImageView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
         _avatarImageView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -59,24 +77,31 @@
         [_setAdminButton setImage:[UIImage systemImageNamed:@"key"] forState:UIControlStateNormal];
         [PPButtonHelper attachTapAnimationToButton:_setAdminButton style:PPButtonAnimationStyleGlow];
         
-        [self.contentView addSubview:_avatarImageView];
-        [self.contentView addSubview:_titleLabel];
-        [self.contentView addSubview:_verifiedBadge];
-        [self.contentView addSubview:_subtitleLabel];
-        [self.contentView addSubview:_statusPill];
-        [self.contentView addSubview:_actionButton];
-        [self.contentView addSubview:_setAdminButton];
+        [self.contentView addSubview:_surfaceView];
+        [_surfaceView addSubview:_avatarImageView];
+        [_surfaceView addSubview:_titleLabel];
+        [_surfaceView addSubview:_verifiedBadge];
+        [_surfaceView addSubview:_subtitleLabel];
+        [_surfaceView addSubview:_statusPill];
+        [_surfaceView addSubview:_actionButton];
+        [_surfaceView addSubview:_setAdminButton];
 
         CGFloat pad = 12.0;
 
         [NSLayoutConstraint activateConstraints:@[
-            [_avatarImageView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:pad],
-            [_avatarImageView.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
+            [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16.0],
+            [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16.0],
+            [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
+
+            [_avatarImageView.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:pad],
+            [_avatarImageView.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
             [_avatarImageView.widthAnchor constraintEqualToConstant:54],
             [_avatarImageView.heightAnchor constraintEqualToConstant:54],
 
             [_titleLabel.leadingAnchor constraintEqualToAnchor:_avatarImageView.trailingAnchor constant:12],
-            [_titleLabel.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:pad + 2],
+            [_titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_setAdminButton.leadingAnchor constant:-8],
+            [_titleLabel.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:pad + 2],
 
             [_verifiedBadge.leadingAnchor constraintEqualToAnchor:_titleLabel.trailingAnchor constant:4],
             [_verifiedBadge.centerYAnchor constraintEqualToAnchor:_titleLabel.centerYAnchor],
@@ -84,7 +109,7 @@
             [_verifiedBadge.heightAnchor constraintEqualToConstant:15],
 
             [_subtitleLabel.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-            [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_actionButton.leadingAnchor constant:-8],
+            [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_setAdminButton.leadingAnchor constant:-8],
             [_subtitleLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:2],
 
             [_statusPill.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
@@ -92,18 +117,50 @@
             [_statusPill.heightAnchor constraintEqualToConstant:20],
             [_statusPill.widthAnchor constraintGreaterThanOrEqualToConstant:60],
 
-            [_actionButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-pad],
-            [_actionButton.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_actionButton.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-pad],
+            [_actionButton.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
             [_actionButton.widthAnchor constraintEqualToConstant:36],
             [_actionButton.heightAnchor constraintEqualToConstant:36],
 
-            [_setAdminButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-pad],
-            [_setAdminButton.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_setAdminButton.trailingAnchor constraintEqualToAnchor:_actionButton.leadingAnchor constant:-8],
+            [_setAdminButton.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
             [_setAdminButton.widthAnchor constraintEqualToConstant:36],
             [_setAdminButton.heightAnchor constraintEqualToConstant:36]
         ]];
     }
     return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    self.surfaceView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.surfaceView.bounds
+                                                                   cornerRadius:self.surfaceView.layer.cornerRadius].CGPath;
+}
+
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    self.contentView.alpha = 1.0;
+    self.contentView.transform = CGAffineTransformIdentity;
+    self.surfaceView.alpha = 1.0;
+    self.surfaceView.transform = CGAffineTransformIdentity;
+    self.avatarImageView.image = [UIImage systemImageNamed:@"person.crop.circle.fill"];
+}
+
+- (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
+    [super setHighlighted:highlighted animated:animated];
+    CGFloat scale = highlighted ? 0.985 : 1.0;
+    [UIView animateWithDuration:0.16
+                          delay:0.0
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
+        self.surfaceView.transform = CGAffineTransformMakeScale(scale, scale);
+        self.surfaceView.alpha = highlighted ? 0.96 : 1.0;
+    } completion:nil];
+}
+
+- (void)configureWithUser:(UserModel *)user indexPath:(NSIndexPath *)indexPath
+{
+    [self configureWithUser:user indexPath:indexPath viewFor:ViewForDefault];
 }
 
 - (void)configureWithUser:(UserModel *)user
@@ -129,9 +186,11 @@
     // Buttons visibility per viewFor
     if (viewFor == ViewForAdminToggle) {
         self.setAdminButton.hidden = NO;
-        self.actionButton.hidden = NO;
-        // Adjust constraints if needed
+        self.actionButton.hidden = YES;
     } else if (viewFor == ViewForEditRoleAndPermissions || viewFor == ViewForEditAccount) {
+        self.setAdminButton.hidden = YES;
+        self.actionButton.hidden = NO;
+    } else if (viewFor == ViewForPicker) {
         self.setAdminButton.hidden = YES;
         self.actionButton.hidden = NO;
     } else {
@@ -165,10 +224,6 @@
         self.statusPill.backgroundColor = [UIColor systemGreenColor];
     }
     
-    // Add horizontal padding to pill
-    CGSize size = [self.statusPill sizeThatFits:CGSizeMake(CGFLOAT_MAX, 20)];
-    // Update width constraint if needed, or just let intrinsic content size work with margins if stack view was used.
-    // Since we used constraints, we can update the width constant or use content compression resistance.
 }
 
 
