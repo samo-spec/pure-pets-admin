@@ -199,6 +199,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 @property (nonatomic, strong) UILabel *heroCountLabel;
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, copy) NSString *errorMessage;
+@property (nonatomic, assign) BOOL isSizingHeader;
 @end
 
 @implementation PPDeliveryManagementViewController
@@ -343,27 +344,42 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 }
 
 - (void)pp_sizeHeaderToFit {
-    if (!self.headerContainer) return;
+    if (!self.headerContainer || self.isSizingHeader) return;
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
     if (width <= 0) return;
+
+    self.isSizingHeader = YES;
     CGRect frame = self.headerContainer.frame;
-    frame.size.width = width;
-    self.headerContainer.frame = frame;
+    BOOL widthChanged = ABS(CGRectGetWidth(frame) - width) > 0.5;
+    if (widthChanged) {
+        frame.size.width = width;
+        self.headerContainer.frame = frame;
+    }
     [self.headerContainer layoutIfNeeded];
     CGFloat height = [self.headerContainer systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                          withHorizontalFittingPriority:UILayoutPriorityRequired
                                                verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
-    frame.size.height = ceil(MAX(1.0, height));
-    self.headerContainer.frame = frame;
-    self.tableView.tableHeaderView = self.headerContainer;
+    CGFloat targetHeight = ceil(MAX(1.0, height));
+    BOOL heightChanged = ABS(CGRectGetHeight(self.headerContainer.frame) - targetHeight) > 0.5;
+    if (widthChanged || heightChanged) {
+        frame = self.headerContainer.frame;
+        frame.size.width = width;
+        frame.size.height = targetHeight;
+        self.headerContainer.frame = frame;
+        self.tableView.tableHeaderView = self.headerContainer;
+    }
+    self.isSizingHeader = NO;
 }
 
 - (void)pp_updateInsets {
     CGFloat tabHeight = self.tabBarController ? CGRectGetHeight(self.tabBarController.tabBar.bounds) : 0.0;
     UIEdgeInsets inset = self.tableView.contentInset;
-    inset.bottom = MAX(28.0, tabHeight + 34.0);
-    self.tableView.contentInset = inset;
-    self.tableView.scrollIndicatorInsets = inset;
+    CGFloat targetBottom = MAX(28.0, tabHeight + 34.0);
+    if (ABS(inset.bottom - targetBottom) > 0.5) {
+        inset.bottom = targetBottom;
+        self.tableView.contentInset = inset;
+        self.tableView.scrollIndicatorInsets = inset;
+    }
 }
 
 - (void)filterChanged:(UISegmentedControl *)sender {

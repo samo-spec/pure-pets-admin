@@ -27,4 +27,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+static inline void PPHapticTouch(void) {
+    [PPFunc pp_playTapEffect];
+}
+
+static inline void PPHapticSuccess(void) {
+    [PPFunc pp_playSuccessEffect];
+}
+
+static inline void PPHapticError(void) {
+    [PPFunc pp_playErrorEffect];
+}
+
 NS_ASSUME_NONNULL_END

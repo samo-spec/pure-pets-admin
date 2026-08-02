@@ -60,6 +60,52 @@ static NSString * const kPPDashboardItemSubtitleKey = @"subtitle";
 static NSString * const kPPDashboardItemIconKey = @"icon";
 static NSString * const kPPDashboardItemTintKey = @"tint";
 
+static NSInteger PPAdminDashboardSectionPriority(NSDictionary<NSString *, id> *sectionInfo) {
+    NSArray<NSDictionary<NSString *, id> *> *items = sectionInfo[kPPDashboardSectionItemsKey];
+    NSString *firstTag = items.firstObject[kPPDashboardItemTagKey];
+    if (firstTag.length == 0) return NSIntegerMax;
+
+    static NSDictionary<NSString *, NSNumber *> *priorityByTag;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        priorityByTag = @{
+            @"fulfillment": @0,
+            @"delivery": @1,
+            @"payments": @2,
+            @"paymentBasics": @2,
+            @"usersList": @3,
+            @"moderation": @4,
+            @"listings": @5,
+            @"banners": @5,
+            @"notificationsInbox": @6,
+            @"notificationsCompose": @6,
+            @"notificationSettings": @6,
+            @"accessories": @7,
+            @"food": @7,
+            @"livePets": @7,
+            @"pos": @8,
+            @"posHistory": @8,
+            @"providerApplications": @9,
+            @"providerPlans": @9,
+            @"providerFeatures": @9,
+            @"providerAccounting": @9,
+            @"accounting": @10,
+            @"services": @11,
+            @"vets": @12,
+            @"branches": @13,
+            @"agents": @14,
+            @"categories": @15,
+            @"homeControl": @16,
+            @"staffManagement": @17,
+            @"audit": @18,
+            @"editMyAccount": @19
+        };
+    });
+
+    NSNumber *priority = priorityByTag[firstTag];
+    return priority ? priority.integerValue : NSIntegerMax;
+}
+
 static UIColor *PPAdminDashboardCanvasColor(UITraitCollection *traits) {
     (void)traits;
     return AppBackgroundClr;
@@ -480,6 +526,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     [self pp_sizeTableHeaderToFit];
     [self pp_updateHeroGradientFrame];
     [self pp_applyHeaderMotionForOffset:self.tableView.contentOffset.y];
+    if (self.avatarBadgeView.superview) {
+        [self.avatarBadgeView.superview bringSubviewToFront:self.avatarBadgeView];
+    }
     if (!CGRectIsEmpty(self.heroShadowView.bounds)) {
         self.heroShadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.heroShadowView.bounds
                                                                           cornerRadius:32.0].CGPath;
@@ -696,6 +745,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     UIImageSymbolConfiguration *smallSymbol = [UIImageSymbolConfiguration configurationWithPointSize:11 weight:UIImageSymbolWeightSemibold];
     [editAvatarButton setImage:[UIImage systemImageNamed:@"pencil" withConfiguration:smallSymbol] forState:UIControlStateNormal];
     [editAvatarButton addTarget:self action:@selector(didTapAddProfilePhoto) forControlEvents:UIControlEventTouchUpInside];
+    editAvatarButton.hidden = YES;
+    editAvatarButton.userInteractionEnabled = NO;
+    editAvatarButton.isAccessibilityElement = NO;
     [avatarShell addSubview:editAvatarButton];
     self.heroAvatarEditButton = editAvatarButton;
 
@@ -710,6 +762,8 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     avatarBadgeView.layer.shadowOpacity = 0.12;
     avatarBadgeView.layer.shadowRadius = 12.0;
     avatarBadgeView.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    avatarBadgeView.userInteractionEnabled = NO;
+    avatarBadgeView.layer.zPosition = 40.0;
     [avatarShell addSubview:avatarBadgeView];
     self.avatarBadgeView = avatarBadgeView;
 
@@ -917,6 +971,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     ]];
 
     [heroSurfaceView bringSubviewToFront:contentOverlay];
+    [avatarShell bringSubviewToFront:avatarBadgeView];
 
     [avatarShell setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [avatarShell setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
@@ -1691,6 +1746,15 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
                                       descriptionKey:@"AdminDashboard_Section_Settings_Description"
                                                items:settingsItems]];
     actionCount += settingsItems.count;
+
+    [sections sortUsingComparator:^NSComparisonResult(NSDictionary<NSString *, id> *left,
+                                                      NSDictionary<NSString *, id> *right) {
+        NSInteger leftPriority = PPAdminDashboardSectionPriority(left);
+        NSInteger rightPriority = PPAdminDashboardSectionPriority(right);
+        if (leftPriority < rightPriority) return NSOrderedAscending;
+        if (leftPriority > rightPriority) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
 
     self.dashboardActionCount = actionCount;
     return sections.copy;

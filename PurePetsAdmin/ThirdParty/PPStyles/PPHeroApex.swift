@@ -129,7 +129,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
     private let auroraLayers = (0..<3).map { _ in CAGradientLayer() }
     private let particleLayers = (0..<3).map { _ in CAShapeLayer() }
     private let reactiveLightLayer = CAGradientLayer()
-    private let glassSheenLayer = CAGradientLayer()
     private let accentBarLayer = CAGradientLayer()
     private let accentGlowLayer = CAGradientLayer()
     private let innerStrokeLayer = CAShapeLayer()
@@ -149,7 +148,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
     private let auroraAnimationKey = "pp.hero.apex.aurora"
     private let particleAnimationKey = "pp.hero.apex.particle"
     private let reactiveLightAnimationKey = "pp.hero.apex.reactive-light"
-    private let sheenAnimationKey = "pp.hero.apex.sheen"
 
     // MARK: - Initialization
 
@@ -246,11 +244,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         reactiveLightLayer.drawsAsynchronously = true
         overlayView.layer.addSublayer(reactiveLightLayer)
 
-        glassSheenLayer.startPoint = CGPoint(x: 0, y: 0)
-        glassSheenLayer.endPoint = CGPoint(x: 1, y: 1)
-        glassSheenLayer.locations = [0, 0.28, 0.72, 1]
-        overlayView.layer.addSublayer(glassSheenLayer)
-
         accentGlowLayer.type = .radial
         accentGlowLayer.startPoint = CGPoint(x: 0.5, y: 0.5)
         accentGlowLayer.endPoint = CGPoint(x: 1, y: 1)
@@ -334,7 +327,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         depthGradientLayer.frame = materialBounds
         vignetteLayer.frame = materialBounds
         reactiveLightLayer.frame = overlayView.bounds
-        glassSheenLayer.frame = overlayView.bounds
 
         layoutAuroraLayers(in: ambientView.bounds)
         layoutParticleLayers(in: ambientView.bounds)
@@ -509,14 +501,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         ]
         setReactiveLightCenter(defaultReactiveLightCenter, animated: false)
 
-        glassSheenLayer.colors = [
-            UIColor.white.withAlphaComponent(isDark ? 0.13 : 0.28).cgColor,
-            UIColor.white.withAlphaComponent(isDark ? 0.035 : 0.075).cgColor,
-            UIColor.clear.cgColor,
-            UIColor.white.withAlphaComponent(isDark ? 0.02 : 0.035).cgColor
-        ]
-        glassSheenLayer.opacity = 0.72
-
         accentBarLayer.colors = [
             palette.accent.withAlphaComponent(0.38).cgColor,
             palette.accent.withAlphaComponent(0.82).cgColor,
@@ -673,7 +657,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         auroraLayers.forEach { $0.removeAnimation(forKey: auroraAnimationKey) }
         particleLayers.forEach { $0.removeAnimation(forKey: particleAnimationKey) }
         reactiveLightLayer.removeAnimation(forKey: reactiveLightAnimationKey)
-        glassSheenLayer.removeAnimation(forKey: sheenAnimationKey)
     }
 
     private func installAuroraAnimations() {
@@ -771,15 +754,6 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         reactiveBreath.calculationMode = .cubic
         reactiveBreath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         reactiveLightLayer.add(reactiveBreath, forKey: reactiveLightAnimationKey)
-
-        let sheenBreath = CAKeyframeAnimation(keyPath: "opacity")
-        sheenBreath.values = [0.60, 0.78, 0.66, 0.60]
-        sheenBreath.keyTimes = [0, 0.30, 0.72, 1]
-        sheenBreath.duration = 12.8
-        sheenBreath.repeatCount = .greatestFiniteMagnitude
-        sheenBreath.calculationMode = .cubic
-        sheenBreath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        glassSheenLayer.add(sheenBreath, forKey: sheenAnimationKey)
     }
 
     // MARK: - Responsive depth

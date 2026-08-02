@@ -8,7 +8,23 @@
 #import "PPDesignTokens.h"
 @import FirebaseFirestore;
 
-#pragma mark - Colors & Constants
+#pragma mark - Haptic Helpers
+/*
+ 
+ static inline void PPHapticTouch(void) {
+     [PPFunc pp_playTapEffect];
+ }
+
+ static inline void PPHapticSuccess(void) {
+     [PPFunc pp_playSuccessEffect];
+ }
+
+ static inline void PPHapticError(void) {
+     [PPFunc pp_playErrorEffect];
+ }
+
+ */
+#pragma mark - Colors & Helpers
 
 static inline UIColor *PPF_AccentColor(void) {
     return AppPrimaryClr ?: UIColor.systemPinkColor;
@@ -40,22 +56,38 @@ static inline UIColor *PPF_TertiaryInkColor(void) {
 }
 
 static inline UIColor *PPF_StatusColor(NSString *status) {
-    if ([status isEqualToString:@"completed"] || [status isEqualToString:@"accepted"]) return UIColor.systemGreenColor;
-    if ([status isEqualToString:@"rejected"] || [status isEqualToString:@"cancelled"]) return UIColor.systemRedColor;
-    if ([status isEqualToString:@"delivery_requested"] || [status isEqualToString:@"in_progress"]) return UIColor.systemBlueColor;
-    if ([status isEqualToString:@"preparing"]) return UIColor.systemOrangeColor;
-    return PPF_AccentColor();
+    NSString *s = [status.lowercaseString stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([s isEqualToString:@"completed"] || [s isEqualToString:@"ready_for_pickup"] || [s isEqualToString:@"accepted"]) {
+        return UIColor.systemGreenColor;
+    }
+    if ([s isEqualToString:@"rejected"] || [s isEqualToString:@"cancelled"] || [s isEqualToString:@"failed"] || [s isEqualToString:@"returned"]) {
+        return UIColor.systemRedColor;
+    }
+    if ([s isEqualToString:@"new_request"] || [s isEqualToString:@"preparing"] || [s isEqualToString:@"delivery_requested"] ||
+        [s isEqualToString:@"delivery_assigned"] || [s isEqualToString:@"awaiting_handover"] || [s isEqualToString:@"handed_over"] ||
+        [s isEqualToString:@"picked_up"] || [s isEqualToString:@"in_transit"] || [s isEqualToString:@"in_progress"]) {
+        return PPF_AccentColor();
+    }
+    return UIColor.systemGrayColor;
 }
 
 static inline NSString *PPF_StatusKey(NSString *status) {
     NSString *s = status ?: @"";
     if ([s isEqualToString:@"new_request"]) return @"Fulfillment_Status_NewRequest";
     if ([s isEqualToString:@"preparing"]) return @"Fulfillment_Status_Preparing";
+    if ([s isEqualToString:@"ready_for_pickup"]) return @"Fulfillment_Status_ReadyForPickup";
     if ([s isEqualToString:@"delivery_requested"]) return @"Fulfillment_Status_DeliveryRequested";
+    if ([s isEqualToString:@"delivery_assigned"]) return @"Fulfillment_Status_DeliveryAssigned";
+    if ([s isEqualToString:@"awaiting_handover"]) return @"Fulfillment_Status_AwaitingHandover";
+    if ([s isEqualToString:@"handed_over"]) return @"Fulfillment_Status_HandedOver";
+    if ([s isEqualToString:@"picked_up"]) return @"Fulfillment_Status_PickedUp";
+    if ([s isEqualToString:@"in_transit"]) return @"Fulfillment_Status_InTransit";
     if ([s isEqualToString:@"accepted"]) return @"Fulfillment_Status_Accepted";
     if ([s isEqualToString:@"rejected"]) return @"Fulfillment_Status_Rejected";
     if ([s isEqualToString:@"completed"]) return @"Fulfillment_Status_Completed";
     if ([s isEqualToString:@"cancelled"]) return @"Fulfillment_Status_Cancelled";
+    if ([s isEqualToString:@"failed"]) return @"Fulfillment_Status_Failed";
+    if ([s isEqualToString:@"returned"]) return @"Fulfillment_Status_Returned";
     if ([s isEqualToString:@"pending"]) return @"Fulfillment_Status_Pending";
     if ([s isEqualToString:@"in_progress"]) return @"Fulfillment_Status_InProgress";
     return @"Fulfillment_Status_Unknown";
@@ -66,11 +98,11 @@ static inline NSString *PPF_StatusText(NSString *status) {
     NSString *key = PPF_StatusKey(status);
     NSString *localized = kLang(key);
     if (localized.length > 0 && ![localized isEqualToString:key]) return localized;
-    return status;
+    return [status stringByReplacingOccurrencesOfString:@"_" withString:@" "].capitalizedString;
 }
 
 static inline NSString *PPF_DateString(NSDate *date) {
-    if (!date) return kLang(@"Fulfillment_Date_Unknown");
+    if (!date) return @"—";
     NSDateFormatter *f = [NSDateFormatter new];
     f.locale = [NSLocale localeWithLocaleIdentifier:[Language currentLanguageCode] ?: @"en"];
     f.dateStyle = NSDateFormatterMediumStyle;
@@ -78,35 +110,207 @@ static inline NSString *PPF_DateString(NSDate *date) {
     return [f stringFromDate:date];
 }
 
-static inline NSString *PPF_SafeString(id v) {
-    if ([v isKindOfClass:NSString.class]) return v;
-    if ([v respondsToSelector:@selector(stringValue)]) return [v stringValue];
-    return @"";
+static inline NSString *PPF_MoneyString(NSNumber *amount, NSString *currency) {
+    double val = amount ? amount.doubleValue : 0.0;
+    NSString *curr = currency.length ? currency : @"QAR";
+    NSNumberFormatter *f = [NSNumberFormatter new];
+    f.numberStyle = NSNumberFormatterCurrencyStyle;
+    f.currencyCode = curr;
+    f.maximumFractionDigits = 0;
+    f.locale = [NSLocale localeWithLocaleIdentifier:[Language currentLanguageCode] ?: @"en"];
+    return [f stringFromNumber:@(val)] ?: [NSString stringWithFormat:@"%.0f %@", val, curr];
+}
+
+static inline NSString *PPF_ShortId(NSString *value, NSUInteger length) {
+    if (!value || value.length == 0) return @"—";
+    if (value.length > length) {
+        return [NSString stringWithFormat:@"%@…", [value substringToIndex:length]];
+    }
+    return value;
+}
+
+static inline NSString *PPF_Initials(NSString *name) {
+    if (!name || name.length == 0) return @"PP";
+    NSArray *parts = [name componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    NSMutableArray *clean = [NSMutableArray array];
+    for (NSString *p in parts) {
+        if (p.length > 0) [clean addObject:p];
+    }
+    if (clean.count == 0) return @"PP";
+    if (clean.count == 1) return [[[clean[0] substringToIndex:1] uppercaseString] copy];
+    NSString *first = [clean[0] substringToIndex:1];
+    NSString *second = [clean[1] substringToIndex:1];
+    return [[NSString stringWithFormat:@"%@%@", first, second] uppercaseString];
 }
 
 static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     view.layer.cornerRadius = radius;
     if (@available(iOS 13.0, *)) view.layer.cornerCurve = kCACornerCurveContinuous;
     view.layer.shadowColor = UIColor.blackColor.CGColor;
-    view.layer.shadowOffset = CGSizeMake(0.0, 10.0);
-    view.layer.shadowRadius = 22.0;
-    view.layer.shadowOpacity = 0.052;
+    view.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    view.layer.shadowRadius = 18.0;
+    view.layer.shadowOpacity = 0.048;
     view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     view.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:0.62].CGColor;
 }
+
+#pragma mark - Custom UI Avatar View
+
+@interface PPF_AvatarView : UIView
+@property (nonatomic, strong) UILabel *initialsLabel;
+- (void)setName:(NSString *)name isLarge:(BOOL)isLarge;
+@end
+
+@implementation PPF_AvatarView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = [PPF_AccentColor() colorWithAlphaComponent:0.12];
+        self.clipsToBounds = YES;
+        
+        _initialsLabel = [UILabel new];
+        _initialsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _initialsLabel.font = [Styling fontBold:PPFontCaption1];
+        _initialsLabel.textColor = PPF_AccentColor();
+        _initialsLabel.textAlignment = NSTextAlignmentCenter;
+        [self addSubview:_initialsLabel];
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [_initialsLabel.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [_initialsLabel.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+        ]];
+    }
+    return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    self.layer.cornerRadius = CGRectGetHeight(self.bounds) / 2.0;
+}
+
+- (void)setName:(NSString *)name isLarge:(BOOL)isLarge {
+    self.initialsLabel.text = PPF_Initials(name);
+    self.initialsLabel.font = isLarge ? [Styling fontBold:PPFontSubheadline] : [Styling fontBold:PPFontCaption1];
+}
+
+@end
+
+#pragma mark - Custom Metrics Card View
+
+@interface PPF_MetricsCardView : UIView
+@property (nonatomic, strong) UILabel *activeCountLabel;
+@property (nonatomic, strong) UILabel *waitingCountLabel;
+@property (nonatomic, strong) UILabel *completedCountLabel;
+@property (nonatomic, strong) UILabel *providerNetLabel;
+- (void)updateWithActive:(NSInteger)active waiting:(NSInteger)waiting completed:(NSInteger)completed providerNet:(double)net currency:(NSString *)currency;
+@end
+
+@implementation PPF_MetricsCardView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.backgroundColor = PPF_SurfaceColor();
+        PPF_ApplyCardChrome(self, PPCornerCard);
+        
+        UIStackView *stack = [UIStackView new];
+        stack.translatesAutoresizingMaskIntoConstraints = NO;
+        stack.axis = UILayoutConstraintAxisHorizontal;
+        stack.distribution = UIStackViewDistributionFillEqually;
+        stack.alignment = UIStackViewAlignmentCenter;
+        stack.spacing = 8.0;
+        stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        [self addSubview:stack];
+        
+        _activeCountLabel = [UILabel new];
+        _waitingCountLabel = [UILabel new];
+        _completedCountLabel = [UILabel new];
+        _providerNetLabel = [UILabel new];
+        
+        [stack addArrangedSubview:[self buildBlockWithTitle:kLang(@"Fulfillment_Metric_Active") label:_activeCountLabel color:UIColor.systemBlueColor]];
+        [stack addArrangedSubview:[self buildBlockWithTitle:kLang(@"Fulfillment_Metric_Waiting") label:_waitingCountLabel color:UIColor.systemOrangeColor]];
+        [stack addArrangedSubview:[self buildBlockWithTitle:kLang(@"Fulfillment_Metric_Completed") label:_completedCountLabel color:UIColor.systemGreenColor]];
+        [stack addArrangedSubview:[self buildBlockWithTitle:kLang(@"Fulfillment_Metric_NetValue") label:_providerNetLabel color:PPF_AccentColor()]];
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [stack.topAnchor constraintEqualToAnchor:self.topAnchor constant:12.0],
+            [stack.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12.0],
+            [stack.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12.0],
+            [stack.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12.0],
+        ]];
+    }
+    return self;
+}
+
+- (UIView *)buildBlockWithTitle:(NSString *)title label:(UILabel *)label color:(UIColor *)color {
+    UIView *container = [UIView new];
+    container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UILabel *tLabel = [UILabel new];
+    tLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    tLabel.text = title;
+    tLabel.font = [Styling fontMedium:PPFontCaption2];
+    tLabel.textColor = PPF_SubInkColor();
+    tLabel.textAlignment = NSTextAlignmentCenter;
+    tLabel.adjustsFontSizeToFitWidth = YES;
+    tLabel.minimumScaleFactor = 0.75;
+    [container addSubview:tLabel];
+    
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [Styling fontBold:PPFontFootnote];
+    label.textColor = color;
+    label.textAlignment = NSTextAlignmentCenter;
+    label.adjustsFontSizeToFitWidth = YES;
+    label.minimumScaleFactor = 0.70;
+    [container addSubview:label];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [tLabel.topAnchor constraintEqualToAnchor:container.topAnchor],
+        [tLabel.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [tLabel.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        
+        [label.topAnchor constraintEqualToAnchor:tLabel.bottomAnchor constant:4.0],
+        [label.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [label.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [label.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
+    ]];
+    return container;
+}
+
+- (void)updateWithActive:(NSInteger)active waiting:(NSInteger)waiting completed:(NSInteger)completed providerNet:(double)net currency:(NSString *)currency {
+    self.activeCountLabel.text = [NSString stringWithFormat:@"%ld", (long)active];
+    self.waitingCountLabel.text = [NSString stringWithFormat:@"%ld", (long)waiting];
+    self.completedCountLabel.text = [NSString stringWithFormat:@"%ld", (long)completed];
+    self.providerNetLabel.text = PPF_MoneyString(@(net), currency);
+}
+
+@end
 
 #pragma mark - Cells
 
 @interface PPF_OrderCell : UITableViewCell
 @property (nonatomic, strong) UIView *cardView;
-@property (nonatomic, strong) UILabel *orderLabel;
-@property (nonatomic, strong) UILabel *detailLabel;
+@property (nonatomic, strong) PPF_AvatarView *customerAvatar;
+@property (nonatomic, strong) UILabel *customerNameLabel;
+@property (nonatomic, strong) UILabel *customerIdLabel;
+@property (nonatomic, strong) UIImageView *routeArrow;
+@property (nonatomic, strong) PPF_AvatarView *ownerAvatar;
+@property (nonatomic, strong) UILabel *ownerNameLabel;
+@property (nonatomic, strong) UILabel *ownerIdLabel;
+
 @property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) UIImageView *symbolView;
+@property (nonatomic, strong) UIView *statusDot;
+@property (nonatomic, strong) UILabel *subtotalLabel;
+@property (nonatomic, strong) UILabel *itemCountLabel;
+@property (nonatomic, strong) UILabel *orderRefLabel;
+@property (nonatomic, strong) UILabel *updatedAtLabel;
+
 @property (nonatomic, assign) BOOL hasAnimatedEntrance;
-- (void)configureWithRecord:(PPFulfillmentRecord *)record animated:(BOOL)animated;
-- (void)prepareForEntrance;
-- (void)runEntrance;
+- (void)configureWithRecord:(PPFulfillmentRecord *)record
+               customerName:(nullable NSString *)customerName
+                  ownerName:(nullable NSString *)ownerName
+                   animated:(BOOL)animated;
 @end
 
 @implementation PPF_OrderCell
@@ -125,83 +329,173 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         PPF_ApplyCardChrome(_cardView, PPCornerCard);
         [self.contentView addSubview:_cardView];
 
-        _symbolView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shippingbox.fill"]];
-        _symbolView.translatesAutoresizingMaskIntoConstraints = NO;
-        _symbolView.contentMode = UIViewContentModeCenter;
-        _symbolView.tintColor = PPF_AccentColor();
-        _symbolView.backgroundColor = [PPF_AccentColor() colorWithAlphaComponent:0.11];
-        _symbolView.layer.cornerRadius = 18.0;
-        if (@available(iOS 13.0, *)) _symbolView.layer.cornerCurve = kCACornerCurveContinuous;
-        _symbolView.clipsToBounds = YES;
-        [_cardView addSubview:_symbolView];
+        // Customer Person
+        _customerAvatar = [PPF_AvatarView new];
+        _customerAvatar.translatesAutoresizingMaskIntoConstraints = NO;
+        [_cardView addSubview:_customerAvatar];
 
-        _orderLabel = [UILabel new];
-        _orderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _orderLabel.font = [Styling fontBold:PPFontBody];
-        _orderLabel.textColor = PPF_InkColor();
-        _orderLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        _orderLabel.numberOfLines = 1;
-        _orderLabel.adjustsFontForContentSizeCategory = YES;
-        _orderLabel.adjustsFontSizeToFitWidth = YES;
-        _orderLabel.minimumScaleFactor = 0.76;
-        [_cardView addSubview:_orderLabel];
+        _customerNameLabel = [UILabel new];
+        _customerNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _customerNameLabel.font = [Styling fontBold:PPFontSubheadline];
+        _customerNameLabel.textColor = PPF_InkColor();
+        _customerNameLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        _customerNameLabel.adjustsFontSizeToFitWidth = YES;
+        _customerNameLabel.minimumScaleFactor = 0.8;
+        [_cardView addSubview:_customerNameLabel];
 
-        _detailLabel = [UILabel new];
-        _detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _detailLabel.font = [Styling fontRegular:PPFontFootnote];
-        _detailLabel.textColor = PPF_SubInkColor();
-        _detailLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        _detailLabel.numberOfLines = 2;
-        _detailLabel.adjustsFontForContentSizeCategory = YES;
-        [_cardView addSubview:_detailLabel];
+        _customerIdLabel = [UILabel new];
+        _customerIdLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _customerIdLabel.font = [Styling fontRegular:PPFontCaption2];
+        _customerIdLabel.textColor = PPF_TertiaryInkColor();
+        _customerIdLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_customerIdLabel];
 
+        // Route arrow icon
+        _routeArrow = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.right"]];
+        _routeArrow.translatesAutoresizingMaskIntoConstraints = NO;
+        _routeArrow.tintColor = PPF_TertiaryInkColor();
+        _routeArrow.contentMode = UIViewContentModeScaleAspectFit;
+        if ([Language isRTL]) {
+            _routeArrow.transform = CGAffineTransformMakeScale(-1.0, 1.0);
+        }
+        [_cardView addSubview:_routeArrow];
+
+        // Owner Person
+        _ownerAvatar = [PPF_AvatarView new];
+        _ownerAvatar.translatesAutoresizingMaskIntoConstraints = NO;
+        [_cardView addSubview:_ownerAvatar];
+
+        _ownerNameLabel = [UILabel new];
+        _ownerNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _ownerNameLabel.font = [Styling fontBold:PPFontSubheadline];
+        _ownerNameLabel.textColor = PPF_InkColor();
+        _ownerNameLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        _ownerNameLabel.adjustsFontSizeToFitWidth = YES;
+        _ownerNameLabel.minimumScaleFactor = 0.8;
+        [_cardView addSubview:_ownerNameLabel];
+
+        _ownerIdLabel = [UILabel new];
+        _ownerIdLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _ownerIdLabel.font = [Styling fontRegular:PPFontCaption2];
+        _ownerIdLabel.textColor = PPF_TertiaryInkColor();
+        _ownerIdLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_ownerIdLabel];
+
+        // Status pill
+        _statusDot = [UIView new];
+        _statusDot.translatesAutoresizingMaskIntoConstraints = NO;
+        _statusDot.layer.cornerRadius = 3.5;
+        _statusDot.clipsToBounds = YES;
+        
         _statusLabel = [UILabel new];
         _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _statusLabel.font = [Styling fontBold:PPFontCaption2];
+        _statusLabel.font = [Styling fontBold:PPFontCaption1];
         _statusLabel.textAlignment = NSTextAlignmentCenter;
-        _statusLabel.layer.cornerRadius = 12.0;
+        _statusLabel.layer.cornerRadius = 10.0;
         _statusLabel.layer.masksToBounds = YES;
-        _statusLabel.adjustsFontSizeToFitWidth = YES;
-        _statusLabel.minimumScaleFactor = 0.72;
-        _statusLabel.adjustsFontForContentSizeCategory = YES;
         [_cardView addSubview:_statusLabel];
+        [_statusLabel addSubview:_statusDot];
+
+        // Subtotal & Items
+        _subtotalLabel = [UILabel new];
+        _subtotalLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _subtotalLabel.font = [Styling fontBold:PPFontCallout];
+        _subtotalLabel.textColor = PPF_InkColor();
+        _subtotalLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_subtotalLabel];
+
+        _itemCountLabel = [UILabel new];
+        _itemCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _itemCountLabel.font = [Styling fontMedium:PPFontCaption1];
+        _itemCountLabel.textColor = PPF_SubInkColor();
+        _itemCountLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_itemCountLabel];
+
+        // Order Ref & Updated At
+        _orderRefLabel = [UILabel new];
+        _orderRefLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _orderRefLabel.font = [Styling fontRegular:PPFontFootnote];
+        _orderRefLabel.textColor = PPF_SubInkColor();
+        _orderRefLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_orderRefLabel];
+
+        _updatedAtLabel = [UILabel new];
+        _updatedAtLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _updatedAtLabel.font = [Styling fontRegular:PPFontCaption1];
+        _updatedAtLabel.textColor = PPF_TertiaryInkColor();
+        _updatedAtLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        [_cardView addSubview:_updatedAtLabel];
 
         UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward"]];
         chevron.translatesAutoresizingMaskIntoConstraints = NO;
         chevron.tintColor = [PPF_TertiaryInkColor() colorWithAlphaComponent:0.55];
         chevron.contentMode = UIViewContentModeScaleAspectFit;
+        if ([Language isRTL]) {
+            chevron.transform = CGAffineTransformMakeScale(-1.0, 1.0);
+        }
         [_cardView addSubview:chevron];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8.0],
+            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
             [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPScreenMargin],
             [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-PPScreenMargin],
-            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8.0],
-            [_cardView.heightAnchor constraintGreaterThanOrEqualToConstant:88.0],
+            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
 
-            [_symbolView.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:16.0],
-            [_symbolView.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
-            [_symbolView.widthAnchor constraintEqualToConstant:46.0],
-            [_symbolView.heightAnchor constraintEqualToConstant:46.0],
+            // Customer Identity Row
+            [_customerAvatar.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:14.0],
+            [_customerAvatar.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14.0],
+            [_customerAvatar.widthAnchor constraintEqualToConstant:32.0],
+            [_customerAvatar.heightAnchor constraintEqualToConstant:32.0],
 
-            [chevron.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-16.0],
+            [_customerNameLabel.leadingAnchor constraintEqualToAnchor:_customerAvatar.trailingAnchor constant:10.0],
+            [_customerNameLabel.topAnchor constraintEqualToAnchor:_customerAvatar.topAnchor],
+            [_customerNameLabel.widthAnchor constraintLessThanOrEqualToConstant:110.0],
+
+            [_customerIdLabel.leadingAnchor constraintEqualToAnchor:_customerNameLabel.leadingAnchor],
+            [_customerIdLabel.topAnchor constraintEqualToAnchor:_customerNameLabel.bottomAnchor constant:2.0],
+
+            // Route arrow
+            [_routeArrow.leadingAnchor constraintEqualToAnchor:_customerNameLabel.trailingAnchor constant:6.0],
+            [_routeArrow.centerYAnchor constraintEqualToAnchor:_customerAvatar.centerYAnchor],
+            [_routeArrow.widthAnchor constraintEqualToConstant:14.0],
+            [_routeArrow.heightAnchor constraintEqualToConstant:14.0],
+
+            // Owner Identity
+            [_ownerAvatar.leadingAnchor constraintEqualToAnchor:_routeArrow.trailingAnchor constant:6.0],
+            [_ownerAvatar.topAnchor constraintEqualToAnchor:_customerAvatar.topAnchor],
+            [_ownerAvatar.widthAnchor constraintEqualToConstant:32.0],
+            [_ownerAvatar.heightAnchor constraintEqualToConstant:32.0],
+
+            [_ownerNameLabel.leadingAnchor constraintEqualToAnchor:_ownerAvatar.trailingAnchor constant:10.0],
+            [_ownerNameLabel.topAnchor constraintEqualToAnchor:_ownerAvatar.topAnchor],
+            [_ownerNameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_statusLabel.leadingAnchor constant:-8.0],
+
+            [_ownerIdLabel.leadingAnchor constraintEqualToAnchor:_ownerNameLabel.leadingAnchor],
+            [_ownerIdLabel.topAnchor constraintEqualToAnchor:_ownerNameLabel.bottomAnchor constant:2.0],
+
+            // Status label top-right
+            [_statusLabel.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-8.0],
+            [_statusLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14.0],
+            [_statusLabel.heightAnchor constraintEqualToConstant:24.0],
+
+            [chevron.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-14.0],
             [chevron.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
             [chevron.widthAnchor constraintEqualToConstant:10.0],
             [chevron.heightAnchor constraintEqualToConstant:16.0],
 
-            [_statusLabel.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-12.0],
-            [_statusLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:18.0],
-            [_statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:92.0],
-            [_statusLabel.heightAnchor constraintEqualToConstant:26.0],
+            // Divider / Subtotal Row
+            [_subtotalLabel.leadingAnchor constraintEqualToAnchor:_customerAvatar.leadingAnchor],
+            [_subtotalLabel.topAnchor constraintEqualToAnchor:_customerAvatar.bottomAnchor constant:14.0],
 
-            [_orderLabel.leadingAnchor constraintEqualToAnchor:_symbolView.trailingAnchor constant:14.0],
-            [_orderLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_statusLabel.leadingAnchor constant:-12.0],
-            [_orderLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:17.0],
+            [_itemCountLabel.leadingAnchor constraintEqualToAnchor:_subtotalLabel.trailingAnchor constant:8.0],
+            [_itemCountLabel.firstBaselineAnchor constraintEqualToAnchor:_subtotalLabel.firstBaselineAnchor],
 
-            [_detailLabel.leadingAnchor constraintEqualToAnchor:_orderLabel.leadingAnchor],
-            [_detailLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-22.0],
-            [_detailLabel.topAnchor constraintEqualToAnchor:_orderLabel.bottomAnchor constant:6.0],
-            [_detailLabel.bottomAnchor constraintLessThanOrEqualToAnchor:_cardView.bottomAnchor constant:-17.0],
+            [_orderRefLabel.leadingAnchor constraintEqualToAnchor:_customerAvatar.leadingAnchor],
+            [_orderRefLabel.topAnchor constraintEqualToAnchor:_subtotalLabel.bottomAnchor constant:6.0],
+            [_orderRefLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-14.0],
+
+            [_updatedAtLabel.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-8.0],
+            [_updatedAtLabel.centerYAnchor constraintEqualToAnchor:_orderRefLabel.centerYAnchor],
         ]];
     }
     return self;
@@ -212,54 +506,58 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     _hasAnimatedEntrance = NO;
     self.contentView.alpha = 1.0;
     self.contentView.transform = CGAffineTransformIdentity;
-    _orderLabel.text = nil;
-    _detailLabel.text = nil;
+    _customerNameLabel.text = nil;
+    _customerIdLabel.text = nil;
+    _ownerNameLabel.text = nil;
+    _ownerIdLabel.text = nil;
     _statusLabel.text = nil;
-    _statusLabel.backgroundColor = UIColor.clearColor;
-    _symbolView.image = [UIImage systemImageNamed:@"shippingbox.fill"];
-    _symbolView.tintColor = PPF_AccentColor();
-    _symbolView.backgroundColor = [PPF_AccentColor() colorWithAlphaComponent:0.11];
+    _subtotalLabel.text = nil;
+    _itemCountLabel.text = nil;
+    _orderRefLabel.text = nil;
+    _updatedAtLabel.text = nil;
 }
 
-- (void)prepareForEntrance {
-    self.contentView.alpha = 0.0;
-    self.contentView.transform = CGAffineTransformMakeTranslation(0.0, 14.0);
-}
+- (void)configureWithRecord:(PPFulfillmentRecord *)record
+               customerName:(nullable NSString *)customerName
+                  ownerName:(nullable NSString *)ownerName
+                   animated:(BOOL)animated {
+    
+    NSString *cName = customerName.length ? customerName : kLang(@"Fulfillment_UnknownCustomer");
+    [self.customerAvatar setName:cName isLarge:NO];
+    self.customerNameLabel.text = cName;
+    self.customerIdLabel.text = PPF_ShortId(record.customerID, 8);
 
-- (void)runEntrance {
-    _hasAnimatedEntrance = YES;
-    [UIView animateWithDuration:0.38
-                          delay:0
-         usingSpringWithDamping:0.88
-          initialSpringVelocity:0.4
-                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
-        self.contentView.alpha = 1.0;
-        self.contentView.transform = CGAffineTransformIdentity;
-    } completion:nil];
-}
+    BOOL isPlatform = [record.ownerType isEqualToString:@"platform"] || !record.ownerID.length;
+    NSString *oName = isPlatform ? kLang(@"Fulfillment_Filter_Platform") : (ownerName.length ? ownerName : kLang(@"Fulfillment_UnknownCustomer"));
+    [self.ownerAvatar setName:oName isLarge:NO];
+    self.ownerNameLabel.text = oName;
+    self.ownerIdLabel.text = isPlatform ? kLang(@"Fulfillment_Filter_Platform") : PPF_ShortId(record.ownerID, 8);
 
-- (void)configureWithRecord:(PPFulfillmentRecord *)record animated:(BOOL)animated {
-    NSString *orderNumber = record.parentOrderNumber.length ? record.parentOrderNumber : record.fulfillmentID;
-    self.orderLabel.text = [NSString stringWithFormat:@"#%@", orderNumber ?: @"-"];
+    UIColor *sColor = PPF_StatusColor(record.status);
+    self.statusLabel.text = [NSString stringWithFormat:@"  %@  ", PPF_StatusText(record.status)];
+    self.statusLabel.textColor = sColor;
+    self.statusLabel.backgroundColor = [sColor colorWithAlphaComponent:0.12];
+
+    NSNumber *subtotal = record.money[@"subtotal"];
+    NSString *currency = record.money[@"currency"];
+    self.subtotalLabel.text = PPF_MoneyString(subtotal, currency);
 
     NSString *itemsFormat = kLang(@"Fulfillment_ItemsCount_Format");
-    NSString *items = [NSString stringWithFormat:itemsFormat, @(record.items.count)];
-    self.detailLabel.text = [NSString stringWithFormat:@"%@ - %@ - %@",
-                             record.customerName.length ? record.customerName : kLang(@"Fulfillment_UnknownCustomer"),
-                             record.fulfillmentMode.length ? record.fulfillmentMode : kLang(@"Fulfillment_UnknownMode"),
-                             items];
+    self.itemCountLabel.text = [NSString stringWithFormat:itemsFormat, @(record.items.count)];
 
-    UIColor *statusColor = PPF_StatusColor(record.status);
-    self.statusLabel.text = PPF_StatusText(record.status);
-    self.statusLabel.textColor = statusColor;
-    self.statusLabel.backgroundColor = [statusColor colorWithAlphaComponent:0.12];
-    self.symbolView.tintColor = statusColor;
-    self.symbolView.backgroundColor = [statusColor colorWithAlphaComponent:0.12];
+    NSString *orderRef = record.parentOrderNumber.length ? record.parentOrderNumber : PPF_ShortId(record.parentOrderID, 12);
+    self.orderRefLabel.text = [NSString stringWithFormat:@"#%@", orderRef];
+
+    self.updatedAtLabel.text = PPF_DateString(record.updatedAt);
 
     if (animated && !_hasAnimatedEntrance) {
-        [self prepareForEntrance];
-        [self runEntrance];
+        _hasAnimatedEntrance = YES;
+        self.contentView.alpha = 0.0;
+        self.contentView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
+        [UIView animateWithDuration:0.36 delay:0 usingSpringWithDamping:0.88 initialSpringVelocity:0.4 options:UIViewAnimationOptionCurveEaseOut animations:^{
+            self.contentView.alpha = 1.0;
+            self.contentView.transform = CGAffineTransformIdentity;
+        } completion:nil];
     }
 }
 
@@ -267,11 +565,11 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     [super setHighlighted:highlighted animated:animated];
     if (UIAccessibilityIsReduceMotionEnabled()) return;
     if (highlighted) {
-        [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
+        [UIView animateWithDuration:0.08 delay:0 options:UIViewAnimationOptionCurveEaseOut animations:^{
             self.contentView.transform = CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown);
         } completion:nil];
     } else {
-        [UIView animateWithDuration:0.22 delay:0 usingSpringWithDamping:0.82 initialSpringVelocity:0.5 options:UIViewAnimationOptionAllowUserInteraction animations:^{
+        [UIView animateWithDuration:0.20 delay:0 usingSpringWithDamping:0.82 initialSpringVelocity:0.5 options:UIViewAnimationOptionAllowUserInteraction animations:^{
             self.contentView.transform = CGAffineTransformIdentity;
         } completion:nil];
     }
@@ -279,13 +577,13 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
 
 @end
 
-#pragma mark - Info Cell (Premium)
+#pragma mark - Info Cell (Detail)
 
 @interface PPFulfillmentInfoCell : UITableViewCell
 @property (nonatomic, strong) UIView *cardView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *valueLabel;
-- (void)configureTitle:(NSString *)title value:(NSString *)value symbolName:(NSString *)symbolName tint:(UIColor *)tint;
+- (void)configureTitle:(NSString *)title value:(NSString *)value isEmphasized:(BOOL)isEmphasized;
 @end
 
 @implementation PPFulfillmentInfoCell
@@ -308,7 +606,6 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         _titleLabel.font = [Styling fontMedium:PPFontFootnote];
         _titleLabel.textColor = PPF_SubInkColor();
         _titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        _titleLabel.adjustsFontForContentSizeCategory = YES;
         [_cardView addSubview:_titleLabel];
 
         _valueLabel = [UILabel new];
@@ -317,24 +614,22 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         _valueLabel.textColor = PPF_InkColor();
         _valueLabel.textAlignment = [Language alignmentForCurrentLanguage];
         _valueLabel.numberOfLines = 0;
-        _valueLabel.adjustsFontForContentSizeCategory = YES;
         [_cardView addSubview:_valueLabel];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
+            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:4.0],
             [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPScreenMargin],
             [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-PPScreenMargin],
-            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
-            [_cardView.heightAnchor constraintGreaterThanOrEqualToConstant:60.0],
+            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-4.0],
 
-            [_titleLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14.0],
+            [_titleLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:12.0],
             [_titleLabel.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:16.0],
             [_titleLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-16.0],
 
-            [_valueLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:6.0],
+            [_valueLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:4.0],
             [_valueLabel.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
             [_valueLabel.trailingAnchor constraintEqualToAnchor:_titleLabel.trailingAnchor],
-            [_valueLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-14.0],
+            [_valueLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-12.0],
         ]];
     }
     return self;
@@ -344,12 +639,19 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     [super prepareForReuse];
     _titleLabel.text = nil;
     _valueLabel.text = nil;
+    _valueLabel.textColor = PPF_InkColor();
 }
 
-- (void)configureTitle:(NSString *)title value:(NSString *)value symbolName:(NSString *)symbolName tint:(UIColor *)tint {
-    (void)symbolName; (void)tint;
+- (void)configureTitle:(NSString *)title value:(NSString *)value isEmphasized:(BOOL)isEmphasized {
     self.titleLabel.text = title ?: @"";
     self.valueLabel.text = value.length ? value : @"-";
+    if (isEmphasized) {
+        self.valueLabel.textColor = PPF_AccentColor();
+        self.valueLabel.font = [Styling fontBold:PPFontTitle3];
+    } else {
+        self.valueLabel.textColor = PPF_InkColor();
+        self.valueLabel.font = [Styling fontBold:PPFontBody];
+    }
 }
 
 @end
@@ -370,7 +672,6 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         self.backgroundColor = UIColor.clearColor;
         self.contentView.backgroundColor = UIColor.clearColor;
         self.selectionStyle = UITableViewCellSelectionStyleNone;
-        self.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
         _messageLabel = [UILabel new];
         _messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -378,7 +679,6 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         _messageLabel.textColor = PPF_SubInkColor();
         _messageLabel.textAlignment = NSTextAlignmentCenter;
         _messageLabel.numberOfLines = 0;
-        _messageLabel.adjustsFontForContentSizeCategory = YES;
         [self.contentView addSubview:_messageLabel];
 
         _spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
@@ -389,16 +689,13 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
 
         [NSLayoutConstraint activateConstraints:@[
             [_messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-            [_messageLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_messageLabel.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor constant:-12.0],
             [_messageLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.contentView.leadingAnchor constant:PPSpaceXL],
             [_messageLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.contentView.trailingAnchor constant:-PPSpaceXL],
 
             [_spinner.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
             [_spinner.topAnchor constraintEqualToAnchor:_messageLabel.bottomAnchor constant:PPSpaceMD],
-            [_spinner.heightAnchor constraintEqualToConstant:24],
-            [_spinner.widthAnchor constraintEqualToConstant:24],
-
-            [self.contentView.heightAnchor constraintGreaterThanOrEqualToConstant:200],
+            [self.contentView.heightAnchor constraintGreaterThanOrEqualToConstant:180.0],
         ]];
     }
     return self;
@@ -429,14 +726,11 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
 @property (nonatomic, strong) PPFulfillmentRecord *seedRecord;
 @property (nonatomic, strong) PPFulfillmentRecord *detailRecord;
 @property (nonatomic, copy) NSArray *events;
+@property (nonatomic, strong) NSDictionary<NSString *, NSString *> *userNames;
+@property (nonatomic, strong) id<FIRListenerRegistration> eventsListener;
 @property (nonatomic, strong) UIView *headerContainer;
 @property (nonatomic, strong) PPHero *heroBackground;
 @property (nonatomic, assign) BOOL isLoading;
-@property (nonatomic, assign) BOOL didPrepareEntrance;
-@property (nonatomic, assign) BOOL didRunEntrance;
-@property (nonatomic, assign) BOOL isAdjustingHeaderSize;
-@property (nonatomic, assign) CGFloat lastHeaderWidth;
-@property (nonatomic, assign) CGFloat lastHeaderHeight;
 @end
 
 @implementation PPFulfillmentDetailViewController
@@ -447,98 +741,44 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         _seedRecord = record;
         _detailRecord = record;
         _events = @[];
+        _userNames = @{};
     }
     return self;
 }
 
+- (void)dealloc {
+    [_eventsListener remove];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = self.seedRecord.parentOrderNumber.length ? self.seedRecord.parentOrderNumber : self.seedRecord.fulfillmentID;
+    self.title = self.seedRecord.parentOrderNumber.length ? [NSString stringWithFormat:@"#%@", self.seedRecord.parentOrderNumber] : self.seedRecord.fulfillmentID;
     self.view.backgroundColor = PPF_CanvasColor();
     self.tableView.backgroundColor = PPF_CanvasColor();
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 76.0;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.tableView.showsVerticalScrollIndicator = NO;
+    
     [self.tableView registerClass:[PPFulfillmentInfoCell class] forCellReuseIdentifier:@"Info"];
     [self.tableView registerClass:[PPF_StateCell class] forCellReuseIdentifier:@"State"];
+    
     [self pp_buildHeader];
+    [self pp_setupActionBar];
     [self loadDetail];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self prepareEntranceState];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    [self.heroBackground startAnimations];
-    [self runEntranceIfNeeded];
-}
-
-- (void)viewDidDisappear:(BOOL)animated {
-    [super viewDidDisappear:animated];
-    [self.heroBackground stopAnimations];
-}
-
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-    [self pp_updateInsets];
-    [self pp_sizeHeaderToFit];
-    if (!_didPrepareEntrance) {
-        [self prepareEntranceState];
-    }
-}
-
-- (void)prepareEntranceState {
-    if (_didRunEntrance) return;
-    _didPrepareEntrance = YES;
-    self.heroBackground.alpha = 0;
-    self.heroBackground.transform = CGAffineTransformMakeScale(1.04, 1.04);
-    UILabel *title = [self.headerContainer viewWithTag:3001];
-    UILabel *subtitle = [self.headerContainer viewWithTag:3002];
-    UILabel *status = [self.headerContainer viewWithTag:3003];
-    if (title) { title.alpha = 0; title.transform = CGAffineTransformMakeTranslation(0, 14); }
-    if (subtitle) { subtitle.alpha = 0; subtitle.transform = CGAffineTransformMakeTranslation(0, 10); }
-    if (status) { status.alpha = 0; status.transform = CGAffineTransformMakeTranslation(0, 10); }
-}
-
-- (void)runEntranceIfNeeded {
-    if (_didRunEntrance) return;
-    _didRunEntrance = YES;
-    [self.view layoutIfNeeded];
-
-    [UIView animateWithDuration:0.48 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        self.heroBackground.alpha = 1;
-        self.heroBackground.transform = CGAffineTransformIdentity;
-    } completion:nil];
-
-    UILabel *title = [self.headerContainer viewWithTag:3001];
-    UILabel *subtitle = [self.headerContainer viewWithTag:3002];
-    UILabel *status = [self.headerContainer viewWithTag:3003];
-
-    [UIView animateWithDuration:0.42 delay:0.08 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (title) { title.alpha = 1; title.transform = CGAffineTransformIdentity; }
-    } completion:nil];
-
-    [UIView animateWithDuration:0.42 delay:0.16 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (subtitle) { subtitle.alpha = 1; subtitle.transform = CGAffineTransformIdentity; }
-    } completion:nil];
-
-    [UIView animateWithDuration:0.48 delay:0.22 usingSpringWithDamping:0.86 initialSpringVelocity:0.4 options:UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (status) { status.alpha = 1; status.transform = CGAffineTransformIdentity; }
-    } completion:nil];
 }
 
 - (void)pp_buildHeader {
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 1.0)];
     header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
     UIView *card = [UIView new];
     card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = PPF_SurfaceColor();
+    PPF_ApplyCardChrome(card, PPCornerCard);
     [header addSubview:card];
-
+    
     PPHero *hero = [PPHero new];
     hero.translatesAutoresizingMaskIntoConstraints = NO;
     hero.accentStyle = PPHeroGlassAccentStyleCornerGlow;
@@ -547,132 +787,138 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     [card addSubview:hero];
     self.heroBackground = hero;
 
-    UILabel *title = [UILabel new];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.font = [Styling fontBold:PPFontTitle1];
-    title.textColor = PPF_InkColor();
-    title.textAlignment = [Language alignmentForCurrentLanguage];
-    title.numberOfLines = 2;
-    title.tag = 3001;
-    [card addSubview:title];
+    PPF_AvatarView *cAvatar = [PPF_AvatarView new];
+    cAvatar.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:cAvatar];
 
-    UILabel *subtitle = [UILabel new];
-    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitle.font = [Styling fontRegular:PPFontSubheadline];
-    subtitle.textColor = PPF_SubInkColor();
-    subtitle.textAlignment = [Language alignmentForCurrentLanguage];
-    subtitle.numberOfLines = 2;
-    subtitle.tag = 3002;
-    [card addSubview:subtitle];
+    UILabel *cName = [UILabel new];
+    cName.translatesAutoresizingMaskIntoConstraints = NO;
+    cName.font = [Styling fontBold:PPFontHeadline];
+    cName.textColor = PPF_InkColor();
+    [card addSubview:cName];
 
-    UILabel *status = [UILabel new];
-    status.translatesAutoresizingMaskIntoConstraints = NO;
-    status.font = [Styling fontBold:PPFontFootnote];
-    status.textAlignment = NSTextAlignmentCenter;
-    status.layer.cornerRadius = 14.0;
-    status.layer.masksToBounds = YES;
-    status.tag = 3003;
-    [card addSubview:status];
+    UIImageView *routeArrow = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.right"]];
+    routeArrow.translatesAutoresizingMaskIntoConstraints = NO;
+    routeArrow.tintColor = PPF_TertiaryInkColor();
+    if ([Language isRTL]) routeArrow.transform = CGAffineTransformMakeScale(-1.0, 1.0);
+    [card addSubview:routeArrow];
+
+    PPF_AvatarView *oAvatar = [PPF_AvatarView new];
+    oAvatar.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:oAvatar];
+
+    UILabel *oName = [UILabel new];
+    oName.translatesAutoresizingMaskIntoConstraints = NO;
+    oName.font = [Styling fontBold:PPFontHeadline];
+    oName.textColor = PPF_InkColor();
+    [card addSubview:oName];
+
+    UILabel *statusPill = [UILabel new];
+    statusPill.translatesAutoresizingMaskIntoConstraints = NO;
+    statusPill.font = [Styling fontBold:PPFontFootnote];
+    statusPill.textAlignment = NSTextAlignmentCenter;
+    statusPill.layer.cornerRadius = 12.0;
+    statusPill.layer.masksToBounds = YES;
+    statusPill.tag = 5001;
+    [card addSubview:statusPill];
+
+    UILabel *modePill = [UILabel new];
+    modePill.translatesAutoresizingMaskIntoConstraints = NO;
+    modePill.font = [Styling fontMedium:PPFontCaption1];
+    modePill.textColor = PPF_SubInkColor();
+    modePill.tag = 5002;
+    [card addSubview:modePill];
+
+    NSString *custName = self.userNames[self.detailRecord.customerID] ?: self.detailRecord.customerName;
+    if (!custName.length) custName = kLang(@"Fulfillment_UnknownCustomer");
+    [cAvatar setName:custName isLarge:YES];
+    cName.text = custName;
+
+    BOOL isPlatform = [self.detailRecord.ownerType isEqualToString:@"platform"] || !self.detailRecord.ownerID.length;
+    NSString *ownName = isPlatform ? kLang(@"Fulfillment_Filter_Platform") : (self.userNames[self.detailRecord.ownerID] ?: kLang(@"Fulfillment_UnknownCustomer"));
+    [oAvatar setName:ownName isLarge:YES];
+    oName.text = ownName;
+
+    UIColor *sColor = PPF_StatusColor(self.detailRecord.status);
+    statusPill.text = [NSString stringWithFormat:@"  %@  ", PPF_StatusText(self.detailRecord.status)];
+    statusPill.textColor = sColor;
+    statusPill.backgroundColor = [sColor colorWithAlphaComponent:0.12];
+    modePill.text = [self.detailRecord.fulfillmentMode isEqualToString:@"partner_managed"] ? kLang(@"Fulfillment_Filter_Partner") : kLang(@"Fulfillment_Filter_Platform");
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:18.0],
+        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:16.0],
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
-        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-14.0],
-        [card.heightAnchor constraintGreaterThanOrEqualToConstant:168.0],
+        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-12.0],
 
         [hero.topAnchor constraintEqualToAnchor:card.topAnchor],
         [hero.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
         [hero.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [hero.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
 
-        [status.topAnchor constraintEqualToAnchor:card.topAnchor constant:24.0],
-        [status.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24.0],
-        [status.widthAnchor constraintGreaterThanOrEqualToConstant:104.0],
-        [status.heightAnchor constraintEqualToConstant:30.0],
+        [cAvatar.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0],
+        [cAvatar.topAnchor constraintEqualToAnchor:card.topAnchor constant:18.0],
+        [cAvatar.widthAnchor constraintEqualToConstant:40.0],
+        [cAvatar.heightAnchor constraintEqualToConstant:40.0],
 
-        [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24.0],
-        [title.trailingAnchor constraintLessThanOrEqualToAnchor:status.leadingAnchor constant:-12.0],
-        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:28.0],
+        [cName.leadingAnchor constraintEqualToAnchor:cAvatar.trailingAnchor constant:10.0],
+        [cName.centerYAnchor constraintEqualToAnchor:cAvatar.centerYAnchor],
 
-        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
-        [subtitle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24.0],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:12.0],
-        [subtitle.bottomAnchor constraintLessThanOrEqualToAnchor:card.bottomAnchor constant:-24.0],
+        [routeArrow.leadingAnchor constraintEqualToAnchor:cName.trailingAnchor constant:8.0],
+        [routeArrow.centerYAnchor constraintEqualToAnchor:cAvatar.centerYAnchor],
+        [routeArrow.widthAnchor constraintEqualToConstant:16.0],
+        [routeArrow.heightAnchor constraintEqualToConstant:16.0],
+
+        [oAvatar.leadingAnchor constraintEqualToAnchor:routeArrow.trailingAnchor constant:8.0],
+        [oAvatar.centerYAnchor constraintEqualToAnchor:cAvatar.centerYAnchor],
+        [oAvatar.widthAnchor constraintEqualToConstant:40.0],
+        [oAvatar.heightAnchor constraintEqualToConstant:40.0],
+
+        [oName.leadingAnchor constraintEqualToAnchor:oAvatar.trailingAnchor constant:10.0],
+        [oName.centerYAnchor constraintEqualToAnchor:cAvatar.centerYAnchor],
+        [oName.trailingAnchor constraintLessThanOrEqualToAnchor:card.trailingAnchor constant:-16.0],
+
+        [statusPill.leadingAnchor constraintEqualToAnchor:cAvatar.leadingAnchor],
+        [statusPill.topAnchor constraintEqualToAnchor:cAvatar.bottomAnchor constant:16.0],
+        [statusPill.heightAnchor constraintEqualToConstant:28.0],
+        [statusPill.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18.0],
+
+        [modePill.leadingAnchor constraintEqualToAnchor:statusPill.trailingAnchor constant:12.0],
+        [modePill.centerYAnchor constraintEqualToAnchor:statusPill.centerYAnchor],
     ]];
+
     self.headerContainer = header;
     self.tableView.tableHeaderView = header;
-    [self pp_refreshHeaderText];
     [self pp_sizeHeaderToFit];
 }
 
-- (void)pp_refreshHeaderText {
-    UILabel *title = [self.headerContainer viewWithTag:3001];
-    UILabel *subtitle = [self.headerContainer viewWithTag:3002];
-    UILabel *status = [self.headerContainer viewWithTag:3003];
-    PPFulfillmentRecord *record = self.detailRecord ?: self.seedRecord;
-    NSString *order = record.parentOrderNumber.length ? record.parentOrderNumber : record.fulfillmentID;
-    title.text = [NSString stringWithFormat:@"#%@", order ?: @"-"];
-    NSString *itemsFormat = kLang(@"Fulfillment_ItemsCount_Format");
-    subtitle.text = [NSString stringWithFormat:@"%@ - %@ - %@",
-                     record.customerName.length ? record.customerName : kLang(@"Fulfillment_UnknownCustomer"),
-                     record.fulfillmentMode.length ? record.fulfillmentMode : kLang(@"Fulfillment_UnknownMode"),
-                     [NSString stringWithFormat:itemsFormat, @(record.items.count)]];
-    UIColor *color = PPF_StatusColor(record.status);
-    status.text = PPF_StatusText(record.status);
-    status.textColor = color;
-    status.backgroundColor = [color colorWithAlphaComponent:0.12];
-    self.heroBackground.accentColorOverride = color;
-    [self.heroBackground reapplyPalette];
-}
-
 - (void)pp_sizeHeaderToFit {
-    if (!self.headerContainer || self.isAdjustingHeaderSize) return;
+    if (!self.headerContainer) return;
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
     if (width <= 0) return;
     CGRect frame = self.headerContainer.frame;
-    BOOL widthChanged = fabs(frame.size.width - width) > 0.5;
-    if (widthChanged) {
-        frame.size.width = width;
-        self.headerContainer.frame = frame;
-    }
+    frame.size.width = width;
+    self.headerContainer.frame = frame;
     [self.headerContainer layoutIfNeeded];
     CGFloat height = [self.headerContainer systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                      withHorizontalFittingPriority:UILayoutPriorityRequired
                                            verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
-    CGFloat targetHeight = ceil(MAX(1.0, height));
-    BOOL heightChanged = fabs(frame.size.height - targetHeight) > 0.5;
-    if (!widthChanged && !heightChanged &&
-        fabs(self.lastHeaderWidth - width) <= 0.5 &&
-        fabs(self.lastHeaderHeight - targetHeight) <= 0.5) {
-        return;
-    }
-    frame.size.width = width;
-    frame.size.height = targetHeight;
-    self.isAdjustingHeaderSize = YES;
+    frame.size.height = ceil(MAX(1.0, height));
     self.headerContainer.frame = frame;
     self.tableView.tableHeaderView = self.headerContainer;
-    self.lastHeaderWidth = width;
-    self.lastHeaderHeight = targetHeight;
-    self.isAdjustingHeaderSize = NO;
 }
 
-- (void)pp_updateInsets {
-    CGFloat tabHeight = self.tabBarController ? CGRectGetHeight(self.tabBarController.tabBar.bounds) : 0.0;
-    UIEdgeInsets inset = self.tableView.contentInset;
-    inset.bottom = MAX(28.0, tabHeight + 34.0);
-    if (!UIEdgeInsetsEqualToEdgeInsets(self.tableView.contentInset, inset)) {
-        self.tableView.contentInset = inset;
-    }
-    if (!UIEdgeInsetsEqualToEdgeInsets(self.tableView.scrollIndicatorInsets, inset)) {
-        self.tableView.scrollIndicatorInsets = inset;
-    }
+- (void)pp_setupActionBar {
+    UIBarButtonItem *overrideItem = [[UIBarButtonItem alloc] initWithTitle:kLang(@"Fulfillment_AdminOverride") style:UIBarButtonItemStylePlain target:self action:@selector(presentAdminOverrideSheet)];
+    overrideItem.tintColor = UIColor.systemRedColor;
+    self.navigationItem.rightBarButtonItem = overrideItem;
 }
 
 - (void)loadDetail {
     self.isLoading = YES;
     [self.tableView reloadData];
     __weak typeof(self) weakSelf = self;
+    
     [[PPFulfillmentService shared] fetchFulfillmentDetail:self.seedRecord.fulfillmentID completion:^(PPFulfillmentRecord *detail, NSArray *events, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.isLoading = NO;
@@ -681,29 +927,47 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
             } else {
                 weakSelf.detailRecord = detail ?: weakSelf.seedRecord;
                 weakSelf.events = events ?: @[];
-                [weakSelf pp_refreshHeaderText];
+                [weakSelf pp_buildHeader];
             }
             [weakSelf.tableView reloadData];
         });
     }];
+
+    // Live event timeline
+    self.eventsListener = [[PPFulfillmentService shared] observeFulfillmentEvents:self.seedRecord.fulfillmentID completion:^(NSArray<NSDictionary *> *events, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!error && events.count > 0) {
+                weakSelf.events = events;
+                [weakSelf.tableView reloadData];
+            }
+        });
+    }];
 }
 
+#pragma mark - Table View Data Source & Delegate
+
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return 3;
+    return 5; // Overview, Composition, Settlement, Audit (if present), Timeline
 }
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (self.isLoading) return section == 0 ? 1 : 0;
-    if (section == 0) return 6;
-    if (section == 1) return MAX(self.detailRecord.items.count, 1);
+    PPFulfillmentRecord *r = self.detailRecord ?: self.seedRecord;
+    
+    if (section == 0) return 4; // Order, Fulfillment Ref, Created, Updated
+    if (section == 1) return MAX(r.items.count, 1);
+    if (section == 2) return 3; // Subtotal, Platform Commission, Provider Net
+    if (section == 3) return r.adminOverrideAt ? 1 : 0;
     return MAX(self.events.count, 1);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 42.0;
+    if (section == 3 && !self.detailRecord.adminOverrideAt) return 0.01;
+    return 38.0;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    if (section == 3 && !self.detailRecord.adminOverrideAt) return [UIView new];
     UIView *view = [UIView new];
     view.backgroundColor = UIColor.clearColor;
     UILabel *label = [UILabel new];
@@ -711,14 +975,18 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     label.font = [Styling fontBold:PPFontTitle3];
     label.textColor = PPF_InkColor();
     label.textAlignment = [Language alignmentForCurrentLanguage];
+    
     if (section == 0) label.text = kLang(@"Fulfillment_DetailOverview");
     else if (section == 1) label.text = kLang(@"Fulfillment_DetailItems");
+    else if (section == 2) label.text = kLang(@"Fulfillment_DetailSettlement");
+    else if (section == 3) label.text = kLang(@"Fulfillment_AdminOverride");
     else label.text = kLang(@"Fulfillment_DetailTimeline");
+    
     [view addSubview:label];
     [NSLayoutConstraint activateConstraints:@[
         [label.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:PPScreenMargin],
         [label.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-PPScreenMargin],
-        [label.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-6.0]
+        [label.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-4.0]
     ]];
     return view;
 }
@@ -730,55 +998,167 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
         return cell;
     }
 
-    PPFulfillmentRecord *record = self.detailRecord ?: self.seedRecord;
+    PPFulfillmentRecord *r = self.detailRecord ?: self.seedRecord;
+    
+    // Overview Section
     if (indexPath.section == 0) {
         PPFulfillmentInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Info" forIndexPath:indexPath];
-        NSArray *titles = @[kLang(@"Fulfillment_DetailOrder"), kLang(@"Fulfillment_DetailCustomer"), kLang(@"Fulfillment_DetailMode"), kLang(@"Fulfillment_DetailOwner"), kLang(@"Fulfillment_DetailCreated"), kLang(@"Fulfillment_DetailUpdated")];
+        NSArray *titles = @[kLang(@"Fulfillment_DetailOrder"), kLang(@"Fulfillment_DetailOverview"), kLang(@"Fulfillment_DetailCreated"), kLang(@"Fulfillment_DetailUpdated")];
+        NSString *orderNum = r.parentOrderNumber.length ? r.parentOrderNumber : r.parentOrderID;
         NSArray *values = @[
-            record.parentOrderNumber.length ? record.parentOrderNumber : record.parentOrderID ?: @"-",
-            record.customerName.length ? record.customerName : kLang(@"Fulfillment_UnknownCustomer"),
-            record.fulfillmentMode.length ? record.fulfillmentMode : kLang(@"Fulfillment_UnknownMode"),
-            record.ownerID.length ? record.ownerID : @"-",
-            PPF_DateString(record.createdAt),
-            PPF_DateString(record.updatedAt)
+            orderNum.length ? [NSString stringWithFormat:@"#%@", orderNum] : @"-",
+            r.fulfillmentID ?: @"-",
+            PPF_DateString(r.createdAt),
+            PPF_DateString(r.updatedAt)
         ];
-        [cell configureTitle:titles[indexPath.row] value:values[indexPath.row] symbolName:nil tint:nil];
+        [cell configureTitle:titles[indexPath.row] value:values[indexPath.row] isEmphasized:NO];
         return cell;
     }
 
+    // Items Section
     if (indexPath.section == 1) {
         PPFulfillmentInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Info" forIndexPath:indexPath];
-        if (record.items.count == 0) {
-            [cell configureTitle:kLang(@"Fulfillment_Item") value:kLang(@"Fulfillment_NoItems") symbolName:nil tint:nil];
+        if (r.items.count == 0) {
+            [cell configureTitle:kLang(@"Fulfillment_Item") value:kLang(@"Fulfillment_NoItems") isEmphasized:NO];
             return cell;
         }
-        NSDictionary *item = [record.items[indexPath.row] isKindOfClass:NSDictionary.class] ? record.items[indexPath.row] : @{};
-        NSString *name = PPF_SafeString(item[@"title"]);
-        if (!name.length) name = PPF_SafeString(item[@"name"]);
-        if (!name.length) name = PPF_SafeString(item[@"productName"]);
-        if (!name.length) name = PPF_SafeString(item[@"id"]);
-        NSString *quantity = PPF_SafeString(item[@"quantity"]);
-        if (!quantity.length) quantity = PPF_SafeString(item[@"qty"]);
-        NSString *value = quantity.length ? [NSString stringWithFormat:@"%@ x %@", quantity, name.length ? name : kLang(@"Fulfillment_Item")] : (name.length ? name : kLang(@"Fulfillment_Item"));
-        [cell configureTitle:kLang(@"Fulfillment_Item") value:value symbolName:nil tint:nil];
+        NSDictionary *item = [r.items[indexPath.row] isKindOfClass:NSDictionary.class] ? r.items[indexPath.row] : @{};
+        NSString *name = PPSafeString(item[@"name"]);
+        if (!name.length) name = PPSafeString(item[@"title"]);
+        if (!name.length) name = PPSafeString(item[@"itemName"]);
+        if (!name.length) name = PPSafeString(item[@"itemId"]);
+        NSNumber *qty = item[@"quantity"] ?: item[@"qty"] ?: @(1);
+        NSNumber *price = item[@"price"];
+        NSString *currency = r.money[@"currency"];
+        
+        NSString *title = [NSString stringWithFormat:@"%02ld. %@", (long)(indexPath.row + 1), name.length ? name : kLang(@"Fulfillment_Item")];
+        NSString *value = [NSString stringWithFormat:@"×%@  •  %@", qty, PPF_MoneyString(price, currency)];
+        [cell configureTitle:title value:value isEmphasized:NO];
         return cell;
     }
 
+    // Settlement Section
+    if (indexPath.section == 2) {
+        PPFulfillmentInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Info" forIndexPath:indexPath];
+        NSDictionary *m = r.money ?: @{};
+        NSString *currency = m[@"currency"];
+        if (indexPath.row == 0) {
+            [cell configureTitle:kLang(@"Fulfillment_Subtotal") value:PPF_MoneyString(m[@"subtotal"], currency) isEmphasized:NO];
+        } else if (indexPath.row == 1) {
+            [cell configureTitle:kLang(@"Fulfillment_PlatformCommission") value:PPF_MoneyString(m[@"platformCommission"], currency) isEmphasized:NO];
+        } else {
+            [cell configureTitle:kLang(@"Fulfillment_ProviderNet") value:PPF_MoneyString(m[@"providerNet"], currency) isEmphasized:YES];
+        }
+        return cell;
+    }
+
+    // Admin Audit Section
+    if (indexPath.section == 3) {
+        PPFulfillmentInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Info" forIndexPath:indexPath];
+        NSString *date = PPF_DateString(r.adminOverrideAt);
+        NSString *by = r.adminOverrideBy.length ? r.adminOverrideBy : kLang(@"Fulfillment_Event");
+        NSString *reason = r.adminOverrideReason.length ? r.adminOverrideReason : @"-";
+        NSString *val = [NSString stringWithFormat:@"%@ - %@\n%@", date, by, reason];
+        [cell configureTitle:kLang(@"Fulfillment_AdminOverride") value:val isEmphasized:NO];
+        return cell;
+    }
+
+    // Timeline Section
     PPFulfillmentInfoCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Info" forIndexPath:indexPath];
     if (self.events.count == 0) {
-        [cell configureTitle:kLang(@"Fulfillment_Event") value:kLang(@"Fulfillment_NoEvents") symbolName:nil tint:nil];
+        [cell configureTitle:kLang(@"Fulfillment_Event") value:kLang(@"Fulfillment_NoEvents") isEmphasized:NO];
         return cell;
     }
     NSDictionary *event = [self.events[indexPath.row] isKindOfClass:NSDictionary.class] ? self.events[indexPath.row] : @{};
-    NSString *eventStatus = PPF_SafeString(event[@"status"]);
-    if (!eventStatus.length) eventStatus = PPF_SafeString(event[@"type"]);
-    NSString *note = PPF_SafeString(event[@"note"]);
-    if (!note.length) note = PPF_SafeString(event[@"reason"]);
+    NSString *action = PPSafeString(event[@"action"]);
+    if (!action.length) action = PPSafeString(event[@"type"]);
+    NSString *fromS = PPF_StatusText(event[@"fromStatus"]);
+    NSString *toS = PPF_StatusText(event[@"toStatus"]);
     id createdAt = event[@"createdAt"];
     NSDate *date = [createdAt isKindOfClass:FIRTimestamp.class] ? [(FIRTimestamp *)createdAt dateValue] : nil;
-    NSString *value = note.length ? note : PPF_DateString(date);
-    [cell configureTitle:eventStatus.length ? PPF_StatusText(eventStatus) : kLang(@"Fulfillment_Event") value:value symbolName:nil tint:nil];
+    
+    NSString *title = [action stringByReplacingOccurrencesOfString:@"_" withString:@" "].capitalizedString;
+    NSString *value = [NSString stringWithFormat:@"%@ → %@\n%@", fromS, toS, PPF_DateString(date)];
+    [cell configureTitle:title value:value isEmphasized:NO];
     return cell;
+}
+
+#pragma mark - Admin Override Action
+
+- (void)presentAdminOverrideSheet {
+    PPHapticTouch();
+    PPFulfillmentRecord *r = self.detailRecord ?: self.seedRecord;
+    NSArray *allowedTargets = [PPFulfillmentService allowedOverrideTargetsForStatus:r.status];
+    
+    if (allowedTargets.count == 0) {
+        [AlertHelper showAlertIn:self title:kLang(@"Fulfillment_AdminOverride") subtitle:kLang(@"Fulfillment_OverrideSkipped")];
+        return;
+    }
+
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Fulfillment_AdminOverride")
+                                                                   message:kLang(@"Fulfillment_ReasonPlaceholder")
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    
+    for (NSString *targetStatus in allowedTargets) {
+        NSString *title = PPF_StatusText(targetStatus);
+        [alert addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            [self promptReasonAndSubmitOverrideForTargetStatus:targetStatus];
+        }]];
+    }
+    
+    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+        alert.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItem;
+    }
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
+- (void)promptReasonAndSubmitOverrideForTargetStatus:(NSString *)targetStatus {
+    UIAlertController *prompt = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ → %@", kLang(@"Fulfillment_TargetStatus"), PPF_StatusText(targetStatus)]
+                                                                    message:kLang(@"Fulfillment_Reason")
+                                                             preferredStyle:UIAlertControllerStyleAlert];
+    
+    [prompt addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = kLang(@"Fulfillment_ReasonPlaceholder");
+    }];
+    [prompt addTextFieldWithConfigurationHandler:^(UITextField * _Nonnull textField) {
+        textField.placeholder = kLang(@"Fulfillment_NotePlaceholder");
+    }];
+
+    __weak typeof(self) weakSelf = self;
+    [prompt addAction:[UIAlertAction actionWithTitle:kLang(@"Fulfillment_ConfirmOverride") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        NSString *reason = prompt.textFields.firstObject.text;
+        NSString *note = prompt.textFields.count > 1 ? prompt.textFields[1].text : @"";
+        
+        if (!reason.length) {
+            PPHapticError();
+            [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:kLang(@"Fulfillment_Reason")];
+            return;
+        }
+        
+        PPHapticTouch();
+        [[PPFulfillmentService shared] adminOverrideFulfillment:weakSelf.seedRecord.fulfillmentID
+                                                   targetStatus:targetStatus
+                                                         reason:reason
+                                                           note:note
+                                                         notify:YES
+                                                     completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (error) {
+                    PPHapticError();
+                    [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                } else {
+                    PPHapticSuccess();
+                    [AlertHelper showAlertIn:weakSelf title:kLang(@"Success") subtitle:kLang(@"Fulfillment_OverrideSuccess")];
+                    [weakSelf loadDetail];
+                }
+            });
+        }];
+    }]];
+    
+    [prompt addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:prompt animated:YES completion:nil];
 }
 
 @end
@@ -788,101 +1168,41 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
 @interface PPFulfillmentOrdersViewController () <UISearchResultsUpdating>
 @property (nonatomic, strong) NSArray<PPFulfillmentRecord *> *records;
 @property (nonatomic, strong) NSArray<PPFulfillmentRecord *> *visibleRecords;
+@property (nonatomic, strong) NSDictionary<NSString *, NSString *> *userNames;
+@property (nonatomic, strong) id<FIRListenerRegistration> fulfillmentsListener;
 @property (nonatomic, strong) UISearchController *searchController;
+
 @property (nonatomic, strong) UIView *headerContainer;
 @property (nonatomic, strong) PPHero *heroBackground;
-@property (nonatomic, strong) UILabel *heroCountLabel;
+@property (nonatomic, strong) PPF_MetricsCardView *metricsView;
+
 @property (nonatomic, copy) NSString *filterStatus;
+@property (nonatomic, copy) NSString *filterOwnerType;
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, copy) NSString *errorMessage;
-@property (nonatomic, assign) BOOL didPrepareEntrance;
-@property (nonatomic, assign) BOOL didRunEntrance;
-@property (nonatomic, assign) BOOL didRunInitialListAnimation;
-@property (nonatomic, assign) BOOL isAdjustingHeaderSize;
-@property (nonatomic, assign) CGFloat lastHeaderWidth;
-@property (nonatomic, assign) CGFloat lastHeaderHeight;
 @end
 
 @implementation PPFulfillmentOrdersViewController
+
+- (void)dealloc {
+    [_fulfillmentsListener remove];
+}
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.title = kLang(@"Fulfillment_Title");
     self.records = @[];
     self.visibleRecords = @[];
+    self.userNames = @{};
+    self.filterStatus = @"";
+    self.filterOwnerType = @"";
+
     [self pp_configureTableView];
     [self pp_configureSearch];
     [self pp_buildHeader];
+    [self pp_setupNavigationItems];
 
-    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadData)];
-    refreshBtn.accessibilityLabel = kLang(@"Fulfillment_Refresh");
-    self.navigationItem.rightBarButtonItem = refreshBtn;
-    [self loadData];
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self prepareEntranceState];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    [self.heroBackground startAnimations];
-    [self runEntranceIfNeeded];
-}
-
-- (void)viewDidDisappear:(BOOL)animated {
-    [super viewDidDisappear:animated];
-    [self.heroBackground stopAnimations];
-}
-
-- (void)viewDidLayoutSubviews {
-    [super viewDidLayoutSubviews];
-    [self pp_updateInsets];
-    [self pp_sizeHeaderToFit];
-    if (!_didPrepareEntrance) {
-        [self prepareEntranceState];
-    }
-}
-
-- (void)prepareEntranceState {
-    if (_didRunEntrance) return;
-    _didPrepareEntrance = YES;
-    self.heroBackground.alpha = 0;
-    self.heroBackground.transform = CGAffineTransformMakeScale(1.04, 1.04);
-    UILabel *title = [self.headerContainer viewWithTag:1001];
-    UILabel *subtitle = [self.headerContainer viewWithTag:1002];
-    UILabel *count = [self.headerContainer viewWithTag:1003];
-    if (title) { title.alpha = 0; title.transform = CGAffineTransformMakeTranslation(0, 14); }
-    if (subtitle) { subtitle.alpha = 0; subtitle.transform = CGAffineTransformMakeTranslation(0, 10); }
-    if (count) { count.alpha = 0; count.transform = CGAffineTransformMakeScale(0.85, 0.85); }
-}
-
-- (void)runEntranceIfNeeded {
-    if (_didRunEntrance) return;
-    _didRunEntrance = YES;
-    [self.view layoutIfNeeded];
-
-    [UIView animateWithDuration:0.48 delay:0 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        self.heroBackground.alpha = 1;
-        self.heroBackground.transform = CGAffineTransformIdentity;
-    } completion:nil];
-
-    UILabel *title = [self.headerContainer viewWithTag:1001];
-    UILabel *subtitle = [self.headerContainer viewWithTag:1002];
-    UILabel *count = [self.headerContainer viewWithTag:1003];
-
-    [UIView animateWithDuration:0.42 delay:0.08 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (title) { title.alpha = 1; title.transform = CGAffineTransformIdentity; }
-    } completion:nil];
-
-    [UIView animateWithDuration:0.42 delay:0.16 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (subtitle) { subtitle.alpha = 1; subtitle.transform = CGAffineTransformIdentity; }
-    } completion:nil];
-
-    [UIView animateWithDuration:0.48 delay:0.22 usingSpringWithDamping:0.86 initialSpringVelocity:0.4 options:UIViewAnimationOptionAllowUserInteraction animations:^{
-        if (count) { count.alpha = 1; count.transform = CGAffineTransformIdentity; }
-    } completion:nil];
+    [self startLiveSubscription];
 }
 
 - (void)pp_configureTableView {
@@ -891,15 +1211,15 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 92.0;
+    self.tableView.estimatedRowHeight = 110.0;
     self.tableView.showsVerticalScrollIndicator = NO;
-    self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentAutomatic;
+    
     [self.tableView registerClass:[PPF_OrderCell class] forCellReuseIdentifier:@"Order"];
     [self.tableView registerClass:[PPF_StateCell class] forCellReuseIdentifier:@"State"];
 
     UIRefreshControl *refresh = [UIRefreshControl new];
     refresh.tintColor = PPF_AccentColor();
-    [refresh addTarget:self action:@selector(loadData) forControlEvents:UIControlEventValueChanged];
+    [refresh addTarget:self action:@selector(startLiveSubscription) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refresh;
 }
 
@@ -913,6 +1233,16 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     self.navigationItem.searchController = self.searchController;
     self.definesPresentationContext = YES;
     self.navigationItem.hidesSearchBarWhenScrolling = NO;
+}
+
+- (void)pp_setupNavigationItems {
+    UIBarButtonItem *filterItem = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"line.3.horizontal.decrease.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(presentFilterOptionsSheet)];
+    filterItem.tintColor = PPF_AccentColor();
+
+    UIBarButtonItem *refreshItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(startLiveSubscription)];
+    refreshItem.tintColor = PPF_AccentColor();
+
+    self.navigationItem.rightBarButtonItems = @[refreshItem, filterItem];
 }
 
 - (void)pp_buildHeader {
@@ -938,176 +1268,213 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
     title.text = kLang(@"Fulfillment_Title");
     title.font = [Styling fontBold:PPFontTitle1];
     title.textColor = PPF_InkColor();
-    title.textAlignment = [Language alignmentForCurrentLanguage];
-    title.numberOfLines = 2;
-    title.tag = 1001;
 
     UILabel *subtitle = [UILabel new];
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
     subtitle.text = kLang(@"Fulfillment_Subtitle");
     subtitle.font = [Styling fontRegular:PPFontSubheadline];
     subtitle.textColor = PPF_SubInkColor();
-    subtitle.textAlignment = [Language alignmentForCurrentLanguage];
     subtitle.numberOfLines = 2;
-    subtitle.tag = 1002;
 
-    UILabel *count = [UILabel new];
-    count.translatesAutoresizingMaskIntoConstraints = NO;
-    count.font = [Styling fontBold:PPFontFootnote];
-    count.textColor = PPF_AccentColor();
-    count.backgroundColor = [PPF_AccentColor() colorWithAlphaComponent:0.11];
-    count.textAlignment = NSTextAlignmentCenter;
-    count.layer.cornerRadius = 16.0;
-    count.layer.masksToBounds = YES;
-    count.adjustsFontSizeToFitWidth = YES;
-    count.minimumScaleFactor = 0.72;
-    count.adjustsFontForContentSizeCategory = YES;
-    count.tag = 1003;
-    self.heroCountLabel = count;
-
-    UIView *textColumn = [UIView new];
-    textColumn.translatesAutoresizingMaskIntoConstraints = NO;
-    textColumn.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [card addSubview:textColumn];
-
-    [textColumn addSubview:title];
-    [textColumn addSubview:subtitle];
-    [card addSubview:count];
-
-    [title setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    [title setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    [count setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [count setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    _metricsView = [PPF_MetricsCardView new];
+    _metricsView.translatesAutoresizingMaskIntoConstraints = NO;
+    [card addSubview:_metricsView];
+    [card addSubview:title];
+    [card addSubview:subtitle];
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:18.0],
+        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:16.0],
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
-        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-14.0],
-        [card.heightAnchor constraintGreaterThanOrEqualToConstant:168.0],
+        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-12.0],
 
         [hero.topAnchor constraintEqualToAnchor:card.topAnchor],
         [hero.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
         [hero.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [hero.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
 
-        [textColumn.topAnchor constraintEqualToAnchor:card.topAnchor constant:26.0],
-        [textColumn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:24.0],
-        [textColumn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-24.0],
-        [textColumn.bottomAnchor constraintLessThanOrEqualToAnchor:card.bottomAnchor constant:-24.0],
+        [title.topAnchor constraintEqualToAnchor:card.topAnchor constant:20.0],
+        [title.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0],
+        [title.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0],
 
-        [count.topAnchor constraintEqualToAnchor:card.topAnchor constant:24.0],
-        [count.leadingAnchor constraintGreaterThanOrEqualToAnchor:textColumn.leadingAnchor],
-        [count.trailingAnchor constraintEqualToAnchor:textColumn.trailingAnchor],
-        [count.widthAnchor constraintGreaterThanOrEqualToConstant:86.0],
-        [count.heightAnchor constraintEqualToConstant:34.0],
+        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4.0],
+        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [subtitle.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
 
-        [title.topAnchor constraintEqualToAnchor:textColumn.topAnchor],
-        [title.leadingAnchor constraintEqualToAnchor:textColumn.leadingAnchor],
-        [title.trailingAnchor constraintLessThanOrEqualToAnchor:count.leadingAnchor constant:-14.0],
-
-        [subtitle.leadingAnchor constraintEqualToAnchor:textColumn.leadingAnchor],
-        [subtitle.trailingAnchor constraintEqualToAnchor:textColumn.trailingAnchor],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:10.0],
-        [subtitle.bottomAnchor constraintEqualToAnchor:textColumn.bottomAnchor],
+        [_metricsView.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:16.0],
+        [_metricsView.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [_metricsView.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
+        [_metricsView.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-20.0],
     ]];
+
     self.headerContainer = header;
     self.tableView.tableHeaderView = header;
-    [self pp_updateHeroCount];
+    [self pp_sizeHeaderToFit];
 }
 
 - (void)pp_sizeHeaderToFit {
-    if (!self.headerContainer || self.isAdjustingHeaderSize) return;
+    if (!self.headerContainer) return;
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
     if (width <= 0) return;
     CGRect frame = self.headerContainer.frame;
-    BOOL widthChanged = fabs(frame.size.width - width) > 0.5;
-    if (widthChanged) {
-        frame.size.width = width;
-        self.headerContainer.frame = frame;
-    }
+    frame.size.width = width;
+    self.headerContainer.frame = frame;
     [self.headerContainer layoutIfNeeded];
     CGFloat height = [self.headerContainer systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                      withHorizontalFittingPriority:UILayoutPriorityRequired
                                            verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
-    CGFloat targetHeight = ceil(MAX(1.0, height));
-    BOOL heightChanged = fabs(frame.size.height - targetHeight) > 0.5;
-    if (!widthChanged && !heightChanged &&
-        fabs(self.lastHeaderWidth - width) <= 0.5 &&
-        fabs(self.lastHeaderHeight - targetHeight) <= 0.5) {
-        return;
-    }
-    frame.size.width = width;
-    frame.size.height = targetHeight;
-    self.isAdjustingHeaderSize = YES;
+    frame.size.height = ceil(MAX(1.0, height));
     self.headerContainer.frame = frame;
     self.tableView.tableHeaderView = self.headerContainer;
-    self.lastHeaderWidth = width;
-    self.lastHeaderHeight = targetHeight;
-    self.isAdjustingHeaderSize = NO;
 }
 
-- (void)pp_updateInsets {
-    CGFloat tabHeight = self.tabBarController ? CGRectGetHeight(self.tabBarController.tabBar.bounds) : 0.0;
-    UIEdgeInsets inset = self.tableView.contentInset;
-    inset.bottom = MAX(28.0, tabHeight + 34.0);
-    if (!UIEdgeInsetsEqualToEdgeInsets(self.tableView.contentInset, inset)) {
-        self.tableView.contentInset = inset;
-    }
-    if (!UIEdgeInsetsEqualToEdgeInsets(self.tableView.scrollIndicatorInsets, inset)) {
-        self.tableView.scrollIndicatorInsets = inset;
-    }
-}
-
-- (void)pp_updateHeroCount {
-    NSString *format = kLang(@"Fulfillment_Count_Format");
-    self.heroCountLabel.text = [NSString stringWithFormat:format, @(self.visibleRecords.count)];
-}
-
-- (void)loadData {
+- (void)startLiveSubscription {
     self.isLoading = YES;
     self.errorMessage = nil;
     [self.tableView reloadData];
 
+    [_fulfillmentsListener remove];
     __weak typeof(self) weakSelf = self;
-    [[PPFulfillmentService shared] fetchFulfillmentsWithCompletion:^(NSArray<PPFulfillmentRecord *> *records, NSError *error) {
+
+    self.fulfillmentsListener = [[PPFulfillmentService shared] observeFulfillmentsWithCompletion:^(NSArray<PPFulfillmentRecord *> *records, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.isLoading = NO;
             [weakSelf.refreshControl endRefreshing];
             if (error) {
                 weakSelf.errorMessage = error.localizedDescription;
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
             } else {
                 weakSelf.records = records ?: @[];
                 weakSelf.errorMessage = nil;
+                [weakSelf fetchUserNamesForRecords:weakSelf.records];
             }
-            [weakSelf pp_applySearchFilter];
+            [weakSelf pp_applySearchAndFilters];
         });
     }];
 }
 
-- (void)pp_applySearchFilter {
-    NSString *query = [self.searchController.searchBar.text ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].lowercaseString;
-    if (query.length == 0) {
-        self.visibleRecords = self.records ?: @[];
-    } else {
-        NSPredicate *predicate = [NSPredicate predicateWithBlock:^BOOL(PPFulfillmentRecord *record, NSDictionary<NSString *,id> *bindings) {
-            (void)bindings;
-            NSString *haystack = [[NSString stringWithFormat:@"%@ %@ %@ %@ %@", record.parentOrderNumber ?: @"", record.fulfillmentID ?: @"", record.customerName ?: @"", record.status ?: @"", record.fulfillmentMode ?: @""] lowercaseString];
-            return [haystack containsString:query];
-        }];
-        self.visibleRecords = [self.records filteredArrayUsingPredicate:predicate];
+- (void)fetchUserNamesForRecords:(NSArray<PPFulfillmentRecord *> *)records {
+    NSMutableSet *uids = [NSMutableSet set];
+    for (PPFulfillmentRecord *r in records) {
+        if (r.customerID.length) [uids addObject:r.customerID];
+        if (r.ownerID.length) [uids addObject:r.ownerID];
     }
-    [self pp_updateHeroCount];
+    
+    __weak typeof(self) weakSelf = self;
+    [[PPFulfillmentService shared] resolveUserProfilesForIDs:uids.allObjects completion:^(NSDictionary<NSString *,NSString *> *names) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (names.count > 0) {
+                NSMutableDictionary *next = [NSMutableDictionary dictionaryWithDictionary:weakSelf.userNames];
+                [next addEntriesFromDictionary:names];
+                weakSelf.userNames = next;
+                [weakSelf pp_applySearchAndFilters];
+            }
+        });
+    }];
+}
+
+- (void)pp_applySearchAndFilters {
+    // 1. Calculate metrics
+    NSInteger active = 0;
+    NSInteger waiting = 0;
+    NSInteger completed = 0;
+    double providerNet = 0.0;
+    NSString *curr = @"QAR";
+
+    NSSet *terminalStatuses = [NSSet setWithArray:@[@"completed", @"cancelled", @"rejected", @"failed", @"returned"]];
+    NSSet *waitingStatuses = [NSSet setWithArray:@[@"new_request", @"delivery_requested", @"awaiting_handover"]];
+
+    for (PPFulfillmentRecord *r in self.records) {
+        NSString *s = r.status.lowercaseString;
+        if (![terminalStatuses containsObject:s]) active++;
+        if ([waitingStatuses containsObject:s]) waiting++;
+        if ([s isEqualToString:@"completed"]) completed++;
+        
+        NSNumber *net = r.money[@"providerNet"];
+        if (net) providerNet += net.doubleValue;
+        if (r.money[@"currency"]) curr = r.money[@"currency"];
+    }
+
+    [self.metricsView updateWithActive:active waiting:waiting completed:completed providerNet:providerNet currency:curr];
+
+    // 2. Filter records
+    NSString *query = [self.searchController.searchBar.text ?: @"" stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].lowercaseString;
+    
+    NSMutableArray *filtered = [NSMutableArray array];
+    for (PPFulfillmentRecord *r in self.records) {
+        if (self.filterStatus.length > 0 && ![r.status isEqualToString:self.filterStatus]) {
+            continue;
+        }
+        if (self.filterOwnerType.length > 0 && ![r.ownerType isEqualToString:self.filterOwnerType]) {
+            continue;
+        }
+        if (query.length > 0) {
+            NSString *custName = self.userNames[r.customerID] ?: r.customerName;
+            NSString *ownName = self.userNames[r.ownerID] ?: @"";
+            NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@ %@ %@ %@ %@",
+                                  r.fulfillmentID ?: @"",
+                                  r.parentOrderID ?: @"",
+                                  r.parentOrderNumber ?: @"",
+                                  r.customerID ?: @"",
+                                  r.ownerID ?: @"",
+                                  custName ?: @"",
+                                  ownName ?: @""];
+            if (![haystack.lowercaseString containsString:query]) {
+                continue;
+            }
+        }
+        [filtered addObject:r];
+    }
+    
+    self.visibleRecords = filtered;
     [self.tableView reloadData];
 }
 
 - (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
-    (void)searchController;
-    [self pp_applySearchFilter];
+    [self pp_applySearchAndFilters];
 }
 
-#pragma mark - Table View
+#pragma mark - Filter Action Sheet
+
+- (void)presentFilterOptionsSheet {
+    PPHapticTouch();
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:kLang(@"Fulfillment_Filter_AllStatuses")
+                                                                    message:nil
+                                                             preferredStyle:UIAlertControllerStyleActionSheet];
+
+    __weak typeof(self) weakSelf = self;
+    [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Fulfillment_Filter_AllStatuses") style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+        weakSelf.filterStatus = @"";
+        [weakSelf pp_applySearchAndFilters];
+    }]];
+
+    // Unique statuses in records
+    NSMutableSet *statuses = [NSMutableSet set];
+    for (PPFulfillmentRecord *r in self.records) {
+        if (r.status.length) [statuses addObject:r.status];
+    }
+
+    for (NSString *st in statuses.allObjects) {
+        [sheet addAction:[UIAlertAction actionWithTitle:PPF_StatusText(st) style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull action) {
+            weakSelf.filterStatus = st;
+            [weakSelf pp_applySearchAndFilters];
+        }]];
+    }
+
+    [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Fulfillment_Filter_Clear") style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
+        weakSelf.filterStatus = @"";
+        weakSelf.filterOwnerType = @"";
+        [weakSelf pp_applySearchAndFilters];
+    }]];
+
+    [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+
+    if (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad) {
+        sheet.popoverPresentationController.barButtonItem = self.navigationItem.rightBarButtonItems.lastObject;
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+#pragma mark - Table View Data Source & Delegate
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     return MAX(self.visibleRecords.count, 1);
@@ -1123,37 +1490,21 @@ static inline void PPF_ApplyCardChrome(UIView *view, CGFloat radius) {
 
     PPFulfillmentRecord *record = self.visibleRecords[indexPath.row];
     PPF_OrderCell *cell = [tableView dequeueReusableCellWithIdentifier:@"Order" forIndexPath:indexPath];
-    BOOL animateEntrance = !_didRunInitialListAnimation && indexPath.row < 12;
-    [cell configureWithRecord:record animated:animateEntrance];
+    
+    NSString *cName = self.userNames[record.customerID] ?: record.customerName;
+    NSString *oName = self.userNames[record.ownerID];
+    
+    [cell configureWithRecord:record customerName:cName ownerName:oName animated:YES];
     return cell;
-}
-
-- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (UIAccessibilityIsReduceMotionEnabled()) return;
-    if (!_didRunInitialListAnimation && indexPath.row < 12) {
-        cell.alpha = 0.0;
-        cell.transform = CGAffineTransformMakeTranslation(0.0, 14.0);
-        CGFloat delay = MIN(indexPath.row * 0.055, 0.35);
-        [UIView animateWithDuration:0.38 delay:delay usingSpringWithDamping:0.88 initialSpringVelocity:0.4 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
-            cell.alpha = 1.0;
-            cell.transform = CGAffineTransformIdentity;
-        } completion:nil];
-    }
-}
-
-- (void)tableView:(UITableView *)tableView didEndDisplayingCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row == MIN(11, (NSInteger)self.visibleRecords.count - 1)) {
-        _didRunInitialListAnimation = YES;
-    }
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
     if (indexPath.row >= self.visibleRecords.count) return;
 
+    PPHapticTouch();
     PPFulfillmentRecord *record = self.visibleRecords[indexPath.row];
-
-    UIViewController *detail = [[PPFulfillmentDetailViewController alloc] initWithRecord:record];
+    PPFulfillmentDetailViewController *detail = [[PPFulfillmentDetailViewController alloc] initWithRecord:record];
     [self.navigationController pushViewController:detail animated:YES];
 }
 
