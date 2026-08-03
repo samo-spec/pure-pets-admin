@@ -454,6 +454,20 @@
 "Notifications" = "الإشعارات";
 "NotificationsEnabled" = "تم تفعيل الإشعارات.";
 "NotificationsDisabled" = "تم إيقاف الإشعارات.";
+"Notification" = "إشعار";
+"NotificationSettings" = "إعدادات الإشعارات";
+"AppLanguage" = "اللغة";
+"HelpCenter" = "مركز المساعدة";
+"Settings_Notifications_Subtitle" = "تنبيهات التوصيل وتحديثات فريق العمل";
+"Settings_Language_Subtitle" = "اتجاه الواجهة بين العربية والإنجليزية";
+"Settings_Help_Subtitle" = "الدعم والإرشاد ومسارات التصعيد";
+"Settings_Help_Message" = "للمساعدة، يرجى التواصل عبر support@purepets.co";
+"Settings_Logout_Subtitle" = "إنهاء جلسة الإدارة بأمان";
+"Settings_ProfileSubtitle" = "مساحة العمل وعناصر التحكم في الوصول";
+"Settings_Section_Preferences" = "التفضيلات";
+"Settings_Section_Support" = "الدعم";
+"Settings_Section_Session" = "الجلسة";
+"ListingsAdmin_HeroSubtitle" = "راجع إعلانات السوق والتبني مع حالة واضحة ومصدر ومالك كل إعلان.";
 
 "Error" = "خطأ";
 "OK" = "حسنًا";
@@ -1497,6 +1511,7 @@
 "PaymentMgmt_Error_InvalidInventoryRestockItems" = "عناصر الطلب غير صالحة لإعادة التخزين.";
 "PaymentMgmt_Error_InvalidOrderTotalForRefund" = "إجمالي الطلب غير صالح لعملية الاسترداد.";
 "PaymentMgmt_Error_PartialRefundTooHigh" = "يجب أن يكون مبلغ الاسترداد الجزئي أقل من إجمالي الطلب.";
+"PaymentMgmt_Error_NoRefundPermission" = "ليست لديك صلاحية لمعالجة عمليات الاسترداد.";
 "PaymentMgmt_Error_UnsupportedResolution" = "إجراء معالجة الطلب غير مدعوم.";
 "PaymentMgmt_Error_InvalidTransition" = "تحويل حالة الدفع غير صالح.";
 
@@ -1608,6 +1623,8 @@
 "PaymentMgmt_Event_TypedRequestMoved_Format" = "تم نقل طلب %@ إلى %@";
 "PaymentMgmt_Event_PaymentUpdated" = "تم تحديث الدفع";
 "PaymentMgmt_Event_RequestUpdated" = "تم تحديث الطلب";
+"PaymentMgmt_Event_RefundInitiated" = "بدأت تسوية الاسترجاع";
+"PaymentMgmt_Event_Unknown" = "تحديث على دورة الطلب";
 
 "PaymentMgmt_Audit_OrderApprove" = "اعتماد الدفع";
 "PaymentMgmt_Audit_OrderProcessing" = "نقل الطلب إلى قيد المعالجة";
@@ -2234,6 +2251,59 @@
 "Providers_Features_Empty" = "لا توجد ميزات مكونة";
 "Providers_Accounting_Empty" = "لا توجد سجلات عمولات";
 "Providers_Accounting_Commission" = "العمولة";
+"Providers_Type_service" = "مزود خدمة";
+"Providers_Type_vet" = "طبيب بيطري";
+"Providers_Status_Archived" = "مؤرشف";
+"Providers_Status_Active" = "نشط";
+"Providers_Status_Inactive" = "غير نشط";
+"Providers_Status_Settled" = "تمت التسوية";
+"Providers_Status_Voided" = "ملغى";
+"Providers_Billing_Monthly" = "شهري";
+"Providers_Billing_Yearly" = "سنوي";
+"Providers_Billing_OneTime" = "مرة واحدة";
+"Providers_NotAvailable" = "غير متاح";
+"Providers_TryAgain" = "حاول مرة أخرى";
+"Providers_OpenActions_Hint" = "يفتح الإجراءات الإدارية المتاحة.";
+"Providers_Load_Error_Subtitle" = "تحقق من الاتصال وحاول مرة أخرى. ستبقى البيانات الحالية دون تغيير.";
+"Providers_Applications_Summary_Format" = "%lu ظاهر · %lu بانتظار القرار";
+"Providers_ReviewNotes_Context" = "أضف سياقاً داخلياً اختيارياً قبل تأكيد هذا القرار.";
+"Providers_Plans_HeroTitle" = "اقتصاديات المزودين";
+"Providers_Plans_HeroSubtitle" = "اجعل تكلفة الاشتراك ودورة الفوترة والعمولة والصلاحيات واضحة قبل التفعيل.";
+"Providers_Plans_Summary_Format" = "%lu خطط · %lu نشطة · %lu تعريفات ميزات";
+"Providers_Plans_Loading" = "جارٍ تحميل خطط المزودين";
+"Providers_Plans_LoadFailed" = "تعذر تحميل خطط المزودين";
+"Providers_Plans_Empty_Subtitle" = "أنشئ أول خطة مزود لتحديد التكلفة وشروط العمولة.";
+"Providers_Plans_Detail_Format" = "عمولة المنصة %.2f%% · %ld ميزات";
+"Providers_Plans_Recommended" = "موصى بها";
+"Providers_Percentage_Format" = "%.2f%%";
+"Providers_Plans_SelectType" = "اختر نوع المزود";
+"Providers_Plans_SelectType_Subtitle" = "ستتاح الخطة لمساحة عمل هذا النوع من المزودين فقط.";
+"Providers_Plans_Invalid_Form" = "أدخل الاسمين المحليين ومبلغاً صالحاً وعمولة من 0 إلى 100.";
+"Providers_Plans_Delete_Title" = "حذف خطة المزود؟";
+"Providers_Plans_Delete_Explanation" = "ستُحذف الخطة نهائياً، وستحتفظ الاشتراكات الحالية بالنسخة المحفوظة منها.";
+"Providers_Features_HeroTitle" = "دليل الصلاحيات";
+"Providers_Features_HeroSubtitle" = "راجع تعريفات الميزات المرتبطة بكل خطة ومساحة عمل للمزودين.";
+"Providers_Features_Summary_Format" = "%lu تعريفات · %lu مفعلة · %lu أنواع مزودين";
+"Providers_Features_Loading" = "جارٍ تحميل تعريفات الميزات";
+"Providers_Features_LoadFailed" = "تعذر تحميل تعريفات الميزات";
+"Providers_Features_Empty_Subtitle" = "ستظهر تعريفات الميزات بعد ربطها بخطط المزودين.";
+"Providers_Features_Detail_Format" = "الخطة: %@";
+"Providers_Features_Detail_WithLimit_Format" = "الخطة: %@ · الحد: %@";
+"Providers_Accounting_HeroTitle" = "دفتر العمولات";
+"Providers_Accounting_HeroSubtitle" = "تتبّع لقطات البيع غير القابلة للتعديل من الإجمالي إلى حصة المنصة وصافي المزود.";
+"Providers_Accounting_SecureLedger" = "دفتر مملوك للخادم · دليل مالي للقراءة فقط";
+"Providers_Accounting_ProviderID" = "مرجع المزود";
+"Providers_Accounting_ProviderPlaceholder" = "أدخل معرّف المزود";
+"Providers_Accounting_ProviderRequired" = "أدخل معرّف المزود لتحميل تقرير عمولاته.";
+"Providers_Accounting_LoadReport" = "تحميل التقرير";
+"Providers_Accounting_Loading" = "جارٍ تحميل تقرير العمولات";
+"Providers_Accounting_LoadFailed" = "تعذر تحميل تقرير العمولات";
+"Providers_Accounting_SelectProvider" = "اختر مزوداً للبدء";
+"Providers_Accounting_SelectProvider_Subtitle" = "أدخل مرجع المزود أعلاه ثم حمّل تقرير دفتره المصرح به.";
+"Providers_Accounting_Empty_Subtitle" = "لم يتم العثور على قيود عمولة غير قابلة للتعديل لهذا المزود.";
+"Providers_Accounting_Summary_Format" = "%lu قيود · %@ إجمالي · %@ صافي المزود";
+"Providers_Accounting_MoneyLine_Format" = "الإجمالي %@ · صافي المزود %@";
+"Providers_Accounting_Detail_Format" = "حصة المنصة %@ · النسبة %.2f%% · %@";
 
 /* ===================== POS Section ===================== */
 "POS_Section_Title" = "نقطة البيع";
@@ -2260,6 +2330,21 @@
 "POS_PaymentMethod" = "طريقة الدفع";
 "POS_Items" = "العناصر";
 "POS_Add" = "إضافة";
+"POS_AddItemHint" = "أدخل عنصراً لإضافته إلى عملية البيع";
+"POS_CartEmptyHint" = "أضف عنصراً لبدء عملية البيع";
+"POS_CartEmptyCompactHint" = "اختر عنصراً من الكتالوج للبدء";
+"POS_CheckoutHint" = "اختر طريقة الدفع وأكمل عملية البيع";
+"POS_Catalog" = "كتالوج بيور بيتس";
+"POS_CatalogEmpty" = "لا توجد عناصر مطابقة";
+"POS_CatalogEmptyHint" = "غيّر عبارة البحث أو حاول لاحقاً";
+"POS_SearchPlaceholder" = "ابحث في منتجات بيور بيتس";
+"POS_Scan" = "مسح";
+"POS_ScanCode" = "مسح رمز العنصر";
+"POS_ScanCodeHint" = "أدخل أو الصق رمز العنصر للعثور عليه في الكتالوج";
+"POS_ScanCodePlaceholder" = "رمز العنصر";
+"POS_ItemUnavailable" = "غير متاح";
+"POS_StockLimitReached" = "كل الكمية المتاحة موجودة بالفعل في السلة";
+"POS_AddToCartHint" = "إضافة هذا العنصر إلى السلة";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "الميزات";

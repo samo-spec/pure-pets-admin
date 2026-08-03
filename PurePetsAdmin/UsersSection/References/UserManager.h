@@ -78,6 +78,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Sign out and clear cached user
 - (void)signOut;
+- (void)signOutWithCompletion:(void (^ _Nullable)(NSError * _Nullable error))completion;
 
 // Ensure user document exists when logging in with Firebase Auth
 - (void)ensureUserDocumentExistsForAuthUser:(FIRUser *)authUser

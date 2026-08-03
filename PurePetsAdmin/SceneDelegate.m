@@ -200,6 +200,7 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                     weakSelf.pp_didAutoPromptForCurrentLockCycle = NO;
                     weakSelf.pp_requiresManualUnlockRetry = NO;
                     [weakSelf pp_hideLockOverlay];
+                    [UsrMgr signOut];
                     [weakSelf setRoot:AppRootLogin animated:animated];
                     return;
                }

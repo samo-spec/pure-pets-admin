@@ -24,6 +24,8 @@ typedef void (^PPPaymentAdminSettingsCompletion)(PPPaymentAdminSettings * _Nulla
 + (instancetype)shared;
 
 - (BOOL)currentAdminCanManagePayments;
+- (BOOL)currentAdminCanViewPayments;
+- (BOOL)currentAdminCanRefundPayments;
 - (void)fetchOrdersWithFilters:(nullable PPPaymentManagementFilters *)filters
                       pageSize:(NSInteger)pageSize
                     startAfter:(nullable FIRDocumentSnapshot *)startAfter

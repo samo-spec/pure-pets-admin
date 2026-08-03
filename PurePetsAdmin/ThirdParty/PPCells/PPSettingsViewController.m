@@ -23,7 +23,10 @@
 @property (nonatomic, strong) UILabel *roleLabel;
 @property (nonatomic, strong) UILabel *emailLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
-@property (nonatomic, strong) NSArray<NSDictionary *> *settingsItems;
+@property (nonatomic, strong) UILabel *settingsTitleLabel;
+@property (nonatomic, strong) UILabel *settingsSubtitleLabel;
+@property (nonatomic, strong) NSArray<NSArray<NSDictionary *> *> *settingsSections;
+@property (nonatomic, strong) NSArray<NSString *> *settingsSectionTitles;
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
 @property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 
@@ -34,7 +37,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
-    self.title = kLang(@"Settings") ?: @"Settings";
+    self.title = kLang(@"Settings");
     
     [self setupSettingsItems];
     [self setupTableView];
@@ -68,28 +71,43 @@
 #pragma mark - Items Setup
 
 - (void)setupSettingsItems {
-    self.settingsItems = @[
+    self.settingsSectionTitles = @[
+        kLang(@"Settings_Section_Preferences"),
+        kLang(@"Settings_Section_Support"),
+        kLang(@"Settings_Section_Session")
+    ];
+    self.settingsSections = @[
+        @[
         @{
-            @"title": kLang(@"NotificationSettings") ?: @"Notification Settings",
+            @"title": kLang(@"NotificationSettings"),
+            @"subtitle": kLang(@"Settings_Notifications_Subtitle"),
             @"icon": @"bell.badge.fill",
             @"action": @"openNotifications"
         },
         @{
-            @"title": kLang(@"AppLanguage") ?: @"Language Preference",
+            @"title": kLang(@"AppLanguage"),
+            @"subtitle": kLang(@"Settings_Language_Subtitle"),
             @"icon": @"globe",
             @"action": @"openLanguage"
-        },
+        }
+        ],
+        @[
         @{
-            @"title": kLang(@"HelpCenter") ?: @"Help Center",
+            @"title": kLang(@"HelpCenter"),
+            @"subtitle": kLang(@"Settings_Help_Subtitle"),
             @"icon": @"questionmark.circle.fill",
             @"action": @"openHelp"
-        },
+        }
+        ],
+        @[
         @{
-            @"title": kLang(@"Logout") ?: @"Logout",
+            @"title": kLang(@"Logout"),
+            @"subtitle": kLang(@"Settings_Logout_Subtitle"),
             @"icon": @"power.circle.fill",
             @"action": @"logout",
             @"destructive": @YES
         }
+        ]
     ];
 }
 
@@ -118,7 +136,9 @@
     self.tableView.backgroundColor = UIColor.clearColor;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.showsVerticalScrollIndicator = NO;
-    self.tableView.rowHeight = 70.0;
+    self.tableView.rowHeight = 76.0;
+    self.tableView.sectionHeaderHeight = 36.0;
+    self.tableView.sectionFooterHeight = PPSpaceLG;
     
     [self.view addSubview:self.tableView];
     
@@ -134,27 +154,44 @@
     CGFloat width = CGRectGetWidth(self.view.bounds);
     if (width <= 0.0) width = UIScreen.mainScreen.bounds.size.width;
     
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 220.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 278.0)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     
-    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(16.0, 12.0, width - 32.0, 204.0)];
-    card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.settingsTitleLabel = [UILabel new];
+    self.settingsTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.settingsTitleLabel.text = kLang(@"Settings");
+    self.settingsTitleLabel.textColor = PrimaryTextClr;
+    self.settingsTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:28.0]];
+    self.settingsTitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.settingsTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [header addSubview:self.settingsTitleLabel];
+
+    self.settingsSubtitleLabel = [UILabel new];
+    self.settingsSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.settingsSubtitleLabel.text = kLang(@"Settings_ProfileSubtitle");
+    self.settingsSubtitleLabel.textColor = PPTextTertiaryColor();
+    self.settingsSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:13.0]];
+    self.settingsSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.settingsSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [header addSubview:self.settingsSubtitleLabel];
+
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
     
     PPHero *glassBG = [PPHero new];
-    glassBG.frame = card.bounds;
-    glassBG.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    glassBG.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:glassBG];
     self.heroGlassBG = glassBG;
     
     UIView *content = [UIView new];
-    content.frame = card.bounds;
-    content.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    content.translatesAutoresizingMaskIntoConstraints = NO;
     [card addSubview:content];
     
-    UIView *avatarShell = [[UIView alloc] initWithFrame:CGRectMake(24.0, 32.0, 72.0, 72.0)];
+    UIView *avatarShell = [[UIView alloc] init];
+    avatarShell.translatesAutoresizingMaskIntoConstraints = NO;
     avatarShell.backgroundColor = [AppBackgroundClrShiner colorWithAlphaComponent:0.78];
     avatarShell.layer.cornerRadius = 36.0;
     avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
@@ -162,7 +199,8 @@
     avatarShell.layer.borderColor = PPLiquidBorderColor().CGColor;
     [content addSubview:avatarShell];
     
-    self.avatarIMV = [[UIImageView alloc] initWithFrame:CGRectMake(5.0, 5.0, 62.0, 62.0)];
+    self.avatarIMV = [[UIImageView alloc] init];
+    self.avatarIMV.translatesAutoresizingMaskIntoConstraints = NO;
     self.avatarIMV.layer.cornerRadius = 31.0;
     self.avatarIMV.clipsToBounds = YES;
     self.avatarIMV.contentMode = UIViewContentModeScaleAspectFill;
@@ -170,25 +208,27 @@
     self.avatarIMV.tintColor = AppPrimaryClr;
     [avatarShell addSubview:self.avatarIMV];
     
-    CGFloat textX = CGRectGetMaxX(avatarShell.frame) + 16.0;
-    CGFloat textW = CGRectGetWidth(card.bounds) - textX - 24.0;
-    
-    self.nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, 36.0, textW, 32.0)];
-    self.nameLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.nameLabel = [[UILabel alloc] init];
+    self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.nameLabel.font = [Styling fontBold:24];
     self.nameLabel.textColor = PrimaryTextClr;
+    self.nameLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.nameLabel.adjustsFontForContentSizeCategory = YES;
+    self.nameLabel.numberOfLines = 2;
     self.nameLabel.text = @"—";
     [content addSubview:self.nameLabel];
     
-    self.roleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, CGRectGetMaxY(self.nameLabel.frame) + 4.0, textW, 20.0)];
-    self.roleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.roleLabel = [[UILabel alloc] init];
+    self.roleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.roleLabel.font = [Styling fontMedium:14];
     self.roleLabel.textColor = SeconderyTextClr;
+    self.roleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.roleLabel.adjustsFontForContentSizeCategory = YES;
     self.roleLabel.text = @"—";
     [content addSubview:self.roleLabel];
 
-    self.emailLabel = [[UILabel alloc] initWithFrame:CGRectMake(textX, CGRectGetMaxY(self.roleLabel.frame) + 2.0, textW, 20.0)];
-    self.emailLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    self.emailLabel = [[UILabel alloc] init];
+    self.emailLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.emailLabel.font = [Styling fontRegular:12];
     self.emailLabel.textColor = PPTextTertiaryColor();
     self.emailLabel.textAlignment = [Language alignmentForCurrentLanguage];
@@ -196,8 +236,8 @@
     self.emailLabel.text = @"—";
     [content addSubview:self.emailLabel];
 
-    self.statusLabel = [[UILabel alloc] initWithFrame:CGRectMake(24.0, 150.0, 108.0, 32.0)];
-    self.statusLabel.autoresizingMask = UIViewAutoresizingFlexibleRightMargin;
+    self.statusLabel = [[UILabel alloc] init];
+    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusLabel.font = [Styling fontBold:12];
     self.statusLabel.textColor = PPPrimaryColor();
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
@@ -205,6 +245,60 @@
     self.statusLabel.layer.cornerRadius = 16.0;
     self.statusLabel.layer.masksToBounds = YES;
     [content addSubview:self.statusLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.settingsTitleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceMD],
+        [self.settingsTitleLabel.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
+        [self.settingsTitleLabel.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
+        [self.settingsSubtitleLabel.topAnchor constraintEqualToAnchor:self.settingsTitleLabel.bottomAnchor constant:PPSpaceXXS],
+        [self.settingsSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.settingsTitleLabel.leadingAnchor],
+        [self.settingsSubtitleLabel.trailingAnchor constraintEqualToAnchor:self.settingsTitleLabel.trailingAnchor],
+
+        [card.topAnchor constraintEqualToAnchor:self.settingsSubtitleLabel.bottomAnchor constant:PPSpaceMD],
+        [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceMD],
+
+        [glassBG.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [glassBG.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [glassBG.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [glassBG.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
+
+        [content.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [content.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [content.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [content.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
+
+        [avatarShell.topAnchor constraintEqualToAnchor:content.topAnchor constant:PPSpaceLG],
+        [avatarShell.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:PPSpaceXL],
+        [avatarShell.widthAnchor constraintEqualToConstant:72.0],
+        [avatarShell.heightAnchor constraintEqualToConstant:72.0],
+
+        [self.avatarIMV.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
+        [self.avatarIMV.centerYAnchor constraintEqualToAnchor:avatarShell.centerYAnchor],
+        [self.avatarIMV.widthAnchor constraintEqualToConstant:62.0],
+        [self.avatarIMV.heightAnchor constraintEqualToConstant:62.0],
+
+        [self.nameLabel.leadingAnchor constraintEqualToAnchor:avatarShell.trailingAnchor constant:PPSpaceBase],
+        [self.nameLabel.trailingAnchor constraintEqualToAnchor:content.trailingAnchor constant:-PPSpaceXL],
+        [self.nameLabel.topAnchor constraintEqualToAnchor:avatarShell.topAnchor],
+
+        [self.roleLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
+        [self.roleLabel.trailingAnchor constraintEqualToAnchor:self.nameLabel.trailingAnchor],
+        [self.roleLabel.topAnchor constraintEqualToAnchor:self.nameLabel.bottomAnchor constant:PPSpaceXS],
+
+        [self.emailLabel.leadingAnchor constraintEqualToAnchor:self.nameLabel.leadingAnchor],
+        [self.emailLabel.trailingAnchor constraintEqualToAnchor:self.nameLabel.trailingAnchor],
+        [self.emailLabel.topAnchor constraintEqualToAnchor:self.roleLabel.bottomAnchor constant:PPSpaceXXS],
+
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:avatarShell.leadingAnchor],
+        [self.statusLabel.topAnchor constraintEqualToAnchor:avatarShell.bottomAnchor constant:PPSpaceMD],
+        [self.statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
+        [self.statusLabel.heightAnchor constraintEqualToConstant:32.0],
+    ]];
+
+    card.isAccessibilityElement = YES;
+    card.accessibilityTraits = UIAccessibilityTraitHeader;
     
     self.tableView.tableHeaderView = header;
 }
@@ -238,7 +332,30 @@
 #pragma mark - UITableView Delegate & DataSource
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return self.settingsItems.count;
+    return self.settingsSections[section].count;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
+    return self.settingsSections.count;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
+    UIView *container = [UIView new];
+    UILabel *label = [UILabel new];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.text = self.settingsSectionTitles[section];
+    label.textColor = PPTextTertiaryColor();
+    label.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:12.0]];
+    label.adjustsFontForContentSizeCategory = YES;
+    label.textAlignment = [Language alignmentForCurrentLanguage];
+    label.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:label];
+    [NSLayoutConstraint activateConstraints:@[
+        [label.leadingAnchor constraintEqualToAnchor:container.layoutMarginsGuide.leadingAnchor],
+        [label.trailingAnchor constraintEqualToAnchor:container.layoutMarginsGuide.trailingAnchor],
+        [label.centerYAnchor constraintEqualToAnchor:container.centerYAnchor]
+    ]];
+    return container;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -252,22 +369,52 @@
         surface.tag = 99;
         surface.translatesAutoresizingMaskIntoConstraints = NO;
         surface.backgroundColor = AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
-        surface.layer.cornerRadius = 18.0;
+        surface.layer.cornerRadius = PPCornerMedium;
+        surface.layer.cornerCurve = kCACornerCurveContinuous;
         surface.layer.borderWidth = 1.0;
-        surface.layer.borderColor = [(AppPrimaryClr ?: UIColor.systemBlueColor) colorWithAlphaComponent:0.04].CGColor;
+        surface.layer.borderColor = PPHairlineColor().CGColor;
+        surface.layer.shadowColor = PPDeepCharcoalColor().CGColor;
+        surface.layer.shadowOpacity = PPShadowSubtleOpacity;
+        surface.layer.shadowRadius = PPShadowSubtleRadius;
+        surface.layer.shadowOffset = CGSizeMake(0, PPShadowSubtleOffsetY);
         [cell.contentView addSubview:surface];
+
+        UIView *iconSurface = [UIView new];
+        iconSurface.tag = 103;
+        iconSurface.translatesAutoresizingMaskIntoConstraints = NO;
+        iconSurface.layer.cornerRadius = PPCornerMedium;
+        iconSurface.layer.cornerCurve = kCACornerCurveContinuous;
+        [surface addSubview:iconSurface];
         
         UIImageView *icon = [UIImageView new];
         icon.tag = 100;
         icon.contentMode = UIViewContentModeScaleAspectFit;
         icon.translatesAutoresizingMaskIntoConstraints = NO;
-        [surface addSubview:icon];
+        [iconSurface addSubview:icon];
         
         UILabel *title = [UILabel new];
         title.tag = 101;
-        title.font = [Styling fontMedium:15];
+        title.font = [Styling fontMedium:16];
+        title.textAlignment = [Language alignmentForCurrentLanguage];
+        title.adjustsFontForContentSizeCategory = YES;
         title.translatesAutoresizingMaskIntoConstraints = NO;
         [surface addSubview:title];
+
+        UILabel *subtitle = [UILabel new];
+        subtitle.tag = 104;
+        subtitle.font = [Styling fontRegular:12];
+        subtitle.textColor = PPTextTertiaryColor();
+        subtitle.textAlignment = [Language alignmentForCurrentLanguage];
+        subtitle.numberOfLines = 2;
+        subtitle.adjustsFontForContentSizeCategory = YES;
+        subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+        [surface addSubview:subtitle];
+
+        UIView *separator = [UIView new];
+        separator.tag = 105;
+        separator.translatesAutoresizingMaskIntoConstraints = NO;
+        separator.backgroundColor = PPHairlineColor();
+        [surface addSubview:separator];
         
         UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightSemibold]]];
         chevron.tag = 102;
@@ -277,51 +424,85 @@
         [surface addSubview:chevron];
         
         [NSLayoutConstraint activateConstraints:@[
-            [surface.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor constant:5.0],
+            [surface.topAnchor constraintEqualToAnchor:cell.contentView.topAnchor],
             [surface.leadingAnchor constraintEqualToAnchor:cell.contentView.leadingAnchor constant:16.0],
             [surface.trailingAnchor constraintEqualToAnchor:cell.contentView.trailingAnchor constant:-16.0],
-            [surface.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor constant:-5.0],
+            [surface.bottomAnchor constraintEqualToAnchor:cell.contentView.bottomAnchor],
             
-            [icon.leadingAnchor constraintEqualToAnchor:surface.leadingAnchor constant:16.0],
-            [icon.centerYAnchor constraintEqualToAnchor:surface.centerYAnchor],
+            [iconSurface.leadingAnchor constraintEqualToAnchor:surface.leadingAnchor constant:14.0],
+            [iconSurface.centerYAnchor constraintEqualToAnchor:surface.centerYAnchor],
+            [iconSurface.widthAnchor constraintEqualToConstant:44.0],
+            [iconSurface.heightAnchor constraintEqualToConstant:44.0],
+
+            [icon.centerXAnchor constraintEqualToAnchor:iconSurface.centerXAnchor],
+            [icon.centerYAnchor constraintEqualToAnchor:iconSurface.centerYAnchor],
             [icon.widthAnchor constraintEqualToConstant:22.0],
             [icon.heightAnchor constraintEqualToConstant:22.0],
             
-            [title.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:14.0],
-            [title.centerYAnchor constraintEqualToAnchor:surface.centerYAnchor],
+            [title.leadingAnchor constraintEqualToAnchor:iconSurface.trailingAnchor constant:14.0],
+            [title.topAnchor constraintEqualToAnchor:surface.topAnchor constant:15.0],
             [title.trailingAnchor constraintLessThanOrEqualToAnchor:chevron.leadingAnchor constant:-12.0],
+
+            [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+            [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2.0],
+            [subtitle.trailingAnchor constraintLessThanOrEqualToAnchor:chevron.leadingAnchor constant:-12.0],
             
             [chevron.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor constant:-16.0],
             [chevron.centerYAnchor constraintEqualToAnchor:surface.centerYAnchor],
             [chevron.widthAnchor constraintEqualToConstant:12.0],
-            [chevron.heightAnchor constraintEqualToConstant:12.0]
+            [chevron.heightAnchor constraintEqualToConstant:12.0],
+
+            [separator.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+            [separator.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor constant:-PPSpaceBase],
+            [separator.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor],
+            [separator.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale]
         ]];
     }
     
-    NSDictionary *item = self.settingsItems[indexPath.row];
+    NSDictionary *item = self.settingsSections[indexPath.section][indexPath.row];
     
     UIImageView *icon = [cell.contentView viewWithTag:100];
     UILabel *title = [cell.contentView viewWithTag:101];
     UIImageView *chevron = [cell.contentView viewWithTag:102];
+    UIView *iconSurface = [cell.contentView viewWithTag:103];
+    UILabel *subtitle = [cell.contentView viewWithTag:104];
+    UIView *separator = [cell.contentView viewWithTag:105];
+    UIView *surface = [cell.contentView viewWithTag:99];
     
     title.text = item[@"title"];
+    subtitle.text = item[@"subtitle"];
     icon.image = [UIImage systemImageNamed:item[@"icon"]];
+    BOOL isFirst = indexPath.row == 0;
+    BOOL isLast = indexPath.row == self.settingsSections[indexPath.section].count - 1;
+    surface.layer.maskedCorners = isFirst && isLast ? (kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner | kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner) :
+                                  isFirst ? (kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner) :
+                                  isLast ? (kCALayerMinXMaxYCorner | kCALayerMaxXMaxYCorner) : 0;
+    separator.hidden = isLast;
     
     if ([item[@"destructive"] boolValue]) {
         title.textColor = UIColor.systemRedColor;
+        subtitle.textColor = [UIColor.systemRedColor colorWithAlphaComponent:0.72];
         icon.tintColor = UIColor.systemRedColor;
+        iconSurface.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.10];
         chevron.hidden = YES;
     } else {
         title.textColor = PrimaryTextClr ?: UIColor.labelColor;
         icon.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+        iconSurface.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.10];
         chevron.hidden = NO;
     }
+    cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    cell.isAccessibilityElement = YES;
+    cell.accessibilityTraits = UIAccessibilityTraitButton;
+    cell.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", title.text ?: @"", subtitle.text ?: @""];
     
     return cell;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    NSDictionary *item = self.settingsItems[indexPath.row];
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    [[UISelectionFeedbackGenerator new] selectionChanged];
+    NSDictionary *item = self.settingsSections[indexPath.section][indexPath.row];
     NSString *action = item[@"action"];
     
     if ([action isEqualToString:@"openNotifications"]) {
@@ -332,17 +513,13 @@
         [[NSNotificationCenter defaultCenter] postNotificationName:@"PPOpenLanguageSelectionNotification" object:nil];
     } else if ([action isEqualToString:@"openHelp"]) {
         // Open web support or placeholder alert
-        UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"HelpCenter") ?: @"Help Center"
-                                                                       message:@"For assistance, please visit support@purepets.co"
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"HelpCenter")
+                                                                       message:kLang(@"Settings_Help_Message")
                                                                 preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") ?: @"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil]];
         [self presentViewController:alert animated:YES completion:nil];
     } else if ([action isEqualToString:@"logout"]) {
-        NSError *signOutError = nil;
-        [[FIRAuth auth] signOut:&signOutError];
-        if (signOutError) {
-            NSLog(@"[FirebaseAuth] Sign out error: %@", signOutError);
-        }
+        [UsrMgr signOut];
     }
 }
 

@@ -1,4 +1,5 @@
 #import "PPNotificationsManager.h"
+#import "AppDelegate.h"
 #import <UserNotifications/UserNotifications.h>
 #import <UIKit/UIKit.h>
 @import Firebase;
@@ -6,6 +7,7 @@
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
+@import FirebaseFunctions;
 @import FirebaseAuth;
 @import FirebaseMessaging;
 
@@ -13,6 +15,17 @@ static NSString * const kPPNotificationTokenDefaultsKey = @"SavedDeviceToken";
 static NSString * const kPPNotificationFunctionsBaseURLDefault = @"https://us-central1-pure-pets-49199.cloudfunctions.net";
 
 static NSString * _Nullable sFunctionsBaseURLOverride = nil;
+static NSString * const kPPNotificationV2AdminAppID = @"admin_ios";
+static NSString * const kPPNotificationV2AdminBindingDefaultsKey = @"PPNotificationV2AdminBindingV1";
+
+static NSString *PPNotificationV2AdminEnvironment(void)
+{
+#if DEBUG
+    return @"sandbox";
+#else
+    return @"production";
+#endif
+}
 
 @implementation PPNotificationsManager
 @synthesize deviceToken = _deviceToken;
@@ -129,6 +142,114 @@ static NSString * _Nullable sFunctionsBaseURLOverride = nil;
             return;
         }
         [self getDeviceTokenWithCompletion:completion];
+    }];
+}
+
+- (void)deactivateNotificationDeviceV2WithReason:(NSString *)reason
+                                      completion:(void (^)(NSError * _Nullable))completion {
+    NSString *safeUID = [PPNotificationsManager pp_trimmedString:[FIRAuth auth].currentUser.uid];
+    NSString *safeReason = [PPNotificationsManager pp_trimmedString:reason];
+    NSSet<NSString *> *allowedReasons = [NSSet setWithArray:@[@"logout", @"account_switch", @"token_deleted", @"manual"]];
+    if (safeUID.length == 0 || ![allowedReasons containsObject:safeReason]) {
+        NSLog(@"PPLAB NotificationsV2 admin deactivation skipped | appId=%@ hasUID=%@ validReason=%@",
+              kPPNotificationV2AdminAppID,
+              safeUID.length > 0 ? @"yes" : @"no",
+              [allowedReasons containsObject:safeReason] ? @"yes" : @"no");
+        if (completion) completion(nil);
+        return;
+    }
+
+    NSDictionary *binding = [NSUserDefaults.standardUserDefaults dictionaryForKey:kPPNotificationV2AdminBindingDefaultsKey];
+    NSString *bindingUID = [PPNotificationsManager pp_trimmedString:binding[@"uid"]];
+    NSString *installationId = [PPNotificationsManager pp_trimmedString:binding[@"installationId"]];
+    NSString *appId = [PPNotificationsManager pp_trimmedString:binding[@"appId"]];
+    NSString *environment = [PPNotificationsManager pp_trimmedString:binding[@"environment"]];
+    NSString *bindingGeneration = [PPNotificationsManager pp_trimmedString:binding[@"bindingGeneration"]];
+    NSString *fcmTokenHash = [PPNotificationsManager pp_trimmedString:binding[@"fcmTokenHash"]];
+    BOOL bindingMatchesSession = [bindingUID isEqualToString:safeUID] &&
+        [appId isEqualToString:kPPNotificationV2AdminAppID] &&
+        [environment isEqualToString:PPNotificationV2AdminEnvironment()] &&
+        installationId.length > 0 && bindingGeneration.length > 0 && fcmTokenHash.length > 0;
+    if (!bindingMatchesSession) {
+        NSLog(@"PPLAB NotificationsV2 admin deactivation skipped | appId=%@ reason=%@ binding_match=no",
+              kPPNotificationV2AdminAppID,
+              safeReason);
+        if (completion) completion(nil);
+        return;
+    }
+
+    NSString *activeUID = [PPNotificationsManager pp_trimmedString:[FIRAuth auth].currentUser.uid];
+    if (![activeUID isEqualToString:safeUID]) {
+        NSLog(@"PPLAB NotificationsV2 admin deactivation cancelled | appId=%@ reason=%@ auth_changed=yes",
+              kPPNotificationV2AdminAppID,
+              safeReason);
+        if (completion) completion(nil);
+        return;
+    }
+
+    NSDictionary *payload = @{
+        @"installationId": installationId,
+        @"reason": safeReason,
+        @"appId": @"admin_ios",
+        @"environment": environment,
+        @"bindingGeneration": bindingGeneration,
+        @"expectedFcmTokenHash": fcmTokenHash
+    };
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"deactivateNotificationDeviceV2"];
+    callable.timeoutInterval = 30.0;
+    NSLog(@"PPLAB NotificationsV2 admin deactivation start | appId=%@ reason=%@ hasBinding=yes",
+          kPPNotificationV2AdminAppID,
+          safeReason);
+
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                NSLog(@"PPLAB NotificationsV2 admin deactivation failed | appId=%@ reason=%@ error=%@",
+                      kPPNotificationV2AdminAppID,
+                      safeReason,
+                      error.localizedDescription ?: @"unknown");
+                if (completion) completion(error);
+                return;
+            }
+
+            NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+            BOOL ok = [response[@"ok"] respondsToSelector:@selector(boolValue)] && [response[@"ok"] boolValue];
+            BOOL deactivated = [response[@"deactivated"] respondsToSelector:@selector(boolValue)] && [response[@"deactivated"] boolValue];
+            BOOL stale = [response[@"stale"] respondsToSelector:@selector(boolValue)] && [response[@"stale"] boolValue];
+            if (ok) {
+                NSDictionary *storedBinding = [NSUserDefaults.standardUserDefaults dictionaryForKey:kPPNotificationV2AdminBindingDefaultsKey];
+                if ([[PPNotificationsManager pp_trimmedString:storedBinding[@"uid"]] isEqualToString:safeUID] &&
+                    [[PPNotificationsManager pp_trimmedString:storedBinding[@"bindingGeneration"]] isEqualToString:bindingGeneration]) {
+                    [NSUserDefaults.standardUserDefaults removeObjectForKey:kPPNotificationV2AdminBindingDefaultsKey];
+                }
+            }
+            NSLog(@"PPLAB NotificationsV2 admin deactivation finish | appId=%@ reason=%@ ok=%@ deactivated=%@ stale=%@",
+                  kPPNotificationV2AdminAppID,
+                  safeReason,
+                  ok ? @"yes" : @"no",
+                  deactivated ? @"yes" : @"no",
+                  stale ? @"yes" : @"no");
+            if (completion) completion(nil);
+        });
+    }];
+}
+
+- (void)invalidateLocalDeviceTokenWithCompletion:(void (^)(NSError * _Nullable))completion {
+    self.deviceToken = @"";
+    [NSUserDefaults.standardUserDefaults removeObjectForKey:kPPNotificationV2AdminBindingDefaultsKey];
+
+    id<UIApplicationDelegate> applicationDelegate = UIApplication.sharedApplication.delegate;
+    if ([applicationDelegate isKindOfClass:AppDelegate.class]) {
+        ((AppDelegate *)applicationDelegate).fcmToken = @"";
+    }
+
+    [[FIRMessaging messaging] deleteTokenWithCompletion:^(NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"PPLAB NotificationsV2 admin token delete finish | appId=%@ ok=%@",
+                  kPPNotificationV2AdminAppID,
+                  error ? @"no" : @"yes");
+            if (completion) completion(error);
+        });
     }];
 }
 

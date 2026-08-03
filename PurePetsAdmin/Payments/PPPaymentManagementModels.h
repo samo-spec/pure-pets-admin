@@ -56,6 +56,7 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 @property (nonatomic, copy) NSString *type;
 @property (nonatomic, copy) NSString *status;
 @property (nonatomic, copy) NSString *actorType;
+@property (nonatomic, copy) NSString *summaryCode;
 @property (nonatomic, copy) NSString *summary;
 @property (nonatomic, strong, nullable) NSDictionary *metadata;
 @property (nonatomic, strong) NSDate *createdAt;
@@ -140,6 +141,8 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 @property (nonatomic, copy) NSString *returnStatus;
 @property (nonatomic, copy) NSString *latestRequestType;
 @property (nonatomic, copy) NSString *latestRequestStatus;
+@property (nonatomic, assign) NSInteger fulfillmentVersion;
+@property (nonatomic, copy) NSArray<NSString *> *fulfillmentOrderIDs;
 @property (nonatomic, assign) double totalAmount;
 @property (nonatomic, strong) NSDate *createdAt;
 @property (nonatomic, strong) NSDate *updatedAt;

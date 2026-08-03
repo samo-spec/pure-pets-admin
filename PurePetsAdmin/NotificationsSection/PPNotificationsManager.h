@@ -30,6 +30,13 @@ typedef NS_ENUM(NSInteger, PPNotificationAudience) {
 // Refresh token if needed
 - (void)refreshTokenWithCompletion:(void (^)(NSString * _Nullable token, NSError * _Nullable error))completion;
 
+/// Deactivates this authenticated Admin installation using the last server binding generation.
+- (void)deactivateNotificationDeviceV2WithReason:(NSString *)reason
+                                      completion:(void (^)(NSError * _Nullable error))completion;
+
+/// Clears the locally cached token after Firebase Auth signout.
+- (void)invalidateLocalDeviceTokenWithCompletion:(void (^)(NSError * _Nullable error))completion;
+
 // Check notification permissions
 - (void)checkNotificationPermissions:(void (^)(BOOL granted, BOOL provisional))completion;
 

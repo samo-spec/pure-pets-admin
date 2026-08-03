@@ -185,6 +185,7 @@
 		F2A24B033003C4D3003AB79D /* PPProviderService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF63003C4D3003AB79D /* PPProviderService.m */; };
 		F2A24B043003C4D3003AB79D /* PPProviderAccountingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AEE3003C4D3003AB79D /* PPProviderAccountingViewController.m */; };
 		F2A24B053003C4D3003AB79D /* PPAccountingService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AD83003C4D3003AB79D /* PPAccountingService.m */; };
+		F2A24B063003C4D3003AB79D /* PPProviderUI.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24B083003C4D3003AB79D /* PPProviderUI.m */; };
 		F2A3462E2E58056E00C6713D /* RoleSelectorCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A3462C2E58052300C6713D /* RoleSelectorCell.m */; };
 		F2A346312E5807CB00C6713D /* RoleSummaryCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A346302E5807BB00C6713D /* RoleSummaryCell.m */; };
 		F2A346342E58084300C6713D /* XLFormOptionsObject+Extras.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A346332E58084300C6713D /* XLFormOptionsObject+Extras.m */; };
@@ -627,6 +628,8 @@
 		F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderPlansViewController.m; sourceTree = "<group>"; };
 		F2A24AF53003C4D3003AB79D /* PPProviderService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderService.h; sourceTree = "<group>"; };
 		F2A24AF63003C4D3003AB79D /* PPProviderService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderService.m; sourceTree = "<group>"; };
+		F2A24B073003C4D3003AB79D /* PPProviderUI.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderUI.h; sourceTree = "<group>"; };
+		F2A24B083003C4D3003AB79D /* PPProviderUI.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProviderUI.m; sourceTree = "<group>"; };
 		F2A3462C2E58052300C6713D /* RoleSelectorCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RoleSelectorCell.m; sourceTree = "<group>"; };
 		F2A3462D2E58053800C6713D /* RoleSelectorCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RoleSelectorCell.h; sourceTree = "<group>"; };
 		F2A3462F2E5807B400C6713D /* RoleSummaryCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RoleSummaryCell.h; sourceTree = "<group>"; };
@@ -1525,6 +1528,8 @@
 				F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */,
 				F2A24AF53003C4D3003AB79D /* PPProviderService.h */,
 				F2A24AF63003C4D3003AB79D /* PPProviderService.m */,
+				F2A24B073003C4D3003AB79D /* PPProviderUI.h */,
+				F2A24B083003C4D3003AB79D /* PPProviderUI.m */,
 			);
 			path = Providers;
 			sourceTree = "<group>";
@@ -2195,6 +2200,7 @@
 				F2A24B033003C4D3003AB79D /* PPProviderService.m in Sources */,
 				F2A24B043003C4D3003AB79D /* PPProviderAccountingViewController.m in Sources */,
 				F2A24B053003C4D3003AB79D /* PPAccountingService.m in Sources */,
+				F2A24B063003C4D3003AB79D /* PPProviderUI.m in Sources */,
 				F2A1BB0B2E75205900B86BF9 /* PPImageCacheHelper.m in Sources */,
 				F28AE1482E5690E3007279F5 /* Language.m in Sources */,
 				F28A76602E68838500D40BCF /* PPParallax.m in Sources */,

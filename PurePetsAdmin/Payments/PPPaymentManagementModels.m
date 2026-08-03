@@ -325,12 +325,15 @@ NSString *PPPaymentAdminDisplayTitleForActorType(NSString *actorType)
 NSString *PPPaymentAdminDisplayTitleForTimelineSummary(PPPaymentAdminTimelineEvent *event)
 {
     NSString *type = PPPaymentAdminEffectiveString(event.type);
-    if ([type isEqualToString:@"payment_verified"]) return kLang(@"PaymentMgmt_Event_PaymentApproved");
-    if ([type isEqualToString:@"fulfillment_processing"]) return kLang(@"PaymentMgmt_Event_OrderProcessing");
-    if ([type isEqualToString:@"fulfillment_shipped"]) return kLang(@"PaymentMgmt_Event_OrderShipped");
-    if ([type isEqualToString:@"fulfillment_delivered"]) return kLang(@"PaymentMgmt_Event_OrderDelivered");
-    if ([type isEqualToString:@"order_cancelled"]) return kLang(@"PaymentMgmt_Event_OrderCancelled");
-    if ([type isEqualToString:@"request_status_updated"]) {
+    NSString *summaryCode = PPPaymentAdminEffectiveString(event.summaryCode);
+    NSString *contractCode = summaryCode.length > 0 ? summaryCode : type;
+    if ([contractCode isEqualToString:@"payment_verified"] || [contractCode isEqualToString:@"order_approve"]) return kLang(@"PaymentMgmt_Event_PaymentApproved");
+    if ([contractCode isEqualToString:@"fulfillment_processing"] || [contractCode isEqualToString:@"order_mark_processing"]) return kLang(@"PaymentMgmt_Event_OrderProcessing");
+    if ([contractCode isEqualToString:@"fulfillment_shipped"] || [contractCode isEqualToString:@"order_mark_shipped"] || [contractCode isEqualToString:@"order_mark_ready"]) return kLang(@"PaymentMgmt_Event_OrderShipped");
+    if ([contractCode isEqualToString:@"fulfillment_delivered"] || [contractCode isEqualToString:@"order_mark_delivered"]) return kLang(@"PaymentMgmt_Event_OrderDelivered");
+    if ([contractCode isEqualToString:@"order_cancelled"] || [contractCode isEqualToString:@"order_cancel"]) return kLang(@"PaymentMgmt_Event_OrderCancelled");
+    if ([contractCode isEqualToString:@"refund_settlement_initiated"]) return kLang(@"PaymentMgmt_Event_RefundInitiated");
+    if ([contractCode isEqualToString:@"request_status_updated"] || [contractCode hasPrefix:@"payment.request."]) {
         NSString *requestType = PPPaymentAdminEffectiveString(event.metadata[@"requestType"]);
         NSString *status = PPPaymentAdminDisplayTitleForRequestStatus(event.status);
         if (requestType.length > 0) {
@@ -340,11 +343,9 @@ NSString *PPPaymentAdminDisplayTitleForTimelineSummary(PPPaymentAdminTimelineEve
         }
         return [NSString stringWithFormat:kLang(@"PaymentMgmt_Event_RequestMoved_Format"), status];
     }
-    if ([type isEqualToString:@"payment_update"]) return kLang(@"PaymentMgmt_Event_PaymentUpdated");
-    if ([type isEqualToString:@"request_update"]) return kLang(@"PaymentMgmt_Event_RequestUpdated");
-    NSString *summary = PPPaymentAdminTrimmedString(event.summary);
-    if (summary.length > 0) return summary;
-    return PPPaymentAdminHumanizedValue(type.length > 0 ? type : event.status);
+    if ([contractCode isEqualToString:@"payment_update"]) return kLang(@"PaymentMgmt_Event_PaymentUpdated");
+    if ([contractCode isEqualToString:@"request_update"]) return kLang(@"PaymentMgmt_Event_RequestUpdated");
+    return kLang(@"PaymentMgmt_Event_Unknown");
 }
 
 NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
@@ -441,6 +442,7 @@ NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
     event.type = PPPaymentAdminEffectiveString(dictionary[@"type"]);
     event.status = PPPaymentAdminEffectiveString(dictionary[@"status"]);
     event.actorType = PPPaymentAdminEffectiveString(dictionary[@"actorType"]);
+    event.summaryCode = PPPaymentAdminEffectiveString(dictionary[@"summaryCode"]);
     event.summary = PPPaymentAdminStringFromCandidates(dictionary, @[@"summary"]);
     event.metadata = [dictionary[@"metadata"] isKindOfClass:NSDictionary.class] ? dictionary[@"metadata"] : nil;
     event.createdAt = PPPaymentAdminDateFromValue(dictionary[@"createdAt"]) ?: [NSDate date];
@@ -590,6 +592,17 @@ NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
     record.returnStatus = PPPaymentAdminEffectiveString(dictionary[@"returnStatus"]);
     record.latestRequestType = PPPaymentAdminEffectiveString(dictionary[@"latestRequestType"]);
     record.latestRequestStatus = PPPaymentAdminEffectiveString(dictionary[@"latestRequestStatus"]);
+    record.fulfillmentVersion = [dictionary[@"fulfillmentVersion"] respondsToSelector:@selector(integerValue)]
+        ? [dictionary[@"fulfillmentVersion"] integerValue]
+        : 0;
+    NSMutableArray<NSString *> *fulfillmentOrderIDs = [NSMutableArray array];
+    for (id value in PPPaymentAdminSafeArray(dictionary[@"fulfillmentOrderIDs"])) {
+        NSString *fulfillmentID = PPPaymentAdminTrimmedString(value);
+        if (fulfillmentID.length > 0 && ![fulfillmentOrderIDs containsObject:fulfillmentID]) {
+            [fulfillmentOrderIDs addObject:fulfillmentID];
+        }
+    }
+    record.fulfillmentOrderIDs = fulfillmentOrderIDs.copy;
     double totalAmount = [dictionary[@"totalAmount"] respondsToSelector:@selector(doubleValue)] ? [dictionary[@"totalAmount"] doubleValue] : 0.0;
     if (totalAmount <= 0.0 && [dictionary[@"amount"] respondsToSelector:@selector(doubleValue)]) {
         totalAmount = [dictionary[@"amount"] doubleValue];

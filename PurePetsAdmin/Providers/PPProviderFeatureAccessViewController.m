@@ -1,121 +1,206 @@
 #import "PPProviderFeatureAccessViewController.h"
-@import FirebaseFirestore;
-@import FirebaseAuth;
+#import "PPProviderService.h"
+#import "PPProviderUI.h"
+#import "PPStaffAuth.h"
 #import "Language.h"
-#import "Styling.h"
 #import "AlertHelper.h"
-#import "PPFunc+Haptics.h"
 
-static NSString *const kPPProviderFeatureCellID = @"PPProviderFeatureCell";
+static NSString * const PPProviderFeatureCellID = @"PPProviderFeatureCell";
 
 @interface PPProviderFeatureAccessViewController ()
-@property (nonatomic, strong) NSArray<FIRDocumentSnapshot *> *features;
+@property (nonatomic, strong) NSArray<NSDictionary *> *features;
+@property (nonatomic, strong) PPProviderContextHeaderView *contextHeader;
+@property (nonatomic, strong) UIView *headerContainer;
+@property (nonatomic, strong) PPProviderStateView *stateView;
+@property (nonatomic, strong) NSError *currentError;
 @property (nonatomic, assign) BOOL isLoading;
-@property (nonatomic, copy) NSString *errorMessage;
 @end
 
 @implementation PPProviderFeatureAccessViewController
 
+#pragma mark - Lifecycle
+
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.title = kLang(@"Providers_Features_Title");
-    self.view.backgroundColor = AppBackgroundClr;
-    self.tableView.backgroundColor = AppBackgroundClr;
-    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 86.0;
-    self.tableView.contentInset = UIEdgeInsetsMake(12.0, 0.0, 24.0, 0.0);
-
-    UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadData)];
-    refreshBtn.accessibilityLabel = kLang(@"DC_Refresh");
-    self.navigationItem.rightBarButtonItem = refreshBtn;
-
+    self.features = @[];
+    [self pp_evaluatePermissions];
+    [self pp_configureNavigation];
+    [self pp_configureTableView];
+    [self pp_buildHeader];
     [self loadData];
 }
 
-- (void)loadData {
-    self.isLoading = YES;
-    self.errorMessage = nil;
-    [self.tableView reloadData];
-    FIRFirestore *db = [FIRFirestore firestore];
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self pp_fitTableHeader];
+}
+
+#pragma mark - Setup
+
+- (void)pp_evaluatePermissions {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasAnyPermission:@[kStaffPermProvidersView, kStaffPermProvidersManage]]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ [self.navigationController popViewControllerAnimated:YES]; });
+    }
+}
+
+- (void)pp_configureNavigation {
+    self.title = kLang(@"Providers_Features_Title");
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    UIBarButtonItem *refresh = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
+                                                                                target:self
+                                                                                action:@selector(loadData)];
+    refresh.accessibilityLabel = kLang(@"DC_Refresh");
+    self.navigationItem.rightBarButtonItem = refresh;
+}
+
+- (void)pp_configureTableView {
+    self.view.backgroundColor = PPProviderCanvasColor();
+    self.tableView.backgroundColor = PPProviderCanvasColor();
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 136.0;
+    self.tableView.showsVerticalScrollIndicator = NO;
+    self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceXS, 0.0, PPSpaceXXL, 0.0);
+    [self.tableView registerClass:PPProviderRecordCell.class forCellReuseIdentifier:PPProviderFeatureCellID];
+
+    UIRefreshControl *refresh = [UIRefreshControl new];
+    refresh.tintColor = PPProviderBrandColor();
+    [refresh addTarget:self action:@selector(loadData) forControlEvents:UIControlEventValueChanged];
+    self.refreshControl = refresh;
+
+    self.stateView = [PPProviderStateView new];
     __weak typeof(self) weakSelf = self;
-    [[db collectionWithPath:@"providerFeatures"] getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+    self.stateView.retryHandler = ^{ [weakSelf loadData]; };
+    self.tableView.backgroundView = self.stateView;
+}
+
+- (void)pp_buildHeader {
+    UIView *container = [UIView new];
+    self.contextHeader = [[PPProviderContextHeaderView alloc] initWithTitle:kLang(@"Providers_Features_HeroTitle")
+                                                                   subtitle:kLang(@"Providers_Features_HeroSubtitle")
+                                                                     symbol:@"checkmark.shield.fill"];
+    self.contextHeader.translatesAutoresizingMaskIntoConstraints = NO;
+    [container addSubview:self.contextHeader];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.contextHeader.topAnchor constraintEqualToAnchor:container.topAnchor],
+        [self.contextHeader.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [self.contextHeader.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [self.contextHeader.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
+    ]];
+    self.headerContainer = container;
+    self.tableView.tableHeaderView = container;
+    [self pp_refreshHeaderMetric];
+}
+
+- (void)pp_fitTableHeader {
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (!self.headerContainer || width <= 0.0) return;
+    self.headerContainer.frame = CGRectMake(0.0, 0.0, width, MAX(self.headerContainer.frame.size.height, 1.0));
+    CGSize size = [self.headerContainer systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                     withHorizontalFittingPriority:UILayoutPriorityRequired
+                                           verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    if (fabs(self.headerContainer.frame.size.height - ceil(size.height)) > 0.5) {
+        self.headerContainer.frame = CGRectMake(0.0, 0.0, width, ceil(size.height));
+        self.tableView.tableHeaderView = self.headerContainer;
+    }
+}
+
+#pragma mark - Data and State
+
+- (void)loadData {
+    if (self.isLoading) return;
+    self.isLoading = YES;
+    self.currentError = nil;
+    self.navigationItem.rightBarButtonItem.enabled = NO;
+    [self pp_updateState];
+
+    __weak typeof(self) weakSelf = self;
+    [[PPProviderService shared] fetchPlansWithCompletion:^(NSArray<PPProviderPlan *> *plans, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            weakSelf.isLoading = NO;
-            if (error) {
-                weakSelf.errorMessage = error.localizedDescription;
-                [weakSelf.tableView reloadData];
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
-                return;
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            self.isLoading = NO;
+            self.navigationItem.rightBarButtonItem.enabled = YES;
+            [self.refreshControl endRefreshing];
+            self.currentError = error;
+            if (!error) self.features = [self pp_flattenFeaturesFromPlans:plans];
+            [self pp_refreshHeaderMetric];
+            [self pp_updateState];
+            [self.tableView reloadData];
+            if (error && self.features.count > 0) {
+                [AlertHelper showAlertIn:self title:kLang(@"Providers_Features_LoadFailed") subtitle:kLang(@"Providers_Load_Error_Subtitle")];
             }
-            weakSelf.features = snapshot.documents ?: @[];
-            [weakSelf.tableView reloadData];
         });
     }];
+}
+
+- (NSArray<NSDictionary *> *)pp_flattenFeaturesFromPlans:(NSArray<PPProviderPlan *> *)plans {
+    NSMutableArray<NSDictionary *> *features = [NSMutableArray array];
+    for (PPProviderPlan *plan in plans) {
+        for (NSDictionary *document in plan.featureDocuments) {
+            NSMutableDictionary *feature = [document mutableCopy];
+            feature[@"planID"] = plan.planID ?: @"";
+            feature[@"planName"] = plan.name ?: @{};
+            feature[@"providerType"] = plan.providerType ?: @"";
+            feature[@"planStatus"] = plan.status ?: @"inactive";
+            [features addObject:feature.copy];
+        }
+    }
+    return features.copy;
+}
+
+- (void)pp_refreshHeaderMetric {
+    NSUInteger enabled = 0;
+    NSMutableSet<NSString *> *types = [NSMutableSet set];
+    for (NSDictionary *feature in self.features) {
+        if (![feature[@"enabled"] isKindOfClass:NSNumber.class] || [feature[@"enabled"] boolValue]) enabled++;
+        NSString *type = PPSafeString(feature[@"providerType"]);
+        if (type.length) [types addObject:type];
+    }
+    [self.contextHeader setMetricText:[NSString stringWithFormat:kLang(@"Providers_Features_Summary_Format"),
+                                      (unsigned long)self.features.count,
+                                      (unsigned long)enabled,
+                                      (unsigned long)types.count]];
+}
+
+- (void)pp_updateState {
+    self.stateView.hidden = self.features.count > 0;
+    if (self.features.count > 0) return;
+    if (self.isLoading) {
+        [self.stateView showLoadingWithTitle:kLang(@"Providers_Features_Loading") subtitle:kLang(@"Providers_Features_Subtitle")];
+    } else if (self.currentError) {
+        [self.stateView showErrorWithTitle:kLang(@"Providers_Features_LoadFailed") subtitle:kLang(@"Providers_Load_Error_Subtitle")];
+    } else {
+        [self.stateView showEmptyWithTitle:kLang(@"Providers_Features_Empty") subtitle:kLang(@"Providers_Features_Empty_Subtitle") symbol:@"checkmark.shield"];
+    }
 }
 
 #pragma mark - Table View
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    return MAX(self.features.count, 1);
+    (void)tableView;
+    (void)section;
+    return self.features.count;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kPPProviderFeatureCellID];
-    if (!cell) {
-        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:kPPProviderFeatureCellID];
-        cell.backgroundColor = UIColor.clearColor;
-        cell.contentView.backgroundColor = AppForgroundColr;
-        cell.contentView.layer.cornerRadius = 22.0;
-        cell.contentView.layer.cornerCurve = kCACornerCurveContinuous;
-        cell.contentView.layer.masksToBounds = YES;
-        cell.textLabel.numberOfLines = 1;
-        cell.detailTextLabel.numberOfLines = 2;
-        cell.textLabel.adjustsFontForContentSizeCategory = YES;
-        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
-    }
-    cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    cell.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
-    cell.detailTextLabel.textAlignment = [Language alignmentForCurrentLanguage];
-    cell.textLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:18.0]];
-    cell.detailTextLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:13.5]];
-    cell.textLabel.textColor = PrimaryTextClr;
-    cell.detailTextLabel.textColor = SeconderyTextClr;
-    cell.selectionStyle = UITableViewCellSelectionStyleNone;
-
-    if (self.features.count == 0) {
-        cell.textLabel.text = self.isLoading ? kLang(@"Loading") : (self.errorMessage.length ? kLang(@"Error_Title") : kLang(@"Providers_Features_Empty"));
-        cell.detailTextLabel.text = self.errorMessage.length ? self.errorMessage : kLang(@"Providers_Features_Subtitle");
-        cell.textLabel.textAlignment = NSTextAlignmentCenter;
-        cell.detailTextLabel.textAlignment = NSTextAlignmentCenter;
-        cell.textLabel.textColor = self.errorMessage.length ? UIColor.systemRedColor : SeconderyTextClr;
-        cell.accessoryType = UITableViewCellAccessoryNone;
-        cell.imageView.image = nil;
-        return cell;
-    }
-
-    FIRDocumentSnapshot *doc = self.features[indexPath.row];
-    NSDictionary *data = doc.data;
-    NSString *name = PPSafeString(data[@"name"]);
-    NSString *providerType = PPSafeString(data[@"providerType"]);
-    cell.textLabel.text = name.length > 0 ? name : doc.documentID;
-    cell.detailTextLabel.text = [NSString stringWithFormat:@"%@  ·  %@",
-                                 providerType.length ? providerType : @"-",
-                                 PPSafeString(data[@"status"]).length ? PPSafeString(data[@"status"]) : @"-"];
-    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:18 weight:UIImageSymbolWeightSemibold];
-    cell.imageView.image = [[UIImage systemImageNamed:@"checkmark.shield.fill" withConfiguration:config] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    cell.imageView.tintColor = AppPrimaryClr;
-    cell.accessoryType = UITableViewCellAccessoryNone;
+    PPProviderRecordCell *cell = [tableView dequeueReusableCellWithIdentifier:PPProviderFeatureCellID forIndexPath:indexPath];
+    NSDictionary *feature = self.features[(NSUInteger)indexPath.row];
+    NSString *fallback = PPSafeString(feature[@"featureKey"]);
+    NSString *title = PPProviderLocalizedText(PPSafeDict(feature[@"title"]), fallback);
+    NSString *planName = PPProviderLocalizedText(PPSafeDict(feature[@"planName"]), PPSafeString(feature[@"planID"]));
+    NSString *provider = PPProviderLocalizedType(PPSafeString(feature[@"providerType"]));
+    NSString *limit = PPSafeString(feature[@"limitValue"]);
+    NSString *detail = limit.length
+        ? [NSString stringWithFormat:kLang(@"Providers_Features_Detail_WithLimit_Format"), planName, limit]
+        : [NSString stringWithFormat:kLang(@"Providers_Features_Detail_Format"), planName];
+    BOOL enabled = ![feature[@"enabled"] isKindOfClass:NSNumber.class] || [feature[@"enabled"] boolValue];
+    [cell configureWithTitle:title subtitle:provider detail:detail
+                      status:(enabled ? @"active" : @"inactive")
+                      symbol:@"checkmark.shield.fill" actionable:NO];
     return cell;
-}
-
-- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return self.features.count == 0 ? 104.0 : 88.0;
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 
 @end

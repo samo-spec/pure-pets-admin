@@ -10,8 +10,48 @@
 #import "PPRolePermission.h"
 #import "Lottie.h"
 #import "UIImageView+WebCache.h"
+#import "AppDelegate.h"
 @import Firebase;
 @import FirebaseAuth;
+
+@interface AppDelegate (PPNotificationV2LogoutBarrier)
+- (void)pp_beginNotificationV2LogoutBarrierWithCompletion:(dispatch_block_t)completion;
+- (void)pp_endNotificationV2LogoutBarrier;
+- (void)pp_abortNotificationV2LogoutBarrierAndRefreshForReason:(NSString *)reason;
+@end
+
+static AppDelegate *PPAdminNotificationV2AppDelegate(void)
+{
+    id<UIApplicationDelegate> delegate = UIApplication.sharedApplication.delegate;
+    return [delegate isKindOfClass:AppDelegate.class] ? (AppDelegate *)delegate : nil;
+}
+
+static UIViewController *PPAdminUserManagerTopViewController(void)
+{
+    UIWindow *window = nil;
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:UIWindowScene.class]) continue;
+        for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
+            if (candidate.isKeyWindow) {
+                window = candidate;
+                break;
+            }
+        }
+        if (window) break;
+    }
+
+    UIViewController *controller = window.rootViewController;
+    while (controller.presentedViewController) {
+        controller = controller.presentedViewController;
+    }
+    if ([controller isKindOfClass:UINavigationController.class]) {
+        controller = ((UINavigationController *)controller).topViewController ?: controller;
+    } else if ([controller isKindOfClass:UITabBarController.class]) {
+        controller = ((UITabBarController *)controller).selectedViewController ?: controller;
+    }
+    return controller;
+}
+
 NSString * const UserManagerAuthStateDidChangeNotification = @"UserManagerAuthStateDidChangeNotification";
 NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification";
 
@@ -22,11 +62,14 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
 @property (nonatomic, strong) NSCache<NSString *, UserModel *> *userCache;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *userCacheAges;
 @property (nonatomic, strong) dispatch_queue_t cacheQueue; // thread-safety for disk ops
+@property (nonatomic, assign) BOOL signOutInProgress;
+@property (nonatomic, strong) NSMutableArray *pendingSignOutCompletions;
 - (void)p_queryUsersColField:(NSString *)field
                      equalTo:(NSString *)value
           tryServerThenCache:(BOOL)serverFirst
                   completion:(void(^)(UserModel * _Nullable user, NSError * _Nullable error))completion;
 - (FIRDocumentReference *)_userDoc:(NSString *)uid;
+- (void)pp_finishSignOutWithError:(NSError * _Nullable)error;
 
 @end
 
@@ -567,32 +610,107 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
 #pragma mark - Sign Out
 
 - (void)signOut {
-    
-    [self invalidateUserCacheForUID:self.currentUser.uid];
-    [self clearUserCache];
-    
-    
-    
-    NSError *e = nil;
-    [[FUManager shared] signOut:&e];
+    [self signOutWithCompletion:nil];
+}
 
-    if (e) {
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:e.localizedDescription];
+- (void)signOutWithCompletion:(void (^)(NSError * _Nullable))completion {
+    if (completion) {
+        if (!self.pendingSignOutCompletions) {
+            self.pendingSignOutCompletions = [NSMutableArray array];
+        }
+        [self.pendingSignOutCompletions addObject:[completion copy]];
+    }
+    if (self.signOutInProgress) {
         return;
     }
+    self.signOutInProgress = YES;
 
-    //[[PPBiometric shared] enableBiometricWithEmail:email password:password];
+    NSString *userID = PPSafeString([FIRAuth auth].currentUser.uid);
+    if (userID.length == 0) {
+        userID = PPSafeString(self.currentUser.uid.length > 0 ? self.currentUser.uid : self.currentUser.ID);
+    }
 
-    [self stopListening];
-    
-    NSError *error = nil;
-    [[FIRAuth auth] signOut:&error];
-    
-    self.currentUser = nil;
-    
-    // notify app (dashboard header, etc.)
-    [[NSNotificationCenter defaultCenter] postNotificationName:UserManagerAuthStateDidChangeNotification
-                                                        object:nil];
+    AppDelegate *notificationAppDelegate = PPAdminNotificationV2AppDelegate();
+    __weak typeof(self) weakSelf = self;
+    dispatch_block_t beginDeactivationAfterRegistrationSettles = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+
+        __block BOOL didContinueAfterDeactivation = NO;
+        void (^continueAfterDeactivation)(NSError * _Nullable) = ^(NSError * _Nullable deactivateError) {
+            if (didContinueAfterDeactivation) return;
+            didContinueAfterDeactivation = YES;
+
+            if (deactivateError) {
+                NSLog(@"PPLAB NotificationsV2 admin logout continuing | deactivation_ok=no error=%@",
+                      deactivateError.localizedDescription ?: @"unknown");
+            }
+
+            [strongSelf invalidateUserCacheForUID:userID];
+            [strongSelf clearUserCache];
+            [strongSelf stopListening];
+
+            NSError *signOutError = nil;
+            [[FUManager shared] signOut:&signOutError];
+            if (signOutError) {
+                [notificationAppDelegate pp_abortNotificationV2LogoutBarrierAndRefreshForReason:@"auth_signout_failed"];
+                UIViewController *presenter = PPAdminUserManagerTopViewController();
+                if (presenter) {
+                    [AlertHelper showErrorIn:presenter title:kLang(@"Error") subtitle:signOutError.localizedDescription];
+                }
+                [strongSelf pp_finishSignOutWithError:signOutError];
+                return;
+            }
+
+            strongSelf.currentUser = nil;
+            __block BOOL didFinishLocalTokenInvalidation = NO;
+            void (^finishSignOut)(NSError * _Nullable) = ^(NSError * _Nullable tokenError) {
+                if (didFinishLocalTokenInvalidation) return;
+                didFinishLocalTokenInvalidation = YES;
+                if (tokenError) {
+                    NSLog(@"PPLAB NotificationsV2 admin logout token delete failed | error=%@",
+                          tokenError.localizedDescription ?: @"unknown");
+                }
+                [notificationAppDelegate pp_endNotificationV2LogoutBarrier];
+                [[NSNotificationCenter defaultCenter] postNotificationName:UserManagerAuthStateDidChangeNotification
+                                                                    object:nil];
+                [strongSelf pp_finishSignOutWithError:nil];
+            };
+
+            [PPNotifications invalidateLocalDeviceTokenWithCompletion:finishSignOut];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                           dispatch_get_main_queue(), ^{
+                if (didFinishLocalTokenInvalidation) return;
+                NSLog(@"PPLAB NotificationsV2 admin token delete timeout | continuing=yes");
+                finishSignOut(nil);
+            });
+        };
+
+        [PPNotifications deactivateNotificationDeviceV2WithReason:@"logout" completion:continueAfterDeactivation];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            if (didContinueAfterDeactivation) return;
+            NSLog(@"PPLAB NotificationsV2 admin deactivation timeout | continuing=yes");
+            continueAfterDeactivation(nil);
+        });
+    };
+
+    if (notificationAppDelegate) {
+        [notificationAppDelegate pp_beginNotificationV2LogoutBarrierWithCompletion:beginDeactivationAfterRegistrationSettles];
+    } else {
+        beginDeactivationAfterRegistrationSettles();
+    }
+}
+
+- (void)pp_finishSignOutWithError:(NSError * _Nullable)error
+{
+    self.signOutInProgress = NO;
+    NSArray *callbacks = [self.pendingSignOutCompletions copy] ?: @[];
+    [self.pendingSignOutCompletions removeAllObjects];
+    for (id callbackObject in callbacks) {
+        void (^callback)(NSError * _Nullable) = callbackObject;
+        callback(error);
+    }
 }
 
 

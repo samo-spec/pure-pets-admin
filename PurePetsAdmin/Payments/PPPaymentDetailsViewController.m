@@ -500,6 +500,8 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
 - (NSArray<NSDictionary *> *)pp_orderActions
 {
+    if (![self.service currentAdminCanManagePayments]) return @[];
+    if (self.record.fulfillmentVersion == 1) return @[];
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canApproveOrderStatus:self.record.rawStatus] &&
         ![[PPPaymentAdminRecord normalizedStatusString:self.record.paymentMethodId] isEqualToString:@"cash"]) {
@@ -1249,6 +1251,8 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
 - (NSArray<NSDictionary *> *)pp_requestActions
 {
+    if (![self.service currentAdminCanManagePayments]) return @[];
+    BOOL canRefund = [self.service currentAdminCanRefundPayments];
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionApprove order:self.orderRecord]) {
         [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeApprove), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeApprove], @"subtitle": kLang(@"PaymentMgmt_Action_ApproveRequest_Subtitle"), @"tint": UIColor.systemGreenColor}];
@@ -1262,10 +1266,10 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             : kLang(@"PaymentMgmt_Action_CompleteRequest_Subtitle");
         [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeComplete), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeComplete], @"subtitle": subtitle, @"tint": UIColor.systemBlueColor}];
     }
-    if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionRefund order:self.orderRecord]) {
+    if (canRefund && [PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionRefund order:self.orderRecord]) {
         [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundFull_Subtitle"), @"tint": UIColor.systemOrangeColor}];
     }
-    if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionPartialRefund order:self.orderRecord]) {
+    if (canRefund && [PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionPartialRefund order:self.orderRecord]) {
         [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypePartialRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypePartialRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundPartial_Subtitle"), @"tint": UIColor.systemOrangeColor}];
     }
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionClose order:self.orderRecord]) {

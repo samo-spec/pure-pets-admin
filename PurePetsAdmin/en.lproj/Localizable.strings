@@ -451,6 +451,20 @@
 "Notifications" = "Notifications";
 "NotificationsEnabled" = "Notifications have been enabled.";
 "NotificationsDisabled" = "Notifications have been disabled.";
+"Notification" = "Notification";
+"NotificationSettings" = "Notification Settings";
+"AppLanguage" = "Language";
+"HelpCenter" = "Help Center";
+"Settings_Notifications_Subtitle" = "Delivery alerts and staff updates";
+"Settings_Language_Subtitle" = "Arabic and English interface direction";
+"Settings_Help_Subtitle" = "Support, guidance, and escalation";
+"Settings_Help_Message" = "For assistance, please visit support@purepets.co";
+"Settings_Logout_Subtitle" = "Securely end this admin session";
+"Settings_ProfileSubtitle" = "Your workspace and access controls";
+"Settings_Section_Preferences" = "PREFERENCES";
+"Settings_Section_Support" = "SUPPORT";
+"Settings_Section_Session" = "SESSION";
+"ListingsAdmin_HeroSubtitle" = "Moderate live marketplace and adoption listings with clear status, source, and owner context.";
 
 "Error" = "Error";
 "OK" = "OK";
@@ -1446,6 +1460,7 @@
 "PaymentMgmt_Error_InvalidInventoryRestockItems" = "Order items are invalid for inventory restocking.";
 "PaymentMgmt_Error_InvalidOrderTotalForRefund" = "Order total is invalid for refund resolution.";
 "PaymentMgmt_Error_PartialRefundTooHigh" = "Partial refund amount must be less than the order total.";
+"PaymentMgmt_Error_NoRefundPermission" = "You do not have permission to process refunds.";
 "PaymentMgmt_Error_UnsupportedResolution" = "Unsupported request resolution.";
 "PaymentMgmt_Error_InvalidTransition" = "Invalid payment transition.";
 
@@ -1557,6 +1572,8 @@
 "PaymentMgmt_Event_TypedRequestMoved_Format" = "%@ request moved to %@";
 "PaymentMgmt_Event_PaymentUpdated" = "Payment updated";
 "PaymentMgmt_Event_RequestUpdated" = "Request updated";
+"PaymentMgmt_Event_RefundInitiated" = "Refund settlement started";
+"PaymentMgmt_Event_Unknown" = "Lifecycle update";
 
 "PaymentMgmt_Audit_OrderApprove" = "Approve payment";
 "PaymentMgmt_Audit_OrderProcessing" = "Move order to processing";
@@ -2049,6 +2066,59 @@
 "Providers_Features_Empty" = "No features configured";
 "Providers_Accounting_Empty" = "No commission records found";
 "Providers_Accounting_Commission" = "Commission";
+"Providers_Type_service" = "Service provider";
+"Providers_Type_vet" = "Veterinarian";
+"Providers_Status_Archived" = "Archived";
+"Providers_Status_Active" = "Active";
+"Providers_Status_Inactive" = "Inactive";
+"Providers_Status_Settled" = "Settled";
+"Providers_Status_Voided" = "Voided";
+"Providers_Billing_Monthly" = "Monthly";
+"Providers_Billing_Yearly" = "Yearly";
+"Providers_Billing_OneTime" = "One time";
+"Providers_NotAvailable" = "Not available";
+"Providers_TryAgain" = "Try Again";
+"Providers_OpenActions_Hint" = "Opens available administrative actions.";
+"Providers_Load_Error_Subtitle" = "Check the connection and try again. Existing data remains unchanged.";
+"Providers_Applications_Summary_Format" = "%lu visible · %lu awaiting a decision";
+"Providers_ReviewNotes_Context" = "Add optional internal context before confirming this decision.";
+"Providers_Plans_HeroTitle" = "Provider economics";
+"Providers_Plans_HeroSubtitle" = "Keep subscription cost, billing cadence, commission, and entitlements legible before activation.";
+"Providers_Plans_Summary_Format" = "%lu plans · %lu active · %lu feature definitions";
+"Providers_Plans_Loading" = "Loading provider plans";
+"Providers_Plans_LoadFailed" = "Could not load provider plans";
+"Providers_Plans_Empty_Subtitle" = "Create the first provider plan to define cost and commission terms.";
+"Providers_Plans_Detail_Format" = "%.2f%% platform commission · %ld features";
+"Providers_Plans_Recommended" = "Recommended";
+"Providers_Percentage_Format" = "%.2f%%";
+"Providers_Plans_SelectType" = "Choose provider type";
+"Providers_Plans_SelectType_Subtitle" = "The plan will only be available to this provider workspace.";
+"Providers_Plans_Invalid_Form" = "Enter both localized names, a valid amount, and a commission from 0 to 100.";
+"Providers_Plans_Delete_Title" = "Delete provider plan?";
+"Providers_Plans_Delete_Explanation" = "The plan will be removed permanently. Existing subscriptions retain their saved snapshot.";
+"Providers_Features_HeroTitle" = "Entitlement catalog";
+"Providers_Features_HeroSubtitle" = "Inspect the feature definitions attached to each provider plan and workspace.";
+"Providers_Features_Summary_Format" = "%lu definitions · %lu enabled · %lu provider types";
+"Providers_Features_Loading" = "Loading feature definitions";
+"Providers_Features_LoadFailed" = "Could not load feature definitions";
+"Providers_Features_Empty_Subtitle" = "Feature definitions will appear after they are attached to provider plans.";
+"Providers_Features_Detail_Format" = "Plan: %@";
+"Providers_Features_Detail_WithLimit_Format" = "Plan: %@ · Limit: %@";
+"Providers_Accounting_HeroTitle" = "Commission ledger";
+"Providers_Accounting_HeroSubtitle" = "Trace immutable sale snapshots from gross value to platform share and provider net.";
+"Providers_Accounting_SecureLedger" = "Server-owned ledger · read-only financial evidence";
+"Providers_Accounting_ProviderID" = "Provider reference";
+"Providers_Accounting_ProviderPlaceholder" = "Enter the provider ID";
+"Providers_Accounting_ProviderRequired" = "Enter a provider ID to load its commission report.";
+"Providers_Accounting_LoadReport" = "Load Report";
+"Providers_Accounting_Loading" = "Loading commission report";
+"Providers_Accounting_LoadFailed" = "Could not load the commission report";
+"Providers_Accounting_SelectProvider" = "Choose a provider to begin";
+"Providers_Accounting_SelectProvider_Subtitle" = "Enter the provider reference above, then load its authorized ledger report.";
+"Providers_Accounting_Empty_Subtitle" = "No immutable commission entries were found for this provider.";
+"Providers_Accounting_Summary_Format" = "%lu entries · %@ gross · %@ provider net";
+"Providers_Accounting_MoneyLine_Format" = "Gross %@ · Provider net %@";
+"Providers_Accounting_Detail_Format" = "Platform share %@ · %.2f%% rate · %@";
 
 /* ===================== POS Section ===================== */
 "POS_Section_Title" = "POS";
@@ -2075,6 +2145,21 @@
 "POS_PaymentMethod" = "Payment Method";
 "POS_Items" = "Items";
 "POS_Add" = "Add";
+"POS_AddItemHint" = "Enter an item to add it to this sale";
+"POS_CartEmptyHint" = "Add an item to begin the sale";
+"POS_CartEmptyCompactHint" = "Choose an item from the catalog to begin";
+"POS_CheckoutHint" = "Choose a payment method and complete the sale";
+"POS_Catalog" = "Official catalog";
+"POS_CatalogEmpty" = "No matching items";
+"POS_CatalogEmptyHint" = "Change the search term or try again later";
+"POS_SearchPlaceholder" = "Search official products";
+"POS_Scan" = "Scan";
+"POS_ScanCode" = "Scan item code";
+"POS_ScanCodeHint" = "Enter or paste the item code to find it in the catalog";
+"POS_ScanCodePlaceholder" = "Item code";
+"POS_ItemUnavailable" = "Unavailable";
+"POS_StockLimitReached" = "All available stock is already in the cart";
+"POS_AddToCartHint" = "Adds this item to the cart";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "Features";

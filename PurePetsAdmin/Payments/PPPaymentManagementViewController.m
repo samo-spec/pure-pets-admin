@@ -302,9 +302,9 @@ descripe every that completelly and dont keep any thing
 - (void)pp_reloadPaymentsReset:(BOOL)reset showHUD:(BOOL)showHUD
 {
     if (self.isLoading || self.isLoadingMore) return;
-    if (![self.service currentAdminCanManagePayments]) {
+    if (![self.service currentAdminCanViewPayments]) {
         [self.refreshControl endRefreshing];
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_NoManagePermission")];
+        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_NoViewPaymentsPermission")];
         self.hasLoadedOnce = YES;
         [self.tableView reloadData];
         return;

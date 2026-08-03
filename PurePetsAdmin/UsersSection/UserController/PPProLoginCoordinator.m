@@ -223,18 +223,17 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
             }
 
             if (allowRetryOnInternalError && [self pp_shouldRetryInternalAuthError:error]) {
-                NSError *signOutError = nil;
-                [[FUManager shared] signOut:&signOutError];
-
-                [PPHUD dismiss];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(350 * NSEC_PER_MSEC)),
-                               dispatch_get_main_queue(), ^{
-                    [self pp_signInWithEmail:email
-                                    password:password
-                               fromBiometric:fromBiometric
-                                  completion:completion
-                    allowRetryOnInternalError:NO];
-                });
+                [UsrMgr signOutWithCompletion:^(__unused NSError * _Nullable signOutError) {
+                    [PPHUD dismiss];
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(350 * NSEC_PER_MSEC)),
+                                   dispatch_get_main_queue(), ^{
+                        [self pp_signInWithEmail:email
+                                        password:password
+                                   fromBiometric:fromBiometric
+                                      completion:completion
+                        allowRetryOnInternalError:NO];
+                    });
+                }];
                 return;
             }
 
@@ -306,8 +305,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
     if (uid.length == 0) {
         [PPHUD dismiss];
         PPAdminSetLoginInProgress(NO);
-        NSError *e = nil;
-        [[FUManager shared] signOut:&e];
+        [UsrMgr signOut];
         if (completion) completion(NO, kLang(@"StatusUserDocError"));
         return;
     }
@@ -327,8 +325,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
             [PPHUD dismiss];
             PPAdminSetLoginInProgress(NO);
-            NSError *e = nil;
-            [[FUManager shared] signOut:&e];
+            [UsrMgr signOut];
             if (completion) completion(NO, kLang(@"StatusUserDocError"));
             return;
         }
@@ -348,8 +345,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
         }
         [PPHUD dismiss];
         PPAdminSetLoginInProgress(NO);
-        NSError *e = nil;
-        [[FUManager shared] signOut:&e];
+        [UsrMgr signOut];
         if (completion) completion(NO, kLang(@"StatusNoAccess"));
     }];
 }
@@ -376,8 +372,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
             [self.combinedReg remove];
             self.combinedReg = nil;
             if (![self pp_errorLooksLikeAppCheckFailure:err]) {
-                NSError *e = nil;
-                [[FUManager shared] signOut:&e];
+                [UsrMgr signOut];
             }
             if (completion) completion(NO, [self pp_firestoreAccessSubtitleForError:err]);
             return;

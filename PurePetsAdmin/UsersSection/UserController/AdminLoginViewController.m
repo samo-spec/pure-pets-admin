@@ -431,22 +431,21 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
 
             if (allowRetryOnInternalError && [self pp_shouldRetryInternalAuthError:error]) {
                 NSLog(@"[AdminLogin] retrying once after internal auth error");
-                NSError *signOutError = nil;
-                [[FUManager shared] signOut:&signOutError];
-                if (signOutError) {
-                    NSLog(@"[AdminLogin] pre-retry signOut warning: %@", signOutError.localizedDescription);
-                }
-
-                [PPHUD dismiss];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(350 * NSEC_PER_MSEC)),
-                               dispatch_get_main_queue(), ^{
-                    [self pp_signInWithFUManagerEmail:email
-                                             password:password
-                                       onSuccessToast:showToast
-                                        fromBiometric:fromBiometric
-                                   persistCredentials:persistCredentials
-                             allowRetryOnInternalError:NO];
-                });
+                [UsrMgr signOutWithCompletion:^(NSError * _Nullable signOutError) {
+                    if (signOutError) {
+                        NSLog(@"[AdminLogin] pre-retry signOut warning: %@", signOutError.localizedDescription);
+                    }
+                    [PPHUD dismiss];
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(350 * NSEC_PER_MSEC)),
+                                   dispatch_get_main_queue(), ^{
+                        [self pp_signInWithFUManagerEmail:email
+                                                 password:password
+                                           onSuccessToast:showToast
+                                            fromBiometric:fromBiometric
+                                       persistCredentials:persistCredentials
+                                 allowRetryOnInternalError:NO];
+                    });
+                }];
                 return;
             }
 
@@ -604,7 +603,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
         [PPHUD dismiss];
         PPAdminSetLoginInProgress(NO);
         [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"StatusUserDocError")];
-        NSError *e = nil; [[FUManager shared] signOut:&e];
+        [UsrMgr signOut];
         return;
     }
 
@@ -654,7 +653,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     [PPHUD dismiss];
     PPAdminSetLoginInProgress(NO);
     [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:subtitle];
-    NSError *e = nil; [[FUManager shared] signOut:&e];
+    [UsrMgr signOut];
 }
 
 /// Success path (shared): start your combined listener, cache, biometrics, notify app.
@@ -684,7 +683,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
                                title:kLang(@"Error")
                             subtitle:[self pp_firestoreAccessSubtitleForError:err]];
             if (![self pp_errorLooksLikeAppCheckFailure:err]) {
-                NSError *e = nil; [[FUManager shared] signOut:&e];
+                [UsrMgr signOut];
             }
             return;
         }

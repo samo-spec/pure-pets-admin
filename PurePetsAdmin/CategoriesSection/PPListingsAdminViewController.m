@@ -28,6 +28,87 @@ static UIFont *PPListingBold(CGFloat size, UIFontTextStyle style) {
     return PPListingScaled(PPFontBold(size), style);
 }
 
+static BOOL PPListingsReduceMotionEnabled(void) {
+    return UIAccessibilityIsReduceMotionEnabled();
+}
+
+static UIColor *PPListingsSurfaceStrokeColor(void) {
+    return [PPHairlineColor() colorWithAlphaComponent:0.72];
+}
+
+static NSString *PPListingsLocalizedInteger(NSInteger value) {
+    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+    formatter.numberStyle = NSNumberFormatterDecimalStyle;
+    formatter.locale = [NSLocale currentLocale];
+    return [formatter stringFromNumber:@(value)] ?: [NSString stringWithFormat:@"%ld", (long)value];
+}
+
+static NSString *PPListingsFormattedDate(NSDate *date) {
+    if (!date) { return @"—"; }
+    NSDateFormatter *df = [[NSDateFormatter alloc] init];
+    df.locale = [NSLocale currentLocale];
+    df.dateStyle = NSDateFormatterMediumStyle;
+    df.timeStyle = NSDateFormatterNoStyle;
+    return [df stringFromDate:date] ?: @"—";
+}
+
+static NSString *PPListingStringValue(id value) {
+    if ([value isKindOfClass:NSString.class]) {
+        return [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    }
+    if ([value isKindOfClass:NSNumber.class]) {
+        return ((NSNumber *)value).stringValue ?: @"";
+    }
+    if ([value isKindOfClass:NSURL.class]) {
+        return ((NSURL *)value).absoluteString ?: @"";
+    }
+    return @"";
+}
+
+static NSString *PPListingFirstString(NSDictionary *dictionary, NSArray<NSString *> *keys) {
+    if (![dictionary isKindOfClass:NSDictionary.class]) { return @""; }
+    for (NSString *key in keys) {
+        NSString *value = PPListingStringValue(dictionary[key]);
+        if (value.length > 0) { return value; }
+    }
+    return @"";
+}
+
+static NSString *PPListingLocationText(NSDictionary *dictionary) {
+    NSString *namedLocation = PPListingFirstString(dictionary, @[@"locationName", @"cityName", @"city", @"address", @"area"]);
+    if (namedLocation.length > 0) { return namedLocation; }
+
+    id rawLocation = dictionary[@"location"];
+    NSString *stringLocation = PPListingStringValue(rawLocation);
+    if (stringLocation.length > 0) { return stringLocation; }
+
+    if ([rawLocation isKindOfClass:FIRGeoPoint.class]) {
+        FIRGeoPoint *point = (FIRGeoPoint *)rawLocation;
+        return [NSString stringWithFormat:@"%.4f, %.4f", point.latitude, point.longitude];
+    }
+    return @"";
+}
+
+static NSString *PPListingsPriceText(NSString *rawPrice) {
+    NSString *trimmed = [rawPrice isKindOfClass:NSString.class]
+        ? [rawPrice stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    if (trimmed.length == 0 || [trimmed isEqualToString:@"(null)"]) { return @"—"; }
+    NSNumberFormatter *numberFormatter = [[NSNumberFormatter alloc] init];
+    numberFormatter.numberStyle = NSNumberFormatterDecimalStyle;
+    numberFormatter.locale = [NSLocale currentLocale];
+    NSNumber *number = [numberFormatter numberFromString:trimmed];
+    if (!number) {
+        NSScanner *scanner = [NSScanner scannerWithString:trimmed];
+        double scannedValue = 0.0;
+        if ([scanner scanDouble:&scannedValue] && scanner.isAtEnd) {
+            number = @(scannedValue);
+        }
+    }
+    NSString *formatted = number ? ([numberFormatter stringFromNumber:number] ?: trimmed) : trimmed;
+    return [NSString stringWithFormat:@"%@ %@", formatted, kLang(@"EGP") ?: @"EGP"];
+}
+
 #pragma mark - State
 
 typedef NS_ENUM(NSInteger, PPListingsState) {
@@ -103,12 +184,19 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
         _gradient = [CAGradientLayer layer];
-        _gradient.colors = @[(__bridge id)AppPrimaryClr.CGColor,
-                             (__bridge id)AppPrimaryClrShiner.CGColor];
-        _gradient.startPoint = CGPointMake(0, 0);
-        _gradient.endPoint = CGPointMake(1, 1);
+        _gradient.colors = @[(__bridge id)PPMaroon900Color().CGColor,
+                             (__bridge id)PPMaroon600Color().CGColor,
+                             (__bridge id)PPMaroon200Color().CGColor];
+        _gradient.locations = @[@0.0, @0.58, @1.0];
+        _gradient.startPoint = CGPointMake(0.08, 0.08);
+        _gradient.endPoint = CGPointMake(0.94, 1.0);
         _gradient.cornerRadius = PPCornerHero;
         [self.layer addSublayer:_gradient];
+
+        self.layer.shadowColor = PPDeepCharcoalColor().CGColor;
+        self.layer.shadowOpacity = 0.14;
+        self.layer.shadowRadius = 24.0;
+        self.layer.shadowOffset = CGSizeMake(0, 14.0);
 
         _glyphView = [[UIImageView alloc] init];
         _glyphView.contentMode = UIViewContentModeScaleAspectFit;
@@ -130,6 +218,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _titleLabel.textColor = [UIColor whiteColor];
         _titleLabel.numberOfLines = 1;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
+        _titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_titleLabel];
 
@@ -138,6 +227,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _subtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.86];
         _subtitleLabel.numberOfLines = 2;
         _subtitleLabel.adjustsFontForContentSizeCategory = YES;
+        _subtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_subtitleLabel];
 
@@ -161,9 +251,12 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
 
             [_statsStack.leadingAnchor constraintEqualToAnchor:_glyphView.leadingAnchor],
             [_statsStack.topAnchor constraintEqualToAnchor:_glyphView.bottomAnchor constant:PPSpaceMD],
-            [_statsStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.trailingAnchor constant:-PPSpaceLG],
+            [_statsStack.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-PPSpaceLG],
             [_statsStack.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-PPSpaceLG],
         ]];
+
+        self.isAccessibilityElement = YES;
+        self.accessibilityTraits = UIAccessibilityTraitHeader;
     }
     return self;
 }
@@ -177,11 +270,11 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
     [self.statsStack.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
 
     NSArray *statConfigs = @[
-        @{@"label": kLang(@"ListingsAdmin_Total"), @"value": @(total)},
-        @{@"label": kLang(@"ListingsAdmin_Marketplace"), @"value": @(marketplace)},
-        @{@"label": kLang(@"ListingsAdmin_Active"), @"value": @(active)},
-        @{@"label": kLang(@"ListingsAdmin_Pending"), @"value": @(pending)},
-        @{@"label": kLang(@"ListingsAdmin_Adoption"), @"value": @(adoption)},
+        @{@"label": kLang(@"ListingsAdmin_Total"), @"value": PPListingsLocalizedInteger(total)},
+        @{@"label": kLang(@"ListingsAdmin_Marketplace"), @"value": PPListingsLocalizedInteger(marketplace)},
+        @{@"label": kLang(@"ListingsAdmin_Active"), @"value": PPListingsLocalizedInteger(active)},
+        @{@"label": kLang(@"ListingsAdmin_Pending"), @"value": PPListingsLocalizedInteger(pending)},
+        @{@"label": kLang(@"ListingsAdmin_Adoption"), @"value": PPListingsLocalizedInteger(adoption)},
     ];
 
     UIStackView *hStack = [[UIStackView alloc] init];
@@ -201,15 +294,17 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
     NSMutableArray *valueLabels = [NSMutableArray array];
     for (NSDictionary *config in statConfigs) {
         UIView *pill = [[UIView alloc] init];
-        pill.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18];
-        pill.layer.cornerRadius = PPCornerPill;
+        pill.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.14];
+        pill.layer.cornerRadius = PPCornerMedium;
+        pill.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        pill.layer.borderColor = [[UIColor whiteColor] colorWithAlphaComponent:0.22].CGColor;
         pill.translatesAutoresizingMaskIntoConstraints = NO;
 
         UILabel *valLabel = [[UILabel alloc] init];
         valLabel.font = PPListingBold(PPFontFootnote, UIFontTextStyleFootnote);
         valLabel.textColor = [UIColor whiteColor];
         valLabel.textAlignment = NSTextAlignmentCenter;
-        valLabel.text = [NSString stringWithFormat:@"%@", config[@"value"]];
+        valLabel.text = config[@"value"];
         valLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [pill addSubview:valLabel];
 
@@ -236,6 +331,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         [valueLabels addObject:valLabel];
     }
     self.statValueLabels = valueLabels;
+    self.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", self.titleLabel.text ?: @"", self.subtitleLabel.text ?: @""];
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -248,8 +344,10 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
 #pragma mark - PPListingCell
 
 @interface PPListingCell : UITableViewCell
+@property (nonatomic, strong) UIView *surfaceView;
 @property (nonatomic, strong) UIView *iconTile;
 @property (nonatomic, strong) UIImageView *iconView;
+@property (nonatomic, strong) UIView *mediaGradientOverlay;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *metaLabel;
 @property (nonatomic, strong) UILabel *statusBadge;
@@ -265,19 +363,39 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
     if (self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]) {
         self.backgroundColor = UIColor.clearColor;
         self.contentView.backgroundColor = UIColor.clearColor;
+        self.contentView.layoutMargins = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+
+        _surfaceView = [[UIView alloc] init];
+        _surfaceView.backgroundColor = PPSurfaceColor();
+        _surfaceView.layer.cornerRadius = PPCornerCard;
+        _surfaceView.layer.cornerCurve = kCACornerCurveContinuous;
+        _surfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        _surfaceView.layer.borderColor = PPListingsSurfaceStrokeColor().CGColor;
+        _surfaceView.layer.shadowColor = PPDeepCharcoalColor().CGColor;
+        _surfaceView.layer.shadowOpacity = 0.045;
+        _surfaceView.layer.shadowRadius = 16.0;
+        _surfaceView.layer.shadowOffset = CGSizeMake(0, 8.0);
+        _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:_surfaceView];
 
         _iconTile = [[UIView alloc] init];
         _iconTile.layer.cornerRadius = PPCornerMedium;
         _iconTile.layer.masksToBounds = YES;
         _iconTile.layer.cornerCurve = kCACornerCurveContinuous;
         _iconTile.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_iconTile];
+        [_surfaceView addSubview:_iconTile];
 
         _iconView = [[UIImageView alloc] init];
         _iconView.contentMode = UIViewContentModeScaleAspectFill;
         _iconView.clipsToBounds = YES;
         _iconView.translatesAutoresizingMaskIntoConstraints = NO;
         [_iconTile addSubview:_iconView];
+
+        _mediaGradientOverlay = [[UIView alloc] init];
+        _mediaGradientOverlay.userInteractionEnabled = NO;
+        _mediaGradientOverlay.backgroundColor = [PPDeepCharcoalColor() colorWithAlphaComponent:0.08];
+        _mediaGradientOverlay.translatesAutoresizingMaskIntoConstraints = NO;
+        [_iconTile addSubview:_mediaGradientOverlay];
 
         _sourceBadge = [[UILabel alloc] init];
         _sourceBadge.font = PPListingMedium(PPFontCaption2, UIFontTextStyleCaption2);
@@ -286,23 +404,23 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _sourceBadge.layer.cornerRadius = PPSpaceXS;
         _sourceBadge.layer.masksToBounds = YES;
         _sourceBadge.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_sourceBadge];
+        [_surfaceView addSubview:_sourceBadge];
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.font = PPListingMedium(PPFontHeadline, UIFontTextStyleHeadline);
         _titleLabel.textColor = UIColor.labelColor;
-        _titleLabel.numberOfLines = 1;
+        _titleLabel.numberOfLines = 2;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_titleLabel];
+        [_surfaceView addSubview:_titleLabel];
 
         _metaLabel = [[UILabel alloc] init];
         _metaLabel.font = PPListingRegular(PPFontSubheadline, UIFontTextStyleSubheadline);
         _metaLabel.textColor = UIColor.secondaryLabelColor;
-        _metaLabel.numberOfLines = 1;
+        _metaLabel.numberOfLines = 2;
         _metaLabel.adjustsFontForContentSizeCategory = YES;
         _metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_metaLabel];
+        [_surfaceView addSubview:_metaLabel];
 
         _priceLabel = [[UILabel alloc] init];
         _priceLabel.font = PPListingMedium(PPFontCallout, UIFontTextStyleCallout);
@@ -311,7 +429,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _priceLabel.textAlignment = NSTextAlignmentNatural;
         _priceLabel.adjustsFontForContentSizeCategory = YES;
         _priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_priceLabel];
+        [_surfaceView addSubview:_priceLabel];
 
         _dateLabel = [[UILabel alloc] init];
         _dateLabel.font = PPListingRegular(PPFontCaption1, UIFontTextStyleCaption1);
@@ -320,7 +438,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _dateLabel.textAlignment = NSTextAlignmentNatural;
         _dateLabel.adjustsFontForContentSizeCategory = YES;
         _dateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_dateLabel];
+        [_surfaceView addSubview:_dateLabel];
 
         _statusBadge = [[UILabel alloc] init];
         _statusBadge.font = PPListingMedium(PPFontCaption2, UIFontTextStyleCaption2);
@@ -329,7 +447,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         _statusBadge.layer.cornerRadius = PPSpaceXS + 2;
         _statusBadge.layer.masksToBounds = YES;
         _statusBadge.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_statusBadge];
+        [_surfaceView addSubview:_statusBadge];
 
         UIView *selectedBg = [[UIView alloc] init];
         selectedBg.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.10];
@@ -337,22 +455,36 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         selectedBg.layer.masksToBounds = YES;
         self.selectedBackgroundView = selectedBg;
 
-        UILayoutGuide *guide = self.contentView.layoutMarginsGuide;
+        UILayoutGuide *contentGuide = self.contentView.layoutMarginsGuide;
+        UILayoutGuide *guide = self.surfaceView.layoutMarginsGuide;
+        self.surfaceView.layoutMargins = UIEdgeInsetsMake(PPSpaceMD, PPSpaceMD, PPSpaceMD, PPSpaceMD);
 
         [NSLayoutConstraint activateConstraints:@[
+            [_surfaceView.topAnchor constraintEqualToAnchor:contentGuide.topAnchor],
+            [_surfaceView.leadingAnchor constraintEqualToAnchor:contentGuide.leadingAnchor],
+            [_surfaceView.trailingAnchor constraintEqualToAnchor:contentGuide.trailingAnchor],
+            [_surfaceView.bottomAnchor constraintEqualToAnchor:contentGuide.bottomAnchor],
+
             [_iconTile.leadingAnchor constraintEqualToAnchor:guide.leadingAnchor],
-            [_iconTile.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
-            [_iconTile.widthAnchor constraintEqualToConstant:PPSpace4XL],
-            [_iconTile.heightAnchor constraintEqualToConstant:PPSpace4XL],
+            [_iconTile.topAnchor constraintEqualToAnchor:guide.topAnchor],
+            [_iconTile.widthAnchor constraintEqualToConstant:74.0],
+            [_iconTile.heightAnchor constraintEqualToConstant:74.0],
+            [_iconTile.bottomAnchor constraintLessThanOrEqualToAnchor:guide.bottomAnchor],
 
             [_iconView.centerXAnchor constraintEqualToAnchor:_iconTile.centerXAnchor],
             [_iconView.centerYAnchor constraintEqualToAnchor:_iconTile.centerYAnchor],
             [_iconView.widthAnchor constraintEqualToAnchor:_iconTile.widthAnchor],
             [_iconView.heightAnchor constraintEqualToAnchor:_iconTile.heightAnchor],
 
-            [_sourceBadge.leadingAnchor constraintEqualToAnchor:_iconTile.leadingAnchor],
-            [_sourceBadge.topAnchor constraintEqualToAnchor:_iconTile.bottomAnchor constant:PPSpaceXXS],
+            [_mediaGradientOverlay.leadingAnchor constraintEqualToAnchor:_iconTile.leadingAnchor],
+            [_mediaGradientOverlay.trailingAnchor constraintEqualToAnchor:_iconTile.trailingAnchor],
+            [_mediaGradientOverlay.topAnchor constraintEqualToAnchor:_iconTile.topAnchor],
+            [_mediaGradientOverlay.bottomAnchor constraintEqualToAnchor:_iconTile.bottomAnchor],
+
+            [_sourceBadge.centerXAnchor constraintEqualToAnchor:_iconTile.centerXAnchor],
+            [_sourceBadge.bottomAnchor constraintEqualToAnchor:_iconTile.bottomAnchor constant:-PPSpaceXS],
             [_sourceBadge.heightAnchor constraintEqualToConstant:PPSpaceLG],
+            [_sourceBadge.widthAnchor constraintLessThanOrEqualToAnchor:_iconTile.widthAnchor constant:-PPSpaceSM],
 
             [_titleLabel.leadingAnchor constraintEqualToAnchor:_iconTile.trailingAnchor constant:PPSpaceMD],
             [_titleLabel.topAnchor constraintEqualToAnchor:_iconTile.topAnchor],
@@ -370,8 +502,8 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
             [_dateLabel.topAnchor constraintEqualToAnchor:_metaLabel.topAnchor],
 
             [_statusBadge.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-            [_statusBadge.topAnchor constraintEqualToAnchor:_metaLabel.bottomAnchor constant:PPSpaceXXS],
-            [_statusBadge.bottomAnchor constraintEqualToAnchor:_iconTile.bottomAnchor],
+            [_statusBadge.topAnchor constraintGreaterThanOrEqualToAnchor:_metaLabel.bottomAnchor constant:PPSpaceXS],
+            [_statusBadge.bottomAnchor constraintEqualToAnchor:guide.bottomAnchor],
             [_statusBadge.heightAnchor constraintEqualToConstant:PPSpaceLG + 2],
         ]];
 
@@ -387,33 +519,35 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
 
 - (void)configureWithItem:(PPListingItem *)item canManage:(BOOL)canManage {
     self.titleLabel.text = item.title ?: kLang(@"Unknown");
-    self.titleLabel.textColor = item.isBlocked ? UIColor.tertiaryLabelColor : UIColor.labelColor;
+    self.titleLabel.textColor = item.isBlocked ? PPDisabledContentColor() : PPTextPrimaryColor();
+    self.surfaceView.backgroundColor = item.isBlocked ? [PPSurfaceColor() colorWithAlphaComponent:0.72] : PPSurfaceColor();
+    self.surfaceView.layer.borderColor = (item.isBlocked ? [PPCriticalColor() colorWithAlphaComponent:0.28] : PPListingsSurfaceStrokeColor()).CGColor;
 
-    UIColor *sourceColor = item.isMarketplace ? [UIColor systemBlueColor] : [UIColor systemGreenColor];
+    UIColor *sourceColor = item.isMarketplace ? PPPrimaryColor() : PPSecondaryAccentColor();
     self.sourceBadge.text = item.isMarketplace ? kLang(@"ListingsAdmin_Marketplace") : kLang(@"ListingsAdmin_Adoption");
-    self.sourceBadge.backgroundColor = sourceColor;
+    self.sourceBadge.backgroundColor = [sourceColor colorWithAlphaComponent:0.92];
+    self.sourceBadge.textColor = UIColor.whiteColor;
 
-    self.iconTile.backgroundColor = sourceColor;
+    self.iconTile.backgroundColor = [sourceColor colorWithAlphaComponent:0.12];
     UIImage *placeholder = [UIImage systemImageNamed:item.isMarketplace ? @"bag" : @"heart"];
     self.iconView.image = placeholder;
+    self.iconView.tintColor = sourceColor;
+    self.iconView.contentMode = UIViewContentModeCenter;
+    self.mediaGradientOverlay.hidden = YES;
 
     if (item.imageUrl.length > 0) {
         [self.iconView setImageFromUrl:item.imageUrl placeholderImage:nil completion:nil];
+        self.iconView.contentMode = UIViewContentModeScaleAspectFill;
+        self.mediaGradientOverlay.hidden = NO;
     }
 
-    self.metaLabel.text = item.ownerName ?: item.ownerID ?: kLang(@"Unknown");
+    NSString *owner = item.ownerName ?: item.ownerID ?: kLang(@"Unknown");
+    NSString *location = item.location.length > 0 ? item.location : nil;
+    self.metaLabel.text = location.length > 0 ? [NSString stringWithFormat:@"%@ · %@", owner, location] : owner;
 
-    NSString *priceText = item.price.length > 0 ? [NSString stringWithFormat:@"%@ %@", item.price, kLang(@"EGP")] : @"—";
-    self.priceLabel.text = priceText;
+    self.priceLabel.text = PPListingsPriceText(item.price);
 
-    if (item.updatedAt) {
-        NSDateFormatter *df = [[NSDateFormatter alloc] init];
-        df.dateStyle = NSDateFormatterShortStyle;
-        df.timeStyle = NSDateFormatterNoStyle;
-        self.dateLabel.text = [df stringFromDate:item.updatedAt];
-    } else {
-        self.dateLabel.text = @"—";
-    }
+    self.dateLabel.text = PPListingsFormattedDate(item.updatedAt ?: item.createdAt);
 
     UIColor *statusColor = UIColor.systemGrayColor;
     NSString *statusText = item.statusString;
@@ -431,7 +565,8 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         statusText = kLang(@"Blocked");
     }
     self.statusBadge.text = statusText;
-    self.statusBadge.backgroundColor = statusColor;
+    self.statusBadge.textColor = statusColor;
+    self.statusBadge.backgroundColor = [statusColor colorWithAlphaComponent:0.14];
 
     self.accessoryType = canManage ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
 
@@ -439,13 +574,23 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
     self.metaLabel.textAlignment = Language.alignmentForCurrentLanguage;
     self.priceLabel.textAlignment = NSTextAlignmentNatural;
     self.dateLabel.textAlignment = NSTextAlignmentNatural;
+    self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.isAccessibilityElement = YES;
+    self.accessibilityTraits = canManage ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
+    self.accessibilityLabel = [@[self.titleLabel.text ?: @"",
+                                 self.priceLabel.text ?: @"",
+                                 self.metaLabel.text ?: @"",
+                                 self.statusBadge.text ?: @"",
+                                 self.dateLabel.text ?: @""] componentsJoinedByString:@", "];
 }
 
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
     [super setHighlighted:highlighted animated:animated];
+    if (PPListingsReduceMotionEnabled()) { return; }
     [UIView animateWithDuration:PPAnimDurationFast delay:0
                         options:UIViewAnimationOptionCurveEaseOut animations:^{
-        self.iconTile.transform = highlighted ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown)
+        self.surfaceView.transform = highlighted ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown)
                                              : CGAffineTransformIdentity;
     } completion:nil];
 }
@@ -484,7 +629,7 @@ static NSString *const kListingCellID = @"PPListingCell";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.view.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
     [self setupNavigation];
     [self setupTableView];
     [self setupHero];
@@ -507,21 +652,32 @@ static NSString *const kListingCellID = @"PPListingCell";
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     self.tableView.accessibilityIdentifier = @"ListingsTable";
+    self.tableView.backgroundColor = UIColor.clearColor;
+    self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceSM, 0, PPSpace4XL, 0);
 
     self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
     self.searchController.obscuresBackgroundDuringPresentation = NO;
     self.searchController.searchResultsUpdater = self;
     self.searchController.searchBar.placeholder = kLang(@"SearchHere");
     self.searchController.searchBar.tintColor = AppPrimaryClr;
+    if (@available(iOS 13.0, *)) {
+        self.searchController.searchBar.searchTextField.font = PPListingRegular(PPFontBody, UIFontTextStyleBody);
+        self.searchController.searchBar.searchTextField.adjustsFontForContentSizeCategory = YES;
+    }
+    self.searchController.searchBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.navigationItem.searchController = self.searchController;
     self.navigationItem.hidesSearchBarWhenScrolling = YES;
 }
 
 - (void)setupHero {
-    self.heroView = [[PPListingsHeroView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 220)];
+    self.heroView = [[PPListingsHeroView alloc] initWithFrame:CGRectMake(PPSpaceBase, PPSpaceMD, self.view.bounds.size.width - (PPSpaceBase * 2.0), 220)];
     self.heroView.titleLabel.text = kLang(@"ListingsAdmin_Title");
-    self.heroView.subtitleLabel.text = kLang(@"ListingsAdmin_Source");
-    self.tableView.tableHeaderView = self.heroView;
+    self.heroView.subtitleLabel.text = kLang(@"ListingsAdmin_HeroSubtitle") ?: kLang(@"ListingsAdmin_Source");
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 244.0)];
+    header.backgroundColor = UIColor.clearColor;
+    self.heroView.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    [header addSubview:self.heroView];
+    self.tableView.tableHeaderView = header;
     [self updateHero];
 }
 
@@ -825,23 +981,23 @@ static NSString *const kListingCellID = @"PPListingCell";
     NSDictionary *data = doc.data;
     if (!data) return nil;
     PPListingItem *item = [[PPListingItem alloc] init];
-    item.documentID = doc.documentID;
+    item.documentID = PPListingStringValue(doc.documentID);
     item.source = PPListingSourceMarketplace;
-    item.title = data[@"adTitle"] ?: @"";
-    item.listingDescription = data[@"desc"];
-    item.price = [data[@"price"] description];
-    item.category = data[@"category"];
-    item.subcategory = data[@"subcategory"];
-    item.ownerID = data[@"ownerID"];
-    item.ownerName = data[@"ownerName"];
-    item.imageUrl = data[@"imageUrl"];
+    item.title = PPListingFirstString(data, @[@"adTitle", @"title", @"name"]);
+    item.listingDescription = PPListingStringValue(data[@"desc"]);
+    item.price = PPListingStringValue(data[@"price"]);
+    item.category = PPListingStringValue(data[@"category"]);
+    item.subcategory = PPListingStringValue(data[@"subcategory"]);
+    item.ownerID = PPListingStringValue(data[@"ownerID"]);
+    item.ownerName = PPListingStringValue(data[@"ownerName"]);
+    item.imageUrl = PPListingFirstString(data, @[@"imageUrl", @"imageURL"]);
     item.status = [data[@"status"] integerValue];
     item.visibility = [data[@"visibility"] boolValue];
     item.isApproved = [data[@"isApproved"] boolValue];
     item.isBlocked = [data[@"isBlocked"] boolValue];
     item.viewsCount = [data[@"viewsCount"] integerValue];
-    item.location = data[@"location"];
-    item.petAge = data[@"petAge"];
+    item.location = PPListingLocationText(data);
+    item.petAge = PPListingStringValue(data[@"petAge"]);
     item.createdAt = [data[@"createdAt"] isKindOfClass:[FIRTimestamp class]] ? [(FIRTimestamp *)data[@"createdAt"] dateValue] : nil;
     item.updatedAt = [data[@"updatedAt"] isKindOfClass:[FIRTimestamp class]] ? [(FIRTimestamp *)data[@"updatedAt"] dateValue] : nil;
     return item;
@@ -851,15 +1007,17 @@ static NSString *const kListingCellID = @"PPListingCell";
     NSDictionary *data = doc.data;
     if (!data) return nil;
     PPListingItem *item = [[PPListingItem alloc] init];
-    item.documentID = doc.documentID;
+    item.documentID = PPListingStringValue(doc.documentID);
     item.source = PPListingSourceAdoption;
-    item.title = data[@"name"] ?: @"";
-    item.listingDescription = data[@"details"];
-    item.price = [data[@"price"] description];
-    item.category = data[@"kindID"];
-    item.ownerID = data[@"ownerID"];
-    item.location = data[@"location"];
-    item.imageUrl = [data[@"imageURLsArray"] isKindOfClass:NSArray.class] ? [(NSArray *)data[@"imageURLsArray"] firstObject] : nil;
+    item.title = PPListingFirstString(data, @[@"name", @"title"]);
+    item.listingDescription = PPListingStringValue(data[@"details"]);
+    item.price = PPListingStringValue(data[@"price"]);
+    item.category = PPListingStringValue(data[@"kindID"]);
+    item.ownerID = PPListingStringValue(data[@"ownerID"]);
+    item.ownerName = PPListingStringValue(data[@"ownerName"]);
+    item.location = PPListingLocationText(data);
+    NSArray *imageURLs = [data[@"imageURLsArray"] isKindOfClass:NSArray.class] ? data[@"imageURLsArray"] : @[];
+    item.imageUrl = PPListingStringValue(imageURLs.firstObject);
     item.isBlocked = [data[@"isBlocked"] boolValue];
     item.createdAt = [data[@"createdAt"] isKindOfClass:[FIRTimestamp class]] ? [(FIRTimestamp *)data[@"createdAt"] dateValue] : nil;
     item.updatedAt = item.createdAt;
@@ -1137,6 +1295,12 @@ static NSString *const kListingCellID = @"PPListingCell";
     if (self.didPrepareEntrance) return;
     self.didPrepareEntrance = YES;
 
+    if (PPListingsReduceMotionEnabled()) {
+        self.heroView.alpha = 1.0;
+        self.heroView.transform = CGAffineTransformIdentity;
+        return;
+    }
+
     self.heroView.alpha = 0;
     self.heroView.transform = CGAffineTransformMakeTranslation(0, 16);
 
@@ -1160,13 +1324,16 @@ static NSString *const kListingCellID = @"PPListingCell";
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     if (self.heroView) {
-        CGFloat width = self.tableView.bounds.size.width;
+        CGFloat width = MAX(0.0, self.tableView.bounds.size.width - (PPSpaceBase * 2.0));
         CGSize size = [self.heroView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                     withHorizontalFittingPriority:UILayoutPriorityRequired
                                           verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
-        if (fabs(self.heroView.frame.size.height - size.height) > 0.5) {
-            self.heroView.frame = CGRectMake(0, 0, width, size.height);
-            self.tableView.tableHeaderView = self.heroView;
+        CGFloat targetHeight = MAX(220.0, size.height);
+        UIView *header = self.tableView.tableHeaderView;
+        if (fabs(self.heroView.frame.size.width - width) > 0.5 || fabs(self.heroView.frame.size.height - targetHeight) > 0.5) {
+            self.heroView.frame = CGRectMake(PPSpaceBase, PPSpaceMD, width, targetHeight);
+            header.frame = CGRectMake(0, 0, self.tableView.bounds.size.width, targetHeight + (PPSpaceMD * 2.0));
+            self.tableView.tableHeaderView = header;
         }
     }
 }
