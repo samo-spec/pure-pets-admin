@@ -8,6 +8,7 @@
 #import "Payments/PPPaymentManagementService.h"
 #import "Payments/PPPaymentManagementViewController.h"
 #import "ThirdParty/PPStyles/PPHUD.h"
+#import "ThirdParty/PPStyles/UIViewController+PPNavBar.h"
 #import "ThirdParty/Styling/AlertHelper.h"
 #import "PPStaffAuth.h"
 #import "AdminDashboardViewController.h"
@@ -218,24 +219,28 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 
      AdminDashboardViewController *dashVC = [[AdminDashboardViewController alloc] init];
      UINavigationController *dashNav = [[UINavigationController alloc] initWithRootViewController:dashVC];
+     [dashNav pp_applyPurePetsNavAppearance];
      dashNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"AdminDashboard") ?: @"Dashboard"
                                                        image:[UIImage systemImageNamed:@"square.grid.2x2" withConfiguration:iconConfig]
                                                selectedImage:[UIImage systemImageNamed:@"square.grid.2x2.fill" withConfiguration:iconConfig]];
 
      PPChatsViewController *chatsVC = [[PPChatsViewController alloc] init];
      UINavigationController *chatsNav = [[UINavigationController alloc] initWithRootViewController:chatsVC];
+     [chatsNav pp_applyPurePetsNavAppearance];
      chatsNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Chats") ?: @"Chats"
                                                        image:[UIImage systemImageNamed:@"bubble.left.and.bubble.right" withConfiguration:iconConfig]
                                                selectedImage:[UIImage systemImageNamed:@"bubble.left.and.bubble.right.fill" withConfiguration:iconConfig]];
 
      NotificationsListViewController *notifVC = [[NotificationsListViewController alloc] init];
      UINavigationController *notifNav = [[UINavigationController alloc] initWithRootViewController:notifVC];
+     [notifNav pp_applyPurePetsNavAppearance];
      notifNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Notifications") ?: @"Notifications"
                                                        image:[UIImage systemImageNamed:@"bell" withConfiguration:iconConfig]
                                                selectedImage:[UIImage systemImageNamed:@"bell.fill" withConfiguration:iconConfig]];
 
      PPSettingsViewController *settingsVC = [[PPSettingsViewController alloc] init];
      UINavigationController *settingsNav = [[UINavigationController alloc] initWithRootViewController:settingsVC];
+     [settingsNav pp_applyPurePetsNavAppearance];
      settingsNav.tabBarItem = [[UITabBarItem alloc] initWithTitle:kLang(@"Settings") ?: @"Settings"
                                                        image:[UIImage systemImageNamed:@"gearshape" withConfiguration:iconConfig]
                                                selectedImage:[UIImage systemImageNamed:@"gearshape.fill" withConfiguration:iconConfig]];
@@ -299,6 +304,7 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      }
      
      UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:root];
+     [nav pp_applyPurePetsNavAppearance];
      self.window.rootViewController = nav;
      [self.window makeKeyAndVisible];
 }
@@ -369,6 +375,7 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                default:               root = [SplashViewController new]; break;
           }
           rootController = [[UINavigationController alloc] initWithRootViewController:root];
+          [rootController pp_applyPurePetsNavAppearance];
      }
      
      UIViewController *old = self.window.rootViewController;

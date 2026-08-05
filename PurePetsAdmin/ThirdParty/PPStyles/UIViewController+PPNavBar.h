@@ -74,8 +74,17 @@ static NSString * const kPPKeyBaseButton = @"__base_button";
 - (void)forceReplaceRightButtonWith:(UIButton *)btn;
 - (void)forceReplaceLeftButtonWith:(UIButton *)btn;
 
+/// ===== Custom Title View =====
+
 - (UIView * _Nullable)pp_navBarForeTitleView:(UIView *)navBarTitleView;
 - (UIView * _Nullable)pp_viewWithImage:(NSString *)imageName andTitle:(NSString *)title;
+
+/// ===== Command Bar appearance =====
+/// Applies the shared PurePets nav look (warm settle surface, gold hairline,
+/// gold-ink tint, Beiruti-Bold 20 title) to this controller's bar instance.
+/// Safe on any UINavigationController or UIViewController.
+- (void)pp_applyPurePetsNavAppearance;
+- (UIButton *)pp_BackButtonWithSystemName:(NSString *)symbolName action:(SEL)action;
 
 
 - (UIView * _Nullable)PPNavBarForceLeftView:(UIView *)navBarTitleView ;

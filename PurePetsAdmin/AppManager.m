@@ -79,13 +79,7 @@ static BOOL PPShouldUseDebugAppCheckProvider(void) {
     } else if ([forceDefaultsValue isKindOfClass:NSString.class]) {
         forceDefaultsEnabled = PPAppCheckTruthyString((NSString *)forceDefaultsValue);
     }
-    BOOL explicitDebug = forceFromEnv || hasDebugTokenEnv || forceDefaultsEnabled;
-
-#if DEBUG
-    return YES;
-#else
-    return explicitDebug;
-#endif
+    return forceFromEnv || hasDebugTokenEnv || forceDefaultsEnabled;
 #endif
 }
 

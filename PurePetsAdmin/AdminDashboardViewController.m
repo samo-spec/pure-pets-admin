@@ -710,8 +710,6 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     avatarShell.backgroundColor = PPAdminDashboardHeroControlColor(self.traitCollection);
     avatarShell.layer.cornerRadius = 38.0;
     avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
-    avatarShell.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    avatarShell.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
     avatarShell.layer.shadowColor = AppShadowColor.CGColor;
     avatarShell.layer.shadowOpacity = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark ? 0.24 : 0.085;
     avatarShell.layer.shadowRadius = 18.0;
@@ -723,8 +721,6 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     avatar.translatesAutoresizingMaskIntoConstraints = NO;
     avatar.layer.cornerRadius = 33.0;
     avatar.clipsToBounds = YES;
-    avatar.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    avatar.layer.borderColor = PPAdminDashboardHeroLiquidBorderColor().CGColor;
     avatar.userInteractionEnabled = YES;
     avatar.contentMode = UIViewContentModeScaleAspectFill;
     avatar.isAccessibilityElement = YES;
@@ -1067,9 +1063,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     self.heroAccessPill.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;
     self.heroAccessIconView.tintColor = [accent colorWithAlphaComponent:dark ? 0.88 : 0.92];
     self.heroAvatarShellView.backgroundColor = control;
-    self.heroAvatarShellView.layer.borderColor = PPAdminDashboardResolvedColor(liquidBorder, self.traitCollection).CGColor;
     self.heroAvatarShellView.layer.shadowOpacity = dark ? 0.24 : 0.085;
-    self.avatarIMV.layer.borderColor = PPAdminDashboardResolvedColor(liquidBorder, self.traitCollection).CGColor;
     self.heroAvatarEditButton.backgroundColor = control;
     self.heroAvatarEditButton.tintColor = PPAdminDashboardHeroInkColor();
     self.heroAvatarEditButton.layer.borderColor = PPAdminDashboardResolvedColor(hairline, self.traitCollection).CGColor;

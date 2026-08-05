@@ -47,7 +47,52 @@ static BOOL PPIsRTL(UIViewController *vc) {
 }
 
 static NSString *PPNavBackSymbolName(void) {
-    return Language.isRTL ? @"chevron.right" : @"chevron.left";
+    return Language.isRTL ? @"arrow.right" : @"arrow.left";
+}
+
+#pragma mark - Command Bar tokens (warm settle + gold ops signal)
+
+/// Warm settle surface — light ivory / warm charcoal.
+static inline UIColor *PPNavWarmSurface(void) {
+    return PPDynamicColor(0xFFFDFB, 0x23201E, 1.0, 1.0);
+}
+
+/// Slightly raised warm surface for buttons.
+static inline UIColor *PPNavWarmRaised(void) {
+    return PPDynamicColor(0xFFFEFD, 0x2A2622, 1.0, 1.0);
+}
+
+/// Gold ops signal — Console #D7A45C family.
+static inline UIColor *PPNavGold(void) {
+    return PPDynamicColor(0xD7A45C, 0xE3B878, 1.0, 1.0);
+}
+
+/// Gold ink — readable icon/text tone on warm surfaces.
+static inline UIColor *PPNavGoldInk(void) {
+    return PPDynamicColor(0x8A5F14, 0xF0CF94, 1.0, 1.0);
+}
+
+/// Gold hairline separator for the settle surface.
+static inline UIColor *PPNavGoldHairline(void) {
+    return PPDynamicColor(0xD7A45C, 0xD7A45C, 0.35, 0.30);
+}
+
+/// Ink chevron for the gold back button (dark in both modes for contrast).
+static inline UIColor *PPNavBackInk(void) {
+    return PPColorFromRGB(0x171513, 1.0);
+}
+
+/// Ink title color — warm text primary.
+static inline UIColor *PPNavInk(void) {
+    return PPDynamicColor(0x171513, 0xFFF8F5, 1.0, 1.0);
+}
+
+/// Title attributes shared by the appearance and the overlay label.
+static NSDictionary *PPNavTitleAttributes(void) {
+    return @{
+        NSFontAttributeName: [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:20.0]],
+        NSForegroundColorAttributeName: PPNavInk()
+    };
 }
 
 
@@ -61,8 +106,7 @@ static NSString *PPNavBackSymbolName(void) {
     
     NSAssert(self.navigationController, @"pp_navBar requires a UINavigationController.");
     UINavigationBar *navBar = self.navigationController.navigationBar;
-    navBar.tintColor = UIColor.clearColor;
-    navBar.backgroundColor = UIColor.clearColor;
+    [self pp_applyPurePetsNavAppearance];
     UIView *bar = PPBarForVC(self);
     if (bar) { [self pp_navBarSetTitle:titleString]; return bar; }
     
@@ -80,8 +124,8 @@ static NSString *PPNavBackSymbolName(void) {
     
     UILabel *titleLbl = [UILabel new];
     titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLbl.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22]];
-    titleLbl.textColor = PrimaryTextClr;
+    titleLbl.font = PPNavTitleAttributes()[NSFontAttributeName];
+    titleLbl.textColor = PPNavInk();
     titleLbl.textAlignment = NSTextAlignmentCenter;
     titleLbl.adjustsFontSizeToFitWidth = YES;
     titleLbl.adjustsFontForContentSizeCategory = YES;
@@ -127,6 +171,36 @@ static NSString *PPNavBackSymbolName(void) {
     return bar;
 }
 
+#pragma mark - Command Bar appearance (per-instance, RTL-safe)
+
+- (void)pp_applyPurePetsNavAppearance {
+    UINavigationBar *navBar = nil;
+    if ([self isKindOfClass:UINavigationController.class]) {
+        navBar = [(UINavigationController *)self navigationBar];
+    } else {
+        navBar = self.navigationController.navigationBar;
+    }
+    if (!navBar) return;
+
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *settle = [[UINavigationBarAppearance alloc] init];
+        [settle configureWithTransparentBackground];
+        settle.backgroundColor = [UIColor clearColor];
+        settle.shadowColor = PPNavGoldHairline();
+        settle.titleTextAttributes = PPNavTitleAttributes();
+
+        navBar.standardAppearance = settle;
+        navBar.compactAppearance = settle;
+        navBar.scrollEdgeAppearance = settle;
+        navBar.tintColor = PPNavGoldInk();
+        navBar.translucent = YES;
+    } else {
+        navBar.barTintColor = [UIColor clearColor];
+        navBar.backgroundColor = [UIColor clearColor];
+        navBar.tintColor = PPNavGoldInk();
+        navBar.titleTextAttributes = PPNavTitleAttributes();
+    }
+}
 
 + (void)load {
     static dispatch_once_t onceToken;
@@ -181,8 +255,9 @@ static NSString *PPNavBackSymbolName(void) {
     
     // Ensure default back on LEFT (your old behavior)
     if (!PPDictForVC(self, NO)[kPPKeyBaseBack]) {
-        UIButton *back = [self pp_ButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
+        UIButton *back = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
         [self _pp_addLeftButton:back key:kPPKeyBaseBack];
+        [self _pp_springInBackButton:back];
     }
     
     // Trailing "other" (RIGHT)
@@ -228,12 +303,13 @@ static NSString *PPNavBackSymbolName(void) {
    
     if (showBack) {
         if (!PPDictForVC(self, NO)[kPPKeyBaseBack]) {
-            UIButton *back = [self pp_ButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
+            UIButton *back = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(onBack)];
             if (isRTL) {
                 [self _pp_addRightButton:back key:kPPKeyBaseBack];
             } else {
                 [self _pp_addLeftButton:back key:kPPKeyBaseBack];
             }
+            [self _pp_springInBackButton:back];
         }
     }
     
@@ -339,10 +415,9 @@ static NSString *PPNavBackSymbolName(void) {
 
 - (UIButton *)pp_ButtonWithSystemName:(NSString *)imageName action:(SEL)action {
     UIButton *btn;
-    CGFloat btnSize = 40;
+    CGFloat btnSize = 44;
 
     if (@available(iOS 26.0, *)) {
-        btnSize = 44;
         UIButtonConfiguration *cfg = [UIButtonConfiguration glassButtonConfiguration];
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
         //cfg.background.backgroundColor = AppBackgroundClrShiner ?: [UIColor colorWithWhite:0.95 alpha:1.0];
@@ -356,15 +431,19 @@ static NSString *PPNavBackSymbolName(void) {
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
         
         // ✅ Set background color through configuration
-        cfg.background.backgroundColor = AppForgroundColr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        cfg.background.backgroundColor = PPNavWarmRaised();
         cfg.background.cornerRadius = 22;
+        cfg.background.strokeColor = PPNavGoldHairline();
+        cfg.background.strokeWidth = 1.0;
         
         btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
     } else {
         btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
-        btn.backgroundColor = AppForgroundColr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        btn.backgroundColor = PPNavWarmRaised();
         btn.layer.cornerRadius = 22;
+        btn.layer.borderWidth = 1.0;
+        btn.layer.borderColor = PPNavGoldHairline().CGColor;
     }
 
     // Try SF Symbol first → fallback to asset
@@ -386,13 +465,13 @@ static NSString *PPNavBackSymbolName(void) {
     [btn setImage:icon forState:UIControlStateNormal];
 
     btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tintColor = AppPrimaryClr ?: [UIColor systemBlueColor];
+    btn.tintColor = PPNavGoldInk();
     
     // ✅ Remove the old backgroundColor assignment for iOS 15+
     if (@available(iOS 15.0, *)) {
         // Background is already set in configuration
     } else {
-        btn.backgroundColor = AppForgroundColr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        btn.backgroundColor = PPNavWarmRaised();
         btn.layer.cornerRadius = 22;
         btn.layer.masksToBounds = YES;
     }
@@ -401,8 +480,8 @@ static NSString *PPNavBackSymbolName(void) {
     [btn.widthAnchor constraintEqualToConstant:btnSize].active = YES;
     [btn.heightAnchor constraintEqualToConstant:btnSize].active = YES;
 
-    btn.layer.shadowColor = AppShadowColor.CGColor;
-    btn.layer.shadowOpacity = 0.10;
+    btn.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.18].CGColor;
+    btn.layer.shadowOpacity = 0.12;
     btn.layer.shadowOffset = CGSizeMake(0, 2);
     btn.layer.shadowRadius = 6;
     btn.layer.masksToBounds = NO; // shadow needs this
@@ -423,6 +502,68 @@ static NSString *PPNavBackSymbolName(void) {
 
     [PPButtonHelper attachTapAnimationToButton:btn style:PPButtonAnimationStylePulse];
     return btn;
+}
+
+- (UIButton *)pp_BackButtonWithSystemName:(NSString *)imageName action:(SEL)action {
+    UIButton *btn;
+    CGFloat btnSize = 44;
+
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
+        cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
+        cfg.background.backgroundColor = PPNavGold();
+        cfg.background.cornerRadius = 22;
+        cfg.background.strokeColor = [PPNavBackInk() colorWithAlphaComponent:0.10];
+        cfg.background.strokeWidth = 1.0;
+        btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
+    } else {
+        btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
+        btn.backgroundColor = PPNavGold();
+        btn.layer.cornerRadius = 22;
+    }
+
+    UIImage *icon = [UIImage systemImageNamed:imageName] ?: [UIImage new];
+    [btn setImage:icon forState:UIControlStateNormal];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.tintColor = PPNavBackInk();
+
+    [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [btn.widthAnchor constraintEqualToConstant:btnSize].active = YES;
+    [btn.heightAnchor constraintEqualToConstant:btnSize].active = YES;
+
+    btn.layer.shadowColor = [PPNavGold() colorWithAlphaComponent:0.5].CGColor;
+    btn.layer.shadowOpacity = 0.22;
+    btn.layer.shadowOffset = CGSizeMake(0, 2);
+    btn.layer.shadowRadius = 7;
+    btn.layer.masksToBounds = NO;
+
+    UIImageSymbolConfiguration *config =
+    [UIImageSymbolConfiguration configurationWithPointSize:20
+                                                    weight:UIImageSymbolWeightSemibold
+                                                     scale:UIImageSymbolScaleMedium];
+    [btn setImage:[icon imageByApplyingSymbolConfiguration:config] forState:UIControlStateNormal];
+    btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
+
+    [PPButtonHelper attachTapAnimationToButton:btn style:PPButtonAnimationStylePulse];
+    return btn;
+}
+
+#pragma mark - Signature: back button spring-in (Reduce Motion guarded)
+
+- (void)_pp_springInBackButton:(UIButton *)back {
+    if (!back || UIAccessibilityIsReduceMotionEnabled()) return;
+    back.transform = CGAffineTransformMakeScale(0.55, 0.55);
+    back.alpha = 0.0;
+    [UIView animateWithDuration:0.42
+                          delay:0.05
+         usingSpringWithDamping:0.6
+          initialSpringVelocity:0.9
+                        options:UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        back.transform = CGAffineTransformIdentity;
+        back.alpha = 1.0;
+    } completion:nil];
 }
 /*
 - (UIButton *)pp_ButtonWithSystemName:(NSString *)symbolName action:(SEL)action {
@@ -597,11 +738,13 @@ static NSString *PPNavBackSymbolName(void) {
     
     UIView *container = [[UIView alloc] initWithFrame:CGRectZero];
     container.translatesAutoresizingMaskIntoConstraints = NO;
-    container.backgroundColor = AppForgroundColr ?: UIColor.whiteColor;
+    container.backgroundColor = PPNavWarmRaised();
     container.layer.cornerRadius = 27; // half of 44
     container.layer.masksToBounds = NO;
-    container.layer.shadowColor = [UIColor colorWithWhite:0 alpha:0.2].CGColor;
-    container.layer.shadowOpacity = 0.35;
+    container.layer.borderWidth = 1.0;
+    container.layer.borderColor = PPNavGoldHairline().CGColor;
+    container.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.16].CGColor;
+    container.layer.shadowOpacity = 0.14;
     container.layer.shadowOffset = CGSizeMake(0, 2);
     container.layer.shadowRadius = 6;
     
@@ -612,10 +755,10 @@ static NSString *PPNavBackSymbolName(void) {
     UIImageView *iv = [[UIImageView alloc] initWithImage:img];
     iv.translatesAutoresizingMaskIntoConstraints = NO;
     iv.contentMode = UIViewContentModeScaleToFill;
-    iv.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    iv.tintColor = PPNavGoldInk();
     
     iv.layer.masksToBounds = NO;
-    iv.layer.shadowColor = [UIColor colorWithWhite:0 alpha:0.2].CGColor;
+    iv.layer.shadowColor = [PPNavGold() colorWithAlphaComponent:0.4].CGColor;
     iv.layer.shadowOpacity = 0.20;
     iv.layer.shadowOffset = CGSizeMake(0, 2);
     iv.layer.shadowRadius = 6;
@@ -627,7 +770,7 @@ static NSString *PPNavBackSymbolName(void) {
     lbl.translatesAutoresizingMaskIntoConstraints = NO;
     lbl.text = title;
     lbl.font = [Styling fontMedium:16];
-    lbl.textColor = AppPrimaryClrDarker ?: UIColor.labelColor;
+    lbl.textColor = PPNavInk();
     lbl.textAlignment = NSTextAlignmentCenter;
     
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:isRTL ? @[lbl, iv] : @[iv, lbl]];

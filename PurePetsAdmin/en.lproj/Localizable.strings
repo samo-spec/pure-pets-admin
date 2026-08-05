@@ -1896,6 +1896,10 @@
 /* ===================== Fulfillment Section ===================== */
 "Fulfillment_Title" = "Fulfillment Orders";
 "Fulfillment_Subtitle" = "Manage provider-subcontracted fulfillment orders";
+"Fulfillment_Eyebrow" = "Fulfillment Operations";
+"Fulfillment_Showing_Format" = "Showing %@ of %@";
+"Fulfillment_Ref" = "Fulfillment Ref";
+"Fulfillment_Filter_Completed" = "Completed";
 "Fulfillment_SearchPlaceholder" = "Search customer, provider, order, or reference...";
 "Fulfillment_Empty" = "No fulfillment orders found";
 "Fulfillment_Count_Format" = "%@ orders";
@@ -1957,6 +1961,18 @@
 "Fulfillment_ConfirmOverride" = "Confirm Override";
 "Fulfillment_OverrideSuccess" = "Fulfillment status updated.";
 "Fulfillment_OverrideSkipped" = "The fulfillment is already in that status.";
+"Fulfillment_Live" = "Live";
+"Fulfillment_UpdatedJustNow" = "Updated just now";
+"Fulfillment_UpdatedAgo_Format" = "Updated %@ ago";
+"Fulfillment_Filter_All" = "All";
+"Fulfillment_Filter_Active" = "Active";
+"Fulfillment_Filter_Awaiting" = "Awaiting";
+"Fulfillment_Empty_Title" = "No fulfillment orders";
+"Fulfillment_Empty_Subtitle" = "Orders appear here as providers take them on.";
+"Fulfillment_EmptyFiltered_Title" = "No matching orders";
+"Fulfillment_EmptyFiltered_Subtitle" = "Try changing the search or filters.";
+"Fulfillment_EmptyError_Title" = "Couldn't load orders";
+"Fulfillment_Retry" = "Retry";
 
 /* ===================== Delivery Section ===================== */
 "Delivery_Title" = "Delivery Management";
@@ -2160,6 +2176,11 @@
 "POS_ItemUnavailable" = "Unavailable";
 "POS_StockLimitReached" = "All available stock is already in the cart";
 "POS_AddToCartHint" = "Adds this item to the cart";
+"POS_ItemsInCart" = "%ld items in cart";
+"POS_InCartBadge" = "In cart: %ld";
+"POS_RemoveOne" = "Remove one";
+"POS_AddOne" = "Add one";
+"POS_RemoveFromCart" = "Remove from cart";
 
 /* ===================== Dashboard Features Section ===================== */
 "AdminDashboard_Section_Features" = "Features";
@@ -2495,3 +2516,9 @@
 "AdminDashboard_Section_Audit_Description" = "Review admin action logs and audit trails.";
 "None" = "None";
 "ListingsAdmin_Views" = "Views";
+"ListingsAdmin_RailAll" = "All";
+"ListingsAdmin_RailHint" = "Filter listings by status";
+"ListingsAdmin_EmptySubtitle" = "Listings appear here once users publish marketplace or adoption ads.";
+"ListingsAdmin_NoResultsTitle" = "No results found";
+"ListingsAdmin_NoResultsSubtitle" = "No results matching “%@”";
+"ListingsAdmin_NoResultsFilter" = "No listings in this status";
