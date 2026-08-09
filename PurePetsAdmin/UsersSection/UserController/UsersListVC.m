@@ -12,6 +12,7 @@
 #import "PPFunc.h"
 #import "PPToast.h"
 #import "PPHero.h"
+#import "PurePetsColorPattle.h"
 #import <objc/runtime.h>
 @import Firebase;
 @import FirebaseAuth;
@@ -19,7 +20,7 @@
 
 static CGFloat const PPUsersListHorizontalInset = 16.0;
 static CGFloat const PPUsersListHeaderCardHeight = 272.0;
-static CGFloat const PPUsersListRowHeight = 104.0;
+static CGFloat const PPUsersListRowHeight = 112.0;
 
 static UIColor *PPUsersListBackgroundColor(void) {
     return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
@@ -66,6 +67,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     row.axis = UILayoutConstraintAxisHorizontal;
     row.distribution = UIStackViewDistributionFillEqually;
     row.spacing = 8.0;
+    row.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     row.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:row];
 
@@ -76,20 +78,25 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
         [row.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
     ]];
 
-    [row addArrangedSubview:[self makeChipWithIcon:@"person.3.fill" titleKey:@"Total_Users" valLabel:&_totalVal color:[UIColor systemBlueColor]]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"checkmark.circle.fill" titleKey:@"Active_Users" valLabel:&_activeVal color:[UIColor systemGreenColor]]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"patch.check.fill" titleKey:@"Verified_Users" valLabel:&_verifiedVal color:[UIColor systemIndigoColor]]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"shield.fill" titleKey:@"Production_Users" valLabel:&_prodVal color:[UIColor systemOrangeColor]]];
+    [row addArrangedSubview:[self makeChipWithIcon:@"person.3.fill" titleKey:@"Total_Users" valLabel:&_totalVal color:PPPrimaryColor()]];
+    [row addArrangedSubview:[self makeChipWithIcon:@"checkmark.circle.fill" titleKey:@"Active_Users" valLabel:&_activeVal color:PPSageAccentColor()]];
+    [row addArrangedSubview:[self makeChipWithIcon:@"patch.check.fill" titleKey:@"Verified_Users" valLabel:&_verifiedVal color:PPGoldAccentColor()]];
+    [row addArrangedSubview:[self makeChipWithIcon:@"shield.fill" titleKey:@"Production_Users" valLabel:&_prodVal color:PPSecondaryAccentColor()]];
 }
 
 - (UIView *)makeChipWithIcon:(NSString *)iconName titleKey:(NSString *)titleKey valLabel:(UILabel * __strong *)valLabel color:(UIColor *)color {
     UIView *chip = [UIView new];
     chip.backgroundColor = [PPUsersListSurfaceColor() colorWithAlphaComponent:0.72];
-    chip.layer.cornerRadius = 16.0;
+    chip.layer.cornerRadius = 18.0;
     chip.layer.masksToBounds = YES;
     chip.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     chip.layer.borderColor = [color colorWithAlphaComponent:0.11].CGColor;
     chip.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIView *accentRail = [UIView new];
+    accentRail.translatesAutoresizingMaskIntoConstraints = NO;
+    accentRail.backgroundColor = [color colorWithAlphaComponent:0.82];
+    [chip addSubview:accentRail];
     
     UIImageSymbolConfiguration *iconConfig = [UIImageSymbolConfiguration configurationWithPointSize:13.0
                                                                                             weight:UIImageSymbolWeightSemibold];
@@ -100,20 +107,22 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     
     UILabel *title = [UILabel new];
     title.text = kLang(titleKey);
-    title.font = [Styling fontMedium:10.0];
+    title.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:10.0]];
     title.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.88];
     title.textAlignment = [Language alignmentForCurrentLanguage];
     title.adjustsFontSizeToFitWidth = YES;
     title.minimumScaleFactor = 0.72;
+    title.adjustsFontForContentSizeCategory = YES;
     title.translatesAutoresizingMaskIntoConstraints = NO;
     
     UILabel *val = [UILabel new];
     val.text = @"0";
-    val.font = [Styling fontBold:18.0];
+    val.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:18.0]];
     val.textColor = PPUsersListPrimaryTextColor();
     val.textAlignment = [Language alignmentForCurrentLanguage];
     val.adjustsFontSizeToFitWidth = YES;
     val.minimumScaleFactor = 0.72;
+    val.adjustsFontForContentSizeCategory = YES;
     val.translatesAutoresizingMaskIntoConstraints = NO;
     
     if (valLabel) *valLabel = val;
@@ -123,6 +132,11 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     [chip addSubview:val];
     
     [NSLayoutConstraint activateConstraints:@[
+        [accentRail.topAnchor constraintEqualToAnchor:chip.topAnchor],
+        [accentRail.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor],
+        [accentRail.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor],
+        [accentRail.heightAnchor constraintEqualToConstant:3.0],
+
         [icon.topAnchor constraintEqualToAnchor:chip.topAnchor constant:8.0],
         [icon.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor constant:8.0],
         [icon.widthAnchor constraintEqualToConstant:16.0],
@@ -137,7 +151,10 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
         [title.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor constant:-8.0],
         [title.bottomAnchor constraintLessThanOrEqualToAnchor:chip.bottomAnchor constant:-7.0]
     ]];
-    
+
+    chip.isAccessibilityElement = YES;
+    chip.accessibilityTraits = UIAccessibilityTraitStaticText;
+
     return chip;
 }
 
@@ -146,6 +163,14 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.activeVal.text = [NSString stringWithFormat:@"%ld", (long)active];
     self.verifiedVal.text = [NSString stringWithFormat:@"%ld", (long)verified];
     self.prodVal.text = [NSString stringWithFormat:@"%ld", (long)prod];
+
+    NSArray<UILabel *> *values = @[self.totalVal, self.activeVal, self.verifiedVal, self.prodVal];
+    for (UILabel *value in values) {
+        UIView *chip = value.superview;
+        UILabel *title = chip.subviews.count > 1 ? chip.subviews[2] : nil;
+        chip.accessibilityLabel = title.text ?: @"";
+        chip.accessibilityValue = value.text ?: @"";
+    }
 }
 
 @end
@@ -175,6 +200,8 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
 @property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 @property (nonatomic, strong) NSLayoutConstraint *stickyHeaderHeightConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *heroCardHeightConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *summaryHeaderHeightConstraint;
 @end
 
 @implementation UsersListVC
@@ -210,7 +237,8 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.tableView.backgroundColor = PPUsersListBackgroundColor();
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.tableView.rowHeight = PPUsersListRowHeight;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = PPUsersListRowHeight;
     self.tableView.showsVerticalScrollIndicator = NO;
     if (@available(iOS 11.0, *)) {
         self.tableView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
@@ -266,13 +294,11 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self pp_applyNoNavigationBarAnimated:NO];
-    [self.heroBackground startAnimations];
     [self pp_runEntranceIfNeeded];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.heroBackground stopAnimations];
     [self pp_restoreNavigationBarIfNeededAnimated:animated];
 }
 
@@ -316,8 +342,8 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.heroBackground = [PPHero new];
     self.heroBackground.translatesAutoresizingMaskIntoConstraints = NO;
     self.heroBackground.accentColorOverride = PPUsersListPrimaryColor();
-    self.heroBackground.accentStyle = PPHeroGlassAccentStyleCornerGlow;
-    self.heroBackground.cornerGlowOpacityMultiplier = 0.48;
+    self.heroBackground.accentStyle = PPHeroGlassAccentStyleBar;
+    self.heroBackground.animationsEnabled = NO;
     [self.heroCardView addSubview:self.heroBackground];
 
     UIView *iconShell = [UIView new];
@@ -363,9 +389,10 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.heroTitleLabel = [UILabel new];
     self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroTitleLabel.font = [Styling fontBold:25.0];
+    self.heroTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:25.0]];
     self.heroTitleLabel.textColor = PPUsersListPrimaryTextColor();
     self.heroTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.heroTitleLabel.adjustsFontForContentSizeCategory = YES;
     self.heroTitleLabel.adjustsFontSizeToFitWidth = YES;
     self.heroTitleLabel.minimumScaleFactor = 0.76;
     self.heroTitleLabel.text = [self pp_screenTitleText];
@@ -373,16 +400,17 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.heroSubtitleLabel = [UILabel new];
     self.heroSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroSubtitleLabel.font = [Styling fontRegular:13.5];
+    self.heroSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.5]];
     self.heroSubtitleLabel.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.92];
     self.heroSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.heroSubtitleLabel.numberOfLines = 2;
+    self.heroSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.heroSubtitleLabel.text = [self pp_screenSubtitleText];
     [self.heroCardView addSubview:self.heroSubtitleLabel];
 
     self.heroCountLabel = [UILabel new];
     self.heroCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCountLabel.font = [Styling fontBold:13.0];
+    self.heroCountLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:13.0]];
     self.heroCountLabel.textColor = PPUsersListPrimaryColor();
     self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
     self.heroCountLabel.backgroundColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.09];
@@ -390,6 +418,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.heroCountLabel.layer.masksToBounds = YES;
     self.heroCountLabel.adjustsFontSizeToFitWidth = YES;
     self.heroCountLabel.minimumScaleFactor = 0.75;
+    self.heroCountLabel.adjustsFontForContentSizeCategory = YES;
     [self.heroCardView addSubview:self.heroCountLabel];
 
     self.summaryHeader = [PPUsersSummaryHeaderView new];
@@ -403,6 +432,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     search.textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     search.textField.textAlignment = [Language alignmentForCurrentLanguage];
     search.textField.placeholder = self.searchPlaceholderText.length ? self.searchPlaceholderText : kLang(@"SetPermissions_Search_Placeholder");
+    search.textField.accessibilityLabel = search.textField.placeholder;
     search.cornerRadius = 22.0;
     search.layer.cornerRadius = 22.0;
     search.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
@@ -415,7 +445,11 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     [self.heroCardView addSubview:search];
     self.searchView = search;
 
-    self.stickyHeaderHeightConstraint = [self.stickyHeaderView.heightAnchor constraintEqualToConstant:PPUsersListHeaderCardHeight + 28.0];
+    CGFloat heroCardHeight = [self pp_headerCardHeight];
+    CGFloat summaryHeaderHeight = [self pp_summaryHeaderHeight];
+    self.stickyHeaderHeightConstraint = [self.stickyHeaderView.heightAnchor constraintEqualToConstant:heroCardHeight + 28.0];
+    self.heroCardHeightConstraint = [self.heroCardView.heightAnchor constraintEqualToConstant:heroCardHeight];
+    self.summaryHeaderHeightConstraint = [self.summaryHeader.heightAnchor constraintEqualToConstant:summaryHeaderHeight];
     [NSLayoutConstraint activateConstraints:@[
         [self.stickyHeaderView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.stickyHeaderView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -425,7 +459,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
         [self.heroCardView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8.0],
         [self.heroCardView.leadingAnchor constraintEqualToAnchor:self.stickyHeaderView.leadingAnchor constant:PPUsersListHorizontalInset],
         [self.heroCardView.trailingAnchor constraintEqualToAnchor:self.stickyHeaderView.trailingAnchor constant:-PPUsersListHorizontalInset],
-        [self.heroCardView.heightAnchor constraintEqualToConstant:PPUsersListHeaderCardHeight],
+        self.heroCardHeightConstraint,
 
         [self.heroBackground.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor],
         [self.heroBackground.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
@@ -461,13 +495,13 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
         [self.heroCountLabel.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
         [self.heroCountLabel.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.heroCountLabel.topAnchor constraintEqualToAnchor:iconShell.bottomAnchor constant:13.0],
+        [self.heroCountLabel.topAnchor constraintEqualToAnchor:self.heroSubtitleLabel.bottomAnchor constant:10.0],
         [self.heroCountLabel.heightAnchor constraintEqualToConstant:28.0],
 
         [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
         [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
         [self.summaryHeader.topAnchor constraintEqualToAnchor:self.heroCountLabel.bottomAnchor constant:10.0],
-        [self.summaryHeader.heightAnchor constraintEqualToConstant:68.0],
+        self.summaryHeaderHeightConstraint,
 
         [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
         [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
@@ -509,18 +543,20 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.stateTitleLabel = [UILabel new];
     self.stateTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.stateTitleLabel.font = [Styling fontBold:19.0];
+    self.stateTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:19.0]];
     self.stateTitleLabel.textColor = PPUsersListPrimaryTextColor();
     self.stateTitleLabel.textAlignment = NSTextAlignmentCenter;
     self.stateTitleLabel.numberOfLines = 2;
+    self.stateTitleLabel.adjustsFontForContentSizeCategory = YES;
     [content addSubview:self.stateTitleLabel];
 
     self.stateSubtitleLabel = [UILabel new];
     self.stateSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.stateSubtitleLabel.font = [Styling fontRegular:14.0];
+    self.stateSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:14.0]];
     self.stateSubtitleLabel.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.88];
     self.stateSubtitleLabel.textAlignment = NSTextAlignmentCenter;
     self.stateSubtitleLabel.numberOfLines = 3;
+    self.stateSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     [content addSubview:self.stateSubtitleLabel];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -621,10 +657,30 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
 - (CGFloat)pp_stickyHeaderHeight {
     CGFloat safeTop = self.view.safeAreaInsets.top;
-    return safeTop + PPUsersListHeaderCardHeight + 18.0;
+    return safeTop + [self pp_headerCardHeight] + 18.0;
+}
+
+- (CGFloat)pp_headerCardHeight {
+    if (@available(iOS 11.0, *)) {
+        if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
+            return 352.0;
+        }
+    }
+    return PPUsersListHeaderCardHeight;
+}
+
+- (CGFloat)pp_summaryHeaderHeight {
+    if (@available(iOS 11.0, *)) {
+        if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
+            return 88.0;
+        }
+    }
+    return 68.0;
 }
 
 - (void)pp_updateStickyHeaderMetrics {
+    self.heroCardHeightConstraint.constant = [self pp_headerCardHeight];
+    self.summaryHeaderHeightConstraint.constant = [self pp_summaryHeaderHeight];
     CGFloat headerHeight = [self pp_stickyHeaderHeight];
     self.stickyHeaderHeightConstraint.constant = headerHeight;
 
@@ -784,9 +840,10 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
-    PPUserCell *cell = [tableView dequeueReusableCellWithIdentifier:PPUserCell.reuseIdentifier forIndexPath:indexPath];
+     PPUserCell *cell = [tableView dequeueReusableCellWithIdentifier:PPUserCell.reuseIdentifier forIndexPath:indexPath];
     UserModel *u = self.filteredUsers[indexPath.row];
     [cell configureWithUser:u indexPath:indexPath viewFor:self.viewForMode];
+    cell.accessibilityIdentifier = u.uid.length ? u.uid : [NSString stringWithFormat:@"user-%ld", (long)indexPath.row];
     cell.delegate = self;
     return cell;
 }

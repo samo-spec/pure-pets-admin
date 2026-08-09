@@ -11,6 +11,7 @@
 #import "PPFirebaseCompat.h"
 #import "Styling.h"
 #import "Language.h"
+#import "PurePetsColorPattle.h"
 @import Firebase;
 @import FirebaseAuth;
 
@@ -25,10 +26,12 @@
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UILabel *settingsTitleLabel;
 @property (nonatomic, strong) UILabel *settingsSubtitleLabel;
+@property (nonatomic, strong) UIView *profileCard;
 @property (nonatomic, strong) NSArray<NSArray<NSDictionary *> *> *settingsSections;
 @property (nonatomic, strong) NSArray<NSString *> *settingsSectionTitles;
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
 @property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
+@property (nonatomic, assign) BOOL didRunEntrance;
 
 @end
 
@@ -52,12 +55,11 @@
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroGlassBG startAnimations];
+    [self pp_runEntranceIfNeeded];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.heroGlassBG stopAnimations];
     [self pp_restoreNavigationBarIfNeededAnimated:animated];
 }
 
@@ -66,6 +68,32 @@
     if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
         [self.heroGlassBG reapplyPalette];
     }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    UIView *header = self.tableView.tableHeaderView;
+    if (!header) return;
+
+    CGRect frame = header.frame;
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    CGFloat height = [self pp_headerHeight];
+    if (frame.size.width == width && frame.size.height == height) return;
+
+    frame.size.width = width;
+    frame.size.height = height;
+    header.frame = frame;
+    [header layoutIfNeeded];
+    self.tableView.tableHeaderView = header;
+}
+
+- (CGFloat)pp_headerHeight {
+    if (@available(iOS 11.0, *)) {
+        if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
+            return 360.0;
+        }
+    }
+    return 292.0;
 }
 
 #pragma mark - Items Setup
@@ -136,7 +164,8 @@
     self.tableView.backgroundColor = UIColor.clearColor;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.showsVerticalScrollIndicator = NO;
-    self.tableView.rowHeight = 76.0;
+    self.tableView.rowHeight = UITableViewAutomaticDimension;
+    self.tableView.estimatedRowHeight = 88.0;
     self.tableView.sectionHeaderHeight = 36.0;
     self.tableView.sectionFooterHeight = PPSpaceLG;
     
@@ -154,9 +183,10 @@
     CGFloat width = CGRectGetWidth(self.view.bounds);
     if (width <= 0.0) width = UIScreen.mainScreen.bounds.size.width;
     
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 278.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 292.0)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    header.layoutMargins = UIEdgeInsetsMake(0.0, PPSpaceBase, 0.0, PPSpaceBase);
     
     self.settingsTitleLabel = [UILabel new];
     self.settingsTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -180,11 +210,19 @@
     card.translatesAutoresizingMaskIntoConstraints = NO;
     card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
+    self.profileCard = card;
     
     PPHero *glassBG = [PPHero new];
     glassBG.translatesAutoresizingMaskIntoConstraints = NO;
+    glassBG.animationsEnabled = NO;
     [card addSubview:glassBG];
     self.heroGlassBG = glassBG;
+
+    UIView *accessRail = [UIView new];
+    accessRail.translatesAutoresizingMaskIntoConstraints = NO;
+    accessRail.backgroundColor = PPGoldAccentColor();
+    accessRail.layer.cornerRadius = 2.0;
+    [card addSubview:accessRail];
     
     UIView *content = [UIView new];
     content.translatesAutoresizingMaskIntoConstraints = NO;
@@ -210,7 +248,7 @@
     
     self.nameLabel = [[UILabel alloc] init];
     self.nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.nameLabel.font = [Styling fontBold:24];
+    self.nameLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:24.0]];
     self.nameLabel.textColor = PrimaryTextClr;
     self.nameLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.nameLabel.adjustsFontForContentSizeCategory = YES;
@@ -220,7 +258,7 @@
     
     self.roleLabel = [[UILabel alloc] init];
     self.roleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.roleLabel.font = [Styling fontMedium:14];
+    self.roleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:14.0]];
     self.roleLabel.textColor = SeconderyTextClr;
     self.roleLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.roleLabel.adjustsFontForContentSizeCategory = YES;
@@ -229,18 +267,20 @@
 
     self.emailLabel = [[UILabel alloc] init];
     self.emailLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.emailLabel.font = [Styling fontRegular:12];
+    self.emailLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
     self.emailLabel.textColor = PPTextTertiaryColor();
     self.emailLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.emailLabel.lineBreakMode = NSLineBreakByTruncatingMiddle;
+    self.emailLabel.adjustsFontForContentSizeCategory = YES;
     self.emailLabel.text = @"—";
     [content addSubview:self.emailLabel];
 
     self.statusLabel = [[UILabel alloc] init];
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusLabel.font = [Styling fontBold:12];
+    self.statusLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:12.0]];
     self.statusLabel.textColor = PPPrimaryColor();
     self.statusLabel.textAlignment = NSTextAlignmentCenter;
+    self.statusLabel.adjustsFontForContentSizeCategory = YES;
     self.statusLabel.backgroundColor = [PPPrimaryColor() colorWithAlphaComponent:0.10];
     self.statusLabel.layer.cornerRadius = 16.0;
     self.statusLabel.layer.masksToBounds = YES;
@@ -263,6 +303,11 @@
         [glassBG.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
         [glassBG.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [glassBG.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
+
+        [accessRail.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [accessRail.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceXL],
+        [accessRail.widthAnchor constraintEqualToConstant:72.0],
+        [accessRail.heightAnchor constraintEqualToConstant:4.0],
 
         [content.topAnchor constraintEqualToAnchor:card.topAnchor],
         [content.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
@@ -299,8 +344,33 @@
 
     card.isAccessibilityElement = YES;
     card.accessibilityTraits = UIAccessibilityTraitHeader;
+    card.accessibilityLabel = kLang(@"Settings_ProfileSubtitle");
+    card.accessibilityIdentifier = @"settings.profile";
     
     self.tableView.tableHeaderView = header;
+}
+
+- (void)pp_runEntranceIfNeeded {
+    if (self.didRunEntrance || !self.tableView) return;
+    self.didRunEntrance = YES;
+
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        self.tableView.alpha = 1.0;
+        self.tableView.transform = CGAffineTransformIdentity;
+        return;
+    }
+
+    self.tableView.alpha = 0.0;
+    self.tableView.transform = CGAffineTransformMakeTranslation(0.0, 14.0);
+    [UIView animateWithDuration:0.42
+                          delay:0.0
+         usingSpringWithDamping:0.90
+          initialSpringVelocity:0.25
+                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{
+        self.tableView.alpha = 1.0;
+        self.tableView.transform = CGAffineTransformIdentity;
+    } completion:nil];
 }
 
 #pragma mark - Profile Info Loader
@@ -321,6 +391,11 @@
     self.statusLabel.text = curUser.isBlocked ? (kLang(@"Blocked") ?: @"Blocked") : (kLang(@"Active") ?: @"Active");
     self.statusLabel.textColor = curUser.isBlocked ? PPCriticalColor() : PPPrimaryColor();
     self.statusLabel.backgroundColor = [self.statusLabel.textColor colorWithAlphaComponent:0.10];
+    self.profileCard.accessibilityLabel = [NSString stringWithFormat:@"%@, %@, %@, %@",
+                                           self.nameLabel.text ?: @"",
+                                           self.roleLabel.text ?: @"",
+                                           self.emailLabel.text ?: @"",
+                                           self.statusLabel.text ?: @""];
     
     if (curUser.UserImageUrl.absoluteString.length > 0) {
         [self.avatarIMV setImageFromUrl:curUser.UserImageUrl.absoluteString Blr:NO Shimmering:YES];
@@ -394,7 +469,7 @@
         
         UILabel *title = [UILabel new];
         title.tag = 101;
-        title.font = [Styling fontMedium:16];
+        title.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:16.0]];
         title.textAlignment = [Language alignmentForCurrentLanguage];
         title.adjustsFontForContentSizeCategory = YES;
         title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -402,7 +477,7 @@
 
         UILabel *subtitle = [UILabel new];
         subtitle.tag = 104;
-        subtitle.font = [Styling fontRegular:12];
+        subtitle.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
         subtitle.textColor = PPTextTertiaryColor();
         subtitle.textAlignment = [Language alignmentForCurrentLanguage];
         subtitle.numberOfLines = 2;
@@ -446,6 +521,7 @@
             [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
             [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:2.0],
             [subtitle.trailingAnchor constraintLessThanOrEqualToAnchor:chevron.leadingAnchor constant:-12.0],
+            [subtitle.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor constant:-14.0],
             
             [chevron.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor constant:-16.0],
             [chevron.centerYAnchor constraintEqualToAnchor:surface.centerYAnchor],
@@ -495,6 +571,7 @@
     cell.isAccessibilityElement = YES;
     cell.accessibilityTraits = UIAccessibilityTraitButton;
     cell.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", title.text ?: @"", subtitle.text ?: @""];
+    cell.accessibilityIdentifier = item[@"action"];
     
     return cell;
 }

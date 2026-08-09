@@ -5,6 +5,14 @@
 #import "AlertHelper.h"
 #import "PPFunc+Haptics.h"
 #import "PPHero.h"
+#import "PPDesignTokens.h"
+
+static UIFont *PPDeliveryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
 
 static UIColor *PPDeliveryAccentColor(void) {
     return AppPrimaryClr ?: UIColor.systemPinkColor;
@@ -38,7 +46,7 @@ static void PPDeliveryApplyCardChrome(UIView *view, CGFloat radius) {
     view.layer.shadowRadius = 22.0;
     view.layer.shadowOpacity = 0.052;
     view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    view.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:0.62].CGColor;
+    view.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.28].CGColor;
 }
 
 static NSString *PPDeliveryDateString(NSDate *date) {
@@ -80,6 +88,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 @property (nonatomic, strong) UILabel *orderLabel;
 @property (nonatomic, strong) UILabel *detailLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, copy) NSString *representedRequestID;
 - (void)configureWithRecord:(PPDeliveryRequestRecord *)record;
 @end
 
@@ -92,6 +101,8 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
         self.contentView.backgroundColor = UIColor.clearColor;
         self.selectionStyle = UITableViewCellSelectionStyleNone;
         self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        self.isAccessibilityElement = YES;
+        self.accessibilityTraits = UIAccessibilityTraitButton;
 
         _cardView = [UIView new];
         _cardView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -110,29 +121,30 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 
         _orderLabel = [UILabel new];
         _orderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _orderLabel.font = [Styling fontBold:17];
+        _orderLabel.font = PPDeliveryScaledFont([Styling fontBold:PPFontHeadline], UIFontTextStyleHeadline);
         _orderLabel.textColor = PPDeliveryInkColor();
         _orderLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        _orderLabel.adjustsFontSizeToFitWidth = YES;
-        _orderLabel.minimumScaleFactor = 0.76;
+        _orderLabel.adjustsFontForContentSizeCategory = YES;
+        _orderLabel.numberOfLines = 2;
         [_cardView addSubview:_orderLabel];
 
         _detailLabel = [UILabel new];
         _detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _detailLabel.font = [Styling fontRegular:12];
+        _detailLabel.font = PPDeliveryScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
         _detailLabel.textColor = PPDeliverySubInkColor();
         _detailLabel.textAlignment = [Language alignmentForCurrentLanguage];
         _detailLabel.numberOfLines = 2;
+        _detailLabel.adjustsFontForContentSizeCategory = YES;
         [_cardView addSubview:_detailLabel];
 
         _statusLabel = [UILabel new];
         _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _statusLabel.font = [Styling fontBold:11];
+        _statusLabel.font = PPDeliveryScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
         _statusLabel.textAlignment = NSTextAlignmentCenter;
         _statusLabel.layer.cornerRadius = 13.0;
         _statusLabel.layer.masksToBounds = YES;
-        _statusLabel.adjustsFontSizeToFitWidth = YES;
-        _statusLabel.minimumScaleFactor = 0.72;
+        _statusLabel.adjustsFontForContentSizeCategory = YES;
+        _statusLabel.numberOfLines = 2;
         [_cardView addSubview:_statusLabel];
 
         UIImageView *chevron = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"ellipsis.circle.fill"]];
@@ -159,7 +171,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
             [_statusLabel.trailingAnchor constraintEqualToAnchor:chevron.leadingAnchor constant:-10.0],
             [_statusLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:18.0],
             [_statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:92.0],
-            [_statusLabel.heightAnchor constraintEqualToConstant:26.0],
+            [_statusLabel.heightAnchor constraintGreaterThanOrEqualToConstant:26.0],
 
             [_orderLabel.leadingAnchor constraintEqualToAnchor:_symbolView.trailingAnchor constant:14.0],
             [_orderLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_statusLabel.leadingAnchor constant:-12.0],
@@ -174,7 +186,30 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     return self;
 }
 
+- (void)prepareForReuse {
+    [super prepareForReuse];
+    self.representedRequestID = nil;
+    self.alpha = 1.0;
+    self.transform = CGAffineTransformIdentity;
+}
+
+- (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
+    [super setHighlighted:highlighted animated:animated];
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        self.cardView.alpha = highlighted ? 0.94 : 1.0;
+        return;
+    }
+    [UIView animateWithDuration:PPAnimDurationFast
+                          delay:0.0
+                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseOut
+                     animations:^{
+        self.cardView.transform = highlighted ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown) : CGAffineTransformIdentity;
+        self.cardView.alpha = highlighted ? 0.94 : 1.0;
+    } completion:nil];
+}
+
 - (void)configureWithRecord:(PPDeliveryRequestRecord *)record {
+    self.representedRequestID = record.requestID ?: @"";
     NSString *orderRef = record.orderNumber.length > 0 ? record.orderNumber : record.orderID;
     self.orderLabel.text = [NSString stringWithFormat:@"#%@", orderRef.length ? orderRef : record.requestID ?: @"-"];
     NSString *fee = record.deliveryFee ? [NSString stringWithFormat:@"%.2f %@", record.deliveryFee.doubleValue, kLang(@"Accounting_QAR")] : @"-";
@@ -186,6 +221,8 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     self.statusLabel.backgroundColor = [statusColor colorWithAlphaComponent:0.11];
     self.symbolView.tintColor = statusColor;
     self.symbolView.backgroundColor = [statusColor colorWithAlphaComponent:0.11];
+    self.accessibilityLabel = [NSString stringWithFormat:@"%@, %@, %@", self.orderLabel.text ?: @"", self.statusLabel.text ?: @"", self.detailLabel.text ?: @""];
+    self.accessibilityHint = kLang(@"Delivery_Actions");
 }
 
 @end
@@ -200,6 +237,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, copy) NSString *errorMessage;
 @property (nonatomic, assign) BOOL isSizingHeader;
+@property (nonatomic, strong) NSMutableSet<NSString *> *animatedRequestIDs;
 @end
 
 @implementation PPDeliveryManagementViewController
@@ -209,6 +247,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     self.title = kLang(@"Delivery_Title");
     self.statusFilter = @"all";
     self.records = @[];
+    self.animatedRequestIDs = [NSMutableSet set];
     [self pp_configureTableView];
     [self pp_buildHeader];
 
@@ -220,7 +259,9 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroBackground startAnimations];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        [self.heroBackground startAnimations];
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -240,7 +281,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 98.0;
+    self.tableView.estimatedRowHeight = 112.0;
     self.tableView.showsVerticalScrollIndicator = NO;
     [self.tableView registerClass:PPDeliveryRequestCell.class forCellReuseIdentifier:@"DeliveryCell"];
     [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"StateCell"];
@@ -253,6 +294,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 - (void)pp_buildHeader {
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 1.0)];
     header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     UIStackView *stack = [UIStackView new];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisVertical;
@@ -262,7 +304,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     UIView *heroCard = [UIView new];
     heroCard.translatesAutoresizingMaskIntoConstraints = NO;
     [stack addArrangedSubview:heroCard];
-    [heroCard.heightAnchor constraintGreaterThanOrEqualToConstant:154.0].active = YES;
+    [heroCard.heightAnchor constraintGreaterThanOrEqualToConstant:164.0].active = YES;
 
     PPHero *hero = [PPHero new];
     hero.translatesAutoresizingMaskIntoConstraints = NO;
@@ -275,29 +317,33 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     UILabel *title = [UILabel new];
     title.translatesAutoresizingMaskIntoConstraints = NO;
     title.text = kLang(@"Delivery_Title");
-    title.font = [Styling fontBold:28];
+    title.font = PPDeliveryScaledFont([Styling fontBold:PPFontTitle1], UIFontTextStyleTitle1);
     title.textColor = PPDeliveryInkColor();
     title.textAlignment = [Language alignmentForCurrentLanguage];
     title.numberOfLines = 2;
+    title.adjustsFontForContentSizeCategory = YES;
     [heroCard addSubview:title];
 
     UILabel *subtitle = [UILabel new];
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
     subtitle.text = kLang(@"Delivery_Subtitle");
-    subtitle.font = [Styling fontRegular:14];
+    subtitle.font = PPDeliveryScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
     subtitle.textColor = PPDeliverySubInkColor();
     subtitle.textAlignment = [Language alignmentForCurrentLanguage];
     subtitle.numberOfLines = 2;
+    subtitle.adjustsFontForContentSizeCategory = YES;
     [heroCard addSubview:subtitle];
 
     UILabel *count = [UILabel new];
     count.translatesAutoresizingMaskIntoConstraints = NO;
-    count.font = [Styling fontBold:13];
+    count.font = PPDeliveryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
     count.textColor = PPDeliveryAccentColor();
     count.backgroundColor = [PPDeliveryAccentColor() colorWithAlphaComponent:0.11];
     count.textAlignment = NSTextAlignmentCenter;
     count.layer.cornerRadius = 17.0;
     count.layer.masksToBounds = YES;
+    count.adjustsFontForContentSizeCategory = YES;
+    count.accessibilityTraits = UIAccessibilityTraitStaticText;
     [heroCard addSubview:count];
     self.heroCountLabel = count;
 
@@ -306,8 +352,9 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     self.filterSegment.selectedSegmentIndex = 0;
     self.filterSegment.selectedSegmentTintColor = PPDeliveryAccentColor();
     self.filterSegment.backgroundColor = [PPDeliverySurfaceColor() colorWithAlphaComponent:0.88];
-    [self.filterSegment setTitleTextAttributes:@{NSFontAttributeName: [Styling fontMedium:13], NSForegroundColorAttributeName: PPDeliveryInkColor()} forState:UIControlStateNormal];
-    [self.filterSegment setTitleTextAttributes:@{NSFontAttributeName: [Styling fontBold:13], NSForegroundColorAttributeName: UIColor.whiteColor} forState:UIControlStateSelected];
+    [self.filterSegment setTitleTextAttributes:@{NSFontAttributeName: PPDeliveryScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote), NSForegroundColorAttributeName: PPDeliveryInkColor()} forState:UIControlStateNormal];
+    [self.filterSegment setTitleTextAttributes:@{NSFontAttributeName: PPDeliveryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote), NSForegroundColorAttributeName: UIColor.whiteColor} forState:UIControlStateSelected];
+    self.filterSegment.accessibilityLabel = kLang(@"Delivery_Title");
     [self.filterSegment addTarget:self action:@selector(filterChanged:) forControlEvents:UIControlEventValueChanged];
     [stack addArrangedSubview:self.filterSegment];
     [self.filterSegment.heightAnchor constraintEqualToConstant:48.0].active = YES;
@@ -389,6 +436,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     self.statusFilter = statuses[(NSUInteger)index];
     [self pp_updateHeroCount];
     [self.tableView reloadData];
+    UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.filterSegment);
 }
 
 - (void)loadData {
@@ -427,6 +475,7 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 - (void)pp_updateHeroCount {
     NSString *format = kLang(@"Delivery_Count_Format");
     self.heroCountLabel.text = [NSString stringWithFormat:format, @([self filteredRecords].count)];
+    self.heroCountLabel.accessibilityLabel = self.heroCountLabel.text;
 }
 
 #pragma mark - Table View
@@ -442,7 +491,10 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
     cell.textLabel.text = text;
     cell.textLabel.textAlignment = NSTextAlignmentCenter;
     cell.textLabel.textColor = PPDeliverySubInkColor();
-    cell.textLabel.font = [Styling fontMedium:15];
+    cell.textLabel.font = PPDeliveryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    cell.textLabel.adjustsFontForContentSizeCategory = YES;
+    cell.isAccessibilityElement = YES;
+    cell.accessibilityLabel = text;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     return cell;
 }
@@ -540,10 +592,14 @@ static UIColor *PPDeliveryStatusColor(NSString *status) {
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (UIAccessibilityIsReduceMotionEnabled()) return;
+    NSArray<PPDeliveryRequestRecord *> *filtered = [self filteredRecords];
+    if (indexPath.row >= filtered.count || UIAccessibilityIsReduceMotionEnabled()) return;
+    NSString *identifier = filtered[indexPath.row].requestID.length ? filtered[indexPath.row].requestID : [NSString stringWithFormat:@"%ld", (long)indexPath.row];
+    if ([self.animatedRequestIDs containsObject:identifier]) return;
+    [self.animatedRequestIDs addObject:identifier];
     cell.alpha = 0.0;
     cell.transform = CGAffineTransformMakeTranslation(0.0, 18.0);
-    [UIView animateWithDuration:0.42 delay:MIN(indexPath.row * 0.026, 0.20) usingSpringWithDamping:0.86 initialSpringVelocity:0.3 options:UIViewAnimationOptionCurveEaseOut animations:^{
+    [UIView animateWithDuration:PPAnimDurationSlow delay:MIN(indexPath.row * 0.026, 0.20) usingSpringWithDamping:0.86 initialSpringVelocity:0.3 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState animations:^{
         cell.alpha = 1.0;
         cell.transform = CGAffineTransformIdentity;
     } completion:nil];

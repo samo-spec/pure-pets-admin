@@ -6,11 +6,19 @@
 #import "PPStaffAuth.h"
 #import "Styling.h"
 #import "Language.h"
+#import "PPDesignTokens.h"
 @import Firebase;
 
 static NSUInteger const PPStaffManagementTabCount = 4;
 static CGFloat const PPStaffManagementChromeHeight = 72.0;
 static CGFloat const PPStaffManagementChromeInset = 16.0;
+
+static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
 
 @interface PPStaffManagementViewController ()
 
@@ -33,6 +41,7 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.selectedIndex = 0;
 
     [self pp_buildTopBar];
@@ -111,6 +120,7 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
     [self.backButton setImage:[UIImage systemImageNamed:backImageName withConfiguration:backConfig] forState:UIControlStateNormal];
     [self.backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
     self.backButton.accessibilityLabel = kLang(@"Back");
+    self.backButton.accessibilityHint = kLang(@"Back");
     [self.topBarView addSubview:self.backButton];
 }
 
@@ -145,8 +155,7 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
         UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
         button.tag = idx;
         button.titleLabel.adjustsFontForContentSizeCategory = YES;
-        button.titleLabel.adjustsFontSizeToFitWidth = YES;
-        button.titleLabel.minimumScaleFactor = 0.76;
+        button.titleLabel.numberOfLines = 2;
         button.contentEdgeInsets = UIEdgeInsetsMake(0, 6, 0, 6);
         [button setTitle:title forState:UIControlStateNormal];
         [button addTarget:self action:@selector(pp_segmentButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
@@ -254,16 +263,23 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
 
     if (previousVC && previousVC.parentViewController == self) {
         [previousVC willMoveToParentViewController:nil];
-        [UIView animateWithDuration:0.18
-                              delay:0.0
-                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
-                         animations:^{
-            previousVC.view.alpha = 0.0;
-            previousVC.view.transform = CGAffineTransformMakeTranslation(movesForward ? -12.0 : 12.0, 0.0);
-        } completion:^(__unused BOOL finished) {
+        void (^removePrevious)(void) = ^{
             [previousVC.view removeFromSuperview];
             [previousVC removeFromParentViewController];
-        }];
+        };
+        if (UIAccessibilityIsReduceMotionEnabled()) {
+            removePrevious();
+        } else {
+            [UIView animateWithDuration:PPAnimDurationFast
+                                  delay:0.0
+                                options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
+                             animations:^{
+                previousVC.view.alpha = 0.0;
+                previousVC.view.transform = CGAffineTransformMakeTranslation(movesForward ? -12.0 : 12.0, 0.0);
+            } completion:^(__unused BOOL finished) {
+                removePrevious();
+            }];
+        }
     }
 
     [self addChildViewController:nextVC];
@@ -277,7 +293,7 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
     [nextVC didMoveToParentViewController:self];
 
     if (!UIAccessibilityIsReduceMotionEnabled()) {
-        [UIView animateWithDuration:0.26
+        [UIView animateWithDuration:PPAnimDurationNormal
                               delay:0.02
              usingSpringWithDamping:0.9
               initialSpringVelocity:0.25
@@ -287,6 +303,7 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
             nextVC.view.transform = CGAffineTransformIdentity;
         } completion:nil];
     }
+    UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, nextVC.view);
 }
 
 - (void)pp_updateSegmentButtonStates {
@@ -299,7 +316,9 @@ static CGFloat const PPStaffManagementChromeInset = 16.0;
         BOOL selected = idx == self.selectedIndex;
         UIColor *titleColor = selected ? UIColor.whiteColor : [textColor colorWithAlphaComponent:0.86];
         [button setTitleColor:titleColor forState:UIControlStateNormal];
-        button.titleLabel.font = selected ? [Styling fontBold:12.0] : [Styling fontMedium:12.0];
+        button.titleLabel.font = selected
+            ? PPStaffManagementScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote)
+            : PPStaffManagementScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
         button.accessibilityTraits = selected ? (UIAccessibilityTraitButton | UIAccessibilityTraitSelected) : UIAccessibilityTraitButton;
         button.tintColor = selected ? UIColor.whiteColor : secondaryColor;
         button.backgroundColor = UIColor.clearColor;

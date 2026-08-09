@@ -45,6 +45,11 @@ typedef void (^PPPaymentAdminSettingsCompletion)(PPPaymentAdminSettings * _Nulla
                  completion:(PPPaymentAdminSettingsCompletion)completion;
 
 - (NSString *)defaultAdminNoteForOrderID:(NSString *)orderID
+                                  action:(NSString *)action;
+
+// Compatibility surface for callers that only have a projected workflow status.
+// New mutations should use the exact callable action above.
+- (NSString *)defaultAdminNoteForOrderID:(NSString *)orderID
                                nextStatus:(NSString *)nextStatus;
 
 - (void)approveOrder:(PPPaymentAdminRecord *)record

@@ -647,11 +647,24 @@ descripe every that completelly and dont keep any thing
     return [record workflowStatusKey];
 }
 
+- (NSString *)pp_callableActionForListOrderAction:(PPPaymentManagementListActionType)actionType
+{
+    switch (actionType) {
+        case PPPaymentManagementListActionTypeApprove: return @"order_approve";
+        case PPPaymentManagementListActionTypeProcessing: return @"order_mark_processing";
+        case PPPaymentManagementListActionTypeShipped: return @"order_mark_shipped";
+        case PPPaymentManagementListActionTypeDelivered: return @"order_mark_delivered";
+        case PPPaymentManagementListActionTypeCollectPayment: return @"order_collect_payment";
+        case PPPaymentManagementListActionTypeCancel: return @"order_cancel";
+    }
+    return @"";
+}
+
 - (NSString *)pp_defaultAdminNoteForListOrderAction:(PPPaymentManagementListActionType)actionType
                                            record:(PPPaymentAdminRecord *)record
 {
     return [self.service defaultAdminNoteForOrderID:record.orderId
-                                        nextStatus:[self pp_nextWorkflowStatusForListOrderAction:actionType record:record]];
+                                              action:[self pp_callableActionForListOrderAction:actionType]];
 }
 
 - (void)pp_confirmNextOrderActionFromCellButton:(UIButton *)sender

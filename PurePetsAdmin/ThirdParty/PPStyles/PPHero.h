@@ -50,6 +50,10 @@ typedef NS_ENUM(NSInteger, PPHeroGlassAccentStyle) {
 /// `PPHeroGlassAccentStyleCornerGlow`. Defaults to 1.0.
 @property (nonatomic, assign) CGFloat cornerGlowOpacityMultiplier;
 
+/// Allows a screen to keep the hero as a static surface when ambient motion
+/// would be ornamental rather than state-bearing. Defaults to YES.
+@property (nonatomic, assign) BOOL animationsEnabled;
+
 /// Starts constellation line and dot pulse animations.
 /// Safe to call multiple times — will not duplicate animations.
 - (void)startAnimations;

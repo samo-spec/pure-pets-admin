@@ -15,6 +15,7 @@
 #import "PPImageCollection.h"
 #import "PPHero.h"
 #import "PPFormEngine.h"
+#import "PPDesignTokens.h"
 
 @import Firebase;
 @import FirebaseAuth;
@@ -36,6 +37,13 @@ static NSString *const PPAddUserModeAssignValue = @"assign";
 static CGFloat const PPAddUserHorizontalInset = 18.0;
 static CGFloat const PPAddUserWideHorizontalInset = 28.0;
 static CGFloat const PPAddUserHeaderCornerRadius = 30.0;
+
+static UIFont *PPAddUserScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
 
 static UIColor *PPAddUserSurfaceColor(void) {
     return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
@@ -78,10 +86,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (instancetype)init {
     if (self = [super init]) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
-        self.font = [Styling fontMedium:12];
+        self.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
         self.textAlignment = NSTextAlignmentCenter;
         self.numberOfLines = 1;
         self.lineBreakMode = NSLineBreakByTruncatingTail;
+        self.adjustsFontForContentSizeCategory = YES;
         self.layer.cornerRadius = 13.0;
         self.layer.masksToBounds = YES;
         [NSLayoutConstraint activateConstraints:@[
@@ -200,7 +209,9 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroBackground startAnimations];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        [self.heroBackground startAnimations];
+    }
     [self pp_playEntranceAnimationIfNeeded];
 }
 
@@ -322,7 +333,8 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     header.translatesAutoresizingMaskIntoConstraints = NO;
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [header.heightAnchor constraintEqualToConstant:248.0].active = YES;
+    CGFloat headerHeight = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? 316.0 : 248.0;
+    [header.heightAnchor constraintEqualToConstant:headerHeight].active = YES;
 
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
@@ -359,6 +371,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     self.avatarIMV.tintColor = PPAddUserPrimaryColor();
     self.avatarIMV.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.08];
     self.avatarIMV.userInteractionEnabled = YES;
+    self.avatarIMV.isAccessibilityElement = NO;
     self.avatarIMV.layer.cornerRadius = 28.0;
     self.avatarIMV.layer.masksToBounds = YES;
     [avatarShell addSubview:self.avatarIMV];
@@ -371,13 +384,15 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     UIImageSymbolConfiguration *cameraConfig = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightSemibold];
     [self.addPhotoBtn setImage:[UIImage systemImageNamed:@"camera.fill" withConfiguration:cameraConfig] forState:UIControlStateNormal];
     [self.addPhotoBtn setTitle:kLang(@"Add Photo") forState:UIControlStateNormal];
-    self.addPhotoBtn.titleLabel.font = [Styling fontMedium:12];
+    self.addPhotoBtn.titleLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
+    self.addPhotoBtn.titleLabel.adjustsFontForContentSizeCategory = YES;
     self.addPhotoBtn.tintColor = PPAddUserPrimaryColor();
     self.addPhotoBtn.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
     self.addPhotoBtn.contentEdgeInsets = UIEdgeInsetsMake(7.0, 12.0, 7.0, 12.0);
     self.addPhotoBtn.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 6.0, 0, -6.0) : UIEdgeInsetsMake(0, -6.0, 0, 6.0);
     self.addPhotoBtn.layer.cornerRadius = 17.0;
     if (@available(iOS 13.0, *)) self.addPhotoBtn.layer.cornerCurve = kCACornerCurveContinuous;
+    self.addPhotoBtn.accessibilityLabel = kLang(@"Add Photo");
     [self.addPhotoBtn addTarget:self action:@selector(didTapAddPhoto) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:self.addPhotoBtn];
 
@@ -397,19 +412,21 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
     self.headerTitleLabel = [[UILabel alloc] init];
     self.headerTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.headerTitleLabel.font = [Styling fontBold:24];
+    self.headerTitleLabel.font = PPAddUserScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
     self.headerTitleLabel.textColor = PPAddUserPrimaryTextColor();
     self.headerTitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
     self.headerTitleLabel.numberOfLines = 2;
+    self.headerTitleLabel.adjustsFontForContentSizeCategory = YES;
     self.headerTitleLabel.text = [self pp_headerTitleText];
     [card addSubview:self.headerTitleLabel];
 
     self.headerSubtitleLabel = [[UILabel alloc] init];
     self.headerSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.headerSubtitleLabel.font = [Styling fontRegular:14];
+    self.headerSubtitleLabel.font = PPAddUserScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
     self.headerSubtitleLabel.textColor = [PPAddUserSecondaryTextColor() colorWithAlphaComponent:0.9];
     self.headerSubtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
     self.headerSubtitleLabel.numberOfLines = 2;
+    self.headerSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.headerSubtitleLabel.text = [self pp_headerSubtitleText];
     [card addSubview:self.headerSubtitleLabel];
 
@@ -447,7 +464,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
         [self.addPhotoBtn.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
         [self.addPhotoBtn.topAnchor constraintEqualToAnchor:avatarShell.bottomAnchor constant:10.0],
-        [self.addPhotoBtn.heightAnchor constraintEqualToConstant:34.0],
+        [self.addPhotoBtn.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
         [self.addPhotoBtn.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
 
         [iconShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:24.0],
@@ -533,9 +550,8 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     button.layer.shadowOpacity = 0.18;
     button.layer.shadowRadius = 18.0;
     button.layer.shadowOffset = CGSizeMake(0, 10.0);
-    button.titleLabel.font = [Styling fontBold:15.0];
-    button.titleLabel.adjustsFontSizeToFitWidth = YES;
-    button.titleLabel.minimumScaleFactor = 0.82;
+    button.titleLabel.font = PPAddUserScaledFont([Styling fontBold:PPFontCallout], UIFontTextStyleCallout);
+    button.titleLabel.adjustsFontForContentSizeCategory = YES;
     button.contentEdgeInsets = UIEdgeInsetsMake(0, 18.0, 0, 18.0);
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightBold];
     [button setImage:[UIImage systemImageNamed:@"checkmark" withConfiguration:config] forState:UIControlStateNormal];
@@ -550,7 +566,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         [button.topAnchor constraintEqualToAnchor:container.topAnchor constant:8.0],
         [button.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:PPAddUserHorizontalInset],
         [button.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-PPAddUserHorizontalInset],
-        [button.heightAnchor constraintEqualToConstant:52.0],
+        [button.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightLG],
         [button.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-18.0],
     ]];
 
@@ -578,6 +594,12 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     style.shadowOffset = CGSizeMake(0, 8.0);
     style.cardCornerRadius = 24.0;
     style.fieldCornerRadius = 20.0;
+    style.titleFont = PPAddUserScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+    style.inputFont = PPAddUserScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    style.placeholderFont = PPAddUserScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
+    style.errorFont = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
+    style.attachmentTitleFont = PPAddUserScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+    style.attachmentSubtitleFont = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
     return style;
 }
 
@@ -605,10 +627,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
         UILabel *label = [[UILabel alloc] init];
         label.translatesAutoresizingMaskIntoConstraints = NO;
-        label.font = [Styling fontMedium:13];
+        label.font = PPAddUserScaledFont([Styling fontMedium:PPFontSubheadline], UIFontTextStyleSubheadline);
         label.textColor = [PPAddUserSecondaryTextColor() colorWithAlphaComponent:0.92];
         label.textAlignment = Language.alignmentForCurrentLanguage;
         label.text = title;
+        label.adjustsFontForContentSizeCategory = YES;
         [header addSubview:label];
 
         UIView *line = [[UIView alloc] init];
@@ -817,7 +840,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         [self.permissionTagLabel applyWithText:permissionText tintColor:PPAddUserSecondaryTextColor() fillAlpha:0.09];
     };
 
-    if (animated && self.heroCard) {
+    if (animated && self.heroCard && !UIAccessibilityIsReduceMotionEnabled()) {
         [UIView transitionWithView:self.heroCard duration:0.18 options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionAllowUserInteraction animations:updates completion:nil];
     } else {
         updates();
@@ -865,7 +888,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
                           delay:0.0
          usingSpringWithDamping:0.86
           initialSpringVelocity:0.45
-                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                      animations:^{
         self.heroCard.alpha = 1.0;
         self.heroCard.transform = CGAffineTransformIdentity;
@@ -877,7 +900,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         if (view.hidden) return;
         [UIView animateWithDuration:0.34
                               delay:0.05 + (idx * 0.025)
-                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                          animations:^{
             view.alpha = 1.0;
             view.transform = CGAffineTransformIdentity;
@@ -1409,7 +1432,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 #pragma mark - Avatar
 
 - (void)didTapAddPhoto {
-    [UIView animateWithDuration:0.12 animations:^{
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        [self.avatarPicker showActionSheetForAddingImage];
+        return;
+    }
+    [UIView animateWithDuration:PPAnimDurationFast delay:0.0 options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseOut animations:^{
         self.avatarIMV.transform = CGAffineTransformMakeScale(0.96, 0.96);
         self.addPhotoBtn.transform = CGAffineTransformMakeScale(0.97, 0.97);
     } completion:^(__unused BOOL finished) {
@@ -1417,7 +1444,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
                               delay:0.0
              usingSpringWithDamping:0.72
               initialSpringVelocity:0.6
-                            options:UIViewAnimationOptionAllowUserInteraction
+                            options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                          animations:^{
             self.avatarIMV.transform = CGAffineTransformIdentity;
             self.addPhotoBtn.transform = CGAffineTransformIdentity;

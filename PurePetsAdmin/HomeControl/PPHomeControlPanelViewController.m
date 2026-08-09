@@ -10,33 +10,40 @@
 #import "PPFormEngine.h"
 
 typedef NS_ENUM(NSInteger, PPHomeSectionID) {
-    PPHomeSectionPremiumSearch = 0,
-    PPHomeSectionMarketplaceHero = 1,
-    PPHomeSectionProviderCategoryNav = 2,
-    PPHomeSectionHero = 3,
-    PPHomeSectionPremiumCare = 4,
-    PPHomeSectionQuickActions = 5,
-    PPHomeSectionMainKinds = 6,
-    PPHomeSectionCurrentOrders = 7,
-    PPHomeSectionAccessories = 8,
-    PPHomeSectionSuggestions = 9,
-    PPHomeSectionCarousel = 10,
-    PPHomeSectionLastFood = 11,
+    // These raw values are the shared iOS HomeConfig contract. Do not
+    // renumber them to match the order in which the catalog is presented.
+    PPHomeSectionHero = 0,
+    PPHomeSectionQuickActions = 1,
+    PPHomeSectionCurrentOrders = 2,
+    PPHomeSectionCarousel = 4,
+    PPHomeSectionMainKinds = 5,
+    PPHomeSectionSuggestions = 6,
+    PPHomeSectionAccessories = 7,
+    PPHomeSectionPetProfile = 8,
+    PPHomeSectionPremiumCare = 9,
+    PPHomeSectionLastFood = 10,
+    PPHomeSectionNearbyServices = 11,
     PPHomeSectionAdsNearBy = 12,
-    PPHomeSectionPetProfile = 13,
-    PPHomeSectionNearbyServices = 14,
-    PPHomeSectionAdopt = 15,
-    PPHomeSectionBuyAgain = 16,
-    PPHomeSectionServices = 17
+    PPHomeSectionAdopt = 13,
+    PPHomeSectionBuyAgain = 14,
+    PPHomeSectionPremiumSearch = 15,
+    PPHomeSectionProviderCategoryNav = 16,
+    PPHomeSectionMarketplaceHero = 17,
+    PPHomeSectionSuggestionAds = 18,
+    PPHomeSectionSuggestionAccessories = 19
 };
 
 static NSString * const PPHomeControlFieldTitleMode = @"titleViewMode";
 static NSString * const PPHomeControlFieldNovaFloating = @"novaFloatingVisible";
 static NSString * const PPHomeControlFieldBackgroundGlows = @"backgroundGlowsFaded";
+static NSString * const PPHomeControlFieldPureLens = @"pureLensVisible";
 static NSString * const PPHomeControlFieldUsedAccessories = @"AllwedUsedAccessories";
 static NSString * const PPHomeControlFieldReusableVideo = @"PP_REUSABLE_VIDEO_MEDIA_ENABLED";
+static NSString * const PPHomeControlFieldReusableVideoLegacy = @"PPReusableVideoMediaEnabled";
 static NSString * const PPHomeControlFieldUltraCare = @"PPULTRA_CARE_IS_ACTIVATED";
 static NSString * const PPHomeControlFieldLegacyBar = @"PPUSE_LEGACY_BAR";
+static NSString * const PPHomeControlFieldUniversalCells = @"BBUniversalCellUseSwiftUI";
+static NSString * const PPHomeControlFieldPremiumCareVisible = @"premiumCareVisible";
 
 @class PPHomeSectionMeta;
 static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSString *type, NSString *en, NSString *ar, NSString *descEn, NSString *descAr, BOOL visible, BOOL critical, BOOL conditional);
@@ -82,6 +89,16 @@ static NSString *PPHomeControlBoolString(FIRDocumentSnapshot *snapshot, NSString
         return [value boolValue] ? @"1" : @"0";
     }
     return fallback ? @"1" : @"0";
+}
+
+static NSString *PPHomeControlLocalizedValue(NSString *key, NSString *languageCode) {
+    if ([languageCode isEqualToString:[Language currentLanguageCode]]) {
+        return kLang(key);
+    }
+
+    NSString *path = [[NSBundle mainBundle] pathForResource:languageCode ofType:@"lproj"];
+    NSBundle *languageBundle = path.length > 0 ? [NSBundle bundleWithPath:path] : [NSBundle mainBundle];
+    return NSLocalizedStringFromTableInBundle(key, nil, languageBundle, @"");
 }
 
 @interface PPHomeSectionMeta : NSObject
@@ -219,12 +236,17 @@ static NSString *PPHomeControlBoolString(FIRDocumentSnapshot *snapshot, NSString
 }
 
 - (void)configureWithMeta:(PPHomeSectionMeta *)meta visible:(BOOL)visible {
+    if (!meta) return;
     NSString *langCode = [Language currentLanguageCode];
     BOOL isArabic = [langCode isEqualToString:@"ar"];
+    NSString *localizedTitle = isArabic ? meta.labelAr : meta.labelEn;
+    NSString *visibilityText = visible ? kLang(@"HomeControl_Visible") : kLang(@"HomeControl_Hidden");
     self.titleLabel.text = isArabic ? meta.labelAr : meta.labelEn;
     self.subtitleLabel.text = isArabic ? meta.descAr : meta.descEn;
     self.toggleSwitch.on = visible;
     self.badgeLabel.text = meta.critical ? kLang(@"HomeControl_Critical") : (meta.conditional ? kLang(@"HomeControl_Conditional") : (visible ? kLang(@"HomeControl_Visible") : kLang(@"HomeControl_Hidden")));
+    self.toggleSwitch.accessibilityLabel = localizedTitle;
+    self.toggleSwitch.accessibilityValue = visibilityText;
 
     NSString *symbol = @"rectangle.stack.fill";
     UIColor *tint = PPHomeControlAccentColor();
@@ -251,40 +273,64 @@ static NSString *PPHomeControlBoolString(FIRDocumentSnapshot *snapshot, NSString
 
 @end
 
-@interface PPHomeControlPanelViewController ()
+@interface PPHomeControlPanelViewController () <UISearchResultsUpdating>
 @property (nonatomic, strong) NSMutableArray<PPHomeSectionState *> *sections;
 @property (nonatomic, strong) NSArray<PPHomeSectionMeta *> *catalog;
 @property (nonatomic, strong) PPFormEngineView *globalFormView;
 @property (nonatomic, strong) UIView *headerContainer;
 @property (nonatomic, strong) PPHero *heroBackground;
 @property (nonatomic, strong) UILabel *heroCountLabel;
+@property (nonatomic, strong) UIButton *globalSettingsToggleButton;
+@property (nonatomic, strong) UIView *previewFooterView;
+@property (nonatomic, strong) UIStackView *previewStackView;
+@property (nonatomic, strong) UISearchController *searchController;
+@property (nonatomic, copy) NSString *filterText;
+@property (nonatomic, copy) NSArray<PPHomeSectionState *> *savedSections;
+@property (nonatomic, copy) NSDictionary<NSString *, NSString *> *savedGlobalValues;
 @property (nonatomic, assign) BOOL isDirty;
 @property (nonatomic, assign) BOOL isSaving;
 @property (nonatomic, assign) BOOL isLoading;
+@property (nonatomic, assign) BOOL globalSettingsExpanded;
 @property (nonatomic, strong) FIRDocumentReference *configRef;
+
+- (NSArray<PPHomeSectionState *> *)pp_defaultSectionStates;
+- (NSArray<PPHomeSectionState *> *)pp_copySections:(NSArray<PPHomeSectionState *> *)sections;
+- (NSDictionary<NSString *, NSString *> *)pp_defaultGlobalValues;
+- (NSArray<PPHomeSectionState *> *)pp_filteredSections;
+- (void)pp_updateGlobalSettingsAppearance;
+- (void)pp_updatePreview;
+- (void)pp_updateNavigationItems;
+- (void)pp_updateSaveButton;
+- (PPHomeSectionMeta *)metaForID:(PPHomeSectionID)sid;
+- (void)pp_commitSaveWithSections:(NSArray<PPHomeSectionState *> *)sections;
+- (void)resetToDefaults;
+- (void)revertChanges;
 @end
 
 @implementation PPHomeControlPanelViewController
 
 static NSArray<PPHomeSectionMeta *> *PPBuildHomeCatalog(void) {
-    return @[ PPHomeSectionMetaWithValues(PPHomeSectionPremiumSearch, @"PPHomeSectionPremiumSearch", @"Premium Search Bar", @"شريط البحث المتميز", @"In-feed premium search slot.", @"موضع البحث المتميز داخل الصفحة الرئيسية.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionMarketplaceHero, @"PPHomeSectionMarketplaceHero", @"Marketplace Hero", @"بطاقة السوق الرئيسية", @"Provider marketplace hero card.", @"بطاقة السوق الرئيسية للمزودين.", NO, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionProviderCategoryNav, @"PPHomeSectionProviderCategoryNav", @"Provider Categories", @"فئات المزودين", @"Provider marketplace navigation.", @"شريط تنقل فئات المزودين.", NO, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionHero, @"PPHomeSectionHero", @"Hero Banner", @"البانر الرئيسي", @"Top welcome card.", @"بطاقة الترحيب العلوية.", YES, YES, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionPremiumCare, @"PPHomeSectionPremiumCare", @"Premium Pet Care", @"الرعاية المتميزة", @"Premium pet-care gateway.", @"بطاقة بوابة الرعاية المتميزة.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionQuickActions, @"PPHomeSectionQuickActions", @"Quick Actions", @"الإجراءات السريعة", @"Horizontal shortcuts row.", @"صف اختصارات سريعة.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionMainKinds, @"PPHomeSectionMainKinds", @"Pet Categories", @"أنواع الحيوانات", @"Pet category grid.", @"شبكة فئات الحيوانات.", YES, YES, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionCurrentOrders, @"PPHomeSectionCurrentOrders", @"Current Orders", @"الطلبات الحالية", @"Live order status.", @"حالة الطلبات المباشرة.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionAccessories, @"PPHomeSectionAccessories", @"Pet Accessories", @"إكسسوارات الحيوانات", @"Accessories grid.", @"شبكة إكسسوارات.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionSuggestions, @"PPHomeSectionSuggestions", @"Smart Suggestions", @"اقتراحات ذكية", @"Personalized suggestions.", @"اقتراحات شخصية.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionCarousel, @"PPHomeSectionCarousel", @"Promo Carousel", @"شريط العروض", @"Auto-scrolling banners.", @"بانرات ترويجية متحركة.", YES, YES, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionLastFood, @"PPHomeSectionLastFood", @"Recent Food", @"آخر الأطعمة", @"Recently added food.", @"آخر أصناف الطعام.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionAdsNearBy, @"PPHomeSectionAdsNearBy", @"Ads Nearby", @"إعلانات قريبة", @"Location-based ads.", @"إعلانات قريبة من الموقع.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionPetProfile, @"PPHomeSectionPetProfile", @"Pet Profile Card", @"بطاقة ملف الحيوان", @"Primary pet profile.", @"ملف الحيوان الرئيسي.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionNearbyServices, @"PPHomeSectionNearbyServices", @"Nearby Services", @"خدمات قريبة", @"Geo-aware providers.", @"مزودو الخدمات حسب الموقع.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionAdopt, @"PPHomeSectionAdopt", @"Adopt a Pet", @"تبني حيوان", @"Adoption CTA card.", @"بطاقة دعوة للتبني.", YES, NO, NO),
-        PPHomeSectionMetaWithValues(PPHomeSectionBuyAgain, @"PPHomeSectionBuyAgain", @"Buy It Again", @"اشترِ مرة أخرى", @"Re-order shortcut.", @"اختصار إعادة الطلب.", YES, NO, YES),
-        PPHomeSectionMetaWithValues(PPHomeSectionServices, @"PPHomeSectionServices", @"Professional Services", @"خدمات احترافية", @"Service shortcuts.", @"اختصارات الخدمات.", NO, NO, NO)
+    // Keep this catalog order identical to Console's IOS_SECTION_CATALOG and
+    // the consumer iOS fallback order. The IDs are sparse by contract.
+    return @[ PPHomeSectionMetaWithValues(PPHomeSectionPremiumSearch, @"PPHomeSectionPremiumSearch", PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumSearch_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumSearch_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumSearch_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumSearch_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionMarketplaceHero, @"PPHomeSectionMarketplaceHero", PPHomeControlLocalizedValue(@"HomeControl_Section_MarketplaceHero_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_MarketplaceHero_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_MarketplaceHero_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_MarketplaceHero_Description", @"ar"), NO, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionProviderCategoryNav, @"PPHomeSectionProviderCategoryNav", PPHomeControlLocalizedValue(@"HomeControl_Section_ProviderCategoryNav_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_ProviderCategoryNav_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_ProviderCategoryNav_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_ProviderCategoryNav_Description", @"ar"), NO, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionHero, @"PPHomeSectionHero", PPHomeControlLocalizedValue(@"HomeControl_Section_Hero_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Hero_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_Hero_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Hero_Description", @"ar"), YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionMainKinds, @"PPHomeSectionMainKinds", PPHomeControlLocalizedValue(@"HomeControl_Section_MainKinds_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_MainKinds_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_MainKinds_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_MainKinds_Description", @"ar"), YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionPremiumCare, @"PPHomeSectionPremiumCare", PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumCare_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumCare_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumCare_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PremiumCare_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionQuickActions, @"PPHomeSectionQuickActions", PPHomeControlLocalizedValue(@"HomeControl_Section_QuickActions_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_QuickActions_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_QuickActions_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_QuickActions_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionCurrentOrders, @"PPHomeSectionCurrentOrders", PPHomeControlLocalizedValue(@"HomeControl_Section_CurrentOrders_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_CurrentOrders_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_CurrentOrders_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_CurrentOrders_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAccessories, @"PPHomeSectionAccessories", PPHomeControlLocalizedValue(@"HomeControl_Section_Accessories_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Accessories_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_Accessories_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Accessories_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionSuggestionAds, @"PPHomeSectionSuggestionAds", PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAds_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAds_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAds_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAds_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionSuggestionAccessories, @"PPHomeSectionSuggestionAccessories", PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAccessories_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAccessories_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAccessories_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_SuggestionAccessories_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionSuggestions, @"PPHomeSectionSuggestions", PPHomeControlLocalizedValue(@"HomeControl_Section_Suggestions_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Suggestions_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_Suggestions_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Suggestions_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionCarousel, @"PPHomeSectionCarousel", PPHomeControlLocalizedValue(@"HomeControl_Section_Carousel_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Carousel_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_Carousel_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Carousel_Description", @"ar"), YES, YES, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionLastFood, @"PPHomeSectionLastFood", PPHomeControlLocalizedValue(@"HomeControl_Section_LastFood_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_LastFood_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_LastFood_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_LastFood_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAdsNearBy, @"PPHomeSectionAdsNearBy", PPHomeControlLocalizedValue(@"HomeControl_Section_AdsNearBy_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_AdsNearBy_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_AdsNearBy_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_AdsNearBy_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionNearbyServices, @"PPHomeSectionNearbyServices", PPHomeControlLocalizedValue(@"HomeControl_Section_NearbyServices_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_NearbyServices_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_NearbyServices_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_NearbyServices_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionAdopt, @"PPHomeSectionAdopt", PPHomeControlLocalizedValue(@"HomeControl_Section_Adopt_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Adopt_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_Adopt_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_Adopt_Description", @"ar"), YES, NO, NO),
+        PPHomeSectionMetaWithValues(PPHomeSectionBuyAgain, @"PPHomeSectionBuyAgain", PPHomeControlLocalizedValue(@"HomeControl_Section_BuyAgain_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_BuyAgain_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_BuyAgain_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_BuyAgain_Description", @"ar"), YES, NO, YES),
+        PPHomeSectionMetaWithValues(PPHomeSectionPetProfile, @"PPHomeSectionPetProfile", PPHomeControlLocalizedValue(@"HomeControl_Section_PetProfile_Label", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PetProfile_Label", @"ar"), PPHomeControlLocalizedValue(@"HomeControl_Section_PetProfile_Description", @"en"), PPHomeControlLocalizedValue(@"HomeControl_Section_PetProfile_Description", @"ar"), YES, NO, NO)
     ];
 }
 
@@ -305,11 +351,17 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     [super viewDidLoad];
     self.title = kLang(@"HomeControl_Title");
     self.catalog = PPBuildHomeCatalog();
+    self.sections = [[self pp_defaultSectionStates] mutableCopy];
+    self.savedSections = [self pp_copySections:[self pp_defaultSectionStates]];
+    self.savedGlobalValues = [self pp_defaultGlobalValues];
+    self.filterText = @"";
+    self.globalSettingsExpanded = NO;
     self.configRef = [[[FIRFirestore firestore] collectionWithPath:@"AppConfigCol"] documentWithPath:@"HomeConfig"];
 
     [self pp_configureNavigation];
     [self pp_configureTableView];
     [self pp_buildHeader];
+    [self pp_buildPreviewFooter];
     [self loadConfig];
 }
 
@@ -332,7 +384,10 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 - (void)pp_configureNavigation {
     UIBarButtonItem *saveBtn = [[UIBarButtonItem alloc] initWithTitle:kLang(@"Save") style:UIBarButtonItemStyleDone target:self action:@selector(didTapSave)];
     self.navigationItem.rightBarButtonItem = saveBtn;
-    [self pp_updateSaveButton];
+    UIBarButtonItem *reload = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadConfig)];
+    reload.accessibilityLabel = kLang(@"HomeControl_Reload");
+    self.navigationItem.leftBarButtonItems = @[reload];
+    [self pp_updateNavigationItems];
 }
 
 - (void)pp_configureTableView {
@@ -343,15 +398,25 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 112.0;
     self.tableView.showsVerticalScrollIndicator = NO;
+    self.tableView.editing = YES;
     [self.tableView registerClass:PPHomeControlSectionCell.class forCellReuseIdentifier:@"PPHomeControlSectionCell"];
     [self.tableView registerClass:UITableViewCell.class forCellReuseIdentifier:@"PPHomeControlStateCell"];
+
+    self.searchController = [[UISearchController alloc] initWithSearchResultsController:nil];
+    self.searchController.searchResultsUpdater = self;
+    self.searchController.obscuresBackgroundDuringPresentation = NO;
+    self.searchController.searchBar.placeholder = kLang(@"HomeControl_SearchPlaceholder");
+    self.searchController.searchBar.accessibilityLabel = kLang(@"HomeControl_SearchSections");
+    self.navigationItem.searchController = self.searchController;
+    self.navigationItem.hidesSearchBarWhenScrolling = NO;
+    self.definesPresentationContext = YES;
 }
 
 - (PPFormStyle *)pp_formStyle {
     PPFormStyle *style = [[PPFormStyle defaultStyle] copy];
     style.accentColor = PPHomeControlAccentColor();
     style.cardBackgroundColor = PPHomeControlSurfaceColor();
-     style.primaryTextColor = PPHomeControlInkColor();
+    style.primaryTextColor = PPHomeControlInkColor();
     style.secondaryTextColor = PPHomeControlSubInkColor();
     style.cardCornerRadius = 22.0;
     style.fieldCornerRadius = 16.0;
@@ -366,7 +431,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     field.textChangeBlock = ^(PPFormFieldConfig *config, NSString *value) {
         (void)config; (void)value;
         weakSelf.isDirty = YES;
-        [weakSelf pp_updateSaveButton];
+        [weakSelf pp_updateNavigationItems];
     };
     return field;
 }
@@ -441,13 +506,26 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     [countPill addSubview:countLabel];
     self.heroCountLabel = countLabel;
 
+    UIView *settingsHeader = [UIView new];
+    settingsHeader.translatesAutoresizingMaskIntoConstraints = NO;
     UILabel *settingsTitle = [UILabel new];
     settingsTitle.translatesAutoresizingMaskIntoConstraints = NO;
     settingsTitle.text = kLang(@"HomeControl_GlobalSettings");
     settingsTitle.font = [Styling fontBold:20];
     settingsTitle.textColor = PPHomeControlInkColor();
     settingsTitle.textAlignment = [Language alignmentForCurrentLanguage];
-    [stack addArrangedSubview:settingsTitle];
+    settingsTitle.adjustsFontForContentSizeCategory = YES;
+    [settingsHeader addSubview:settingsTitle];
+
+    UIButton *settingsToggle = [UIButton buttonWithType:UIButtonTypeSystem];
+    settingsToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    settingsToggle.tintColor = PPHomeControlSubInkColor();
+    settingsToggle.accessibilityLabel = kLang(@"HomeControl_GlobalSettings");
+    settingsToggle.accessibilityTraits = UIAccessibilityTraitButton;
+    [settingsToggle addTarget:self action:@selector(toggleGlobalSettings) forControlEvents:UIControlEventTouchUpInside];
+    [settingsHeader addSubview:settingsToggle];
+    self.globalSettingsToggleButton = settingsToggle;
+    [stack addArrangedSubview:settingsHeader];
 
     self.globalFormView = [[PPFormEngineView alloc] initWithStyle:[self pp_formStyle]];
     PPFormFieldConfig *titleMode = [PPFormFieldConfig fieldWithIdentifier:PPHomeControlFieldTitleMode title:kLang(@"HomeControl_TitleViewMode") placeholder:@"" inputType:PPFormInputTypeSegmented];
@@ -458,18 +536,21 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     titleMode.textChangeBlock = ^(PPFormFieldConfig *config, NSString *value) {
         (void)config; (void)value;
         weakSelf.isDirty = YES;
-        [weakSelf pp_updateSaveButton];
+        [weakSelf pp_updateNavigationItems];
     };
 
     [self.globalFormView setFields:@[
         titleMode,
         [self pp_toggleFieldWithIdentifier:PPHomeControlFieldNovaFloating titleKey:@"HomeControl_NovaFloating"],
+        [self pp_toggleFieldWithIdentifier:PPHomeControlFieldPureLens titleKey:@"HomeControl_PureLens"],
         [self pp_toggleFieldWithIdentifier:PPHomeControlFieldBackgroundGlows titleKey:@"HomeControl_BackgroundGlows"],
         [self pp_toggleFieldWithIdentifier:PPHomeControlFieldUsedAccessories titleKey:@"HomeControl_UsedAccessories"],
         [self pp_toggleFieldWithIdentifier:PPHomeControlFieldReusableVideo titleKey:@"HomeControl_ReusableVideo"],
         [self pp_toggleFieldWithIdentifier:PPHomeControlFieldUltraCare titleKey:@"HomeControl_UltraCare"],
-        [self pp_toggleFieldWithIdentifier:PPHomeControlFieldLegacyBar titleKey:@"HomeControl_LegacyBar"]
+        [self pp_toggleFieldWithIdentifier:PPHomeControlFieldLegacyBar titleKey:@"HomeControl_LegacyBar"],
+        [self pp_toggleFieldWithIdentifier:PPHomeControlFieldUniversalCells titleKey:@"HomeControl_UniversalCells"]
     ]];
+    [self.globalFormView setValues:[self pp_defaultGlobalValues]];
     [stack addArrangedSubview:self.globalFormView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -477,6 +558,15 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
         [stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20.0],
         [stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20.0],
         [stack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-18.0],
+
+        [settingsHeader.heightAnchor constraintGreaterThanOrEqualToConstant:42.0],
+        [settingsTitle.leadingAnchor constraintEqualToAnchor:settingsHeader.leadingAnchor],
+        [settingsTitle.trailingAnchor constraintLessThanOrEqualToAnchor:settingsToggle.leadingAnchor constant:-12.0],
+        [settingsTitle.centerYAnchor constraintEqualToAnchor:settingsHeader.centerYAnchor],
+        [settingsToggle.trailingAnchor constraintEqualToAnchor:settingsHeader.trailingAnchor],
+        [settingsToggle.centerYAnchor constraintEqualToAnchor:settingsHeader.centerYAnchor],
+        [settingsToggle.widthAnchor constraintGreaterThanOrEqualToConstant:42.0],
+        [settingsToggle.heightAnchor constraintGreaterThanOrEqualToConstant:42.0],
 
         [hero.topAnchor constraintEqualToAnchor:heroCard.topAnchor],
         [hero.leadingAnchor constraintEqualToAnchor:heroCard.leadingAnchor],
@@ -510,6 +600,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 
     self.headerContainer = header;
     self.tableView.tableHeaderView = header;
+    [self pp_updateGlobalSettingsAppearance];
     [self pp_updateHeroCount];
     [self pp_sizeHeaderToFit];
 }
@@ -539,6 +630,252 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }
 }
 
+- (NSArray<PPHomeSectionState *> *)pp_defaultSectionStates {
+    NSMutableArray<PPHomeSectionState *> *states = [NSMutableArray arrayWithCapacity:self.catalog.count];
+    for (PPHomeSectionMeta *meta in self.catalog) {
+        PPHomeSectionState *state = [PPHomeSectionState new];
+        state.sectionID = meta.sectionID;
+        state.type = meta.type;
+        state.visible = meta.defaultVisible;
+        [states addObject:state];
+    }
+    return states.copy;
+}
+
+- (NSArray<PPHomeSectionState *> *)pp_copySections:(NSArray<PPHomeSectionState *> *)sections {
+    NSMutableArray<PPHomeSectionState *> *copies = [NSMutableArray arrayWithCapacity:sections.count];
+    for (PPHomeSectionState *source in sections ?: @[]) {
+        PPHomeSectionState *copy = [PPHomeSectionState new];
+        copy.sectionID = source.sectionID;
+        copy.type = source.type;
+        copy.visible = source.visible;
+        [copies addObject:copy];
+    }
+    return copies.copy;
+}
+
+- (NSDictionary<NSString *, NSString *> *)pp_defaultGlobalValues {
+    return @{
+        PPHomeControlFieldTitleMode: @"location",
+        PPHomeControlFieldNovaFloating: @"1",
+        PPHomeControlFieldPureLens: @"1",
+        PPHomeControlFieldBackgroundGlows: @"1",
+        PPHomeControlFieldUsedAccessories: @"0",
+        PPHomeControlFieldReusableVideo: @"1",
+        PPHomeControlFieldUltraCare: @"1",
+        PPHomeControlFieldLegacyBar: @"0",
+        PPHomeControlFieldUniversalCells: @"1"
+    };
+}
+
+- (NSArray<PPHomeSectionState *> *)pp_filteredSections {
+    NSString *needle = [self.filterText stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (needle.length == 0) return self.sections.copy ?: @[];
+
+    NSMutableArray<PPHomeSectionState *> *filtered = [NSMutableArray array];
+    for (PPHomeSectionState *state in self.sections) {
+        PPHomeSectionMeta *meta = [self metaForID:state.sectionID];
+        NSString *haystack = [NSString stringWithFormat:@"%@ %@ %@", state.type ?: @"", meta.labelEn ?: @"", meta.labelAr ?: @""];
+        if ([haystack localizedCaseInsensitiveContainsString:needle]) {
+            [filtered addObject:state];
+        }
+    }
+    return filtered.copy;
+}
+
+- (void)updateSearchResultsForSearchController:(UISearchController *)searchController {
+    self.filterText = searchController.searchBar.text ?: @"";
+    [self.tableView reloadData];
+}
+
+- (void)toggleGlobalSettings {
+    self.globalSettingsExpanded = !self.globalSettingsExpanded;
+    [self pp_updateGlobalSettingsAppearance];
+}
+
+- (void)pp_updateNavigationItems {
+    if (!self.navigationItem) return;
+
+    UIBarButtonItem *reload = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadConfig)];
+    reload.accessibilityLabel = kLang(@"HomeControl_Reload");
+    reload.enabled = !self.isLoading && !self.isSaving;
+
+    UIBarButtonItem *defaults = [[UIBarButtonItem alloc] initWithTitle:kLang(@"HomeControl_Defaults") style:UIBarButtonItemStylePlain target:self action:@selector(resetToDefaults)];
+    defaults.accessibilityLabel = kLang(@"HomeControl_Defaults");
+    defaults.enabled = !self.isLoading && !self.isSaving;
+
+    NSMutableArray<UIBarButtonItem *> *leftItems = [NSMutableArray arrayWithObjects:reload, defaults, nil];
+    if (self.isDirty) {
+        UIBarButtonItem *revert = [[UIBarButtonItem alloc] initWithTitle:kLang(@"HomeControl_Revert") style:UIBarButtonItemStylePlain target:self action:@selector(revertChanges)];
+        revert.accessibilityLabel = kLang(@"HomeControl_Revert");
+        revert.enabled = !self.isLoading && !self.isSaving;
+        [leftItems addObject:revert];
+    }
+    self.navigationItem.leftBarButtonItems = leftItems;
+    [self pp_updateSaveButton];
+}
+
+- (void)pp_updateGlobalSettingsAppearance {
+    if (!self.globalFormView || !self.globalSettingsToggleButton) return;
+    self.globalFormView.hidden = !self.globalSettingsExpanded;
+    NSString *imageName = self.globalSettingsExpanded ? @"chevron.up" : @"chevron.down";
+    [self.globalSettingsToggleButton setImage:[UIImage systemImageNamed:imageName] forState:UIControlStateNormal];
+    self.globalSettingsToggleButton.accessibilityValue = self.globalSettingsExpanded
+        ? kLang(@"HomeControl_Collapse")
+        : kLang(@"HomeControl_Expand");
+    [self pp_sizeHeaderToFit];
+}
+
+- (void)pp_buildPreviewFooter {
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 1.0)];
+    footer.backgroundColor = UIColor.clearColor;
+    footer.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UILabel *title = [UILabel new];
+    title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.text = kLang(@"HomeControl_LivePreview");
+    title.font = [Styling fontBold:20];
+    title.textColor = PPHomeControlInkColor();
+    title.textAlignment = [Language alignmentForCurrentLanguage];
+    title.adjustsFontForContentSizeCategory = YES;
+    [footer addSubview:title];
+
+    UILabel *subtitle = [UILabel new];
+    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
+    subtitle.text = kLang(@"HomeControl_LivePreview_Subtitle");
+    subtitle.font = [Styling fontRegular:13];
+    subtitle.textColor = PPHomeControlSubInkColor();
+    subtitle.textAlignment = [Language alignmentForCurrentLanguage];
+    subtitle.numberOfLines = 0;
+    subtitle.adjustsFontForContentSizeCategory = YES;
+    [footer addSubview:subtitle];
+
+    UIView *previewCard = [UIView new];
+    previewCard.translatesAutoresizingMaskIntoConstraints = NO;
+    previewCard.backgroundColor = PPHomeControlSurfaceColor();
+    PPHomeControlApplyCardChrome(previewCard, 22.0);
+    [footer addSubview:previewCard];
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 8.0;
+    stack.alignment = UIStackViewAlignmentFill;
+    [previewCard addSubview:stack];
+    self.previewStackView = stack;
+    self.previewFooterView = footer;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [title.topAnchor constraintEqualToAnchor:footer.topAnchor constant:20.0],
+        [title.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor constant:22.0],
+        [title.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor constant:-22.0],
+
+        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:4.0],
+        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
+        [subtitle.trailingAnchor constraintEqualToAnchor:title.trailingAnchor],
+
+        [previewCard.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:12.0],
+        [previewCard.leadingAnchor constraintEqualToAnchor:footer.leadingAnchor constant:20.0],
+        [previewCard.trailingAnchor constraintEqualToAnchor:footer.trailingAnchor constant:-20.0],
+        [previewCard.bottomAnchor constraintEqualToAnchor:footer.bottomAnchor constant:-20.0],
+
+        [stack.topAnchor constraintEqualToAnchor:previewCard.topAnchor constant:14.0],
+        [stack.leadingAnchor constraintEqualToAnchor:previewCard.leadingAnchor constant:14.0],
+        [stack.trailingAnchor constraintEqualToAnchor:previewCard.trailingAnchor constant:-14.0],
+        [stack.bottomAnchor constraintEqualToAnchor:previewCard.bottomAnchor constant:-14.0]
+    ]];
+
+    self.tableView.tableFooterView = footer;
+    [self pp_updatePreview];
+}
+
+- (void)pp_updatePreview {
+    if (!self.previewStackView) return;
+    for (UIView *view in self.previewStackView.arrangedSubviews.copy) {
+        [self.previewStackView removeArrangedSubview:view];
+        [view removeFromSuperview];
+    }
+
+    NSMutableArray<PPHomeSectionState *> *visibleStates = [NSMutableArray array];
+    for (PPHomeSectionState *state in self.sections) {
+        if (state.visible) [visibleStates addObject:state];
+    }
+    if (visibleStates.count == 0) {
+        UILabel *empty = [UILabel new];
+        empty.font = [Styling fontMedium:14];
+        empty.textColor = PPHomeControlSubInkColor();
+        empty.text = kLang(@"HomeControl_NoVisibleSections");
+        empty.textAlignment = [Language alignmentForCurrentLanguage];
+        empty.numberOfLines = 0;
+        empty.adjustsFontForContentSizeCategory = YES;
+        [self.previewStackView addArrangedSubview:empty];
+    } else {
+        NSInteger index = 0;
+        BOOL isArabic = [[Language currentLanguageCode] isEqualToString:@"ar"];
+        for (PPHomeSectionState *state in visibleStates) {
+            index += 1;
+            PPHomeSectionMeta *meta = [self metaForID:state.sectionID];
+            UIView *row = [UIView new];
+            row.translatesAutoresizingMaskIntoConstraints = NO;
+            row.isAccessibilityElement = YES;
+            row.accessibilityTraits = UIAccessibilityTraitStaticText;
+            row.backgroundColor = [PPHomeControlAccentColor() colorWithAlphaComponent:0.055];
+            row.layer.cornerRadius = 12.0;
+            if (@available(iOS 13.0, *)) row.layer.cornerCurve = kCACornerCurveContinuous;
+
+            UILabel *number = [UILabel new];
+            number.translatesAutoresizingMaskIntoConstraints = NO;
+            number.text = [NSString stringWithFormat:@"%ld", (long)index];
+            number.font = [Styling fontBold:12];
+            number.textColor = PPHomeControlAccentColor();
+            number.textAlignment = NSTextAlignmentCenter;
+            number.backgroundColor = [PPHomeControlAccentColor() colorWithAlphaComponent:0.12];
+            number.layer.cornerRadius = 10.0;
+            number.layer.masksToBounds = YES;
+            [row addSubview:number];
+
+            UILabel *label = [UILabel new];
+            label.translatesAutoresizingMaskIntoConstraints = NO;
+            label.text = isArabic ? meta.labelAr : meta.labelEn;
+            label.font = [Styling fontMedium:14];
+            label.textColor = PPHomeControlInkColor();
+            label.textAlignment = [Language alignmentForCurrentLanguage];
+            label.numberOfLines = 2;
+            label.adjustsFontForContentSizeCategory = YES;
+            [row addSubview:label];
+            row.accessibilityLabel = [NSString stringWithFormat:@"%@ %@", [NSString stringWithFormat:kLang(@"HomeControl_PreviewIndex_Format"), @(index)], label.text ?: @""];
+
+            [NSLayoutConstraint activateConstraints:@[
+                [row.heightAnchor constraintGreaterThanOrEqualToConstant:40.0],
+                [number.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:10.0],
+                [number.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+                [number.widthAnchor constraintEqualToConstant:28.0],
+                [number.heightAnchor constraintEqualToConstant:28.0],
+                [label.leadingAnchor constraintEqualToAnchor:number.trailingAnchor constant:10.0],
+                [label.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-12.0],
+                [label.topAnchor constraintEqualToAnchor:row.topAnchor constant:8.0],
+                [label.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-8.0]
+            ]];
+            [self.previewStackView addArrangedSubview:row];
+        }
+    }
+
+    [self.previewFooterView setNeedsLayout];
+    [self.previewFooterView layoutIfNeeded];
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width > 0.0) {
+        CGRect frame = self.previewFooterView.frame;
+        frame.size.width = width;
+        self.previewFooterView.frame = frame;
+        CGFloat height = [self.previewFooterView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                                withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
+        frame.size.height = MAX(1.0, ceil(height));
+        self.previewFooterView.frame = frame;
+        self.tableView.tableFooterView = self.previewFooterView;
+    }
+}
+
 - (void)pp_updateInsets {
     CGFloat tabHeight = self.tabBarController ? CGRectGetHeight(self.tabBarController.tabBar.bounds) : 0.0;
     CGFloat bottom = MAX(28.0, tabHeight + 34.0);
@@ -551,6 +888,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 - (void)loadConfig {
     self.isLoading = YES;
     [self.tableView reloadData];
+    [self pp_updateNavigationItems];
 
     __weak typeof(self) weakSelf = self;
     [self.configRef getDocumentWithCompletion:^(FIRDocumentSnapshot *snapshot, NSError *error) {
@@ -559,36 +897,65 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
             if (error) {
                 [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 [weakSelf.tableView reloadData];
+                [weakSelf pp_updateNavigationItems];
                 return;
             }
             [weakSelf buildSectionsFromSnapshot:snapshot];
             [weakSelf pp_applyGlobalValuesFromSnapshot:snapshot];
+            if (!snapshot.exists) {
+                [AlertHelper showAlertIn:weakSelf title:kLang(@"HomeControl_DefaultLoaded_Title") subtitle:kLang(@"HomeControl_DefaultLoaded_Message")];
+            }
             weakSelf.isDirty = NO;
+            weakSelf.savedSections = [weakSelf pp_copySections:weakSelf.sections];
+            weakSelf.savedGlobalValues = [[weakSelf.globalFormView values] copy];
             [weakSelf pp_updateHeroCount];
-            [weakSelf pp_updateSaveButton];
+            [weakSelf pp_updateNavigationItems];
+            [weakSelf pp_updatePreview];
             [weakSelf.tableView reloadData];
             [weakSelf pp_sizeHeaderToFit];
         });
     }];
 }
 
+- (PPHomeSectionMeta *)metaForRawValue:(id)rawValue {
+    NSInteger numericID = NSNotFound;
+    if ([rawValue isKindOfClass:NSNumber.class]) {
+        numericID = [(NSNumber *)rawValue integerValue];
+    } else if ([rawValue isKindOfClass:NSString.class]) {
+        NSString *trimmed = [(NSString *)rawValue stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if ([trimmed rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]].location == NSNotFound && trimmed.length > 0) {
+            numericID = trimmed.integerValue;
+        } else if (trimmed.length > 0) {
+            for (PPHomeSectionMeta *meta in self.catalog) {
+                if ([meta.type isEqualToString:trimmed]) return meta;
+            }
+        }
+    }
+    return numericID != NSNotFound ? [self metaForID:(PPHomeSectionID)numericID] : nil;
+}
+
 - (void)buildSectionsFromSnapshot:(FIRDocumentSnapshot *)snapshot {
     self.sections = [NSMutableArray array];
+    NSMutableSet<NSNumber *> *seenIDs = [NSMutableSet set];
+    BOOL hasPremiumCareSection = NO;
 
     if (snapshot.exists) {
         NSArray *rawSections = snapshot[@"sections"];
         if ([rawSections isKindOfClass:NSArray.class]) {
-            for (NSDictionary *raw in rawSections) {
+            for (id rawValue in rawSections) {
+                NSDictionary *raw = [rawValue isKindOfClass:NSDictionary.class] ? rawValue : nil;
                 if (![raw isKindOfClass:NSDictionary.class]) continue;
-                NSNumber *sidNum = raw[@"id"];
-                NSNumber *visNum = raw[@"visible"];
-                PPHomeSectionID sid = sidNum ? (PPHomeSectionID)[sidNum integerValue] : -1;
-                PPHomeSectionMeta *meta = [self metaForID:sid];
+                PPHomeSectionMeta *meta = [self metaForRawValue:raw[@"id"]];
+                if (!meta) meta = [self metaForRawValue:raw[@"type"]];
                 if (!meta) continue;
+                if ([seenIDs containsObject:@(meta.sectionID)]) continue;
+                [seenIDs addObject:@(meta.sectionID)];
+                if (meta.sectionID == PPHomeSectionPremiumCare) hasPremiumCareSection = YES;
 
                 PPHomeSectionState *state = [PPHomeSectionState new];
-                state.sectionID = sid;
-                state.visible = visNum ? [visNum boolValue] : meta.defaultVisible;
+                state.sectionID = meta.sectionID;
+                id rawVisible = raw[@"visible"];
+                state.visible = [rawVisible respondsToSelector:@selector(boolValue)] ? [rawVisible boolValue] : meta.defaultVisible;
                 state.type = meta.type;
                 [self.sections addObject:state];
             }
@@ -608,23 +975,46 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
             [self.sections addObject:state];
         }
     }
+
+    // Preserve the legacy mirror when older documents do not yet contain a
+    // canonical PremiumCare section row, matching the Console loader.
+    if (!hasPremiumCareSection && snapshot.exists) {
+        id legacyVisible = snapshot[PPHomeControlFieldPremiumCareVisible];
+        if ([legacyVisible respondsToSelector:@selector(boolValue)]) {
+            for (PPHomeSectionState *state in self.sections) {
+                if (state.sectionID == PPHomeSectionPremiumCare) {
+                    state.visible = [legacyVisible boolValue];
+                    break;
+                }
+            }
+        }
+    }
 }
 
 - (void)pp_applyGlobalValuesFromSnapshot:(FIRDocumentSnapshot *)snapshot {
     NSString *mode = @"location";
     id rawMode = snapshot.exists ? snapshot[@"titleViewMode"] : nil;
-    if ([rawMode isKindOfClass:NSString.class] && [rawMode length] > 0) {
+    if ([rawMode isKindOfClass:NSString.class] && ([rawMode isEqualToString:@"location"] || [rawMode isEqualToString:@"search"])) {
         mode = rawMode;
+    }
+
+    BOOL videoFallback = YES;
+    if (snapshot.exists && snapshot[PPHomeControlFieldReusableVideo] == nil) {
+        videoFallback = [PPHomeControlBoolString(snapshot, PPHomeControlFieldReusableVideoLegacy, YES) boolValue];
+    } else {
+        videoFallback = [PPHomeControlBoolString(snapshot, PPHomeControlFieldReusableVideo, YES) boolValue];
     }
 
     [self.globalFormView setValues:@{
         PPHomeControlFieldTitleMode: mode,
-        PPHomeControlFieldNovaFloating: PPHomeControlBoolString(snapshot, PPHomeControlFieldNovaFloating, NO),
-        PPHomeControlFieldBackgroundGlows: PPHomeControlBoolString(snapshot, PPHomeControlFieldBackgroundGlows, NO),
+        PPHomeControlFieldNovaFloating: PPHomeControlBoolString(snapshot, PPHomeControlFieldNovaFloating, YES),
+        PPHomeControlFieldPureLens: PPHomeControlBoolString(snapshot, PPHomeControlFieldPureLens, YES),
+        PPHomeControlFieldBackgroundGlows: PPHomeControlBoolString(snapshot, PPHomeControlFieldBackgroundGlows, YES),
         PPHomeControlFieldUsedAccessories: PPHomeControlBoolString(snapshot, PPHomeControlFieldUsedAccessories, NO),
-        PPHomeControlFieldReusableVideo: PPHomeControlBoolString(snapshot, PPHomeControlFieldReusableVideo, NO),
-        PPHomeControlFieldUltraCare: PPHomeControlBoolString(snapshot, PPHomeControlFieldUltraCare, NO),
-        PPHomeControlFieldLegacyBar: PPHomeControlBoolString(snapshot, PPHomeControlFieldLegacyBar, NO)
+        PPHomeControlFieldReusableVideo: videoFallback ? @"1" : @"0",
+        PPHomeControlFieldUltraCare: PPHomeControlBoolString(snapshot, PPHomeControlFieldUltraCare, YES),
+        PPHomeControlFieldLegacyBar: PPHomeControlBoolString(snapshot, PPHomeControlFieldLegacyBar, NO),
+        PPHomeControlFieldUniversalCells: PPHomeControlBoolString(snapshot, PPHomeControlFieldUniversalCells, YES)
     }];
 }
 
@@ -636,41 +1026,105 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 }
 
 - (void)didTapSave {
-    if (self.isSaving) return;
-    self.isSaving = YES;
-    [self pp_updateSaveButton];
+    if (self.isSaving || self.isLoading) return;
 
-    NSMutableArray *sectionsPayload = [NSMutableArray array];
-    for (PPHomeSectionState *s in self.sections) {
+    NSArray<PPHomeSectionState *> *sectionsToSave = [self pp_copySections:self.sections];
+    if (sectionsToSave.count == 0) {
+        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"HomeControl_NoValidSections")];
+        return;
+    }
+
+    NSInteger visibleCount = 0;
+    NSInteger criticalCount = 0;
+    NSInteger hiddenCriticalCount = 0;
+    for (PPHomeSectionState *state in sectionsToSave) {
+        if (state.visible) visibleCount += 1;
+        PPHomeSectionMeta *meta = [self metaForID:state.sectionID];
+        if (meta.critical) {
+            criticalCount += 1;
+            if (!state.visible) hiddenCriticalCount += 1;
+        }
+    }
+
+    NSString *title = nil;
+    NSString *message = nil;
+    if (visibleCount == 0) {
+        title = kLang(@"HomeControl_AllSectionsHidden_Title");
+        message = kLang(@"HomeControl_AllSectionsHidden_Message");
+    } else if (criticalCount > 0 && hiddenCriticalCount == criticalCount) {
+        title = kLang(@"HomeControl_CoreSectionsHidden_Title");
+        message = kLang(@"HomeControl_CoreSectionsHidden_Message");
+    }
+
+    if (title.length > 0 && message.length > 0) {
+        UIAlertController *confirmation = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
+        [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"HomeControl_Cancel") style:UIAlertActionStyleCancel handler:nil]];
+        __weak typeof(self) weakSelf = self;
+        [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"HomeControl_Continue") style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+            [weakSelf pp_commitSaveWithSections:sectionsToSave];
+        }]];
+        [self presentViewController:confirmation animated:YES completion:nil];
+        return;
+    }
+
+    [self pp_commitSaveWithSections:sectionsToSave];
+}
+
+- (void)pp_commitSaveWithSections:(NSArray<PPHomeSectionState *> *)sections {
+    if (self.isSaving || sections.count == 0) return;
+
+    self.isSaving = YES;
+    [self pp_updateNavigationItems];
+
+    NSMutableArray *sectionsPayload = [NSMutableArray arrayWithCapacity:sections.count];
+    for (PPHomeSectionState *state in sections) {
         [sectionsPayload addObject:@{
-            @"id": @(s.sectionID),
-            @"type": s.type ?: @"",
-            @"visible": @(s.visible)
+            @"id": @(state.sectionID),
+            @"type": state.type ?: @"",
+            @"visible": @(state.visible)
         }];
     }
 
     NSDictionary<NSString *, NSString *> *formValues = [self.globalFormView values];
+    BOOL premiumCareVisible = YES;
+    for (PPHomeSectionState *state in sections) {
+        if (state.sectionID == PPHomeSectionPremiumCare) {
+            premiumCareVisible = state.visible;
+            break;
+        }
+    }
+
+    BOOL reusableVideoEnabled = [formValues[PPHomeControlFieldReusableVideo] boolValue];
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
     payload[@"sections"] = sectionsPayload;
-    payload[@"titleViewMode"] = formValues[PPHomeControlFieldTitleMode].length ? formValues[PPHomeControlFieldTitleMode] : @"location";
-    payload[@"novaFloatingVisible"] = @([formValues[PPHomeControlFieldNovaFloating] boolValue]);
-    payload[@"backgroundGlowsFaded"] = @([formValues[PPHomeControlFieldBackgroundGlows] boolValue]);
-    payload[@"AllwedUsedAccessories"] = @([formValues[PPHomeControlFieldUsedAccessories] boolValue]);
-    payload[@"PP_REUSABLE_VIDEO_MEDIA_ENABLED"] = @([formValues[PPHomeControlFieldReusableVideo] boolValue]);
-    payload[@"PPULTRA_CARE_IS_ACTIVATED"] = @([formValues[PPHomeControlFieldUltraCare] boolValue]);
-    payload[@"PPUSE_LEGACY_BAR"] = @([formValues[PPHomeControlFieldLegacyBar] boolValue]);
-    payload[@"updatedAt"] = [FIRTimestamp timestampWithDate:[NSDate date]];
+    payload[PPHomeControlFieldTitleMode] = formValues[PPHomeControlFieldTitleMode].length ? formValues[PPHomeControlFieldTitleMode] : @"location";
+    payload[PPHomeControlFieldPremiumCareVisible] = @(premiumCareVisible);
+    payload[PPHomeControlFieldNovaFloating] = @([formValues[PPHomeControlFieldNovaFloating] boolValue]);
+    payload[PPHomeControlFieldBackgroundGlows] = @([formValues[PPHomeControlFieldBackgroundGlows] boolValue]);
+    payload[PPHomeControlFieldPureLens] = @([formValues[PPHomeControlFieldPureLens] boolValue]);
+    payload[PPHomeControlFieldUsedAccessories] = @([formValues[PPHomeControlFieldUsedAccessories] boolValue]);
+    payload[PPHomeControlFieldReusableVideo] = @(reusableVideoEnabled);
+    // Keep the legacy spelling in sync for older iOS consumers.
+    payload[PPHomeControlFieldReusableVideoLegacy] = @(reusableVideoEnabled);
+    payload[PPHomeControlFieldUltraCare] = @([formValues[PPHomeControlFieldUltraCare] boolValue]);
+    payload[PPHomeControlFieldLegacyBar] = @([formValues[PPHomeControlFieldLegacyBar] boolValue]);
+    payload[PPHomeControlFieldUniversalCells] = @([formValues[PPHomeControlFieldUniversalCells] boolValue]);
+    payload[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
 
     __weak typeof(self) weakSelf = self;
     [self.configRef setData:payload merge:YES completion:^(NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.isSaving = NO;
-            [weakSelf pp_updateSaveButton];
             if (error) {
+                [weakSelf pp_updateNavigationItems];
                 [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
             } else {
                 weakSelf.isDirty = NO;
-                [weakSelf pp_updateSaveButton];
+                weakSelf.savedSections = [weakSelf pp_copySections:sections];
+                weakSelf.savedGlobalValues = [[weakSelf.globalFormView values] copy];
+                [weakSelf pp_updateHeroCount];
+                [weakSelf pp_updateNavigationItems];
+                [weakSelf pp_updatePreview];
                 [PPFunc pp_playSuccessEffect];
                 [AlertHelper showAlertIn:weakSelf title:kLang(@"Success_Title") subtitle:kLang(@"HomeControl_Saved")];
             }
@@ -678,9 +1132,35 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }];
 }
 
+- (void)resetToDefaults {
+    if (self.isLoading || self.isSaving) return;
+    self.sections = [[self pp_defaultSectionStates] mutableCopy];
+    [self.globalFormView setValues:[self pp_defaultGlobalValues]];
+    self.isDirty = YES;
+    [self pp_updateHeroCount];
+    [self pp_updatePreview];
+    [self.tableView reloadData];
+    [self pp_sizeHeaderToFit];
+    [self pp_updateNavigationItems];
+}
+
+- (void)revertChanges {
+    if (self.isLoading || self.isSaving || !self.isDirty) return;
+    NSArray<PPHomeSectionState *> *savedSections = self.savedSections.count ? self.savedSections : [self pp_defaultSectionStates];
+    NSDictionary<NSString *, NSString *> *savedValues = self.savedGlobalValues.count ? self.savedGlobalValues : [self pp_defaultGlobalValues];
+    self.sections = [[self pp_copySections:savedSections] mutableCopy];
+    [self.globalFormView setValues:savedValues];
+    self.isDirty = NO;
+    [self pp_updateHeroCount];
+    [self pp_updatePreview];
+    [self.tableView reloadData];
+    [self pp_sizeHeaderToFit];
+    [self pp_updateNavigationItems];
+}
+
 - (void)pp_updateSaveButton {
     self.navigationItem.rightBarButtonItem.enabled = !self.isSaving && !self.isLoading;
-    self.navigationItem.rightBarButtonItem.title = self.isSaving ? kLang(@"Loading") : kLang(@"Save");
+    self.navigationItem.rightBarButtonItem.title = (self.isSaving || self.isLoading) ? kLang(@"Loading") : kLang(@"Save");
 }
 
 - (void)pp_updateHeroCount {
@@ -700,7 +1180,8 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
     if (self.isLoading && self.sections.count == 0) return 1;
-    return MAX(self.sections.count, 1);
+    NSArray<PPHomeSectionState *> *filteredSections = [self pp_filteredSections];
+    return MAX(filteredSections.count, 1);
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
@@ -745,20 +1226,66 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
         return [self pp_stateCellWithText:self.isLoading ? kLang(@"Loading") : kLang(@"HomeControl_EmptySections")];
     }
 
-    PPHomeSectionState *state = self.sections[indexPath.row];
+    NSArray<PPHomeSectionState *> *filteredSections = [self pp_filteredSections];
+    if (filteredSections.count == 0) {
+        return [self pp_stateCellWithText:kLang(@"HomeControl_NoMatchingSections")];
+    }
+
+    PPHomeSectionState *state = filteredSections[indexPath.row];
     PPHomeSectionMeta *meta = [self metaForID:state.sectionID];
     PPHomeControlSectionCell *cell = [tableView dequeueReusableCellWithIdentifier:@"PPHomeControlSectionCell" forIndexPath:indexPath];
     [cell configureWithMeta:meta visible:state.visible];
+    cell.showsReorderControl = YES;
 
     __weak typeof(self) weakSelf = self;
     cell.visibilityChanged = ^(BOOL visible) {
         state.visible = visible;
         weakSelf.isDirty = YES;
         [weakSelf pp_updateHeroCount];
-        [weakSelf pp_updateSaveButton];
-        [weakSelf.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+        [weakSelf pp_updatePreview];
+        [weakSelf.tableView reloadData];
+        [weakSelf pp_updateNavigationItems];
     };
     return cell;
+}
+
+- (BOOL)tableView:(UITableView *)tableView canMoveRowAtIndexPath:(NSIndexPath *)indexPath {
+    return !self.isLoading && [self pp_filteredSections].count > 1;
+}
+
+- (UITableViewCellEditingStyle)tableView:(UITableView *)tableView editingStyleForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return UITableViewCellEditingStyleNone;
+}
+
+- (BOOL)tableView:(UITableView *)tableView shouldIndentWhileEditingRowAtIndexPath:(NSIndexPath *)indexPath {
+    return NO;
+}
+
+- (void)tableView:(UITableView *)tableView moveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
+    NSArray<PPHomeSectionState *> *filteredSections = [self pp_filteredSections];
+    if (sourceIndexPath.row >= filteredSections.count || destinationIndexPath.row >= filteredSections.count) return;
+
+    PPHomeSectionState *movingState = filteredSections[sourceIndexPath.row];
+    PPHomeSectionState *targetState = filteredSections[destinationIndexPath.row];
+    if (movingState == targetState) return;
+
+    NSUInteger sourceIndex = [self.sections indexOfObjectIdenticalTo:movingState];
+    NSUInteger targetIndex = [self.sections indexOfObjectIdenticalTo:targetState];
+    if (sourceIndex == NSNotFound || targetIndex == NSNotFound) return;
+
+    [self.sections removeObjectAtIndex:sourceIndex];
+    targetIndex = [self.sections indexOfObjectIdenticalTo:targetState];
+    if (targetIndex == NSNotFound) return;
+
+    NSUInteger insertionIndex = sourceIndexPath.row < destinationIndexPath.row ? targetIndex + 1 : targetIndex;
+    insertionIndex = MIN(insertionIndex, self.sections.count);
+    [self.sections insertObject:movingState atIndex:insertionIndex];
+
+    self.isDirty = YES;
+    [self pp_updateHeroCount];
+    [self pp_updatePreview];
+    [self.tableView reloadData];
+    [self pp_updateNavigationItems];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {

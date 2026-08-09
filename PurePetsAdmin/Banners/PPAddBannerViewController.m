@@ -767,7 +767,14 @@ static NSString * const kPPAdminHomeTopCarouselGroupID = @"HOME_MAIN_TOP_CAROUSE
         NSString *name = [NSString stringWithFormat:@"%@/%@.png", folder, [[NSUUID UUID] UUIDString]];
         FIRStorageReference *ref = [root child:name];
         
-        [ref putData:data metadata:nil completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
+        FIRStorageMetadata *storageMetadata = [FIRStorageMetadata new];
+        storageMetadata.contentType = @"image/png";
+        storageMetadata.customMetadata = @{
+            @"uploaded_by": [FIRAuth auth].currentUser.uid ?: @"",
+            @"entity_type": @"banner",
+            @"asset_folder": folder ?: @""
+        };
+        [ref putData:data metadata:storageMetadata completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
             if (error) {
                 if (!firstErr) firstErr = error;
                 dispatch_group_leave(g);

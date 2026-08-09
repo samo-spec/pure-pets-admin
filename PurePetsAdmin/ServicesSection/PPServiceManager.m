@@ -606,6 +606,11 @@ typedef void (^PPServiceExistingDocumentBlock)(FIRDocumentReference * _Nullable 
 
     FIRStorageMetadata *meta = [[FIRStorageMetadata alloc] init];
     meta.contentType = @"image/jpeg";
+    meta.customMetadata = @{
+        @"uploaded_by": [self pp_currentAdminUID],
+        @"entity_type": @"service",
+        @"entity_id": serviceID ?: @""
+    };
 
     [reference putData:imageData metadata:meta completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
         if (error) {

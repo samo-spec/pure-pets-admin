@@ -210,7 +210,15 @@ static NSError *PPVetError(NSInteger code, NSString *message) {
     NSString *path = [NSString stringWithFormat:@"vets/%@.png", vetID];
     FIRStorageReference *ref = [[[FIRStorage storage] reference] child:path];
 
-    [ref putData:imageData metadata:nil completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
+    FIRStorageMetadata *metadata = [[FIRStorageMetadata alloc] init];
+    metadata.contentType = @"image/png";
+    metadata.customMetadata = @{
+        @"uploaded_by": [FIRAuth auth].currentUser.uid ?: @"",
+        @"entity_type": @"veterinarian",
+        @"entity_id": vetID ?: @""
+    };
+
+    [ref putData:imageData metadata:metadata completion:^(FIRStorageMetadata * _Nullable metadata, NSError * _Nullable error) {
         if (error) {
             DLog(@"[PPVetManager] image upload error: %@", error.localizedDescription);
             if (completion) completion(@"");

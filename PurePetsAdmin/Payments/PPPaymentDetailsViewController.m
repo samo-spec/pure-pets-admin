@@ -931,6 +931,19 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     return [self.record workflowStatusKey];
 }
 
+- (NSString *)pp_callableActionForOrderAction:(PPPaymentOrderAdminActionType)actionType
+{
+    switch (actionType) {
+        case PPPaymentOrderAdminActionTypeApprove: return @"order_approve";
+        case PPPaymentOrderAdminActionTypeProcessing: return @"order_mark_processing";
+        case PPPaymentOrderAdminActionTypeShipped: return @"order_mark_shipped";
+        case PPPaymentOrderAdminActionTypeDelivered: return @"order_mark_delivered";
+        case PPPaymentOrderAdminActionTypeCollectPayment: return @"order_collect_payment";
+        case PPPaymentOrderAdminActionTypeCancel: return @"order_cancel";
+    }
+    return @"";
+}
+
 - (NSString *)pp_resolvedAdminNoteForOrderAction:(PPPaymentOrderAdminActionType)actionType
                                     userNote:(NSString *)userNote
 {
@@ -940,7 +953,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     }
 
     return [self.service defaultAdminNoteForOrderID:self.record.orderId
-                                        nextStatus:[self pp_nextWorkflowStatusForOrderAction:actionType]];
+                                              action:[self pp_callableActionForOrderAction:actionType]];
 }
 
 - (NSString *)pp_promptSubtitleForOrderAction:(PPPaymentOrderAdminActionType)actionType

@@ -173,7 +173,7 @@
 		F2A24AD63003C478003AB79D /* PPHomeControlPanelViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AD43003C478003AB79D /* PPHomeControlPanelViewController.m */; };
 		F2A24AF83003C4D3003AB79D /* PPProviderApplicationsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF03003C4D3003AB79D /* PPProviderApplicationsViewController.m */; };
 		F2A24AF93003C4D3003AB79D /* PPPOSService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AEB3003C4D3003AB79D /* PPPOSService.m */; };
-		F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.m */; };
+		F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */; };
 		F2A24AFB3003C4D3003AB79D /* PPPOSHistoryViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE93003C4D3003AB79D /* PPPOSHistoryViewController.m */; };
 		F2A24AFC3003C4D3003AB79D /* PPProviderPlansViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */; };
 		F2A24AFD3003C4D3003AB79D /* PPFulfillmentService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */; };
@@ -608,8 +608,7 @@
 		F2A24ADD3003C4D3003AB79D /* PPDeliveryManagementViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDeliveryManagementViewController.m; sourceTree = "<group>"; };
 		F2A24ADE3003C4D3003AB79D /* PPDeliveryService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPDeliveryService.h; sourceTree = "<group>"; };
 		F2A24ADF3003C4D3003AB79D /* PPDeliveryService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDeliveryService.m; sourceTree = "<group>"; };
-		F2A24AE13003C4D3003AB79D /* PPFulfillmentOrdersViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFulfillmentOrdersViewController.h; sourceTree = "<group>"; };
-		F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFulfillmentOrdersViewController.m; sourceTree = "<group>"; };
+		F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFulfillmentOrdersViewController.swift; sourceTree = "<group>"; };
 		F2A24AE33003C4D3003AB79D /* PPFulfillmentService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFulfillmentService.h; sourceTree = "<group>"; };
 		F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFulfillmentService.m; sourceTree = "<group>"; };
 		F2A24AE63003C4D3003AB79D /* PPPOSFastSellViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPOSFastSellViewController.h; sourceTree = "<group>"; };
@@ -1494,8 +1493,7 @@
 		F2A24AE53003C4D3003AB79D /* Fulfillment */ = {
 			isa = PBXGroup;
 			children = (
-				F2A24AE13003C4D3003AB79D /* PPFulfillmentOrdersViewController.h */,
-				F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.m */,
+				F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */,
 				F2A24AE33003C4D3003AB79D /* PPFulfillmentService.h */,
 				F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */,
 			);
@@ -2188,7 +2186,7 @@
 				F29C7B042E57E57D00E427DA /* XLFormSubtitleSwitchCell.m in Sources */,
 				F2A24AF83003C4D3003AB79D /* PPProviderApplicationsViewController.m in Sources */,
 				F2A24AF93003C4D3003AB79D /* PPPOSService.m in Sources */,
-				F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.m in Sources */,
+				F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift in Sources */,
 				F2A24AFB3003C4D3003AB79D /* PPPOSHistoryViewController.m in Sources */,
 				F2A24AFC3003C4D3003AB79D /* PPProviderPlansViewController.m in Sources */,
 				F2A24AFD3003C4D3003AB79D /* PPFulfillmentService.m in Sources */,

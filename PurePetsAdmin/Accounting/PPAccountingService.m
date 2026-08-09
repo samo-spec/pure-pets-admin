@@ -1,4 +1,5 @@
 #import "PPAccountingService.h"
+@import FirebaseFirestore;
 @import FirebaseAuth;
 
 @implementation PPAccountingTransaction

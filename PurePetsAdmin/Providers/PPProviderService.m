@@ -1,4 +1,5 @@
 #import "PPProviderService.h"
+@import FirebaseFirestore;
 @import FirebaseAuth;
 @import FirebaseFunctions;
 

@@ -1,5 +1,6 @@
 #import <Foundation/Foundation.h>
-@import FirebaseFirestore;
+
+@protocol FIRListenerRegistration;
 
 NS_ASSUME_NONNULL_BEGIN
 

@@ -679,20 +679,50 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 #pragma mark - Admin Notes
 
 - (NSString *)defaultAdminNoteForOrderID:(NSString *)orderID
-                               nextStatus:(NSString *)nextStatus
+                                  action:(NSString *)action
 {
-    NSString *resolvedOrderID = [self pp_trimmedString:orderID];
-    NSString *resolvedStatus = [self pp_trimmedString:nextStatus];
-    if (resolvedOrderID.length == 0 || resolvedStatus.length == 0) {
+    if ([self pp_trimmedString:orderID].length == 0) {
         return @"";
     }
 
-    NSString *adminUID = [self pp_trimmedString:[self pp_currentAdminUID]];
-    if (adminUID.length == 0) {
-        adminUID = @"admin";
+    NSString *resolvedAction = [[self pp_trimmedString:action] lowercaseString];
+    NSArray<NSString *> *supportedActions = @[
+        @"order_approve",
+        @"order_mark_processing",
+        @"order_mark_ready",
+        @"order_mark_shipped",
+        @"order_mark_in_transit",
+        @"order_mark_delivered",
+        @"order_collect_payment",
+        @"order_mark_completed",
+        @"order_cancel",
+    ];
+    if (![supportedActions containsObject:resolvedAction]) {
+        return @"";
     }
 
-    return [NSString stringWithFormat:@"AD: %@ - %@ - %@", adminUID, resolvedStatus, resolvedOrderID];
+    return [NSString stringWithFormat:@"payment.order.%@", resolvedAction];
+}
+
+- (NSString *)defaultAdminNoteForOrderID:(NSString *)orderID
+                               nextStatus:(NSString *)nextStatus
+{
+    NSString *resolvedStatus = [[self pp_trimmedString:nextStatus] lowercaseString];
+    NSDictionary<NSString *, NSString *> *statusToAction = @{
+        @"paid": @"order_approve",
+        @"processing": @"order_mark_processing",
+        @"ready": @"order_mark_ready",
+        @"shipped": @"order_mark_shipped",
+        @"in_transit": @"order_mark_in_transit",
+        @"delivered": @"order_mark_delivered",
+        @"completed": @"order_mark_completed",
+        @"cancelled": @"order_cancel",
+    };
+    NSString *action = statusToAction[resolvedStatus];
+    if (action.length > 0) {
+        return [self defaultAdminNoteForOrderID:orderID action:action];
+    }
+    return @"";
 }
 
 #pragma mark - Private User Resolution
@@ -800,11 +830,6 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         NSLog(@"PPLAB admin order mutation accepted orderId=%@ action=%@", resolvedOrderID, action);
         [self loadFullRecordForOrderID:resolvedOrderID completion:completion];
     }];
-}
-
-- (NSString *)pp_currentAdminUID
-{
-    return [self pp_trimmedString:[FIRAuth auth].currentUser.uid];
 }
 
 - (BOOL)pp_noteIsAcceptable:(NSString *)note

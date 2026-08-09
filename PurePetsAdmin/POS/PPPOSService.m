@@ -1,4 +1,5 @@
 #import "PPPOSService.h"
+@import FirebaseFirestore;
 @import FirebaseAuth;
 
 @implementation PPPOSCartItem

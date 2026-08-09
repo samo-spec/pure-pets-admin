@@ -20,6 +20,7 @@
 #import "AddAccessoryViewController.h"
 #import "AlertHelper.h"
 #import "PPImageCollectionRow.h"
+#import "PPDesignTokens.h"
 @import Photos;
 @import Firebase;
 @import FirebaseAuth;
@@ -33,6 +34,13 @@ static NSString * const PPMainStoreID = @"main_store";
 static NSString * const PPMainStoreFallbackName = @"Main Store";
 static NSString * const PPMyStoreFallbackName = @"My Store";
 static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
+
+static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
 
 @interface AddAccessoryViewController ()
 
@@ -125,7 +133,9 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
 }
 
 - (void)pp_applyDefaultRowHeight:(XLFormRowDescriptor *)row {
-    row.height = PPAccessoryDefaultRowHeight;
+    row.height = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+        ? MAX(PPAccessoryDefaultRowHeight, PPButtonHeightLG)
+        : PPAccessoryDefaultRowHeight;
 }
 
 - (NSArray<XLFormOptionsObject *> *)pp_storeOptionsForAccessory:(PetAccessory *)accessory {
@@ -644,6 +654,7 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = AppBackgroundClr;
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     [self pp_backfillMissingEditFieldsIfNeeded];
     
@@ -690,9 +701,9 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
     
     // Premium Form TableView Styling
     self.tableView.backgroundColor = AppBackgroundClr;
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleSingleLine;
-    self.tableView.separatorColor = [UIColor colorWithWhite:0 alpha:0.04];
-    self.tableView.contentInset = UIEdgeInsetsMake(12, 0, 30, 0);
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceXXXL, 0);
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
 }
 
 -(void)viewWillAppear:(BOOL)animated
@@ -843,7 +854,14 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
         FIRStorageReference *imgRef = [[storageRef child:@"petAccessories"] child:[NSString stringWithFormat:@"%@.png", uuid]];
         DLog(@"[AddAccessory] uploading image %@", uuid);
 
-        [imgRef putData:data metadata:nil completion:^(FIRStorageMetadata *metadata, NSError *error) {
+        FIRStorageMetadata *storageMetadata = [FIRStorageMetadata new];
+        storageMetadata.contentType = @"image/png";
+        storageMetadata.customMetadata = @{
+            @"uploaded_by": [FIRAuth auth].currentUser.uid ?: @"",
+            @"entity_type": @"accessory",
+            @"media_type": @"image"
+        };
+        [imgRef putData:data metadata:storageMetadata completion:^(FIRStorageMetadata *metadata, NSError *error) {
             if (error) {
                 DLog(@"[AddAccessory] upload error: %@", error.localizedDescription);
                 @synchronized (uploadLock) {
@@ -986,10 +1004,11 @@ static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
     
     UILabel *label = [[UILabel alloc] init];
     label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.font = [UIFont fontWithName:@"Beiruti-Medium" size:13] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+    label.font = PPAccessoryScaledFont([Styling fontMedium:PPFontSubheadline], UIFontTextStyleSubheadline);
     label.textColor = SeconderyTextClr;
     label.text = [section.title uppercaseString];
     label.textAlignment = Language.isRTL ? NSTextAlignmentRight : NSTextAlignmentLeft;
+    label.adjustsFontForContentSizeCategory = YES;
     
     [header addSubview:label];
     
@@ -1013,22 +1032,31 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     [Styling applyBackgroundStyleForTableView:tableView cell:cell indexPath:indexPath useRowCardMode:NO];
 
     // Dynamic Premium Font and Color Overrides for Form Rows
-    cell.textLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:15] ?: [UIFont systemFontOfSize:15];
+    cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    cell.textLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
     cell.textLabel.textColor = PrimaryTextClr;
+    cell.textLabel.adjustsFontForContentSizeCategory = YES;
     
-    cell.detailTextLabel.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+    cell.detailTextLabel.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
     cell.detailTextLabel.textColor = SeconderyTextClr;
+    cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
     
     UITextField *textField = (UITextField *)[self findSubviewOfClass:[UITextField class] inView:cell];
     if (textField) {
-        textField.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+        textField.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
         textField.textColor = PrimaryTextClr;
+        textField.adjustsFontForContentSizeCategory = YES;
+        textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        textField.textAlignment = [Language alignmentForCurrentLanguage];
     }
     
     UITextView *textView = (UITextView *)[self findSubviewOfClass:[UITextView class] inView:cell];
     if (textView) {
-        textView.font = [UIFont fontWithName:@"Beiruti-Regular" size:15] ?: [UIFont systemFontOfSize:15];
+        textView.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
         textView.textColor = PrimaryTextClr;
+        textView.adjustsFontForContentSizeCategory = YES;
+        textView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        textView.textAlignment = [Language alignmentForCurrentLanguage];
     }
     
     UISegmentedControl *segmented = (UISegmentedControl *)[self findSubviewOfClass:[UISegmentedControl class] inView:cell];
@@ -1036,11 +1064,11 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
         segmented.selectedSegmentTintColor = AppPrimaryClr;
         
         NSDictionary *normalAttributes = @{
-            NSFontAttributeName: [UIFont fontWithName:@"Beiruti-Medium" size:13] ?: [UIFont systemFontOfSize:13 weight:UIFontWeightMedium],
+            NSFontAttributeName: PPAccessoryScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote),
             NSForegroundColorAttributeName: SeconderyTextClr
         };
         NSDictionary *selectedAttributes = @{
-            NSFontAttributeName: [UIFont fontWithName:@"Beiruti-Bold" size:13] ?: [UIFont boldSystemFontOfSize:13],
+            NSFontAttributeName: PPAccessoryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote),
             NSForegroundColorAttributeName: [UIColor whiteColor]
         };
         [segmented setTitleTextAttributes:normalAttributes forState:UIControlStateNormal];
@@ -1050,17 +1078,17 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     }
 
     // Spring Staggered Entrance Animation for Form Rows
-    if (!objc_getAssociatedObject(cell, kHasAnimatedFormCellKey)) {
+    if (!UIAccessibilityIsReduceMotionEnabled() && !objc_getAssociatedObject(cell, kHasAnimatedFormCellKey)) {
         objc_setAssociatedObject(cell, kHasAnimatedFormCellKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         
         cell.alpha = 0.0;
         cell.transform = CGAffineTransformMakeTranslation(0, 16.0);
         
-        [UIView animateWithDuration:0.5
+        [UIView animateWithDuration:PPAnimDurationSlow
                               delay:0.03 * indexPath.row
              usingSpringWithDamping:0.85
               initialSpringVelocity:0.0
-                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                            options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                          animations:^{
             cell.alpha = 1.0;
             cell.transform = CGAffineTransformIdentity;

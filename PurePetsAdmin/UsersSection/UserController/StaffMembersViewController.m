@@ -13,10 +13,18 @@
 #import "AdminService.h"
 #import "PPToast.h"
 #import "AlertHelper.h"
+#import "PPDesignTokens.h"
 @import Firebase;
 @import FirebaseAuth;
 
 static NSString * const PPStaffMemberCardCellID = @"PPStaffMemberCardCell";
+
+static UIFont *PPStaffMembersScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
 
 static UIColor *PPStaffMembersSurfaceColor(void) {
     return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
@@ -83,8 +91,9 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 - (instancetype)init {
     if (self = [super init]) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
-        self.font = [Styling fontMedium:12];
+        self.font = PPStaffMembersScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
         self.textAlignment = NSTextAlignmentCenter;
+        self.adjustsFontForContentSizeCategory = YES;
         self.layer.cornerRadius = 13.0;
         self.layer.masksToBounds = YES;
         [NSLayoutConstraint activateConstraints:@[
@@ -126,6 +135,9 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         self.backgroundColor = UIColor.clearColor;
         self.contentView.backgroundColor = UIColor.clearColor;
         self.selectionStyle = UITableViewCellSelectionStyleNone;
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        self.isAccessibilityElement = YES;
+        self.accessibilityTraits = UIAccessibilityTraitButton;
 
         _surfaceView = [[UIView alloc] init];
         _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -152,10 +164,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _titleLabel.font = [Styling fontBold:18];
+        _titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleHeadline);
         _titleLabel.textColor = PPStaffMembersPrimaryTextColor();
         _titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
         _titleLabel.numberOfLines = 1;
+        _titleLabel.adjustsFontForContentSizeCategory = YES;
 
         UIImageSymbolConfiguration *verifiedConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
         _verifiedBadgeView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.seal.fill" withConfiguration:verifiedConfig]];
@@ -166,10 +179,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
         _subtitleLabel = [[UILabel alloc] init];
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _subtitleLabel.font = [Styling fontRegular:13];
+        _subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
         _subtitleLabel.textColor = PPStaffMembersSecondaryTextColor();
         _subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
         _subtitleLabel.numberOfLines = 2;
+        _subtitleLabel.adjustsFontForContentSizeCategory = YES;
 
         _statusTagLabel = [[PPStaffMemberTagLabel alloc] init];
         _adminTagLabel = [[PPStaffMemberTagLabel alloc] init];
@@ -266,10 +280,17 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 - (void)pp_updateInteractionStateHighlighted:(BOOL)highlighted {
     CGFloat scale = highlighted ? 0.985 : 1.0;
     CGFloat alpha = highlighted ? 0.96 : 1.0;
-    [UIView animateWithDuration:0.18 animations:^{
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        self.surfaceView.alpha = alpha;
+        return;
+    }
+    [UIView animateWithDuration:PPAnimDurationFast
+                          delay:0.0
+                        options:UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionCurveEaseOut
+                     animations:^{
         self.surfaceView.transform = CGAffineTransformMakeScale(scale, scale);
         self.surfaceView.alpha = alpha;
-    }];
+    } completion:nil];
 }
 
 - (void)configureWithUser:(UserModel *)user {
@@ -304,6 +325,12 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     if (user.UserImageUrl.absoluteString.length > 0) {
         [self.avatarImageView setImageFromUrl:user.UserImageUrl.absoluteString Blr:NO Shimmering:YES];
     }
+
+    NSString *status = PPStaffMembersStatusText(user);
+    NSString *role = (user.isAdmin || user.isSuperAdmin) ? kLang(@"Role_Admin") : @"";
+    NSArray<NSString *> *parts = @[self.titleLabel.text ?: @"", self.subtitleLabel.text ?: @"", status ?: @"", role ?: @""];
+    self.accessibilityLabel = [[parts filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@", "];
+    self.accessibilityHint = kLang(@"Staff_EditMember_Title");
 }
 
 @end
@@ -359,7 +386,9 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroGlassBG startAnimations];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        [self.heroGlassBG startAnimations];
+    }
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -455,29 +484,37 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     [card addSubview:glassBG];
     self.heroGlassBG = glassBG;
 
-    UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(CGRectGetWidth(card.bounds) - 94.0, 28.0, 72.0, 72.0)];
-    countShell.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
+    BOOL isRTL = [Language isRTL];
+    CGFloat countX = isRTL ? 22.0 : (CGRectGetWidth(card.bounds) - 94.0);
+    UIViewAutoresizing countAutoresizing = isRTL ? UIViewAutoresizingFlexibleRightMargin : UIViewAutoresizingFlexibleLeftMargin;
+    UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(countX, 28.0, 72.0, 72.0)];
+    countShell.autoresizingMask = countAutoresizing;
     countShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.1];
     countShell.layer.cornerRadius = 24.0;
     [card addSubview:countShell];
 
     self.heroCountLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 12.0, CGRectGetWidth(countShell.bounds), 28.0)];
     self.heroCountLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.heroCountLabel.font = [UIFont monospacedDigitSystemFontOfSize:24 weight:UIFontWeightBold];
+    self.heroCountLabel.font = PPStaffMembersScaledFont([UIFont monospacedDigitSystemFontOfSize:24 weight:UIFontWeightBold], UIFontTextStyleTitle2);
     self.heroCountLabel.textColor = PPStaffMembersPrimaryTextColor();
     self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
     self.heroCountLabel.text = @"0";
+    self.heroCountLabel.adjustsFontForContentSizeCategory = YES;
     [countShell addSubview:self.heroCountLabel];
 
     self.heroTotalLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 42.0, CGRectGetWidth(countShell.bounds), 18.0)];
     self.heroTotalLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.heroTotalLabel.font = [UIFont monospacedDigitSystemFontOfSize:12 weight:UIFontWeightMedium];
+    self.heroTotalLabel.font = PPStaffMembersScaledFont([UIFont monospacedDigitSystemFontOfSize:PPFontFootnote weight:UIFontWeightMedium], UIFontTextStyleFootnote);
     self.heroTotalLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.9];
     self.heroTotalLabel.textAlignment = NSTextAlignmentCenter;
     self.heroTotalLabel.text = @"/ 0";
+    self.heroTotalLabel.adjustsFontForContentSizeCategory = YES;
     [countShell addSubview:self.heroTotalLabel];
 
-    UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(22.0, 32.0, 52.0, 52.0)];
+    CGFloat iconX = isRTL ? (CGRectGetWidth(card.bounds) - 74.0) : 22.0;
+    UIViewAutoresizing iconAutoresizing = isRTL ? UIViewAutoresizingFlexibleLeftMargin : UIViewAutoresizingFlexibleRightMargin;
+    UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(iconX, 32.0, 52.0, 52.0)];
+    iconShell.autoresizingMask = iconAutoresizing;
     iconShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.12];
     iconShell.layer.cornerRadius = 18.0;
     [card addSubview:iconShell];
@@ -489,25 +526,25 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     [iconShell addSubview:iconView];
 
-    CGFloat textLeading = CGRectGetMaxX(iconShell.frame) + 16.0;
-    CGFloat textTrailingPadding = 14.0;
-    CGFloat textWidth = MAX(120.0, CGRectGetMinX(countShell.frame) - textLeading - textTrailingPadding);
+    CGFloat textLeading = isRTL ? CGRectGetMaxX(countShell.frame) + 16.0 : CGRectGetMaxX(iconShell.frame) + 16.0;
+    CGFloat textTrailingEdge = isRTL ? CGRectGetMinX(iconShell.frame) - 16.0 : CGRectGetMinX(countShell.frame) - 14.0;
+    CGFloat textWidth = MAX(88.0, textTrailingEdge - textLeading);
     UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, 34.0, textWidth, 32.0)];
-    titleLabel.font = [Styling fontBold:24];
+    titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
     titleLabel.textColor = PPStaffMembersPrimaryTextColor();
     titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
     titleLabel.numberOfLines = 1;
-    titleLabel.adjustsFontSizeToFitWidth = YES;
-    titleLabel.minimumScaleFactor = 0.78;
+    titleLabel.adjustsFontForContentSizeCategory = YES;
     titleLabel.text = kLang(@"StaffMembers_Title");
     [card addSubview:titleLabel];
 
     UILabel *subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, CGRectGetMaxY(titleLabel.frame) + 10.0, textWidth, 40.0)];
     subtitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    subtitleLabel.font = [Styling fontRegular:14];
+    subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
     subtitleLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.9];
     subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
     subtitleLabel.numberOfLines = 2;
+    subtitleLabel.adjustsFontForContentSizeCategory = YES;
     subtitleLabel.text = kLang(@"EditUsersRolePerms_List_Subtitle");
     [card addSubview:subtitleLabel];
 
@@ -518,6 +555,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     self.searchView.textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.searchView.textField.textAlignment = Language.alignmentForCurrentLanguage;
     self.searchView.textField.placeholder = kLang(@"SetPermissions_Search_Placeholder");
+    self.searchView.textField.accessibilityLabel = kLang(@"SetPermissions_Search_Placeholder");
     self.searchView.textField.text = text;
     self.searchView.cornerRadius = 22.0;
     self.searchView.layer.cornerRadius = 22.0;
@@ -580,18 +618,20 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
     UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.font = [Styling fontBold:20];
+    titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleTitle3);
     titleLabel.textColor = PPStaffMembersPrimaryTextColor();
     titleLabel.textAlignment = NSTextAlignmentCenter;
     titleLabel.text = kLang(@"NoUsersFound");
+    titleLabel.adjustsFontForContentSizeCategory = YES;
     [card addSubview:titleLabel];
 
     UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitleLabel.font = [Styling fontRegular:14];
+    subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
     subtitleLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.88];
     subtitleLabel.textAlignment = NSTextAlignmentCenter;
     subtitleLabel.numberOfLines = 2;
+    subtitleLabel.adjustsFontForContentSizeCategory = YES;
     subtitleLabel.text = kLang(@"SetPermissionsSubtitle");
     [card addSubview:subtitleLabel];
 
@@ -660,11 +700,13 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     [self pp_refreshHeroMetrics];
     [self pp_updateEmptyStateVisibility];
     [self.tableView reloadData];
+    UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.searchView ?: self.tableView);
 }
 
 - (void)pp_refreshHeroMetrics {
     self.heroCountLabel.text = [NSString stringWithFormat:@"%lu", (unsigned long)self.filteredStaff.count];
     self.heroTotalLabel.text = [NSString stringWithFormat:@"/ %lu", (unsigned long)self.allStaff.count];
+    self.heroCountLabel.accessibilityLabel = [NSString stringWithFormat:@"%@ %@", self.heroCountLabel.text, kLang(@"StaffMembers_Title")];
 }
 
 - (void)pp_updateEmptyStateVisibility {
@@ -710,9 +752,9 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     cell.contentView.alpha = 0.0;
     cell.contentView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
     NSTimeInterval delay = MIN(indexPath.row, 8) * 0.025;
-    [UIView animateWithDuration:0.32
+    [UIView animateWithDuration:PPAnimDurationNormal
                           delay:delay
-                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                         options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction | UIViewAnimationOptionBeginFromCurrentState
                      animations:^{
         cell.contentView.alpha = 1.0;
         cell.contentView.transform = CGAffineTransformIdentity;

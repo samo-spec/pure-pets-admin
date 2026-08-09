@@ -238,8 +238,9 @@ static UIColor *PPHeroGlassStrokeColor(BOOL darkMode)
     self.userInteractionEnabled = NO;
     self.backgroundColor = UIColor.clearColor;
     self.clipsToBounds = NO;
-    _accentStyle = PPHeroGlassAccentStyleBar;
-    _cornerGlowOpacityMultiplier = 1.0;
+     _accentStyle = PPHeroGlassAccentStyleBar;
+     _cornerGlowOpacityMultiplier = 1.0;
+     _animationsEnabled = YES;
     [self pp_generateConstellationDefinition];
 
     // Card-level chrome: border, shadow, continuous corners
@@ -730,6 +731,11 @@ static UIColor *PPHeroGlassStrokeColor(BOOL darkMode)
 
 - (void)startAnimations
 {
+    if (!self.animationsEnabled) {
+        [self stopAnimations];
+        return;
+    }
+
     if (UIAccessibilityIsReduceMotionEnabled()) {
         [self stopAnimations];
         return;
