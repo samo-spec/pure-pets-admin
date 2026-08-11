@@ -20,10 +20,10 @@
 
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
     if (self = [super initWithStyle:UITableViewCellStyleDefault reuseIdentifier:reuseIdentifier]) {
-        self.backgroundColor = UIColor.systemBackgroundColor;
+        self.backgroundColor = [UIColor ppSurface];
 
         _dot = [UIView new]; _dot.translatesAutoresizingMaskIntoConstraints = NO;
-        _dot.backgroundColor = [UIColor systemRedColor];
+        _dot.backgroundColor = [UIColor ppError];
         _dot.layer.cornerRadius = 4;
 
         _title = [UILabel new]; _title.translatesAutoresizingMaskIntoConstraints = NO;
@@ -31,12 +31,12 @@
 
         _body = [UILabel new]; _body.translatesAutoresizingMaskIntoConstraints = NO;
         _body.font = [UIFont systemFontOfSize:14];
-        _body.textColor = UIColor.secondaryLabelColor;
+        _body.textColor = [UIColor ppTextSecondary];
         _body.numberOfLines = 2;
 
         _time = [UILabel new]; _time.translatesAutoresizingMaskIntoConstraints = NO;
         _time.font = [UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
-        _time.textColor = UIColor.tertiaryLabelColor;
+        _time.textColor = [UIColor ppTextTertiary];
 
         UIStackView *v = [[UIStackView alloc] initWithArrangedSubviews:@[_title, _body, _time]];
         v.translatesAutoresizingMaskIntoConstraints = NO;

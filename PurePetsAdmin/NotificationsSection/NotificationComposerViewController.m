@@ -320,7 +320,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
     nav.modalTransitionStyle = UIModalTransitionStyleCoverVertical;
     nav.modalPresentationCapturesStatusBarAppearance = YES;
-    nav.view.backgroundColor = UIColor.systemBackgroundColor;
+    nav.view.backgroundColor = [UIColor ppSurface];
     nav.modalPresentationStyle = UIModalPresentationPageSheet;
     if (@available(iOS 15.0, *)) {
         UISheetPresentationController *sheet = nav.sheetPresentationController;

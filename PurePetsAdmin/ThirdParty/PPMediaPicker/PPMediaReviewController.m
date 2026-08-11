@@ -24,7 +24,7 @@ static NSString * const reuseIdentifier = @"PPMediaReviewCell";
     [super viewDidLoad];
     
     self.title = @"Review Media";
-    self.collectionView.backgroundColor = [UIColor systemBackgroundColor];
+    self.collectionView.backgroundColor = [UIColor ppBackground];
     [self.collectionView registerClass:[PPMediaReviewCell class] forCellWithReuseIdentifier:reuseIdentifier];
     
     self.collectionView.dragInteractionEnabled = YES;

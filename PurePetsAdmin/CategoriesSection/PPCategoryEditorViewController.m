@@ -108,7 +108,7 @@
         
         UILabel *hintLabel = [[UILabel alloc] init];
         hintLabel.font = PPFontRegular(PPFontCaption1);
-        hintLabel.textColor = [UIColor tertiaryLabelColor];
+        hintLabel.textColor = [UIColor ppTextTertiary];
         hintLabel.text = kLang(@"Category_Editor_Hint");
         hintLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:hintLabel];
@@ -133,7 +133,7 @@
             [hintLabel.trailingAnchor constraintEqualToAnchor:self.previewLabel.trailingAnchor],
         ]];
         
-        card.backgroundColor = [UIColor systemBackgroundColor];
+        card.backgroundColor = [UIColor ppBackground];
     }
     
     UIColor *tintColor = self.category ? [self.category kindColor] : AppPrimaryClr;
@@ -200,7 +200,7 @@
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:@"FieldCell" forIndexPath:indexPath];
     cell.textLabel.font = PPFontRegular(PPFontBody);
-    cell.textLabel.textColor = [UIColor labelColor];
+    cell.textLabel.textColor = [UIColor ppTextPrimary];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     
     UITextField *tf = [cell.contentView viewWithTag:300];
@@ -233,10 +233,10 @@
     
     if (indexPath.section == 1 && indexPath.row == 0) {
         tf.enabled = self.isNew;
-        tf.textColor = self.isNew ? [UIColor labelColor] : [UIColor tertiaryLabelColor];
+        tf.textColor = self.isNew ? [UIColor ppTextPrimary] : [UIColor ppTextTertiary];
     } else {
         tf.enabled = YES;
-        tf.textColor = [UIColor labelColor];
+        tf.textColor = [UIColor ppTextPrimary];
     }
     
     return cell;

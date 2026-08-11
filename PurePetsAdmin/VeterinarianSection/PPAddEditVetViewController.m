@@ -26,15 +26,15 @@ static NSString * const kTagDate        = @"vetAvailableDate";
 static NSString * const kTagKindID      = @"vetPetMainKindID";
 
 static UIColor *PPVetSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPVetBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPVetAccentColor(void) {
-    return AppPrimaryClr ?: UIColor.systemPinkColor;
+    return [UIColor ppPrimary];
 }
 
 @interface PPAddEditVetViewController () <PHPickerViewControllerDelegate, UINavigationControllerDelegate>
@@ -216,7 +216,7 @@ static UIColor *PPVetAccentColor(void) {
 
     UILabel *label = [[UILabel alloc] init];
     label.font = [Styling fontMedium:13];
-    label.textColor = SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    label.textColor = [UIColor ppTextSecondary];
     label.text = title;
     [stack addArrangedSubview:label];
     [stack addArrangedSubview:body];
@@ -229,8 +229,8 @@ static UIColor *PPVetAccentColor(void) {
      style.cardBorderColor = [PPVetAccentColor() colorWithAlphaComponent:0.08];
     style.fieldBorderColor = [PPVetAccentColor() colorWithAlphaComponent:0.10];
     style.accentColor = PPVetAccentColor();
-    style.primaryTextColor = PrimaryTextClr ?: UIColor.labelColor;
-    style.secondaryTextColor = SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    style.primaryTextColor = [UIColor ppTextPrimary];
+    style.secondaryTextColor = [UIColor ppTextSecondary];
     style.cardCornerRadius = 24.0;
     style.fieldCornerRadius = 18.0;
     return style;

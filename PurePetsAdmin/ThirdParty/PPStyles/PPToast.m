@@ -248,10 +248,10 @@
 
 - (UIColor *)backgroundColorForStyle:(PPToastStyle)style {
     switch (style) {
-        case PPToastStyleSuccess: return [UIColor colorWithRed:0.0 green:0.62 blue:0.35 alpha:1.0];
-        case PPToastStyleError:   return [UIColor colorWithRed:0.86 green:0.23 blue:0.21 alpha:1.0];
-        case PPToastStyleInfo:    return [UIColor colorWithRed:0.24 green:0.48 blue:0.82 alpha:1.0];
-        case PPToastStyleWarning: return [UIColor colorWithRed:0.96 green:0.65 blue:0.14 alpha:1.0];
+        case PPToastStyleSuccess: return [UIColor ppSuccess];
+        case PPToastStyleError:   return [UIColor ppError];
+        case PPToastStyleInfo:    return [UIColor ppInfo];
+        case PPToastStyleWarning: return [UIColor ppWarning];
     }
 }
 - (UIColor *)textColorForStyle:(PPToastStyle)style {

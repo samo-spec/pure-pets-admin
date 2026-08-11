@@ -186,7 +186,7 @@ static NSString *const kPickerCell = @"PickerCell";
             valueLabel = [[UILabel alloc] init];
             valueLabel.tag = 400;
             valueLabel.font = PPFontRegular(PPFontBody);
-            valueLabel.textColor = [UIColor secondaryLabelColor];
+            valueLabel.textColor = [UIColor ppTextSecondary];
             valueLabel.textAlignment = NSTextAlignmentNatural;
             valueLabel.translatesAutoresizingMaskIntoConstraints = NO;
             [cell.contentView addSubview:valueLabel];
@@ -202,11 +202,11 @@ static NSString *const kPickerCell = @"PickerCell";
             cell.textLabel.text = kLang(@"Agents_Branch");
             PPBranchModel *selected = [self selectedBranch];
             valueLabel.text = selected ? [selected localizedName] : (self.selectedBranchNameEn ?: kLang(@"Agents_Select_Branch"));
-            valueLabel.textColor = selected ? [UIColor secondaryLabelColor] : [UIColor tertiaryLabelColor];
+            valueLabel.textColor = selected ? [UIColor ppTextSecondary] : [UIColor ppTextTertiary];
         } else {
             cell.textLabel.text = kLang(@"Agents_Role");
             valueLabel.text = [self localizedRoleName:self.selectedRoleIndex];
-            valueLabel.textColor = [UIColor secondaryLabelColor];
+            valueLabel.textColor = [UIColor ppTextSecondary];
         }
         return cell;
     }
@@ -231,7 +231,7 @@ static NSString *const kPickerCell = @"PickerCell";
     
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kFieldCell forIndexPath:indexPath];
     cell.textLabel.font = PPFontRegular(PPFontBody);
-    cell.textLabel.textColor = [UIColor labelColor];
+    cell.textLabel.textColor = [UIColor ppTextPrimary];
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     
     UITextField *tf = [cell.contentView viewWithTag:300];
@@ -261,7 +261,7 @@ static NSString *const kPickerCell = @"PickerCell";
     tf.text = value;
     tf.keyboardType = [self keyboardTypeForKey:key];
     tf.enabled = ![key isEqualToString:@"uid"];
-    tf.textColor = [key isEqualToString:@"uid"] ? [UIColor tertiaryLabelColor] : [UIColor labelColor];
+    tf.textColor = [key isEqualToString:@"uid"] ? [UIColor ppTextTertiary] : [UIColor ppTextPrimary];
     
     return cell;
 }

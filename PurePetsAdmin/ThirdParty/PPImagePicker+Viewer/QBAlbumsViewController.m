@@ -86,7 +86,7 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
         self.navigationController.navigationBar.prefersLargeTitles = NO;
  
         NSDictionary *titleAttributes = @{
-            NSForegroundColorAttributeName: [UIColor labelColor],
+            NSForegroundColorAttributeName: [UIColor ppTextPrimary],
             NSFontAttributeName: [UIFont fontWithName:@"Beiruti-Bold" size:18] ?: [UIFont systemFontOfSize:18 weight:UIFontWeightBold]
         };
         [[UINavigationBar appearance] setTitleTextAttributes:titleAttributes];
@@ -195,7 +195,7 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
     UILabel *lbl = [[UILabel alloc] initWithFrame:pill.bounds];
     lbl.textAlignment = NSTextAlignmentCenter;
     lbl.font = [UIFont fontWithName:@"Beiruti-Bold" size:16];
-    lbl.textColor = UIColor.labelColor;
+    lbl.textColor = [UIColor ppTextPrimary];
 
     if (selectedAssets.count == 0) {
         lbl.text = [NSString stringWithFormat:@"%ld %@", (long)selectedAssets.count,

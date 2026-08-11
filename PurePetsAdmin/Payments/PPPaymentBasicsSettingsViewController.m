@@ -164,7 +164,7 @@ static double PPPaymentBasicsDoubleValue(id value)
     UINavigationBar *navBar = self.navigationController.navigationBar;
     if (!navBar) return;
 
-    navBar.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    navBar.tintColor = [UIColor ppPrimary];
 
     if (@available(iOS 13.0, *)) {
         UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
@@ -209,8 +209,8 @@ static double PPPaymentBasicsDoubleValue(id value)
 {
     if (!self.saveButton) return;
 
-    UIColor *titleColor = PrimaryTextClr ?: UIColor.labelColor;
-    UIColor *borderColor = (AppPrimaryClr ?: UIColor.systemBlueColor);
+    UIColor *titleColor = [UIColor ppTextPrimary];
+    UIColor *borderColor = [UIColor ppPrimary];
     BOOL enabled = !(self.isLoadingSettings || self.isSaving);
 
     [self.saveButton setTitle:kLang(@"PaymentMgmt_Settings_Save") forState:UIControlStateNormal];

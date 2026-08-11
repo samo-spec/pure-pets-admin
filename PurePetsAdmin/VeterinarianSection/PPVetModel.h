@@ -28,12 +28,12 @@ typedef NS_ENUM(NSInteger, PPVetSubscriptionTier) {
 @property (nonatomic, assign) PPVetType type;
 @property (nonatomic, copy)   NSString *userID;
 @property (nonatomic, assign) NSInteger petMainKindID;
-@property (nonatomic, copy)   NSString *logoURL;
-@property (nonatomic, copy)   NSString *title;
-@property (nonatomic, copy)   NSString *descriptionText;
-@property (nonatomic, copy)   NSString *phone;
-@property (nonatomic, copy)   NSString *whatsapp;
-@property (nonatomic, copy)   NSString *blurHash;
+@property (nonatomic, copy, nullable) NSString *logoURL;
+@property (nonatomic, copy, nullable) NSString *title;
+@property (nonatomic, copy, nullable) NSString *descriptionText;
+@property (nonatomic, copy, nullable) NSString *phone;
+@property (nonatomic, copy, nullable) NSString *whatsapp;
+@property (nonatomic, copy, nullable) NSString *blurHash;
 @property (nonatomic, strong, nullable) NSDate *availableDate;
 @property (nonatomic, assign) double vetCost;
 @property (nonatomic, readonly) NSString *name_lowercase;

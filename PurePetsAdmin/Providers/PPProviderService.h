@@ -9,8 +9,19 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *userId;
 @property (nonatomic, copy) NSString *providerType;
 @property (nonatomic, copy) NSString *status;
+@property (nonatomic, copy) NSString *planId;
+@property (nonatomic, copy) NSString *profileId;
+@property (nonatomic, copy) NSString *deliveryCompanyId;
 @property (nonatomic, copy) NSDictionary *form;
+@property (nonatomic, copy) NSDictionary *planSnapshot;
+@property (nonatomic, copy) NSDictionary *userSummary;
+@property (nonatomic, copy, nullable) NSDate *submittedAt;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
+@property (nonatomic, copy, nullable) NSDate *updatedAt;
+@property (nonatomic, copy, nullable) NSDate *reviewedAt;
+@property (nonatomic, copy) NSString *reviewedBy;
+@property (nonatomic, copy) NSString *reviewNotes;
+@property (nonatomic, copy) NSString *rejectionReason;
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
 @end
 
@@ -52,15 +63,18 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPProviderService : NSObject
 + (instancetype)shared;
-- (void)fetchApplicationsWithCompletion:(void(^)(NSArray<PPProviderApplication *> *apps, NSError *error))completion;
-- (void)fetchPlansWithCompletion:(void(^)(NSArray<PPProviderPlan *> *plans, NSError *error))completion;
-- (void)reviewApplication:(NSString *)appID status:(NSString *)status notes:(nullable NSString *)notes completion:(void(^)(NSError *error))completion;
-- (void)savePlan:(NSDictionary *)planData completion:(void(^)(NSString *planID, NSError *error))completion;
-- (void)deletePlan:(NSString *)planID completion:(void(^)(NSError *error))completion;
+- (void)fetchApplicationsWithCompletion:(void(^)(NSArray<PPProviderApplication *> *apps, NSError * _Nullable error))completion;
+- (void)fetchPlansWithCompletion:(void(^)(NSArray<PPProviderPlan *> *plans, NSError * _Nullable error))completion;
+- (void)reviewApplication:(NSString *)appID
+                    status:(NSString *)status
+                     notes:(nullable NSString *)notes
+                 completion:(void(^)(NSDictionary *result, NSError * _Nullable error))completion;
+- (void)savePlan:(NSDictionary *)planData completion:(void(^)(NSString *planID, NSError * _Nullable error))completion;
+- (void)deletePlan:(NSString *)planID completion:(void(^)(NSError * _Nullable error))completion;
 - (void)fetchCommissionReportForProviderID:(NSString *)providerID
                                 completion:(void(^)(NSArray<PPProviderCommissionRecord *> *records,
                                                      NSArray<NSDictionary *> *totals,
-                                                     NSError *error))completion;
+                                                      NSError * _Nullable error))completion;
 @end
 
 NS_ASSUME_NONNULL_END

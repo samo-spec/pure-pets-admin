@@ -150,7 +150,7 @@
     // Action buttons
     NSArray *icons    = @[@"phone.fill", @"message.fill", @"square.and.pencil", @"creditcard.circle"];
     NSArray *actions  = @[@"callTapped", @"whatsappTapped", @"editTapped", @"subscriptionTapped"];
-    NSArray *colors   = @[UIColor.systemGreenColor, UIColor.systemTealColor, UIColor.systemBlueColor, AppPrimaryClr];
+    NSArray *colors   = @[[UIColor ppSuccess], [UIColor ppQuickActionServices], [UIColor ppInfo], [UIColor ppPrimary]];
 
     CGFloat btnSize = 44;
     CGFloat spacing = 24;

@@ -154,9 +154,9 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
 - (void)setupStatsHeader {
     self.totalPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Total") accentColor:AppPrimaryClr];
-    self.livePill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Live") accentColor:UIColor.systemGreenColor];
-    self.reviewPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Review") accentColor:UIColor.systemOrangeColor];
-    self.archivedPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Archived") accentColor:UIColor.systemGrayColor];
+    self.livePill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Live") accentColor:[UIColor ppSuccess]];
+    self.reviewPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Review") accentColor:[UIColor ppWarning]];
+    self.archivedPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Archived") accentColor:[UIColor ppTextSecondary]];
 
     self.statsStack = [[UIStackView alloc] initWithArrangedSubviews:@[
         self.totalPill,
@@ -1006,7 +1006,7 @@ contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath
         [weakSelf editServiceAtIndexPath:indexPath];
         handler(YES);
     }];
-    editAction.backgroundColor = UIColor.systemBlueColor;
+    editAction.backgroundColor = [UIColor ppInfo];
     editAction.image = [UIImage systemImageNamed:@"pencil.circle.fill"];
 
     UIContextualAction *moderateAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:nil handler:^(__unused UIContextualAction * _Nonnull action, __unused UIView * _Nonnull sourceView, void (^ _Nonnull handler)(BOOL)) {
@@ -1020,7 +1020,7 @@ contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath
         [weakSelf toggleBlockedAtIndexPath:indexPath];
         handler(YES);
     }];
-    blockAction.backgroundColor = service.isBlocked ? UIColor.systemGreenColor : UIColor.systemOrangeColor;
+    blockAction.backgroundColor = service.isBlocked ? [UIColor ppSuccess] : [UIColor ppWarning];
     blockAction.image = [UIImage systemImageNamed:(service.isBlocked ? @"lock.open.fill" : @"hand.raised.fill")];
 
     UISwipeActionsConfiguration *config = [UISwipeActionsConfiguration configurationWithActions:@[blockAction, moderateAction, editAction]];
@@ -1036,7 +1036,7 @@ contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath
         [weakSelf toggleArchivedAtIndexPath:indexPath];
         handler(YES);
     }];
-    archiveAction.backgroundColor = service.isDeleted ? UIColor.systemGreenColor : UIColor.systemRedColor;
+    archiveAction.backgroundColor = service.isDeleted ? [UIColor ppSuccess] : [UIColor ppError];
     archiveAction.image = [UIImage systemImageNamed:(service.isDeleted ? @"arrow.uturn.backward.circle.fill" : @"archivebox.circle.fill")];
 
     UISwipeActionsConfiguration *config = [UISwipeActionsConfiguration configurationWithActions:@[archiveAction]];

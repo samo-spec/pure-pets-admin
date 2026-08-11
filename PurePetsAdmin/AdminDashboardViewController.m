@@ -12,7 +12,7 @@
 #import "PPBannersListVC.h"
 #import "PPPaymentManagementViewController.h"
 #import "PPPaymentBasicsSettingsViewController.h"
-#import "PPVetsListViewController.h"
+// Legacy PPVetsListViewController replaced by SwiftUI PPVetsListHostingController
 #import "PPServicesListViewController.h"
 #import "PPAdminWebAppViewController.h"
 #import "AccessoriesListViewController.h"
@@ -128,7 +128,7 @@ static UIColor *PPAdminDashboardResolvedColor(UIColor *color, UITraitCollection 
 
 static UIColor *PPAdminDashboardHeroSignatureColor(UITraitCollection *traits) {
     (void)traits;
-    return AppPrimaryClr ?: AppSecondaryClr;
+    return AppPrimaryClr;
 }
 
 static UIColor *PPAdminDashboardHeroInkColor(void) {
@@ -169,7 +169,7 @@ static UIColor *PPAdminDashboardHeroControlColor(UITraitCollection *traits) {
 
 static UIColor *PPAdminDashboardHeroCriticalTintColor(UITraitCollection *traits) {
     (void)traits;
-    return AppPrimaryClrDarker ?: AppPrimaryClr ?: AppSecondaryClr;
+    return AppPrimaryClrDarker;
 }
 
 static UIFont *PPAdminDashboardScaledFont(UIFont *font, UIFontTextStyle textStyle) {
@@ -183,7 +183,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return AppPrimaryClr;
     }
     if ([tag isEqualToString:@"accessories"] || [tag isEqualToString:@"food"] || [tag isEqualToString:@"livePets"]) {
-        return AppSecondaryClr ?: AppPrimaryClr;
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"services"]) {
         return AppSecondaryClr;
@@ -195,7 +195,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"banners"]) {
-        return AppPrimaryClrDarker ?: AppPrimaryClr;
+        return AppPrimaryClrDarker;
     }
     if ([tag isEqualToString:@"payments"] || [tag isEqualToString:@"paymentBasics"]) {
         return AppSecondaryClr;
@@ -207,7 +207,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"homeControl"]) {
-        return AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
+        return AppPrimaryClrShiner;
     }
     if ([tag isEqualToString:@"fulfillment"]) {
         return AppPrimaryClr;
@@ -216,16 +216,16 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"accounting"]) {
-        return AppSecondaryClr ?: AppPrimaryClr;
+        return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"providers"]) {
-        return AppPrimaryClrDarker ?: AppPrimaryClr;
+        return AppPrimaryClrDarker;
     }
     if ([tag isEqualToString:@"pos"] || [tag isEqualToString:@"posHistory"]) {
-        return AppPrimaryClrDarker ?: AppSecondaryClr ?: AppPrimaryClr;
+        return AppPrimaryClrDarker;
     }
     if ([tag isEqualToString:@"moderation"]) {
-        return AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
+        return AppPrimaryClrShiner;
     }
     if ([tag isEqualToString:@"audit"]) {
         return AppPrimaryClrDarker;
@@ -290,8 +290,8 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
     BOOL isDark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
     UIColor *canvas = PPAdminDashboardCanvasColor(self.traitCollection);
     UIColor *secondary = AppBackgroundClrDarker;
-    UIColor *signature = AppPrimaryClr ?: AppSecondaryClr;
-    UIColor *warm = AppPrimaryClrShiner ?: AppSecondaryClr ?: AppPrimaryClr;
+    UIColor *signature = AppPrimaryClr;
+    UIColor *warm = AppPrimaryClrShiner;
 
     self.backgroundColor = canvas;
     self.baseLayer.colors = @[(id)canvas.CGColor, (id)secondary.CGColor, (id)canvas.CGColor];
@@ -1841,7 +1841,7 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         return [PPServicesListViewController new];
     }
     if ([tag isEqualToString:@"vets"]) {
-        return [PPVetsListViewController new];
+        return [PPVetsListHostingController new];
     }
     if ([tag isEqualToString:@"branches"]) {
         return [PPBranchesViewController new];

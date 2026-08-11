@@ -6,6 +6,7 @@
 //
 
 #import "PPFormEngine.h"
+#import "PPDesignTokens.h"
 
 static CGFloat PPFormPixel(void) {
     return 1.0 / UIScreen.mainScreen.scale;
@@ -33,15 +34,15 @@ static NSTextAlignment PPFormEngineTextAlignment(void) {
 + (instancetype)defaultStyle {
     PPFormStyle *style = [[PPFormStyle alloc] init];
 
-    style.cardBackgroundColor = UIColor.whiteColor;
-    style.fieldBackgroundColor = [[UIColor colorWithWhite:0.96 alpha:1.0] colorWithAlphaComponent:0.42];
-    style.accentColor = AppPrimaryClr;
-    style.primaryTextColor = [UIColor colorWithWhite:0.08 alpha:1.0];
-    style.secondaryTextColor = [UIColor colorWithWhite:0.43 alpha:1.0];
-    style.errorColor = UIColor.systemRedColor;
-    style.cardBorderColor = [[UIColor colorWithWhite:0.43 alpha:1.0] colorWithAlphaComponent:0.075];
-    style.fieldBorderColor = [UIColor.systemTealColor colorWithAlphaComponent:0.09];
-    style.shadowColor = UIColor.blackColor;
+    style.cardBackgroundColor = [UIColor ppSurface];
+    style.fieldBackgroundColor = [[UIColor ppSurfaceOverlay] colorWithAlphaComponent:0.42];
+    style.accentColor = [UIColor ppPrimary];
+    style.primaryTextColor = [UIColor ppTextPrimary];
+    style.secondaryTextColor = [UIColor ppTextSecondary];
+    style.errorColor = [UIColor ppError];
+    style.cardBorderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.75];
+    style.fieldBorderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.09];
+    style.shadowColor = [UIColor ppShadow];
 
     style.titleFont = [Styling fontBold:12.5];
     style.inputFont = [Styling fontMedium:12.5];
@@ -587,7 +588,7 @@ static NSTextAlignment PPFormEngineTextAlignment(void) {
     self.attachmentRemoveButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.attachmentRemoveButton.hidden = YES;
     [self.attachmentRemoveButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
-    self.attachmentRemoveButton.tintColor = [UIColor.systemRedColor colorWithAlphaComponent:0.72];
+    self.attachmentRemoveButton.tintColor = [[UIColor ppError] colorWithAlphaComponent:0.72];
     [self.attachmentRemoveButton addTarget:self action:@selector(pp_removeAttachmentTapped) forControlEvents:UIControlEventTouchUpInside];
     [stack addArrangedSubview:self.attachmentRemoveButton];
     [self.attachmentRemoveButton.widthAnchor constraintEqualToConstant:28.0].active = YES;

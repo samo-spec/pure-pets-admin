@@ -53,7 +53,7 @@ static const CGSize kShadowOffset = {0, 2};
 
 - (void)commonInit {
     // Setup appearance
-    self.backgroundColor = [UIColor secondarySystemBackgroundColor];
+    self.backgroundColor = [UIColor ppSurface];
     self.layer.cornerRadius = kItemCornerRadius;
     
     // For continuous corner curve (iOS 13+), we need to check availability
@@ -85,14 +85,14 @@ static const CGSize kShadowOffset = {0, 2};
     // Create title label
     self.titleLabel = [[UILabel alloc] init];
     self.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
-    self.titleLabel.textColor = [UIColor labelColor];
+    self.titleLabel.textColor = [UIColor ppTextPrimary];
     self.titleLabel.textAlignment = NSTextAlignmentCenter;
     [self.contentStackView addArrangedSubview:self.titleLabel];
     
     // Create subtitle label
     self.subtitleLabel = [[UILabel alloc] init];
     self.subtitleLabel.font = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
-    self.subtitleLabel.textColor = [UIColor secondaryLabelColor];
+    self.subtitleLabel.textColor = [UIColor ppTextSecondary];
     self.subtitleLabel.textAlignment = NSTextAlignmentCenter;
     [self.contentStackView addArrangedSubview:self.subtitleLabel];
     
@@ -116,11 +116,11 @@ static const CGSize kShadowOffset = {0, 2};
     
     void (^updateBlock)(void) = ^{
         if (selected) {
-            self.backgroundColor = [UIColor systemBackgroundColor];
+            self.backgroundColor = [UIColor ppBackground];
             self.layer.shadowOpacity = kShadowOpacity * 2;
             self.transform = CGAffineTransformMakeScale(1.05, 1.05);
         } else {
-            self.backgroundColor = [UIColor secondarySystemBackgroundColor];
+            self.backgroundColor = [UIColor ppSurface];
             self.layer.shadowOpacity = kShadowOpacity;
             self.transform = CGAffineTransformIdentity;
         }
@@ -181,7 +181,7 @@ static const CGSize kShadowOffset = {0, 2};
 
 - (void)commonInit {
     // Setup bar appearance
-    self.backgroundColor = [UIColor systemBackgroundColor];
+    self.backgroundColor = [UIColor ppBackground];
     
     // Setup stack view for items
     self.stackView = [[UIStackView alloc] init];
@@ -193,10 +193,10 @@ static const CGSize kShadowOffset = {0, 2};
     [self addSubview:self.stackView];
     
     // Set default appearance
-    _itemTintColor = [UIColor systemBlueColor];
-    _selectedItemTintColor = [UIColor systemBlueColor];
-    _titleColor = [UIColor labelColor];
-    _subtitleColor = [UIColor secondaryLabelColor];
+    _itemTintColor = [UIColor ppPrimary];
+    _selectedItemTintColor = [UIColor ppPrimary];
+    _titleColor = [UIColor ppTextPrimary];
+    _subtitleColor = [UIColor ppTextSecondary];
     _titleFont = [UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];
     _subtitleFont = [UIFont systemFontOfSize:12 weight:UIFontWeightRegular];
     

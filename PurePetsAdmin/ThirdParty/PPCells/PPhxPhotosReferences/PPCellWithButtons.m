@@ -59,20 +59,31 @@
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier {
     if (self = [super initWithStyle:style reuseIdentifier:reuseIdentifier ?: PPCellWithButtons.reuseIdentifier]) {
         self.selectionStyle = UITableViewCellSelectionStyleNone;
+        self.backgroundColor = UIColor.clearColor;
+        self.contentView.backgroundColor = UIColor.clearColor;
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
         _stockOverlayView = [[UIView alloc] init];
         _stockOverlayView.translatesAutoresizingMaskIntoConstraints = NO;
         _stockOverlayView.userInteractionEnabled = NO;
         _stockOverlayView.backgroundColor = UIColor.clearColor;
-        _stockOverlayView.hidden = YES;
-        _stockOverlayView.layer.cornerRadius = 12.0;
-        _stockOverlayView.clipsToBounds = YES;
+        _stockOverlayView.hidden = NO;
+        _stockOverlayView.backgroundColor = [UIColor ppElevatedSurface];
+        _stockOverlayView.layer.cornerRadius = 22.0;
+        _stockOverlayView.layer.cornerCurve = kCACornerCurveContinuous;
+        _stockOverlayView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        _stockOverlayView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.72].CGColor;
+        _stockOverlayView.layer.shadowColor = [UIColor ppShadow].CGColor;
+        _stockOverlayView.layer.shadowOpacity = 0.045;
+        _stockOverlayView.layer.shadowOffset = CGSizeMake(0, 7);
+        _stockOverlayView.layer.shadowRadius = 16;
+        _stockOverlayView.clipsToBounds = NO;
         [self.contentView addSubview:_stockOverlayView];
         [NSLayoutConstraint activateConstraints:@[
-            [_stockOverlayView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:4],
-            [_stockOverlayView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-4],
-            [_stockOverlayView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
-            [_stockOverlayView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8]
+            [_stockOverlayView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6],
+            [_stockOverlayView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6],
+            [_stockOverlayView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
+            [_stockOverlayView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16]
         ]];
         
         self.circleView = [self pp_circleShadowView];
@@ -91,32 +102,36 @@
         
         _titleLabel = [[PaddedLabel alloc] init];
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _titleLabel.font = [Styling fontBold:16];
+        _titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[Styling fontBold:16]];
         _titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
         // Default appearance to ensure visibility
         _titleLabel.numberOfLines = 2;
         _titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-        _titleLabel.textColor = PrimaryTextClr ?: [UIColor labelColor];
+        _titleLabel.textColor = [UIColor ppTextPrimary];
+        _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.backgroundColor = UIColor.clearColor;
 #ifdef DEBUG
         // Temporary visual debug: translucent yellow background and thin red border
-        //_titleLabel.backgroundColor = [[UIColor systemYellowColor] colorWithAlphaComponent:0.20];
-        //_titleLabel.layer.borderColor = [UIColor systemRedColor].CGColor;
+        //_titleLabel.backgroundColor = [[UIColor ppWarning] colorWithAlphaComponent:0.20];
+        //_titleLabel.layer.borderColor = [UIColor ppError].CGColor;
         //_titleLabel.layer.borderWidth = 0.6;
 #endif
         
         _subtitleLabel = [[PaddedLabel alloc] init];
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _subtitleLabel.font = [Styling fontMedium:14];
+        _subtitleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline] scaledFontForFont:[Styling fontMedium:14]];
         _subtitleLabel.textColor = SeconderyTextClr;
         _subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+        _subtitleLabel.numberOfLines = 2;
+        _subtitleLabel.adjustsFontForContentSizeCategory = YES;
         
         _detailLabel = [[PaddedLabel alloc] init];
         _detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _detailLabel.font = [Styling fontMedium:13]; // smaller than subtitle
-        _detailLabel.textColor = UIColor.systemGrayColor;
+        _detailLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote] scaledFontForFont:[Styling fontMedium:12]];
+        _detailLabel.textColor = [UIColor ppTextSecondary];
         _detailLabel.textAlignment = Language.alignmentForCurrentLanguage;
         _detailLabel.numberOfLines = 1;
+        _detailLabel.adjustsFontForContentSizeCategory = YES;
 
         [self.contentView addSubview:_detailLabel];
         
@@ -153,7 +168,7 @@
         [NSLayoutConstraint activateConstraints:@[
             // Avatar position and size
             
-            [_circleView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:pad],
+            [_circleView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:28],
             [_circleView.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
             [_circleView.widthAnchor constraintEqualToConstant:avatarSize],
             [_circleView.heightAnchor constraintEqualToConstant:avatarSize],
@@ -184,21 +199,22 @@
                 [_detailLabel.topAnchor constraintEqualToAnchor:_subtitleLabel.bottomAnchor constant:2],
                 
                 // Pin detail to bottom instead of subtitle
+                [_detailLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.contentView.trailingAnchor constant:-24],
                 [_detailLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-pad],
                 
                 [_subtitleLabel.heightAnchor constraintEqualToConstant:26.0],
                 
         ]];
-        [_titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:avatarSize+24].active=YES;
-         [_titleLabel.widthAnchor constraintEqualToAnchor:self.contentView.widthAnchor constant:-36].active=YES;
-        [_titleLabel.heightAnchor constraintEqualToConstant:20].active=YES;
+        [_titleLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:avatarSize+40].active = YES;
+        [_titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.contentView.trailingAnchor constant:-24].active = YES;
+        [_titleLabel.heightAnchor constraintGreaterThanOrEqualToConstant:20].active = YES;
       
         
         _suplabelTrailingToContent    = [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.contentView.trailingAnchor constant:-doubleButtonPad];
         _suplabelTrailingToFirst      = [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_firstButton.leadingAnchor constant:-labelToButtonSpacing];
         _suplabelTrailingToSecond   = [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_secondButton.leadingAnchor constant:-labelToButtonSpacing];
         // Match subtitle trailing to give space for accessory buttons
-        _suplabelTrailingToContent.constant = -72.0;
+        _suplabelTrailingToContent.constant = -24.0;
         
         
         
@@ -235,8 +251,9 @@
     
    
     self.contentView.backgroundColor=UIColor.clearColor;
-    self.stockOverlayView.hidden = YES;
-    self.stockOverlayView.backgroundColor = UIColor.clearColor;
+    self.stockOverlayView.hidden = NO;
+    self.stockOverlayView.backgroundColor = [UIColor ppElevatedSurface];
+    self.stockOverlayView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.72].CGColor;
     _detailLabel.numberOfLines = 1;
     _detailLabel.lineBreakMode = NSLineBreakByTruncatingTail;
     [_detailLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow
@@ -366,11 +383,10 @@
         self.secondButton.tintColor = SeconderyTextClr;
         
         _titleLabel.text = acees.name.length ? acees.name : @"-";
-        // PrimaryTextClr may be colorNamed and return nil; fallback to labelColor
-        UIColor *titleColor = (PrimaryTextClr != nil) ? PrimaryTextClr : [UIColor labelColor];
+        UIColor *titleColor = [UIColor ppTextPrimary];
 #ifdef DEBUG
         // In debug, force a vivid color to help visual debugging
-        titleColor = [UIColor systemRedColor];
+        titleColor = [UIColor ppError];
 #endif
         _titleLabel.textColor = titleColor;
         _titleLabel.hidden = NO;
@@ -388,7 +404,7 @@
         NSInteger qty = MAX(0, acees.quantity);
         UIColor *overlayColor = nil;
         if (qty <= 0) {
-            overlayColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.12];
+            overlayColor = [[UIColor ppError] colorWithAlphaComponent:0.12];
         } else if (qty <= 5) {
             // Use a subtle foreground overlay for low stock
             overlayColor = [AppForgroundColr colorWithAlphaComponent:1];
@@ -402,7 +418,7 @@
         _subtitleLabel.text = [NSString stringWithFormat:@"%@: %ld", kLang(@"Qty"), (long)qty];
        
        
-        _subtitleLabel.textColor = qty == 0 ? SeconderyTextClr : UIColor.secondaryLabelColor;
+        _subtitleLabel.textColor = qty == 0 ? [UIColor ppTextSecondary] : [UIColor ppTextSecondary];
         _subtitleLabel.backgroundColor = AppClearClr;
         _subtitleLabel.layer.cornerRadius =  13;
         _subtitleLabel.clipsToBounds = YES;
@@ -432,13 +448,15 @@
     // Rounded full
     v.layer.cornerRadius = size / 2.0;
     v.clipsToBounds = NO; // keep shadow visible
-    v.backgroundColor = AppForgroundColr ?: [UIColor whiteColor];
+    v.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.08];
+    v.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    v.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.18].CGColor;
     
     // Shadow
-    v.layer.shadowColor = [UIColor colorWithWhite:0 alpha:0.25].CGColor;
-    v.layer.shadowOpacity = 0.25;
+    v.layer.shadowColor = [UIColor ppShadow].CGColor;
+    v.layer.shadowOpacity = 0.06;
     v.layer.shadowOffset = CGSizeMake(0, 4);
-    v.layer.shadowRadius = 6.0;
+    v.layer.shadowRadius = 12.0;
     
     // Optional: improve shadow performance
     v.layer.shadowPath = [UIBezierPath bezierPathWithOvalInRect:v.bounds].CGPath;

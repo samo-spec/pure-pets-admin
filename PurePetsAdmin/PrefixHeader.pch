@@ -43,7 +43,6 @@
 #import "AppManager.h"
 #import "Styling.h"
 #import "PPDesignTokens.h"
-#import "PurePetsColorPattle.h"
 #import "PPThemeRefresh.h"
 #import "UIView.h"
 #import "UIImageView.h"
@@ -189,24 +188,6 @@
 
 // ===== Localization =====
 //#define kLang(key) NSLocalizedString((key), nil)
-
-// ===== Colors =====
-#define AppBackgroundClrShiner         PPElevatedSurfaceColor()
-#define AppBackgroundClrDarker         PPDisabledFillColor()
-#define AppPrimaryClr                  PPPrimaryColor()
-#define AppPrimaryClrDarker            PPPrimaryPressedColor()
-#define AppPrimaryClrShiner            PPPrimaryContainerColor()
-#define AppSecondaryClr                PPSecondaryAccentColor()
-#define AppBackgroundClr               PPBackgroundColor()
-#define PrimaryTextClr                 PPTextPrimaryColor()
-#define SeconderyTextClr               PPTextSecondaryColor()
-#define AppForgroundColr               PPSurfaceColor()
-#define AppShadowColor                 PPDeepCharcoalColor()
-#define AppShadowClr                   AppShadowColor
-#define AppPrimaryTextClr              PrimaryTextClr
-#define AppClearClr                    PPColorFromRGB(0x000000, 0.0)
-#define AppPrimaryClr_CG               AppPrimaryClr.CGColor
-#define AppPrimaryClrWithAlpha(alpha)  [AppPrimaryClr colorWithAlphaComponent:(alpha)]
 
 // Heights are dynamic — compute them when you need them.
 // Call after the view is on screen (e.g. viewDidLayoutSubviews / viewDidAppear).

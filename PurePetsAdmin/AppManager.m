@@ -344,16 +344,15 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
         __strong typeof(weakSelf) self = weakSelf; if (!self) return;
 
         if (error) {
-            DLog(@"[AdminAccess] ❌ UsersCol access read failed: %@", error.localizedDescription);
+            DLog(@"[AdminAccess] ❌ canonical staff_users access read failed: %@", error.localizedDescription);
             if (completion) completion(NO);
             return;
         }
 
         BOOL allowed = staffDoc.canAccessStaffWorkspace;
         [PPStaffAuth shared].cachedCurrentStaff = allowed ? staffDoc : nil;
-        DLog(@"[AdminAccess] %@ via UsersCol accountType=%@ role=%@ status=%@",
+        DLog(@"[AdminAccess] %@ via canonical staff_users role=%@ status=%@",
              allowed ? @"✅ Allowed" : @"❌ Denied",
-             staffDoc.accountType ?: @"",
              staffDoc.role ?: @"",
              staffDoc.status ?: @"");
         if (completion) completion(allowed);

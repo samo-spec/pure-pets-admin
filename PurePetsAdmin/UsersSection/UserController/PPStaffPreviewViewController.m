@@ -11,23 +11,23 @@
 static NSString * const PPPreviewStaffCellID = @"PPPreviewStaffCell";
 
 static UIColor *PPStaffPreviewSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPStaffPreviewBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPStaffPreviewPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPStaffPreviewPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPStaffPreviewSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static UIColor *PPStaffPreviewBorderColor(void) {
@@ -175,7 +175,7 @@ static UIColor *PPStaffPreviewBorderColor(void) {
     self.titleLabel.text = staff.uid.length ? staff.uid : @"-";
     self.subtitleLabel.text = [PPStaffAuth localizedRoleName:staff.role] ?: staff.role;
     BOOL active = staff.isActive;
-    UIColor *statusColor = active ? UIColor.systemGreenColor : UIColor.systemRedColor;
+    UIColor *statusColor = active ? [UIColor ppSuccess] : [UIColor ppError];
     self.statusLabel.text = active ? kLang(@"Active") : kLang(@"Disabled");
     self.statusLabel.textColor = statusColor;
     self.statusLabel.backgroundColor = [statusColor colorWithAlphaComponent:0.12];
@@ -483,7 +483,7 @@ static UIColor *PPStaffPreviewBorderColor(void) {
     CGFloat w = self.view.bounds.size.width - pad * 2;
 
     BOOL isActive = staff.isActive;
-    UIColor *statusColor = isActive ? UIColor.systemGreenColor : UIColor.systemRedColor;
+    UIColor *statusColor = isActive ? [UIColor ppSuccess] : [UIColor ppError];
     NSString *statusText = isActive ? kLang(@"Active") : kLang(@"Disabled");
     NSString *scopeText = kLang(@"Staff_Scope_Global");
     if (staff.scope && [staff.scope isKindOfClass:NSDictionary.class] && staff.scope.count > 0) {
@@ -721,8 +721,8 @@ static UIColor *PPStaffPreviewBorderColor(void) {
     for (NSString *perm in mod.requiredPerms) {
         BOOL granted = [self.selectedStaff hasPermission:perm];
         NSString *label = [self pp_localizedPermissionName:perm];
-        UIColor *bg = granted ? [UIColor.systemGreenColor colorWithAlphaComponent:0.15] : [UIColor.systemRedColor colorWithAlphaComponent:0.1];
-        UIColor *fg = granted ? UIColor.systemGreenColor : UIColor.systemRedColor;
+        UIColor *bg = granted ? [[UIColor ppSuccess] colorWithAlphaComponent:0.15] : [[UIColor ppError] colorWithAlphaComponent:0.1];
+        UIColor *fg = granted ? [UIColor ppSuccess] : [UIColor ppError];
 
         UILabel *tag = [[UILabel alloc] initWithFrame:CGRectMake(px, py, 0, tagH)];
         tag.text = label;

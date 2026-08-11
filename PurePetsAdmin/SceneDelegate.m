@@ -122,7 +122,26 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
           self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
      }
 
-     __weak typeof(self) weakSelf = self;
+#if !PP_ADMIN_LEGACY_ROOT
+     // The Command Center owns the authenticated root in every normal build.
+     // The legacy root remains an explicit compile-time rollback seam only.
+     {
+          AdminAppRootHostingController *adminRoot = [AdminAppRootHostingController new];
+          self.window.rootViewController = adminRoot;
+          [self.window makeKeyAndVisible];
+          [[NSNotificationCenter defaultCenter] addObserver:self
+                                                   selector:@selector(pp_handlePaymentOrderRouteNotification:)
+                                                       name:PPAdminRouteToPaymentOrderNotification
+                                                     object:nil];
+          NSString *pendingOrderID = PPAdminNotificationOrderIDFromUserInfo(connectionOptions.notificationResponse.notification.request.content.userInfo);
+          if (pendingOrderID.length > 0) {
+               [adminRoot routeToPaymentOrderID:pendingOrderID];
+           }
+           return;
+     }
+#else
+
+      __weak typeof(self) weakSelf = self;
      [[FUManager shared] startAuthListenerWithChangeBlock:^(FIRUser * _Nullable authUser,
                                                             UserModel * _Nullable userModel) {
           (void)userModel;
@@ -154,9 +173,9 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      NSString *pendingOrderID = PPAdminNotificationOrderIDFromUserInfo(connectionOptions.notificationResponse.notification.request.content.userInfo);
      if (pendingOrderID.length > 0) {
           self.pp_pendingPaymentOrderID = pendingOrderID;
-     }
-     [self handleAuthChange]; // set initial root
-     
+      }
+      [self handleAuthChange]; // set initial root
+#endif
      
      
      
@@ -248,8 +267,8 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      UITabBarController *tabBarController = [[UITabBarController alloc] init];
      tabBarController.viewControllers = @[dashNav, chatsNav, notifNav, settingsNav];
      
-     UIColor *tintColor = AppPrimaryClr ?: [UIColor colorWithRed:0.20 green:0.66 blue:0.48 alpha:1.0];
-     UIColor *unselectedColor = [UIColor.labelColor colorWithAlphaComponent:0.4];
+     UIColor *tintColor = AppPrimaryClr;
+     UIColor *unselectedColor = [[UIColor ppTextSecondary] colorWithAlphaComponent:0.72];
 
      NSDictionary *normalAttrs = @{
           NSFontAttributeName: [Styling fontMedium:10.0],
@@ -414,6 +433,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 #pragma mark - Language
 
 - (void)reloadRootViewControllerForLanguageChange {
+     if ([self.window.rootViewController isKindOfClass:AdminAppRootHostingController.class]) {
+          [(AdminAppRootHostingController *)self.window.rootViewController refreshForLanguageChange];
+          return;
+     }
      //UISemanticContentAttribute attr = [Language semanticAttributeForCurrentLanguage];
      //[UIView appearance].semanticContentAttribute = attr;
      //[UINavigationBar appearance].semanticContentAttribute = attr;
@@ -451,6 +474,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
 {
      NSString *orderID = PPAdminNotificationTrimmedString(notification.userInfo[PPAdminRouteToPaymentOrderIDUserInfoKey]);
      if (orderID.length == 0) return;
+     if ([self.window.rootViewController isKindOfClass:AdminAppRootHostingController.class]) {
+          [(AdminAppRootHostingController *)self.window.rootViewController routeToPaymentOrderID:orderID];
+          return;
+     }
      self.pp_pendingPaymentOrderID = orderID;
      [self pp_tryHandlePendingPaymentOrderRouteAnimated:YES];
 }

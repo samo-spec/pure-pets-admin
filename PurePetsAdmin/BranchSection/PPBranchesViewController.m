@@ -9,6 +9,7 @@
 
 #import "PPBranchesViewController.h"
 #import "PPBranchEditorViewController.h"
+#import "PPHero.h"
 @import Firebase;
 @import FirebaseFirestore;
 @import FirebaseAuth;
@@ -44,7 +45,7 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 #pragma mark - PPBranchHeroView
 
 @interface PPBranchHeroView : UIView
-@property (nonatomic, strong) CAGradientLayer *gradient;
+@property (nonatomic, strong) PPHero *heroBackground;
 @property (nonatomic, strong) UIImageView *glyphView;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
@@ -57,32 +58,38 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
 - (instancetype)initWithFrame:(CGRect)frame {
     if (self = [super initWithFrame:frame]) {
-        _gradient = [CAGradientLayer layer];
-        _gradient.colors = @[(__bridge id)AppPrimaryClr.CGColor,
-                             (__bridge id)AppPrimaryClrShiner.CGColor];
-        _gradient.startPoint = CGPointMake(0, 0);
-        _gradient.endPoint = CGPointMake(1, 1);
-        _gradient.cornerRadius = PPCornerHero;
-        [self.layer addSublayer:_gradient];
+        _heroBackground = [PPHero new];
+        _heroBackground.translatesAutoresizingMaskIntoConstraints = NO;
+        _heroBackground.accentStyle = PPHeroGlassAccentStyleCornerGlow;
+        _heroBackground.cornerGlowOpacityMultiplier = 0.72;
+        _heroBackground.accentColorOverride = [UIColor ppPrimary];
+        [self addSubview:_heroBackground];
+        [self sendSubviewToBack:_heroBackground];
+        [NSLayoutConstraint activateConstraints:@[
+            [_heroBackground.topAnchor constraintEqualToAnchor:self.topAnchor],
+            [_heroBackground.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+            [_heroBackground.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+            [_heroBackground.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
+        ]];
 
         _glyphView = [[UIImageView alloc] init];
         _glyphView.contentMode = UIViewContentModeScaleAspectFit;
-        _glyphView.tintColor = [UIColor whiteColor];
+        _glyphView.tintColor = [UIColor ppPrimary];
         _glyphView.layer.cornerRadius = PPCornerMedium;
         _glyphView.layer.masksToBounds = YES;
-        _glyphView.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18];
+        _glyphView.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.11];
         _glyphView.image = [UIImage pp_symbolNamed:@"building.2"
                                           pointSize:26
                                              weight:UIImageSymbolWeightSemibold
                                               scale:UIImageSymbolScaleMedium
-                                            palette:@[[UIColor whiteColor]]
+                                          palette:@[[UIColor ppPrimary]]
                                       makeTemplate:YES];
         _glyphView.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_glyphView];
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.font = PPBranchBold(PPFontTitle2, UIFontTextStyleTitle2);
-        _titleLabel.textColor = [UIColor whiteColor];
+        _titleLabel.textColor = [UIColor ppTextPrimary];
         _titleLabel.numberOfLines = 1;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -90,21 +97,21 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
         _subtitleLabel = [[UILabel alloc] init];
         _subtitleLabel.font = PPBranchRegular(PPFontSubheadline, UIFontTextStyleSubheadline);
-        _subtitleLabel.textColor = [[UIColor whiteColor] colorWithAlphaComponent:0.86];
+        _subtitleLabel.textColor = [UIColor ppTextSecondary];
         _subtitleLabel.numberOfLines = 2;
         _subtitleLabel.adjustsFontForContentSizeCategory = YES;
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_subtitleLabel];
 
         _countPill = [[UIView alloc] init];
-        _countPill.backgroundColor = [[UIColor whiteColor] colorWithAlphaComponent:0.18];
+        _countPill.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
         _countPill.layer.cornerRadius = PPCornerPill;
         _countPill.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:_countPill];
 
         _countLabel = [[UILabel alloc] init];
         _countLabel.font = PPBranchMedium(PPFontFootnote, UIFontTextStyleFootnote);
-        _countLabel.textColor = [UIColor whiteColor];
+        _countLabel.textColor = [UIColor ppPrimary];
         _countLabel.numberOfLines = 1;
         _countLabel.adjustsFontForContentSizeCategory = YES;
         _countLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -139,7 +146,6 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
 - (void)layoutSubviews {
     [super layoutSubviews];
-    self.gradient.frame = self.bounds;
 }
 
 - (void)configureWithTotal:(NSInteger)total active:(NSInteger)active {
@@ -159,6 +165,7 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 #pragma mark - PPBranchCell
 
 @interface PPBranchCell : UITableViewCell
+@property (nonatomic, strong) UIView *cardView;
 @property (nonatomic, strong) UIView *iconTile;
 @property (nonatomic, strong) UIImageView *iconView;
 @property (nonatomic, strong) UILabel *nameLabel;
@@ -175,13 +182,28 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
     if (self = [super initWithStyle:style reuseIdentifier:reuseIdentifier]) {
         self.backgroundColor = UIColor.clearColor;
         self.contentView.backgroundColor = UIColor.clearColor;
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+        _cardView = [UIView new];
+        _cardView.translatesAutoresizingMaskIntoConstraints = NO;
+        _cardView.backgroundColor = [UIColor ppElevatedSurface];
+        _cardView.layer.cornerRadius = PPCornerCard;
+        _cardView.layer.cornerCurve = kCACornerCurveContinuous;
+        _cardView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        _cardView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.72].CGColor;
+        _cardView.layer.shadowColor = [UIColor ppShadow].CGColor;
+        _cardView.layer.shadowOpacity = 0.045;
+        _cardView.layer.shadowOffset = CGSizeMake(0, 7);
+        _cardView.layer.shadowRadius = 16;
+        [self.contentView addSubview:_cardView];
+        [_cardView.heightAnchor constraintGreaterThanOrEqualToConstant:82.0].active = YES;
 
         _iconTile = [[UIView alloc] init];
         _iconTile.layer.cornerRadius = PPCornerMedium;
         _iconTile.layer.masksToBounds = YES;
         _iconTile.layer.cornerCurve = kCACornerCurveContinuous;
         _iconTile.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_iconTile];
+        [_cardView addSubview:_iconTile];
 
         _iconView = [[UIImageView alloc] init];
         _iconView.contentMode = UIViewContentModeCenter;
@@ -191,27 +213,27 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
         _nameLabel = [[UILabel alloc] init];
         _nameLabel.font = PPBranchMedium(PPFontHeadline, UIFontTextStyleHeadline);
-        _nameLabel.textColor = UIColor.labelColor;
+        _nameLabel.textColor = [UIColor ppTextPrimary];
         _nameLabel.numberOfLines = 1;
         _nameLabel.adjustsFontForContentSizeCategory = YES;
         _nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_nameLabel];
+        [_cardView addSubview:_nameLabel];
 
         _codeLabel = [[UILabel alloc] init];
         _codeLabel.font = PPBranchRegular(PPFontSubheadline, UIFontTextStyleSubheadline);
-        _codeLabel.textColor = UIColor.secondaryLabelColor;
+        _codeLabel.textColor = [UIColor ppTextSecondary];
         _codeLabel.numberOfLines = 1;
         _codeLabel.adjustsFontForContentSizeCategory = YES;
         _codeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_codeLabel];
+        [_cardView addSubview:_codeLabel];
 
         _metaLabel = [[UILabel alloc] init];
         _metaLabel.font = PPBranchRegular(PPFontCaption1, UIFontTextStyleCaption1);
-        _metaLabel.textColor = UIColor.tertiaryLabelColor;
+        _metaLabel.textColor = [UIColor ppTextTertiary];
         _metaLabel.numberOfLines = 1;
         _metaLabel.adjustsFontForContentSizeCategory = YES;
         _metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_metaLabel];
+        [_cardView addSubview:_metaLabel];
 
         _defaultBadge = [[UILabel alloc] init];
         _defaultBadge.font = PPBranchMedium(PPFontCaption2, UIFontTextStyleCaption2);
@@ -222,13 +244,13 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
         _defaultBadge.layer.masksToBounds = YES;
         _defaultBadge.text = kLang(@"Branches_Default");
         _defaultBadge.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_defaultBadge];
+        [_cardView addSubview:_defaultBadge];
 
         _statusDot = [[UIView alloc] init];
         _statusDot.layer.cornerRadius = PPSpaceXS;
         _statusDot.layer.masksToBounds = YES;
         _statusDot.translatesAutoresizingMaskIntoConstraints = NO;
-        [self.contentView addSubview:_statusDot];
+        [_cardView addSubview:_statusDot];
 
         UIView *selectedBg = [[UIView alloc] init];
         selectedBg.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.10];
@@ -236,11 +258,17 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
         selectedBg.layer.masksToBounds = YES;
         self.selectedBackgroundView = selectedBg;
 
-        UILayoutGuide *guide = self.contentView.layoutMarginsGuide;
+        _cardView.layoutMargins = UIEdgeInsetsMake(12.0, 14.0, 12.0, 14.0);
+        UILayoutGuide *guide = _cardView.layoutMarginsGuide;
 
         [NSLayoutConstraint activateConstraints:@[
+            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:5.0],
+            [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16.0],
+            [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16.0],
+            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-5.0],
+
             [_iconTile.leadingAnchor constraintEqualToAnchor:guide.leadingAnchor],
-            [_iconTile.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_iconTile.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
             [_iconTile.widthAnchor constraintEqualToConstant:PPSpace4XL],
             [_iconTile.heightAnchor constraintEqualToConstant:PPSpace4XL],
 
@@ -263,7 +291,7 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
             [_metaLabel.bottomAnchor constraintEqualToAnchor:_iconTile.bottomAnchor],
 
             [_defaultBadge.trailingAnchor constraintEqualToAnchor:guide.trailingAnchor],
-            [_defaultBadge.centerYAnchor constraintEqualToAnchor:self.contentView.centerYAnchor],
+            [_defaultBadge.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
             [_defaultBadge.heightAnchor constraintEqualToConstant:PPSpaceLG + 2],
 
             [_statusDot.topAnchor constraintEqualToAnchor:_defaultBadge.topAnchor],
@@ -282,11 +310,11 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
 - (void)configureWithBranch:(PPBranchModel *)branch agentCount:(NSInteger)agentCount canManage:(BOOL)canManage {
     self.nameLabel.text = [branch localizedName];
-    self.nameLabel.textColor = branch.isActive ? UIColor.labelColor : UIColor.tertiaryLabelColor;
+    self.nameLabel.textColor = branch.isActive ? [UIColor ppTextPrimary] : [UIColor ppTextTertiary];
 
     self.codeLabel.text = branch.code;
 
-    UIColor *baseColor = branch.isActive ? AppPrimaryClr : UIColor.tertiaryLabelColor;
+    UIColor *baseColor = branch.isActive ? [UIColor ppPrimary] : [UIColor ppTextTertiary];
     self.iconTile.backgroundColor = baseColor;
     self.iconView.image = [UIImage pp_symbolNamed:(branch.isDefault ? @"building.columns" : @"building.2")
                                           pointSize:PPSpaceLG
@@ -298,11 +326,11 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
     NSString *stockName = [branch localizedStockModeName];
     NSString *agentsWord = kLang(agentCount == 1 ? @"Branches_Agent_Count" : @"Branches_Agent_Count_Plural");
     self.metaLabel.text = [NSString stringWithFormat:@"%@ · %ld %@", stockName, (long)agentCount, agentsWord];
-    self.metaLabel.textColor = branch.isActive ? UIColor.tertiaryLabelColor : UIColor.quaternaryLabelColor;
+    self.metaLabel.textColor = branch.isActive ? [UIColor ppTextTertiary] : [[UIColor ppTextTertiary] colorWithAlphaComponent:0.72];
 
     self.defaultBadge.hidden = !branch.isDefault;
     self.statusDot.hidden = !branch.isDefault;
-    self.statusDot.backgroundColor = branch.isActive ? [UIColor systemGreenColor] : [UIColor systemGrayColor];
+    self.statusDot.backgroundColor = branch.isActive ? [UIColor ppSuccess] : [UIColor ppTextTertiary];
 
     self.accessoryType = canManage ? UITableViewCellAccessoryDisclosureIndicator : UITableViewCellAccessoryNone;
 
@@ -318,6 +346,10 @@ typedef NS_ENUM(NSInteger, PPBranchesState) {
 
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
     [super setHighlighted:highlighted animated:animated];
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        self.iconTile.transform = highlighted ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown) : CGAffineTransformIdentity;
+        return;
+    }
     [UIView animateWithDuration:PPAnimDurationFast delay:0
                         options:UIViewAnimationOptionCurveEaseOut animations:^{
         self.iconTile.transform = highlighted ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown)
@@ -359,13 +391,13 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.view.backgroundColor = [UIColor ppBackground];
 
+    [self evaluatePermissions];
     [self setupNavigation];
     [self setupTableView];
     [self setupHero];
     [self setupStateViews];
-    [self evaluatePermissions];
     [self startListening];
 }
 
@@ -385,6 +417,8 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
 - (void)setupTableView {
     [self.tableView registerClass:[PPBranchCell class] forCellReuseIdentifier:kBranchCellID];
+    self.tableView.backgroundColor = [UIColor ppBackground];
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = PPSpace4XL + PPSpaceLG;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
@@ -398,6 +432,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
     self.searchController.searchBar.tintColor = AppPrimaryClr;
     self.navigationItem.searchController = self.searchController;
     self.navigationItem.hidesSearchBarWhenScrolling = YES;
+    self.tableView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 24.0, 0.0);
 }
 
 - (void)setupHero {
@@ -446,7 +481,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
     UILabel *label = [[UILabel alloc] init];
     label.font = PPBranchMedium(PPFontSubheadline, UIFontTextStyleSubheadline);
-    label.textColor = UIColor.secondaryLabelColor;
+    label.textColor = [UIColor ppTextSecondary];
     label.text = kLang(@"Branches_Loading");
     label.numberOfLines = 0;
     label.textAlignment = NSTextAlignmentCenter;
@@ -533,7 +568,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
         [container.trailingAnchor constraintLessThanOrEqualToAnchor:self.stateView.trailingAnchor constant:-PPSpaceXL],
     ]];
 
-    UIView *icon = [self stateGlyphWithName:@"magnifyingglass" tint:[[UIColor tertiaryLabelColor] colorWithAlphaComponent:0.16] glyphTint:UIColor.tertiaryLabelColor];
+    UIView *icon = [self stateGlyphWithName:@"magnifyingglass" tint:[[UIColor ppTextTertiary] colorWithAlphaComponent:0.16] glyphTint:[UIColor ppTextTertiary]];
     [container addSubview:icon];
 
     UILabel *title = [self stateTitleLabel];
@@ -574,7 +609,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
         [container.trailingAnchor constraintLessThanOrEqualToAnchor:self.stateView.trailingAnchor constant:-PPSpaceXL],
     ]];
 
-    UIView *icon = [self stateGlyphWithName:@"exclamationmark.triangle" tint:[[UIColor systemRedColor] colorWithAlphaComponent:0.14] glyphTint:[UIColor systemRedColor]];
+    UIView *icon = [self stateGlyphWithName:@"exclamationmark.triangle" tint:[[UIColor ppError] colorWithAlphaComponent:0.14] glyphTint:[UIColor ppError]];
     [container addSubview:icon];
 
     UILabel *title = [self stateTitleLabel];
@@ -650,7 +685,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 - (UILabel *)stateTitleLabel {
     UILabel *label = [[UILabel alloc] init];
     label.font = PPBranchBold(PPFontTitle3, UIFontTextStyleTitle3);
-    label.textColor = UIColor.labelColor;
+    label.textColor = [UIColor ppTextPrimary];
     label.numberOfLines = 0;
     label.textAlignment = NSTextAlignmentCenter;
     label.adjustsFontForContentSizeCategory = YES;
@@ -661,7 +696,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 - (UILabel *)stateSubtitleLabel {
     UILabel *label = [[UILabel alloc] init];
     label.font = PPBranchRegular(PPFontSubheadline, UIFontTextStyleSubheadline);
-    label.textColor = UIColor.secondaryLabelColor;
+    label.textColor = [UIColor ppTextSecondary];
     label.numberOfLines = 0;
     label.textAlignment = NSTextAlignmentCenter;
     label.adjustsFontForContentSizeCategory = YES;
@@ -817,7 +852,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
         [self toggleActive:branch];
         completionHandler(YES);
     }];
-    toggleAction.backgroundColor = branch.isActive ? [UIColor systemRedColor] : [UIColor systemGreenColor];
+    toggleAction.backgroundColor = branch.isActive ? [UIColor ppError] : [UIColor ppSuccess];
     toggleAction.accessibilityLabel = branch.isActive ? kLang(@"Branches_Deactivate") : kLang(@"Branches_Activate");
     return [UISwipeActionsConfiguration configurationWithActions:@[toggleAction]];
 }
@@ -885,12 +920,30 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        [self.heroView.heroBackground startAnimations];
+    }
     [self runEntranceIfNeeded];
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [self.heroView.heroBackground stopAnimations];
 }
 
 - (void)runEntranceIfNeeded {
     if (self.didPrepareEntrance) return;
     self.didPrepareEntrance = YES;
+
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        self.heroView.alpha = 1.0;
+        self.heroView.transform = CGAffineTransformIdentity;
+        for (UITableViewCell *cell in self.tableView.visibleCells) {
+            cell.alpha = 1.0;
+            cell.transform = CGAffineTransformIdentity;
+        }
+        return;
+    }
 
     self.heroView.alpha = 0;
     self.heroView.transform = CGAffineTransformMakeTranslation(0, 16);

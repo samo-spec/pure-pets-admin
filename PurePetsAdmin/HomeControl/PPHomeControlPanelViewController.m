@@ -49,38 +49,34 @@ static NSString * const PPHomeControlFieldPremiumCareVisible = @"premiumCareVisi
 static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSString *type, NSString *en, NSString *ar, NSString *descEn, NSString *descAr, BOOL visible, BOOL critical, BOOL conditional);
 
 static UIColor *PPHomeControlAccentColor(void) {
-    return AppPrimaryClr ?: UIColor.systemPinkColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPHomeControlCanvasColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.systemGroupedBackgroundColor;
-    return [UIColor colorWithWhite:0.96 alpha:1.0];
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPHomeControlSurfaceColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.secondarySystemGroupedBackgroundColor;
-    return UIColor.whiteColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPHomeControlInkColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.labelColor;
-    return UIColor.blackColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPHomeControlSubInkColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.secondaryLabelColor;
-    return [UIColor colorWithWhite:0.38 alpha:1.0];
+    return [UIColor ppTextSecondary];
 }
 
 static void PPHomeControlApplyCardChrome(UIView *view, CGFloat radius) {
     view.layer.cornerRadius = radius;
     if (@available(iOS 13.0, *)) view.layer.cornerCurve = kCACornerCurveContinuous;
-    view.layer.shadowColor = UIColor.blackColor.CGColor;
+    view.layer.shadowColor = [UIColor ppShadow].CGColor;
     view.layer.shadowOffset = CGSizeMake(0.0, 10.0);
     view.layer.shadowRadius = 22.0;
     view.layer.shadowOpacity = 0.055;
     view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    view.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:0.62].CGColor;
+    view.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.72].CGColor;
 }
 
 static NSString *PPHomeControlBoolString(FIRDocumentSnapshot *snapshot, NSString *key, BOOL fallback) {
@@ -166,6 +162,7 @@ static NSString *PPHomeControlLocalizedValue(NSString *key, NSString *languageCo
         _titleLabel.font = [Styling fontBold:16];
         _titleLabel.textColor = PPHomeControlInkColor();
         _titleLabel.numberOfLines = 1;
+        _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.adjustsFontSizeToFitWidth = YES;
         _titleLabel.minimumScaleFactor = 0.82;
         _titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
@@ -188,6 +185,7 @@ static NSString *PPHomeControlLocalizedValue(NSString *key, NSString *languageCo
         _badgeLabel.layer.cornerRadius = 12.0;
         _badgeLabel.layer.masksToBounds = YES;
         _badgeLabel.adjustsFontSizeToFitWidth = YES;
+        _badgeLabel.adjustsFontForContentSizeCategory = YES;
         _badgeLabel.minimumScaleFactor = 0.78;
         [_cardView addSubview:_badgeLabel];
 
@@ -252,10 +250,10 @@ static NSString *PPHomeControlLocalizedValue(NSString *key, NSString *languageCo
     UIColor *tint = PPHomeControlAccentColor();
     if (meta.critical) {
         symbol = @"exclamationmark.shield.fill";
-        tint = UIColor.systemOrangeColor;
+        tint = [UIColor ppWarning];
     } else if (meta.conditional) {
         symbol = @"sparkles";
-        tint = UIColor.systemBlueColor;
+        tint = [UIColor ppInfo];
     } else if (!visible) {
         symbol = @"eye.slash.fill";
         tint = PPHomeControlSubInkColor();
@@ -291,6 +289,7 @@ static NSString *PPHomeControlLocalizedValue(NSString *key, NSString *languageCo
 @property (nonatomic, assign) BOOL isSaving;
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, assign) BOOL globalSettingsExpanded;
+@property (nonatomic, assign) BOOL isSizingHeader;
 @property (nonatomic, strong) FIRDocumentReference *configRef;
 
 - (NSArray<PPHomeSectionState *> *)pp_defaultSectionStates;
@@ -367,7 +366,9 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroBackground startAnimations];
+    if (!UIAccessibilityIsReduceMotionEnabled()) {
+        [self.heroBackground startAnimations];
+    }
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
@@ -606,9 +607,11 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 }
 
 - (void)pp_sizeHeaderToFit {
-    if (!self.headerContainer) return;
+    if (!self.headerContainer || self.isSizingHeader) return;
     CGFloat width = CGRectGetWidth(self.tableView.bounds);
     if (width <= 0.0) return;
+
+    self.isSizingHeader = YES;
 
     CGRect frame = self.headerContainer.frame;
     if (fabs(frame.size.width - width) > 0.5) {
@@ -628,6 +631,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
         self.headerContainer.frame = frame;
         self.tableView.tableHeaderView = self.headerContainer;
     }
+    self.isSizingHeader = NO;
 }
 
 - (NSArray<PPHomeSectionState *> *)pp_defaultSectionStates {
@@ -880,9 +884,11 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     CGFloat tabHeight = self.tabBarController ? CGRectGetHeight(self.tabBarController.tabBar.bounds) : 0.0;
     CGFloat bottom = MAX(28.0, tabHeight + 34.0);
     UIEdgeInsets inset = self.tableView.contentInset;
-    inset.bottom = bottom;
-    self.tableView.contentInset = inset;
-    self.tableView.scrollIndicatorInsets = inset;
+    if (fabs(inset.bottom - bottom) > 0.5) {
+        inset.bottom = bottom;
+        self.tableView.contentInset = inset;
+        self.tableView.scrollIndicatorInsets = inset;
+    }
 }
 
 - (void)loadConfig {
@@ -1217,6 +1223,10 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     cell.textLabel.font = [Styling fontMedium:15];
     cell.textLabel.textColor = PPHomeControlSubInkColor();
     cell.textLabel.textAlignment = NSTextAlignmentCenter;
+    cell.textLabel.numberOfLines = 0;
+    cell.textLabel.adjustsFontForContentSizeCategory = YES;
+    cell.isAccessibilityElement = YES;
+    cell.accessibilityLabel = text;
     cell.selectionStyle = UITableViewCellSelectionStyleNone;
     return cell;
 }

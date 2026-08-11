@@ -131,7 +131,7 @@ static NSString *const kAgentCellID = @"AgentCell";
         self.heroHeaderView.clipsToBounds = NO;
         
         UIView *card = [[UIView alloc] init];
-        card.backgroundColor = [UIColor systemBackgroundColor];
+        card.backgroundColor = [UIColor ppBackground];
         card.translatesAutoresizingMaskIntoConstraints = NO;
         PPApplyContinuousCorners(card, PPCornerMedium);
         PPApplyCardShadow(card);
@@ -139,14 +139,14 @@ static NSString *const kAgentCellID = @"AgentCell";
         
         self.heroTitleLabel = [[UILabel alloc] init];
         self.heroTitleLabel.font = PPFontMedium(PPFontTitle2);
-        self.heroTitleLabel.textColor = [UIColor labelColor];
+        self.heroTitleLabel.textColor = [UIColor ppTextPrimary];
         self.heroTitleLabel.text = kLang(@"Agents_Title");
         self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:self.heroTitleLabel];
         
         UILabel *subtitle = [[UILabel alloc] init];
         subtitle.font = PPFontRegular(PPFontSubheadline);
-        subtitle.textColor = [UIColor secondaryLabelColor];
+        subtitle.textColor = [UIColor ppTextSecondary];
         subtitle.text = kLang(@"Agents_Subtitle");
         subtitle.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:subtitle];
@@ -196,9 +196,9 @@ static NSString *const kAgentCellID = @"AgentCell";
 
 - (UIColor *)colorForRole:(PPAgentRole)role {
     switch (role) {
-        case PPAgentRoleManager: return [UIColor systemBlueColor];
-        case PPAgentRoleCashier: return [UIColor systemOrangeColor];
-        case PPAgentRoleViewer:  return [UIColor systemGrayColor];
+        case PPAgentRoleManager: return [UIColor ppPrimary];
+        case PPAgentRoleCashier: return [UIColor ppWarning];
+        case PPAgentRoleViewer:  return [UIColor ppTextTertiary];
         case PPAgentRoleSales:
         default:                 return AppPrimaryClr;
     }
@@ -246,14 +246,14 @@ static NSString *const kAgentCellID = @"AgentCell";
         ]];
     }
     nameLabel.text = [agent localizedName];
-    nameLabel.textColor = agent.isActive ? [UIColor labelColor] : [UIColor tertiaryLabelColor];
+    nameLabel.textColor = agent.isActive ? [UIColor ppTextPrimary] : [UIColor ppTextTertiary];
     
     UILabel *detailLabel = [cell.contentView viewWithTag:102];
     if (!detailLabel) {
         detailLabel = [[UILabel alloc] init];
         detailLabel.tag = 102;
         detailLabel.font = PPFontRegular(PPFontSubheadline);
-        detailLabel.textColor = [UIColor secondaryLabelColor];
+        detailLabel.textColor = [UIColor ppTextSecondary];
         detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:detailLabel];
         
@@ -270,7 +270,7 @@ static NSString *const kAgentCellID = @"AgentCell";
         metaLabel = [[UILabel alloc] init];
         metaLabel.tag = 103;
         metaLabel.font = PPFontRegular(PPFontCaption1);
-        metaLabel.textColor = [UIColor tertiaryLabelColor];
+        metaLabel.textColor = [UIColor ppTextTertiary];
         metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:metaLabel];
         
@@ -334,7 +334,7 @@ static NSString *const kAgentCellID = @"AgentCell";
         [self toggleActive:agent];
         completionHandler(YES);
     }];
-    toggleAction.backgroundColor = agent.isActive ? [UIColor systemRedColor] : [UIColor systemGreenColor];
+    toggleAction.backgroundColor = agent.isActive ? [UIColor ppError] : [UIColor ppSuccess];
     return [UISwipeActionsConfiguration configurationWithActions:@[toggleAction]];
 }
 

@@ -3,27 +3,27 @@
 #import "Styling.h"
 
 UIColor *PPProviderCanvasColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 UIColor *PPProviderSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemGroupedBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 UIColor *PPProviderRaisedSurfaceColor(void) {
-    return UIColor.tertiarySystemGroupedBackgroundColor;
+    return [UIColor ppSurfaceOverlay];
 }
 
 UIColor *PPProviderBrandColor(void) {
-    return AppPrimaryClr ?: UIColor.systemPinkColor;
+    return [UIColor ppPrimary];
 }
 
 UIColor *PPProviderPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 UIColor *PPProviderSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 UIColor *PPProviderSeparatorColor(void) {
@@ -78,15 +78,15 @@ NSString *PPProviderLocalizedBillingInterval(NSString *interval) {
 UIColor *PPProviderStatusColor(NSString *status) {
     NSString *token = PPProviderSafeString(status).lowercaseString;
     if ([token isEqualToString:@"approved"] || [token isEqualToString:@"active"] || [token isEqualToString:@"settled"]) {
-        return UIColor.systemGreenColor;
+        return [UIColor ppSuccess];
     }
     if ([token isEqualToString:@"rejected"] || [token isEqualToString:@"voided"]) {
-        return UIColor.systemRedColor;
+        return [UIColor ppError];
     }
     if ([token isEqualToString:@"under_review"] || [token isEqualToString:@"pending"]) {
-        return UIColor.systemOrangeColor;
+        return [UIColor ppWarning];
     }
-    return UIColor.systemGrayColor;
+    return [UIColor ppTextSecondary];
 }
 
 NSString *PPProviderLocalizedText(NSDictionary *value, NSString *fallback) {
@@ -389,7 +389,7 @@ NSString *PPProviderMoneyText(double amount, NSString *currency) {
     self.titleLabel.text = title;
     self.subtitleLabel.text = subtitle;
     self.symbolView.image = [UIImage systemImageNamed:@"exclamationmark.triangle.fill" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:24.0 weight:UIImageSymbolWeightSemibold]];
-    self.symbolView.tintColor = UIColor.systemRedColor;
+    self.symbolView.tintColor = [UIColor ppError];
     self.symbolView.hidden = NO;
     self.retryButton.hidden = NO;
     [self.spinner stopAnimating];
@@ -461,7 +461,7 @@ NSString *PPProviderMoneyText(double amount, NSString *currency) {
 
     _chevronView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:13.0 weight:UIImageSymbolWeightSemibold]]];
     _chevronView.translatesAutoresizingMaskIntoConstraints = NO;
-    _chevronView.tintColor = UIColor.tertiaryLabelColor;
+    _chevronView.tintColor = [UIColor ppTextTertiary];
     [_chevronView setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
     [_surfaceView addSubview:_chevronView];
 

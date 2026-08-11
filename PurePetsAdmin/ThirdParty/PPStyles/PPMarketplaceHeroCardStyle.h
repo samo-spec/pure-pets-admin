@@ -1,13 +1,5 @@
 #import <UIKit/UIKit.h>
 
-NS_INLINE UIColor *PPMarketplaceHeroCardColor(uint32_t hex, CGFloat alpha)
-{
-    return [UIColor colorWithRed:((hex >> 16) & 0xFF) / 255.0
-                           green:((hex >> 8) & 0xFF) / 255.0
-                            blue:(hex & 0xFF) / 255.0
-                           alpha:alpha];
-}
-
 NS_INLINE UIColor *PPMarketplaceHeroCardResolvedColor(UIColor *color, UITraitCollection *traitCollection)
 {
     if (!color) {
@@ -49,23 +41,12 @@ NS_INLINE UIColor *PPMarketplaceHeroCardBlend(UIColor *baseColor,
 
 NS_INLINE UIColor *PPMarketplaceHeroCardAccentColor(void)
 {
-    return AppPrimaryClr ?: PPMarketplaceHeroCardColor(0xC93052, 1.0);
+    return [UIColor ppPrimary];
 }
 
 NS_INLINE UIColor *PPMarketplaceHeroCardSurfaceBaseColor(UITraitCollection *traitCollection)
 {
-    UIColor *fallback = [UIColor colorWithRed:0.992 green:0.989 blue:0.991 alpha:1.0];
-    if (@available(iOS 13.0, *)) {
-        fallback = PPMarketplaceHeroCardResolvedColor(
-            [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
-                return traits.userInterfaceStyle == UIUserInterfaceStyleDark
-                    ? [UIColor colorWithWhite:0.104 alpha:1.0]
-                    : [UIColor colorWithRed:0.992 green:0.989 blue:0.991 alpha:1.0];
-            }],
-            traitCollection
-        );
-    }
-    return AppForgroundColr ?: fallback;
+    return PPMarketplaceHeroCardResolvedColor([UIColor ppElevatedSurface], traitCollection);
 }
 
 NS_INLINE UIColor *PPMarketplaceHeroCardSurfaceHighlightColor(UITraitCollection *traitCollection)
@@ -162,7 +143,7 @@ NS_INLINE UIColor *PPMarketplaceHeroCardSupportGlowColor(UIColor *accentColor,
     BOOL dark = PPMarketplaceHeroCardIsDark(traitCollection);
     UIColor *backgroundAccent = PPMarketplaceHeroCardBackgroundAccentColor(accentColor, traitCollection);
     return PPMarketplaceHeroCardBlend(backgroundAccent,
-                                      PPMarketplaceHeroCardColor(0x00F5D4, 1.0),
+                                      [UIColor ppQuickActionServices],
                                       dark ? 0.18 : 0.22,
                                       traitCollection);
 }
@@ -230,24 +211,10 @@ NS_INLINE UIColor *PPMarketplaceHeroCardOrbColor(UITraitCollection *traitCollect
 
 NS_INLINE UIColor *PPMarketplaceHeroCardPrimaryTextColor(void)
 {
-    if (@available(iOS 13.0, *)) {
-        return [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
-                ? [UIColor colorWithWhite:0.96 alpha:1.0]
-                : PPMarketplaceHeroCardColor(0x2A171D, 1.0);
-        }];
-    }
-    return PPMarketplaceHeroCardColor(0x2A171D, 1.0);
+    return [UIColor ppTextPrimary];
 }
 
 NS_INLINE UIColor *PPMarketplaceHeroCardSecondaryTextColor(void)
 {
-    if (@available(iOS 13.0, *)) {
-        return [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traitCollection) {
-            return traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark
-                ? [UIColor colorWithWhite:0.76 alpha:1.0]
-                : PPMarketplaceHeroCardColor(0x7A666C, 1.0);
-        }];
-    }
-    return PPMarketplaceHeroCardColor(0x7A666C, 1.0);
+    return [UIColor ppTextSecondary];
 }

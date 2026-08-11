@@ -11,6 +11,8 @@ typedef NS_ENUM(NSInteger, AppRoot) { AppRootSplash, AppRootLogin, AppRootDashbo
 
 FOUNDATION_EXTERN NSString * const PPAdminRouteToPaymentOrderNotification;
 FOUNDATION_EXTERN NSString * const PPAdminRouteToPaymentOrderIDUserInfoKey;
+FOUNDATION_EXPORT BOOL PPAdminLoginInProgress(void);
+FOUNDATION_EXPORT void PPAdminSetLoginInProgress(BOOL inProgress);
 
 @interface SceneDelegate : UIResponder <UIWindowSceneDelegate>
 
@@ -18,4 +20,3 @@ FOUNDATION_EXTERN NSString * const PPAdminRouteToPaymentOrderIDUserInfoKey;
 
 - (void)reloadRootViewControllerForLanguageChange;
 @end
-

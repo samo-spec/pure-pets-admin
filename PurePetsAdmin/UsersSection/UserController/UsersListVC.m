@@ -11,35 +11,41 @@
 #import "Language.h"
 #import "PPFunc.h"
 #import "PPToast.h"
-#import "PPHero.h"
-#import "PurePetsColorPattle.h"
+#import "PPDesignTokens.h"
+#import "PPStaffAuth.h"
 #import <objc/runtime.h>
 @import Firebase;
 @import FirebaseAuth;
 #define RPM [RPManager shared]
 
 static CGFloat const PPUsersListHorizontalInset = 16.0;
-static CGFloat const PPUsersListHeaderCardHeight = 272.0;
-static CGFloat const PPUsersListRowHeight = 112.0;
+static CGFloat const PPUsersListHeaderCardHeight = 256.0;
+static CGFloat const PPUsersListRowHeight = 92.0;
 
 static UIColor *PPUsersListBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
-}
-
-static UIColor *PPUsersListSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPUsersListPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPUsersListPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPUsersListSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
+}
+
+static NSString *PPUsersResolvedAccountStatus(UserModel *user) {
+    NSString *status = [[user.accountStatus ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] lowercaseString];
+    if (status.length > 0) return status;
+    return user.isBlocked ? @"blocked" : @"active";
+}
+
+static NSString *PPUsersLocalizedCount(NSInteger count) {
+    return [NSNumberFormatter localizedStringFromNumber:@(count) numberStyle:NSNumberFormatterDecimalStyle];
 }
 
 #pragma mark - PPUsersSummaryHeaderView
@@ -48,9 +54,12 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 @property (nonatomic, strong) UILabel *totalVal;
 @property (nonatomic, strong) UILabel *activeVal;
 @property (nonatomic, strong) UILabel *verifiedVal;
-@property (nonatomic, strong) UILabel *prodVal;
+@property (nonatomic, strong) UILabel *attentionVal;
+@property (nonatomic, strong) UIView *railView;
+@property (nonatomic, assign) BOOL usesCustomerCopy;
 
-- (void)updateWithTotal:(NSInteger)total active:(NSInteger)active verified:(NSInteger)verified prod:(NSInteger)prod;
+- (instancetype)initWithCustomerCopy:(BOOL)usesCustomerCopy;
+- (void)updateWithTotal:(NSInteger)total active:(NSInteger)active verified:(NSInteger)verified attention:(NSInteger)attention;
 @end
 
 @implementation PPUsersSummaryHeaderView
@@ -62,114 +71,135 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     return self;
 }
 
-- (void)setupUI {
-    UIStackView *row = [[UIStackView alloc] init];
-    row.axis = UILayoutConstraintAxisHorizontal;
-    row.distribution = UIStackViewDistributionFillEqually;
-    row.spacing = 8.0;
-    row.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    row.translatesAutoresizingMaskIntoConstraints = NO;
-    [self addSubview:row];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [row.topAnchor constraintEqualToAnchor:self.topAnchor],
-        [row.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [row.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-        [row.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
-    ]];
-
-    [row addArrangedSubview:[self makeChipWithIcon:@"person.3.fill" titleKey:@"Total_Users" valLabel:&_totalVal color:PPPrimaryColor()]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"checkmark.circle.fill" titleKey:@"Active_Users" valLabel:&_activeVal color:PPSageAccentColor()]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"patch.check.fill" titleKey:@"Verified_Users" valLabel:&_verifiedVal color:PPGoldAccentColor()]];
-    [row addArrangedSubview:[self makeChipWithIcon:@"shield.fill" titleKey:@"Production_Users" valLabel:&_prodVal color:PPSecondaryAccentColor()]];
+- (instancetype)initWithCustomerCopy:(BOOL)usesCustomerCopy {
+    if (self = [super initWithFrame:CGRectZero]) {
+        _usesCustomerCopy = usesCustomerCopy;
+        [self setupUI];
+    }
+    return self;
 }
 
-- (UIView *)makeChipWithIcon:(NSString *)iconName titleKey:(NSString *)titleKey valLabel:(UILabel * __strong *)valLabel color:(UIColor *)color {
-    UIView *chip = [UIView new];
-    chip.backgroundColor = [PPUsersListSurfaceColor() colorWithAlphaComponent:0.72];
-    chip.layer.cornerRadius = 18.0;
-    chip.layer.masksToBounds = YES;
-    chip.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    chip.layer.borderColor = [color colorWithAlphaComponent:0.11].CGColor;
-    chip.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+- (void)setupUI {
+    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory);
+    self.railView = [UIView new];
+    self.railView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.railView.backgroundColor = [UIColor ppSurface];
+    self.railView.layer.cornerRadius = PPCornerSmall;
+    self.railView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    self.railView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    self.railView.layer.masksToBounds = YES;
+    [self addSubview:self.railView];
 
-    UIView *accentRail = [UIView new];
-    accentRail.translatesAutoresizingMaskIntoConstraints = NO;
-    accentRail.backgroundColor = [color colorWithAlphaComponent:0.82];
-    [chip addSubview:accentRail];
-    
-    UIImageSymbolConfiguration *iconConfig = [UIImageSymbolConfiguration configurationWithPointSize:13.0
-                                                                                            weight:UIImageSymbolWeightSemibold];
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:iconName withConfiguration:iconConfig]];
-    icon.tintColor = color;
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    UIStackView *row = [[UIStackView alloc] init];
+    row.axis = accessibilityCategory ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    row.distribution = UIStackViewDistributionFillEqually;
+    row.spacing = 0.0;
+    row.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.railView addSubview:row];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.railView.topAnchor constraintEqualToAnchor:self.topAnchor],
+        [self.railView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
+        [self.railView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
+        [self.railView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
+        [row.topAnchor constraintEqualToAnchor:self.railView.topAnchor],
+        [row.leadingAnchor constraintEqualToAnchor:self.railView.leadingAnchor],
+        [row.trailingAnchor constraintEqualToAnchor:self.railView.trailingAnchor],
+        [row.bottomAnchor constraintEqualToAnchor:self.railView.bottomAnchor]
+    ]];
+
+    NSString *totalKey = self.usesCustomerCopy ? @"MissionControl_Customers_Metric_Total" : @"Total_Users";
+    NSString *activeKey = self.usesCustomerCopy ? @"MissionControl_Customers_Metric_Active" : @"Active_Users";
+    NSString *verifiedKey = self.usesCustomerCopy ? @"MissionControl_Customers_Metric_Verified" : @"Verified_Users";
+    NSString *attentionKey = self.usesCustomerCopy ? @"MissionControl_Customers_Metric_Attention" : @"Blocked";
+    UIView *total = [self makeMetricWithTitleKey:totalKey valLabel:&_totalVal color:PPUsersListPrimaryTextColor()];
+    UIView *active = [self makeMetricWithTitleKey:activeKey valLabel:&_activeVal color:[UIColor ppSuccess]];
+    UIView *verified = [self makeMetricWithTitleKey:verifiedKey valLabel:&_verifiedVal color:[UIColor ppInfo]];
+    UIView *attention = [self makeMetricWithTitleKey:attentionKey valLabel:&_attentionVal color:[UIColor ppWarning]];
+    NSArray<UIView *> *metrics = @[total, active, verified, attention];
+    for (NSInteger index = 0; index < (NSInteger)metrics.count; index++) {
+        UIView *metric = metrics[index];
+        [row addArrangedSubview:metric];
+        if (!accessibilityCategory && index > 0) {
+            [metric.widthAnchor constraintEqualToAnchor:metrics.firstObject.widthAnchor].active = YES;
+        }
+        [metric.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
+        if (index < (NSInteger)metrics.count - 1) {
+            UIView *separator = [UIView new];
+            separator.backgroundColor = [UIColor ppSurfaceBorder];
+            [row addArrangedSubview:separator];
+            if (accessibilityCategory) {
+                [separator.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+            } else {
+                [separator.widthAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+            }
+        }
+    }
+}
+
+- (UIView *)makeMetricWithTitleKey:(NSString *)titleKey valLabel:(UILabel * __strong *)valLabel color:(UIColor *)color {
+    UIView *metric = [UIView new];
+    metric.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
     UILabel *title = [UILabel new];
     title.text = kLang(titleKey);
-    title.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:10.0]];
-    title.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.88];
-    title.textAlignment = [Language alignmentForCurrentLanguage];
-    title.adjustsFontSizeToFitWidth = YES;
-    title.minimumScaleFactor = 0.72;
+    title.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:11.0]];
+    title.textColor = PPUsersListSecondaryTextColor();
+    title.textAlignment = NSTextAlignmentCenter;
+    title.numberOfLines = 2;
     title.adjustsFontForContentSizeCategory = YES;
     title.translatesAutoresizingMaskIntoConstraints = NO;
+    title.tag = 201;
     
     UILabel *val = [UILabel new];
-    val.text = @"0";
+    val.text = PPUsersLocalizedCount(0);
     val.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:18.0]];
-    val.textColor = PPUsersListPrimaryTextColor();
-    val.textAlignment = [Language alignmentForCurrentLanguage];
-    val.adjustsFontSizeToFitWidth = YES;
-    val.minimumScaleFactor = 0.72;
+    val.textColor = color;
+    val.textAlignment = NSTextAlignmentCenter;
     val.adjustsFontForContentSizeCategory = YES;
     val.translatesAutoresizingMaskIntoConstraints = NO;
     
     if (valLabel) *valLabel = val;
     
-    [chip addSubview:icon];
-    [chip addSubview:title];
-    [chip addSubview:val];
+    [metric addSubview:title];
+    [metric addSubview:val];
     
     [NSLayoutConstraint activateConstraints:@[
-        [accentRail.topAnchor constraintEqualToAnchor:chip.topAnchor],
-        [accentRail.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor],
-        [accentRail.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor],
-        [accentRail.heightAnchor constraintEqualToConstant:3.0],
-
-        [icon.topAnchor constraintEqualToAnchor:chip.topAnchor constant:8.0],
-        [icon.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor constant:8.0],
-        [icon.widthAnchor constraintEqualToConstant:16.0],
-        [icon.heightAnchor constraintEqualToConstant:16.0],
-
-        [val.topAnchor constraintEqualToAnchor:chip.topAnchor constant:8.0],
-        [val.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:4.0],
-        [val.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor constant:-8.0],
-
-        [title.topAnchor constraintEqualToAnchor:val.bottomAnchor constant:3.0],
-        [title.leadingAnchor constraintEqualToAnchor:chip.leadingAnchor constant:8.0],
-        [title.trailingAnchor constraintEqualToAnchor:chip.trailingAnchor constant:-8.0],
-        [title.bottomAnchor constraintLessThanOrEqualToAnchor:chip.bottomAnchor constant:-7.0]
+        [val.topAnchor constraintEqualToAnchor:metric.topAnchor constant:6.0],
+        [val.leadingAnchor constraintEqualToAnchor:metric.leadingAnchor constant:4.0],
+        [val.trailingAnchor constraintEqualToAnchor:metric.trailingAnchor constant:-4.0],
+        [title.topAnchor constraintEqualToAnchor:val.bottomAnchor constant:1.0],
+        [title.leadingAnchor constraintEqualToAnchor:metric.leadingAnchor constant:4.0],
+        [title.trailingAnchor constraintEqualToAnchor:metric.trailingAnchor constant:-4.0],
+        [title.bottomAnchor constraintLessThanOrEqualToAnchor:metric.bottomAnchor constant:-5.0]
     ]];
 
-    chip.isAccessibilityElement = YES;
-    chip.accessibilityTraits = UIAccessibilityTraitStaticText;
+    metric.isAccessibilityElement = YES;
+    metric.accessibilityTraits = UIAccessibilityTraitStaticText;
 
-    return chip;
+    return metric;
 }
 
-- (void)updateWithTotal:(NSInteger)total active:(NSInteger)active verified:(NSInteger)verified prod:(NSInteger)prod {
-    self.totalVal.text = [NSString stringWithFormat:@"%ld", (long)total];
-    self.activeVal.text = [NSString stringWithFormat:@"%ld", (long)active];
-    self.verifiedVal.text = [NSString stringWithFormat:@"%ld", (long)verified];
-    self.prodVal.text = [NSString stringWithFormat:@"%ld", (long)prod];
+- (void)updateWithTotal:(NSInteger)total active:(NSInteger)active verified:(NSInteger)verified attention:(NSInteger)attention {
+    self.totalVal.text = PPUsersLocalizedCount(total);
+    self.activeVal.text = PPUsersLocalizedCount(active);
+    self.verifiedVal.text = PPUsersLocalizedCount(verified);
+    self.attentionVal.text = PPUsersLocalizedCount(attention);
 
-    NSArray<UILabel *> *values = @[self.totalVal, self.activeVal, self.verifiedVal, self.prodVal];
+    NSArray<UILabel *> *values = @[self.totalVal, self.activeVal, self.verifiedVal, self.attentionVal];
     for (UILabel *value in values) {
-        UIView *chip = value.superview;
-        UILabel *title = chip.subviews.count > 1 ? chip.subviews[2] : nil;
-        chip.accessibilityLabel = title.text ?: @"";
-        chip.accessibilityValue = value.text ?: @"";
+        UIView *metric = value.superview;
+        UILabel *title = [metric viewWithTag:201];
+        metric.accessibilityLabel = title.text ?: @"";
+        metric.accessibilityValue = value.text ?: @"";
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+        self.railView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     }
 }
 
@@ -182,19 +212,22 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 @property (nonatomic, strong) PPUsersSummaryHeaderView *summaryHeader;
 @property (nonatomic, strong) UIView *stickyHeaderView;
 @property (nonatomic, strong) UIView *heroCardView;
-@property (nonatomic, strong) PPHero *heroBackground;
 @property (nonatomic, strong) UILabel *heroTitleLabel;
 @property (nonatomic, strong) UILabel *heroSubtitleLabel;
-@property (nonatomic, strong) UILabel *heroCountLabel;
+@property (nonatomic, strong) UIButton *attentionButton;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIButton *addUserButton;
 @property (nonatomic, strong) UIView *stateView;
+@property (nonatomic, strong) UIImageView *stateIconView;
 @property (nonatomic, strong) UILabel *stateTitleLabel;
 @property (nonatomic, strong) UILabel *stateSubtitleLabel;
 @property (nonatomic, strong) UIActivityIndicatorView *stateSpinner;
-@property (nonatomic, strong) NSMutableSet<NSString *> *animatedUserIDs;
+@property (nonatomic, strong) UIButton *stateRetryButton;
 @property (nonatomic, assign) BOOL isLoadingUsers;
+@property (nonatomic, assign) BOOL accessDenied;
 @property (nonatomic, strong) NSError *currentError;
+@property (nonatomic, assign) NSInteger attentionCount;
+@property (nonatomic, assign) NSUInteger listenerGeneration;
 @property (nonatomic, assign) BOOL didPrepareEntrance;
 @property (nonatomic, assign) BOOL didRunEntrance;
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
@@ -202,6 +235,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 @property (nonatomic, strong) NSLayoutConstraint *stickyHeaderHeightConstraint;
 @property (nonatomic, strong) NSLayoutConstraint *heroCardHeightConstraint;
 @property (nonatomic, strong) NSLayoutConstraint *summaryHeaderHeightConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *attentionWidthConstraint;
 @end
 
 @implementation UsersListVC
@@ -228,7 +262,6 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.view.backgroundColor = PPUsersListBackgroundColor();
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.isLoadingUsers = YES;
-    self.animatedUserIDs = [NSMutableSet set];
 
     self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -260,29 +293,14 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.allUsers = [NSMutableArray new];
     self.filteredUsers = [NSMutableArray new];
     [self pp_updateStateView];
-
-    __weak typeof(self) weakSelf = self;
-    self.usersReg =
-    [[FUManager shared] listenAllUsersWithDiffsOrderedBy:@"UserName"
-                                               ascending:YES
-                                    includeMetadataChanges:YES
-                                                   queue:dispatch_get_main_queue()
-                                                completion:^(NSArray<UserModel *> *users,
-                                                             NSArray<FIRDocumentChange *> *changes,
-                                                             FIRSnapshotMetadata *meta,
-                                                             NSError *error) {
-        __strong typeof(weakSelf) self = weakSelf;
+    self.accessDenied = [self pp_isCustomerAccountMode] && ![self pp_hasUserDirectoryAccess];
+    if (self.accessDenied) {
         self.isLoadingUsers = NO;
-        self.currentError = error;
-        if (error) {
-            [self pp_updateStateView];
-            return;
-        }
-
-        self.allUsers = (users ?: @[]).mutableCopy;
-        [self _updateSummaryStats];
-        [self _applyFilterAndReload];
-    }];
+        [self pp_refreshAttentionSignal];
+        [self pp_updateStateView];
+    } else {
+        [self pp_startUsersListener];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -312,13 +330,94 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
     if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
-        [self.heroBackground reapplyPalette];
+        self.heroCardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+        self.searchView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     }
 }
 
 - (void)dealloc {
     [self.usersReg remove];
-    [self.heroBackground stopAnimations];
+}
+
+#pragma mark - Users Listener
+
+- (BOOL)pp_hasUserDirectoryAccess {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasAnyPermission:@[
+        kStaffPermUsersView,
+        kStaffPermUsersManage,
+        kStaffPermUsersBlock,
+        kStaffPermUsersFeaturesView,
+        kStaffPermUsersFeaturesManage,
+        kStaffPermUsersSubscriptionsView,
+        kStaffPermUsersSubscriptionsManage,
+        kStaffPermUsersRestrictionsView,
+        kStaffPermUsersRestrictionsManage,
+    ]];
+}
+
+- (BOOL)pp_isCustomerAccountMode {
+    return self.viewForMode == ViewForEditAccount;
+}
+
+- (NSArray<UserModel *> *)pp_usersForCurrentMode:(NSArray<UserModel *> *)users {
+    if (![self pp_isCustomerAccountMode]) return users ?: @[];
+
+    NSPredicate *customersOnly = [NSPredicate predicateWithBlock:^BOOL(UserModel *user, NSDictionary *bindings) {
+        NSString *accountType = [[user.accountType ?: @"" stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] lowercaseString];
+        return ![accountType isEqualToString:@"staff"];
+    }];
+    return [(users ?: @[]) filteredArrayUsingPredicate:customersOnly];
+}
+
+- (void)pp_startUsersListener {
+    if ([self pp_isCustomerAccountMode] && (self.accessDenied || ![self pp_hasUserDirectoryAccess])) {
+        self.accessDenied = YES;
+        self.isLoadingUsers = NO;
+        [self pp_refreshAttentionSignal];
+        [self pp_updateStateView];
+        return;
+    }
+    [self.usersReg remove];
+    self.usersReg = nil;
+    NSUInteger generation = ++self.listenerGeneration;
+
+    self.isLoadingUsers = YES;
+    self.currentError = nil;
+    [self pp_refreshAttentionSignal];
+    [self pp_updateStateView];
+
+    __weak typeof(self) weakSelf = self;
+    self.usersReg = [[FUManager shared] listenAllUsersWithDiffsOrderedBy:@"UserName"
+                                                              ascending:YES
+                                                   includeMetadataChanges:YES
+                                                                  queue:dispatch_get_main_queue()
+                                                               completion:^(NSArray<UserModel *> *users,
+                                                                            NSArray<FIRDocumentChange *> *changes,
+                                                                            FIRSnapshotMetadata *meta,
+                                                                            NSError *error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || generation != self.listenerGeneration) return;
+        (void)changes;
+        (void)meta;
+
+        self.isLoadingUsers = NO;
+        self.currentError = error;
+        if (error) {
+            [self pp_refreshAttentionSignal];
+            [self pp_updateStateView];
+            return;
+        }
+
+        self.allUsers = [[self pp_usersForCurrentMode:users] mutableCopy];
+        [self _updateSummaryStats];
+        [self _applyFilterAndReload];
+    }];
+}
+
+- (void)pp_retryUsers {
+    self.accessDenied = [self pp_isCustomerAccountMode] && ![self pp_hasUserDirectoryAccess];
+    [self pp_startUsersListener];
 }
 
 - (void)setupHeaderUI {
@@ -330,41 +429,30 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.heroCardView = [UIView new];
     self.heroCardView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCardView.backgroundColor = UIColor.clearColor;
-    self.heroCardView.layer.cornerRadius = 30.0;
+    self.heroCardView.backgroundColor = [UIColor ppElevatedSurface];
+    self.heroCardView.layer.cornerRadius = PPCorner16;
     self.heroCardView.layer.masksToBounds = YES;
+    self.heroCardView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    self.heroCardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     self.heroCardView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     if (@available(iOS 13.0, *)) {
         self.heroCardView.layer.cornerCurve = kCACornerCurveContinuous;
     }
     [self.stickyHeaderView addSubview:self.heroCardView];
 
-    self.heroBackground = [PPHero new];
-    self.heroBackground.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroBackground.accentColorOverride = PPUsersListPrimaryColor();
-    self.heroBackground.accentStyle = PPHeroGlassAccentStyleBar;
-    self.heroBackground.animationsEnabled = NO;
-    [self.heroCardView addSubview:self.heroBackground];
-
-    UIView *iconShell = [UIView new];
-    iconShell.translatesAutoresizingMaskIntoConstraints = NO;
-    iconShell.backgroundColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.12];
-    iconShell.layer.cornerRadius = 18.0;
-    iconShell.layer.masksToBounds = YES;
-    [self.heroCardView addSubview:iconShell];
-
     UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.sequence.fill"
-                                                                       withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:21.0 weight:UIImageSymbolWeightSemibold]]];
+                                                                       withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightSemibold]]];
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
     iconView.tintColor = PPUsersListPrimaryColor();
     iconView.contentMode = UIViewContentModeScaleAspectFit;
-    [iconShell addSubview:iconView];
+    iconView.isAccessibilityElement = NO;
+    [self.heroCardView addSubview:iconView];
 
     self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.closeButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.closeButton.tintColor = PPUsersListPrimaryTextColor();
-    self.closeButton.backgroundColor = [PPUsersListSurfaceColor() colorWithAlphaComponent:0.72];
-    self.closeButton.layer.cornerRadius = 18.0;
+    self.closeButton.backgroundColor = [UIColor ppSurface];
+    self.closeButton.layer.cornerRadius = PPCornerSmall;
     self.closeButton.layer.masksToBounds = YES;
     UIImage *closeImage = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left"
                                   withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightBold]];
@@ -375,53 +463,56 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     self.addUserButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.addUserButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.addUserButton.tintColor = UIColor.whiteColor;
+    self.addUserButton.tintColor = PPOnPrimaryColor();
     self.addUserButton.backgroundColor = PPUsersListPrimaryColor();
-    self.addUserButton.layer.cornerRadius = 18.0;
+    self.addUserButton.layer.cornerRadius = PPCornerSmall;
     self.addUserButton.layer.masksToBounds = YES;
     [self.addUserButton setImage:[UIImage systemImageNamed:@"plus"
                                           withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightBold]]
                          forState:UIControlStateNormal];
     [self.addUserButton addTarget:self action:@selector(didTapAddUser) forControlEvents:UIControlEventTouchUpInside];
     self.addUserButton.accessibilityLabel = kLang(@"AddUser");
-    [PPButtonHelper attachTapAnimationToButton:self.addUserButton style:PPButtonAnimationStyleGlow];
     [self.heroCardView addSubview:self.addUserButton];
 
     self.heroTitleLabel = [UILabel new];
     self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:25.0]];
+    self.heroTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:21.0]];
     self.heroTitleLabel.textColor = PPUsersListPrimaryTextColor();
     self.heroTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.heroTitleLabel.adjustsFontForContentSizeCategory = YES;
-    self.heroTitleLabel.adjustsFontSizeToFitWidth = YES;
-    self.heroTitleLabel.minimumScaleFactor = 0.76;
+    self.heroTitleLabel.numberOfLines = 2;
     self.heroTitleLabel.text = [self pp_screenTitleText];
-    [self.heroCardView addSubview:self.heroTitleLabel];
 
     self.heroSubtitleLabel = [UILabel new];
     self.heroSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.5]];
-    self.heroSubtitleLabel.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.92];
+    self.heroSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.0]];
+    self.heroSubtitleLabel.textColor = PPUsersListSecondaryTextColor();
     self.heroSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
     self.heroSubtitleLabel.numberOfLines = 2;
     self.heroSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.heroSubtitleLabel.text = [self pp_screenSubtitleText];
-    [self.heroCardView addSubview:self.heroSubtitleLabel];
 
-    self.heroCountLabel = [UILabel new];
-    self.heroCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCountLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:13.0]];
-    self.heroCountLabel.textColor = PPUsersListPrimaryColor();
-    self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
-    self.heroCountLabel.backgroundColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.09];
-    self.heroCountLabel.layer.cornerRadius = 14.0;
-    self.heroCountLabel.layer.masksToBounds = YES;
-    self.heroCountLabel.adjustsFontSizeToFitWidth = YES;
-    self.heroCountLabel.minimumScaleFactor = 0.75;
-    self.heroCountLabel.adjustsFontForContentSizeCategory = YES;
-    [self.heroCardView addSubview:self.heroCountLabel];
+    UIStackView *briefingStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.heroTitleLabel, self.heroSubtitleLabel]];
+    briefingStack.translatesAutoresizingMaskIntoConstraints = NO;
+    briefingStack.axis = UILayoutConstraintAxisVertical;
+    briefingStack.alignment = UIStackViewAlignmentFill;
+    briefingStack.spacing = 1.0;
+    briefingStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.heroCardView addSubview:briefingStack];
 
-    self.summaryHeader = [PPUsersSummaryHeaderView new];
+    self.attentionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.attentionButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.attentionButton.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:11.0]];
+    self.attentionButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.attentionButton.titleLabel.numberOfLines = 2;
+    self.attentionButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    self.attentionButton.layer.cornerRadius = PPCornerSmall;
+    self.attentionButton.layer.masksToBounds = YES;
+    self.attentionButton.contentEdgeInsets = UIEdgeInsetsMake(4.0, 8.0, 4.0, 8.0);
+    [self.attentionButton addTarget:self action:@selector(pp_retryUsers) forControlEvents:UIControlEventTouchUpInside];
+    [self.heroCardView addSubview:self.attentionButton];
+
+    self.summaryHeader = [[PPUsersSummaryHeaderView alloc] initWithCustomerCopy:[self pp_isCustomerAccountMode]];
     self.summaryHeader.translatesAutoresizingMaskIntoConstraints = NO;
     [self.heroCardView addSubview:self.summaryHeader];
 
@@ -431,16 +522,14 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     search.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     search.textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     search.textField.textAlignment = [Language alignmentForCurrentLanguage];
-    search.textField.placeholder = self.searchPlaceholderText.length ? self.searchPlaceholderText : kLang(@"SetPermissions_Search_Placeholder");
+    search.textField.placeholder = self.searchPlaceholderText.length
+        ? self.searchPlaceholderText
+        : ([self pp_isCustomerAccountMode] ? kLang(@"MissionControl_Customers_Search_Placeholder") : kLang(@"SetPermissions_Search_Placeholder"));
     search.textField.accessibilityLabel = search.textField.placeholder;
-    search.cornerRadius = 22.0;
-    search.layer.cornerRadius = 22.0;
+    search.cornerRadius = PPCornerSmall;
+    search.layer.cornerRadius = PPCornerSmall;
     search.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    search.layer.borderColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.12].CGColor;
-    search.layer.shadowColor = UIColor.blackColor.CGColor;
-    search.layer.shadowOpacity = 0.055;
-    search.layer.shadowRadius = 14.0;
-    search.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    search.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     [self pp_configureSearchAdornmentForView:search];
     [self.heroCardView addSubview:search];
     self.searchView = search;
@@ -450,67 +539,60 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.stickyHeaderHeightConstraint = [self.stickyHeaderView.heightAnchor constraintEqualToConstant:heroCardHeight + 28.0];
     self.heroCardHeightConstraint = [self.heroCardView.heightAnchor constraintEqualToConstant:heroCardHeight];
     self.summaryHeaderHeightConstraint = [self.summaryHeader.heightAnchor constraintEqualToConstant:summaryHeaderHeight];
+    self.attentionWidthConstraint = [self.attentionButton.widthAnchor constraintEqualToConstant:132.0];
+    NSLayoutConstraint *preferredSummaryTop = [self.summaryHeader.topAnchor constraintEqualToAnchor:self.attentionButton.bottomAnchor constant:8.0];
+    preferredSummaryTop.priority = UILayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
         [self.stickyHeaderView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.stickyHeaderView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.stickyHeaderView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         self.stickyHeaderHeightConstraint,
 
-        [self.heroCardView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:8.0],
+        [self.heroCardView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:6.0],
         [self.heroCardView.leadingAnchor constraintEqualToAnchor:self.stickyHeaderView.leadingAnchor constant:PPUsersListHorizontalInset],
         [self.heroCardView.trailingAnchor constraintEqualToAnchor:self.stickyHeaderView.trailingAnchor constant:-PPUsersListHorizontalInset],
         self.heroCardHeightConstraint,
 
-        [self.heroBackground.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor],
-        [self.heroBackground.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-        [self.heroBackground.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-        [self.heroBackground.bottomAnchor constraintEqualToAnchor:self.heroCardView.bottomAnchor],
+        [iconView.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:14.0],
+        [iconView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:14.0],
+        [iconView.widthAnchor constraintEqualToConstant:28.0],
+        [iconView.heightAnchor constraintEqualToConstant:28.0],
 
-        [iconShell.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:20.0],
-        [iconShell.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
-        [iconShell.widthAnchor constraintEqualToConstant:52.0],
-        [iconShell.heightAnchor constraintEqualToConstant:52.0],
+        [self.closeButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
+        [self.closeButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
+        [self.closeButton.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.closeButton.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
 
-        [iconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
-        [iconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
+        [self.addUserButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
+        [self.addUserButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
+        [self.addUserButton.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.addUserButton.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
 
-        [self.closeButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:22.0],
-        [self.closeButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.closeButton.widthAnchor constraintEqualToConstant:42.0],
-        [self.closeButton.heightAnchor constraintEqualToConstant:42.0],
+        [briefingStack.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
+        [briefingStack.leadingAnchor constraintEqualToAnchor:iconView.trailingAnchor constant:10.0],
+        [briefingStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.attentionButton.leadingAnchor constant:-8.0],
 
-        [self.addUserButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:22.0],
-        [self.addUserButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.addUserButton.widthAnchor constraintEqualToConstant:42.0],
-        [self.addUserButton.heightAnchor constraintEqualToConstant:42.0],
+        [self.attentionButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
+        [self.attentionButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
+        self.attentionWidthConstraint,
+        [self.attentionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
 
-        [self.heroTitleLabel.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:22.0],
-        [self.heroTitleLabel.leadingAnchor constraintEqualToAnchor:iconShell.trailingAnchor constant:14.0],
-        [self.heroTitleLabel.trailingAnchor constraintEqualToAnchor:self.closeButton.leadingAnchor constant:-14.0],
-        [self.heroTitleLabel.heightAnchor constraintGreaterThanOrEqualToConstant:28.0],
-
-        [self.heroSubtitleLabel.topAnchor constraintEqualToAnchor:self.heroTitleLabel.bottomAnchor constant:6.0],
-        [self.heroSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.heroTitleLabel.leadingAnchor],
-        [self.heroSubtitleLabel.trailingAnchor constraintEqualToAnchor:self.heroTitleLabel.trailingAnchor],
-
-        [self.heroCountLabel.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
-        [self.heroCountLabel.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.heroCountLabel.topAnchor constraintEqualToAnchor:self.heroSubtitleLabel.bottomAnchor constant:10.0],
-        [self.heroCountLabel.heightAnchor constraintEqualToConstant:28.0],
-
-        [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
-        [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.summaryHeader.topAnchor constraintEqualToAnchor:self.heroCountLabel.bottomAnchor constant:10.0],
+        [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:12.0],
+        [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
+        [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:briefingStack.bottomAnchor constant:8.0],
+        [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:self.attentionButton.bottomAnchor constant:8.0],
+        preferredSummaryTop,
         self.summaryHeaderHeightConstraint,
 
-        [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:18.0],
-        [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-18.0],
-        [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:10.0],
-        [self.searchView.heightAnchor constraintEqualToConstant:48.0],
+        [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:12.0],
+        [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
+        [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:8.0],
+        [self.searchView.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.searchView.bottomAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.bottomAnchor constant:-10.0],
     ]];
 
     [self pp_updateHeaderButtons];
-    [self pp_refreshHeroCount];
+    [self pp_refreshAttentionSignal];
     [self.view bringSubviewToFront:self.stickyHeaderView];
 }
 
@@ -518,23 +600,23 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     UIView *container = [UIView new];
     container.backgroundColor = UIColor.clearColor;
 
-    UIView *content = [UIView new];
-    content.translatesAutoresizingMaskIntoConstraints = NO;
-    [container addSubview:content];
+    UIView *iconRow = [UIView new];
+    iconRow.translatesAutoresizingMaskIntoConstraints = NO;
 
     UIView *iconShell = [UIView new];
     iconShell.translatesAutoresizingMaskIntoConstraints = NO;
-    iconShell.backgroundColor = [PPUsersListPrimaryColor() colorWithAlphaComponent:0.09];
-    iconShell.layer.cornerRadius = 28.0;
+    iconShell.backgroundColor = [UIColor ppSurface];
+    iconShell.layer.cornerRadius = PPCornerSmall;
     iconShell.layer.masksToBounds = YES;
-    [content addSubview:iconShell];
+    [iconRow addSubview:iconShell];
 
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.fill"
-                                                                       withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:UIImageSymbolWeightSemibold]]];
-    iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    iconView.tintColor = PPUsersListPrimaryColor();
-    iconView.contentMode = UIViewContentModeScaleAspectFit;
-    [iconShell addSubview:iconView];
+    self.stateIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.fill"
+                                                                              withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightSemibold]]];
+    self.stateIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.stateIconView.tintColor = PPUsersListPrimaryColor();
+    self.stateIconView.contentMode = UIViewContentModeScaleAspectFit;
+    self.stateIconView.isAccessibilityElement = NO;
+    [iconShell addSubview:self.stateIconView];
 
     self.stateSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
     self.stateSpinner.translatesAutoresizingMaskIntoConstraints = NO;
@@ -548,42 +630,60 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.stateTitleLabel.textAlignment = NSTextAlignmentCenter;
     self.stateTitleLabel.numberOfLines = 2;
     self.stateTitleLabel.adjustsFontForContentSizeCategory = YES;
-    [content addSubview:self.stateTitleLabel];
 
     self.stateSubtitleLabel = [UILabel new];
     self.stateSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.stateSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:14.0]];
     self.stateSubtitleLabel.textColor = [PPUsersListSecondaryTextColor() colorWithAlphaComponent:0.88];
     self.stateSubtitleLabel.textAlignment = NSTextAlignmentCenter;
-    self.stateSubtitleLabel.numberOfLines = 3;
+    self.stateSubtitleLabel.numberOfLines = 4;
     self.stateSubtitleLabel.adjustsFontForContentSizeCategory = YES;
-    [content addSubview:self.stateSubtitleLabel];
+
+    self.stateRetryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.stateRetryButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.stateRetryButton.backgroundColor = PPUsersListPrimaryColor();
+    self.stateRetryButton.tintColor = PPOnPrimaryColor();
+    NSString *retryTitle = [self pp_isCustomerAccountMode] ? kLang(@"MissionControl_Customers_Retry") : kLang(@"Retry");
+    [self.stateRetryButton setTitle:retryTitle forState:UIControlStateNormal];
+    [self.stateRetryButton setTitleColor:PPOnPrimaryColor() forState:UIControlStateNormal];
+    [self.stateRetryButton setImage:[UIImage systemImageNamed:@"arrow.clockwise"] forState:UIControlStateNormal];
+    self.stateRetryButton.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:15.0]];
+    self.stateRetryButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.stateRetryButton.layer.cornerRadius = PPCornerSmall;
+    self.stateRetryButton.layer.masksToBounds = YES;
+    self.stateRetryButton.accessibilityLabel = retryTitle;
+    [self.stateRetryButton addTarget:self action:@selector(pp_retryUsers) forControlEvents:UIControlEventTouchUpInside];
+
+    UIStackView *content = [[UIStackView alloc] initWithArrangedSubviews:@[iconRow, self.stateTitleLabel, self.stateSubtitleLabel, self.stateRetryButton]];
+    content.translatesAutoresizingMaskIntoConstraints = NO;
+    content.axis = UILayoutConstraintAxisVertical;
+    content.alignment = UIStackViewAlignmentFill;
+    content.spacing = 10.0;
+    [container addSubview:content];
+
+    NSLayoutConstraint *preferredWidth = [content.widthAnchor constraintEqualToAnchor:container.widthAnchor constant:-56.0];
+    preferredWidth.priority = UILayoutPriorityDefaultHigh;
 
     [NSLayoutConstraint activateConstraints:@[
         [content.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
-        [content.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:42.0],
+        [content.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:36.0],
         [content.leadingAnchor constraintGreaterThanOrEqualToAnchor:container.leadingAnchor constant:28.0],
         [content.trailingAnchor constraintLessThanOrEqualToAnchor:container.trailingAnchor constant:-28.0],
+        [content.widthAnchor constraintLessThanOrEqualToConstant:360.0],
+        preferredWidth,
 
-        [iconShell.topAnchor constraintEqualToAnchor:content.topAnchor],
-        [iconShell.centerXAnchor constraintEqualToAnchor:content.centerXAnchor],
-        [iconShell.widthAnchor constraintEqualToConstant:56.0],
-        [iconShell.heightAnchor constraintEqualToConstant:56.0],
+        [iconRow.heightAnchor constraintEqualToConstant:52.0],
+        [iconShell.centerXAnchor constraintEqualToAnchor:iconRow.centerXAnchor],
+        [iconShell.centerYAnchor constraintEqualToAnchor:iconRow.centerYAnchor],
+        [iconShell.widthAnchor constraintEqualToConstant:52.0],
+        [iconShell.heightAnchor constraintEqualToConstant:52.0],
 
-        [iconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
-        [iconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
+        [self.stateIconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
+        [self.stateIconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
 
         [self.stateSpinner.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
         [self.stateSpinner.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
-
-        [self.stateTitleLabel.topAnchor constraintEqualToAnchor:iconShell.bottomAnchor constant:18.0],
-        [self.stateTitleLabel.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
-        [self.stateTitleLabel.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
-
-        [self.stateSubtitleLabel.topAnchor constraintEqualToAnchor:self.stateTitleLabel.bottomAnchor constant:8.0],
-        [self.stateSubtitleLabel.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
-        [self.stateSubtitleLabel.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
-        [self.stateSubtitleLabel.bottomAnchor constraintEqualToAnchor:content.bottomAnchor]
+        [self.stateRetryButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin]
     ]];
 
     self.stateView = container;
@@ -592,14 +692,14 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
 - (NSString *)pp_screenTitleText {
     if (self.viewForMode == ViewForPicker) return kLang(@"Staff_Select_Existing_User");
-    if (self.viewForMode == ViewForEditAccount) return kLang(@"EditUsersAccount_List_Title");
+    if (self.viewForMode == ViewForEditAccount) return kLang(@"MissionControl_Customers_Title");
     if (self.viewForMode == ViewForEditRoleAndPermissions) return kLang(@"EditUsersRolePerms_List_Title");
     if (self.viewForMode == ViewForAdminToggle) return kLang(@"AdminToggleList_Title");
     return kLang(@"UsersSection");
 }
 
 - (NSString *)pp_screenSubtitleText {
-    if (self.viewForMode == ViewForEditAccount) return kLang(@"EditUsersAccount_List_Subtitle");
+    if (self.viewForMode == ViewForEditAccount) return kLang(@"MissionControl_Customers_Briefing");
     if (self.viewForMode == ViewForEditRoleAndPermissions) return kLang(@"EditUsersRolePerms_List_Subtitle");
     return kLang(@"AdminDashboard_Section_Users_Description");
 }
@@ -653,17 +753,25 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     self.closeButton.hidden = !canClose;
     BOOL canAdd = self.viewForMode == ViewForDefault || self.viewForMode == ViewForAdminToggle;
     self.addUserButton.hidden = canClose || !canAdd;
+    BOOL customerMode = [self pp_isCustomerAccountMode];
+    self.attentionButton.hidden = !customerMode || canClose;
+    self.attentionWidthConstraint.constant = customerMode && !canClose ? 132.0 : PPTouchTargetMin;
 }
 
 - (CGFloat)pp_stickyHeaderHeight {
     CGFloat safeTop = self.view.safeAreaInsets.top;
-    return safeTop + [self pp_headerCardHeight] + 18.0;
+    return safeTop + [self pp_headerCardHeight] + 14.0;
 }
 
 - (CGFloat)pp_headerCardHeight {
     if (@available(iOS 11.0, *)) {
-        if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
-            return 352.0;
+        UIContentSizeCategory category = UIApplication.sharedApplication.preferredContentSizeCategory;
+        if (UIContentSizeCategoryIsAccessibilityCategory(category)) {
+            return 560.0;
+        }
+        if ([category isEqualToString:UIContentSizeCategoryExtraExtraLarge] ||
+            [category isEqualToString:UIContentSizeCategoryExtraExtraExtraLarge]) {
+            return 312.0;
         }
     }
     return PPUsersListHeaderCardHeight;
@@ -672,10 +780,10 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 - (CGFloat)pp_summaryHeaderHeight {
     if (@available(iOS 11.0, *)) {
         if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
-            return 88.0;
+            return 236.0;
         }
     }
-    return 68.0;
+    return 60.0;
 }
 
 - (void)pp_updateStickyHeaderMetrics {
@@ -697,38 +805,101 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     [self.view bringSubviewToFront:self.stickyHeaderView];
 }
 
-- (void)pp_refreshHeroCount {
-    NSInteger visible = self.filteredUsers.count;
-    NSInteger total = self.allUsers.count;
-    self.heroCountLabel.text = [NSString stringWithFormat:@"%ld / %ld  %@",
-                                (long)visible,
-                                (long)total,
-                                kLang(@"Total_Users")];
-    self.heroCountLabel.accessibilityLabel = self.heroCountLabel.text;
+- (void)pp_refreshAttentionSignal {
+    if (!self.attentionButton) return;
+
+    NSString *title = nil;
+    NSString *symbol = nil;
+    UIColor *color = nil;
+    BOOL recoverable = self.currentError != nil;
+    if (self.accessDenied) {
+        title = kLang(@"CommandCenter_Permission_Denied_Title");
+        symbol = @"lock.fill";
+        color = [UIColor ppError];
+        recoverable = NO;
+    } else if (self.currentError) {
+        title = kLang(self.allUsers.count > 0
+                      ? @"MissionControl_Customers_Signal_RetainedError"
+                      : @"MissionControl_Customers_Signal_LoadError");
+        symbol = @"arrow.clockwise";
+        color = [UIColor ppError];
+    } else if (self.isLoadingUsers) {
+        title = kLang(@"MissionControl_Customers_Signal_Loading");
+        symbol = @"arrow.triangle.2.circlepath";
+        color = [UIColor ppInfo];
+    } else if (self.attentionCount > 0) {
+        title = [NSString stringWithFormat:kLang(@"MissionControl_Customers_Signal_Attention_Format"),
+                 PPUsersLocalizedCount(self.attentionCount)];
+        symbol = @"exclamationmark.circle.fill";
+        color = [UIColor ppWarning];
+    } else {
+        title = kLang(@"MissionControl_Customers_Signal_Clear");
+        symbol = @"checkmark.circle.fill";
+        color = [UIColor ppSuccess];
+    }
+
+    UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:12.0 weight:UIImageSymbolWeightSemibold];
+    [self.attentionButton setImage:[UIImage systemImageNamed:symbol withConfiguration:configuration] forState:UIControlStateNormal];
+    [self.attentionButton setTitle:title forState:UIControlStateNormal];
+    [self.attentionButton setTitleColor:color forState:UIControlStateNormal];
+    self.attentionButton.tintColor = color;
+    self.attentionButton.backgroundColor = [color colorWithAlphaComponent:0.11];
+    self.attentionButton.userInteractionEnabled = recoverable;
+    self.attentionButton.accessibilityLabel = title;
+    self.attentionButton.accessibilityHint = recoverable ? kLang(@"MissionControl_Customers_Retry_Hint") : nil;
+    self.attentionButton.accessibilityTraits = recoverable ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
 }
 
 - (void)pp_updateStateView {
+    BOOL customerMode = [self pp_isCustomerAccountMode];
     BOOL hasRows = self.filteredUsers.count > 0;
     self.stateView.hidden = hasRows;
     if (hasRows) {
+        [self.stateSpinner stopAnimating];
+        self.stateRetryButton.hidden = YES;
+        return;
+    }
+
+    if (self.accessDenied) {
+        self.stateTitleLabel.text = kLang(@"CommandCenter_Permission_Denied_Title");
+        self.stateSubtitleLabel.text = kLang(@"CommandCenter_Permission_Denied_Message");
+        self.stateIconView.hidden = NO;
+        self.stateIconView.image = [UIImage systemImageNamed:@"lock.fill"];
+        self.stateIconView.tintColor = [UIColor ppError];
+        self.stateRetryButton.hidden = YES;
         [self.stateSpinner stopAnimating];
         return;
     }
 
     if (self.isLoadingUsers) {
-        self.stateTitleLabel.text = kLang(@"Loading");
-        self.stateSubtitleLabel.text = kLang(@"SetPermissions_Search_Placeholder");
+        self.stateTitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_Loading_Title") : kLang(@"Loading");
+        self.stateSubtitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_Loading_Body") : kLang(@"SetPermissions_Search_Placeholder");
+        self.stateIconView.hidden = YES;
+        self.stateRetryButton.hidden = YES;
         [self.stateSpinner startAnimating];
         return;
     }
 
     [self.stateSpinner stopAnimating];
+    self.stateIconView.hidden = NO;
     if (self.currentError) {
-        self.stateTitleLabel.text = kLang(@"Error_Title");
-        self.stateSubtitleLabel.text = self.currentError.localizedDescription;
+        self.stateTitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_Error_Title") : kLang(@"Error_Title");
+        self.stateSubtitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_Error_Body") : self.currentError.localizedDescription;
+        self.stateIconView.image = [UIImage systemImageNamed:@"exclamationmark.triangle.fill"];
+        self.stateIconView.tintColor = [UIColor ppError];
+        self.stateRetryButton.hidden = NO;
+    } else if (self.allUsers.count == 0) {
+        self.stateTitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_SourceEmpty_Title") : kLang(@"NoUsersFound");
+        self.stateSubtitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_SourceEmpty_Body") : kLang(@"SetPermissions_Search_Placeholder");
+        self.stateIconView.image = [UIImage systemImageNamed:@"tray"];
+        self.stateIconView.tintColor = [UIColor ppTextSecondary];
+        self.stateRetryButton.hidden = YES;
     } else {
-        self.stateTitleLabel.text = kLang(@"NoUsersFound");
-        self.stateSubtitleLabel.text = kLang(@"SetPermissions_Search_Placeholder");
+        self.stateTitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_FilteredEmpty_Title") : kLang(@"NoUsersFound");
+        self.stateSubtitleLabel.text = customerMode ? kLang(@"MissionControl_Customers_FilteredEmpty_Body") : kLang(@"SetPermissions_Search_Placeholder");
+        self.stateIconView.image = [UIImage systemImageNamed:@"magnifyingglass"];
+        self.stateIconView.tintColor = [UIColor ppTextSecondary];
+        self.stateRetryButton.hidden = YES;
     }
 }
 
@@ -736,9 +907,7 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     if (self.didRunEntrance || self.didPrepareEntrance) return;
     self.didPrepareEntrance = YES;
     self.stickyHeaderView.alpha = 0.0;
-    self.stickyHeaderView.transform = CGAffineTransformMakeTranslation(0.0, -8.0);
     self.tableView.alpha = 0.0;
-    self.tableView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
 }
 
 - (void)pp_runEntranceIfNeeded {
@@ -748,28 +917,16 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 
     if (UIAccessibilityIsReduceMotionEnabled()) {
         self.stickyHeaderView.alpha = 1.0;
-        self.stickyHeaderView.transform = CGAffineTransformIdentity;
         self.tableView.alpha = 1.0;
-        self.tableView.transform = CGAffineTransformIdentity;
         return;
     }
 
-    [UIView animateWithDuration:0.38
-                          delay:0.0
-                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
+    [UIView animateWithDuration:0.28
+                           delay:0.0
+                         options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
+                      animations:^{
         self.stickyHeaderView.alpha = 1.0;
-        self.stickyHeaderView.transform = CGAffineTransformIdentity;
-    } completion:nil];
-
-    [UIView animateWithDuration:0.44
-                          delay:0.08
-         usingSpringWithDamping:0.88
-          initialSpringVelocity:0.35
-                        options:UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
         self.tableView.alpha = 1.0;
-        self.tableView.transform = CGAffineTransformIdentity;
     } completion:nil];
 }
 
@@ -785,15 +942,20 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     NSInteger total = self.allUsers.count;
     NSInteger active = 0;
     NSInteger verified = 0;
-    NSInteger prod = 0;
+    NSInteger attention = 0;
     
     for (UserModel *u in self.allUsers) {
-        if (!u.isBlocked && (!u.accountStatus || [u.accountStatus isEqualToString:@"active"])) active++;
+        NSString *status = PPUsersResolvedAccountStatus(u);
+        if ([status isEqualToString:@"active"]) active++;
+        else if ([status isEqualToString:@"blocked"] ||
+                 [status isEqualToString:@"disabled"] ||
+                 [status isEqualToString:@"pending_review"]) attention++;
         if (u.isVerified) verified++;
-        if ([u.prodectionStatus isEqualToString:@"active"]) prod++;
     }
-    
-    [self.summaryHeader updateWithTotal:total active:active verified:verified prod:prod];
+
+    self.attentionCount = attention;
+    [self.summaryHeader updateWithTotal:total active:active verified:verified attention:attention];
+    [self pp_refreshAttentionSignal];
 }
 
 #pragma mark - Search delegate
@@ -817,20 +979,8 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
         }];
         self.filteredUsers = [[self.allUsers filteredArrayUsingPredicate:p] mutableCopy];
     }
-    [self pp_refreshHeroCount];
     [self pp_updateStateView];
-
-    if (UIAccessibilityIsReduceMotionEnabled()) {
-        [self.tableView reloadData];
-        return;
-    }
-
-    [UIView transitionWithView:self.tableView
-                      duration:0.20
-                       options:UIViewAnimationOptionTransitionCrossDissolve | UIViewAnimationOptionAllowUserInteraction
-                    animations:^{
-        [self.tableView reloadData];
-    } completion:nil];
+    [self.tableView reloadData];
 }
 
 #pragma mark - Table
@@ -846,26 +996,6 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
     cell.accessibilityIdentifier = u.uid.length ? u.uid : [NSString stringWithFormat:@"user-%ld", (long)indexPath.row];
     cell.delegate = self;
     return cell;
-}
-
-- (void)tableView:(UITableView *)tableView willDisplayCell:(UITableViewCell *)cell forRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (indexPath.row >= (NSInteger)self.filteredUsers.count || UIAccessibilityIsReduceMotionEnabled()) return;
-
-    UserModel *user = self.filteredUsers[indexPath.row];
-    NSString *identifier = user.uid.length ? user.uid : [NSString stringWithFormat:@"%ld", (long)indexPath.row];
-    if ([self.animatedUserIDs containsObject:identifier]) return;
-    [self.animatedUserIDs addObject:identifier];
-
-    cell.contentView.alpha = 0.0;
-    cell.contentView.transform = CGAffineTransformMakeTranslation(0.0, 12.0);
-    NSTimeInterval delay = MIN(indexPath.row, 8) * 0.025;
-    [UIView animateWithDuration:0.32
-                          delay:delay
-                        options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction
-                     animations:^{
-        cell.contentView.alpha = 1.0;
-        cell.contentView.transform = CGAffineTransformIdentity;
-    } completion:nil];
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -948,20 +1078,30 @@ static UIColor *PPUsersListSecondaryTextColor(void) {
 #pragma mark - Swipe Actions
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasPermission:kStaffPermUsersManage]) return nil;
+
     UserModel *u = self.filteredUsers[indexPath.row];
-    
-    BOOL isBlocked = u.isBlocked;
+
+    BOOL isBlocked = [PPUsersResolvedAccountStatus(u) isEqualToString:@"blocked"];
     NSString *title = isBlocked ? kLang(@"Unblock") : kLang(@"BlockUser_Action");
     UIContextualAction *blockAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:title handler:^(UIContextualAction * _Nonnull action, __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
         [self pp_confirmBlockUser:u shouldBlock:!isBlocked completion:completionHandler];
     }];
-    blockAction.backgroundColor = isBlocked ? [UIColor systemGreenColor] : [UIColor systemOrangeColor];
+    blockAction.backgroundColor = isBlocked ? [UIColor ppSuccess] : [UIColor ppWarning];
     blockAction.image = [UIImage systemImageNamed:isBlocked ? @"hand.thumbsup.fill" : @"hand.raised.slash.fill"];
     
     return [UISwipeActionsConfiguration configurationWithActions:@[blockAction]];
 }
 
 - (void)pp_confirmBlockUser:(UserModel *)user shouldBlock:(BOOL)shouldBlock completion:(void(^)(BOOL handled))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasPermission:kStaffPermUsersManage]) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        if (completion) completion(NO);
+        return;
+    }
+
     // Current user check
     if ([[FIRAuth auth].currentUser.uid isEqualToString:user.uid]) {
         [PPToast toast:kLang(@"StatusNoAccess")];

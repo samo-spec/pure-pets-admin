@@ -525,20 +525,8 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
         let isDark = traitCollection.userInterfaceStyle == .dark
         let strongerContrast = UIAccessibility.isDarkerSystemColorsEnabled
 
-        let fallbackAccent = UIColor(
-            red: 0.50,
-            green: 0.18,
-            blue: 0.08,
-            alpha: 1
-        )
-        let accent = resolvedColor(
-            accentColorOverride ?? UIColor(named: "AppPrimaryClr") ?? fallbackAccent
-        )
-
-        let surfaceFallback = isDark
-            ? UIColor(white: 0.105, alpha: 1)
-            : UIColor(red: 0.992, green: 0.989, blue: 0.991, alpha: 1)
-        let surfaceBase = resolvedColor(UIColor(named: "AppForgroundColr") ?? surfaceFallback)
+        let accent = resolvedColor(accentColorOverride ?? UIColor.ppPrimary)
+        let surfaceBase = resolvedColor(UIColor.ppElevatedSurface)
         let highlight = blend(
             surfaceBase,
             with: .white,
@@ -555,9 +543,9 @@ public final class PPHeroApexView: UIView, UIGestureRecognizerDelegate {
             amount: isDark ? 0.043 : 0.016
         )
 
-        let seaGlass = blend(accent, with: resolvedColor(.systemTeal), amount: 0.58)
-        let twilight = blend(accent, with: resolvedColor(.systemIndigo), amount: 0.44)
-        let warmLight = blend(accent, with: resolvedColor(.systemOrange), amount: 0.32)
+        let seaGlass = blend(accent, with: resolvedColor(.ppQuickActionServices), amount: 0.58)
+        let twilight = blend(accent, with: resolvedColor(.ppQuickActionCommunity), amount: 0.44)
+        let warmLight = blend(accent, with: resolvedColor(.ppWarning), amount: 0.32)
         let particlePrimary = blend(accent, with: .white, amount: isDark ? 0.66 : 0.52)
         let particleSecondary = blend(seaGlass, with: .white, amount: isDark ? 0.62 : 0.68)
 

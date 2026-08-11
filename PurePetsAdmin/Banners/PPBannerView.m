@@ -100,8 +100,8 @@
     // Gradient darkens bottom area slightly → better text contrast on photos.
     _gradientLayer = [CAGradientLayer layer];
     _gradientLayer.colors = @[
-        (id)[UIColor colorWithHexString:@"#dec7af"].CGColor,
-        (id)[UIColor colorWithHexString:@"#c8b199"].CGColor
+        (id)[UIColor ppMineralBeige].CGColor,
+        (id)[UIColor ppWarmPorcelain].CGColor
     ];
     _gradientLayer.locations = @[@0.0, @1.0];
     _gradientLayer.startPoint = CGPointMake(0.5, 1.0);
@@ -475,7 +475,7 @@
 + (UIImage *)pp_placeholderBackground {
     CGSize sz = CGSizeMake(8, 8);
     UIGraphicsBeginImageContextWithOptions(sz, YES, 0);
-    [[UIColor colorWithRed:0.70 green:0.10 blue:0.28 alpha:1.0] setFill]; // brand-ish color (#B21B48)
+    [[UIColor ppPrimary] setFill];
     UIRectFill((CGRect){.origin = CGPointZero, .size = sz});
     UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
     UIGraphicsEndImageContext();

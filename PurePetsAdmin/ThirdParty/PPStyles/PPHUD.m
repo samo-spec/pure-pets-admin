@@ -179,11 +179,11 @@ typedef NS_ENUM(NSInteger, PPHUDMode) {
 
     self.backgroundColor = [UIColor.blackColor colorWithAlphaComponent:dark ? 0.28 : 0.16];
     self.materialView.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:dark ? 0.16 : 0.62].CGColor;
-    self.titleLabel.textColor = UIColor.labelColor;
-    self.subtitleLabel.textColor = UIColor.secondaryLabelColor;
-    self.activityIndicator.color = UIColor.labelColor;
-    self.ringTrackLayer.strokeColor = [UIColor.secondaryLabelColor colorWithAlphaComponent:0.24].CGColor;
-    self.ringProgressLayer.strokeColor = UIColor.labelColor.CGColor;
+    self.titleLabel.textColor = [UIColor ppTextPrimary];
+    self.subtitleLabel.textColor = [UIColor ppTextSecondary];
+    self.activityIndicator.color = [UIColor ppTextPrimary];
+    self.ringTrackLayer.strokeColor = [[UIColor ppTextSecondary] colorWithAlphaComponent:0.24].CGColor;
+    self.ringProgressLayer.strokeColor = [UIColor ppTextPrimary].CGColor;
 }
 
 - (void)presentInView:(UIView *)host
@@ -262,8 +262,8 @@ typedef NS_ENUM(NSInteger, PPHUDMode) {
             UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:29.0 weight:UIImageSymbolWeightSemibold];
             self.symbolImageView.image = [UIImage systemImageNamed:symbolName withConfiguration:configuration];
             self.symbolImageView.tintColor = isSuccess
-                ? UIColor.systemGreenColor
-                : (isError ? UIColor.systemRedColor : UIColor.systemBlueColor);
+                ? [UIColor ppSuccess]
+                : (isError ? [UIColor ppError] : [UIColor ppInfo]);
         } else {
             self.symbolImageView.image = nil;
         }

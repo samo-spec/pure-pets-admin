@@ -66,7 +66,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.font = PPBranchMedium(PPFontCaption1, UIFontTextStyleCaption1);
-        _titleLabel.textColor = UIColor.secondaryLabelColor;
+        _titleLabel.textColor = [UIColor ppTextSecondary];
         _titleLabel.numberOfLines = 1;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -74,7 +74,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
 
         _textField = [[UITextField alloc] init];
         _textField.font = PPBranchRegular(PPFontBody, UIFontTextStyleBody);
-        _textField.textColor = UIColor.labelColor;
+        _textField.textColor = [UIColor ppTextPrimary];
         _textField.textAlignment = Language.alignmentForCurrentLanguage;
         _textField.autocorrectionType = UITextAutocorrectionTypeNo;
         _textField.returnKeyType = UIReturnKeyNext;
@@ -85,7 +85,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
         [self.contentView addSubview:_textField];
 
         _bottomLine = [[UIView alloc] init];
-        _bottomLine.backgroundColor = UIColor.separatorColor;
+        _bottomLine.backgroundColor = [UIColor ppSeparator];
         _bottomLine.translatesAutoresizingMaskIntoConstraints = NO;
         [self.contentView addSubview:_bottomLine];
 
@@ -120,7 +120,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
     self.textField.placeholder = placeholder;
     self.textField.keyboardType = keyboardType;
     self.textField.enabled = editable;
-    self.textField.textColor = editable ? UIColor.labelColor : UIColor.tertiaryLabelColor;
+    self.textField.textColor = editable ? [UIColor ppTextPrimary] : [UIColor ppTextTertiary];
     [self setFocused:NO animated:NO];
 }
 
@@ -129,7 +129,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
 }
 
 - (void)setFocused:(BOOL)focused animated:(BOOL)animated {
-    UIColor *target = focused ? AppPrimaryClr : UIColor.separatorColor;
+    UIColor *target = focused ? [UIColor ppPrimary] : [UIColor ppSeparator];
     if (!animated) {
         self.bottomLine.backgroundColor = target;
         return;
@@ -163,7 +163,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.font = PPBranchMedium(PPFontCaption1, UIFontTextStyleCaption1);
-        _titleLabel.textColor = UIColor.secondaryLabelColor;
+        _titleLabel.textColor = [UIColor ppTextSecondary];
         _titleLabel.numberOfLines = 1;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -235,7 +235,7 @@ static UIFont *PPBranchRegular(CGFloat size, UIFontTextStyle style) {
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.font = PPBranchRegular(PPFontBody, UIFontTextStyleBody);
-        _titleLabel.textColor = UIColor.labelColor;
+        _titleLabel.textColor = [UIColor ppTextPrimary];
         _titleLabel.numberOfLines = 0;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -302,7 +302,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = UIColor.systemGroupedBackgroundColor;
+    self.view.backgroundColor = [UIColor ppBackground];
     [self setupNavigation];
     [self setupDraft];
     [self setupTableView];

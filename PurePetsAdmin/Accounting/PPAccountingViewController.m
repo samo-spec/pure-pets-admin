@@ -10,27 +10,23 @@
 @import FirebaseFirestore;
 
 static UIColor *PPAccountingAccentColor(void) {
-    return AppPrimaryClr ?: UIColor.systemPinkColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPAccountingCanvasColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.systemGroupedBackgroundColor;
-    return [UIColor colorWithWhite:0.96 alpha:1.0];
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPAccountingSurfaceColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.secondarySystemGroupedBackgroundColor;
-    return UIColor.whiteColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPAccountingInkColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.labelColor;
-    return UIColor.blackColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPAccountingSubInkColor(void) {
-    if (@available(iOS 13.0, *)) return UIColor.secondaryLabelColor;
-    return [UIColor colorWithWhite:0.40 alpha:1.0];
+    return [UIColor ppTextSecondary];
 }
 
 static void PPAccountingApplyCardChrome(UIView *view, CGFloat radius) {
@@ -280,7 +276,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
     hero.translatesAutoresizingMaskIntoConstraints = NO;
     hero.accentStyle = PPHeroGlassAccentStyleCornerGlow;
     hero.cornerGlowOpacityMultiplier = 0.68;
-    hero.accentColorOverride = UIColor.systemRedColor;
+    hero.accentColorOverride = [UIColor ppDiscount];
     [heroCard addSubview:hero];
     [hero startAnimations];
 
@@ -575,7 +571,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
 - (void)pp_updateHeaderSummary {
     double expenses = [self totalExpenses];
     double profit = self.service.orderRevenue - expenses;
-    UIColor *color = profit >= 0 ? UIColor.systemGreenColor : UIColor.systemRedColor;
+    UIColor *color = profit >= 0 ? [UIColor ppSuccess] : [UIColor ppError];
     self.heroProfitLabel.text = PPAccountingMoneyString(profit);
     self.heroProfitLabel.textColor = color;
     self.heroProfitLabel.backgroundColor = [color colorWithAlphaComponent:0.11];
@@ -694,12 +690,12 @@ static NSString *PPAccountingDateString(NSDate *date) {
         double profit = revenue - expenses;
         if (indexPath.row == 0) {
             NSString *subtitle = [NSString stringWithFormat:kLang(@"Accounting_OrdersCount_Format"), @(self.service.orderCount)];
-            [cell configureTitle:kLang(@"Accounting_Revenue") value:PPAccountingMoneyString(revenue) subtitle:subtitle symbol:@"arrow.up.circle.fill" tint:UIColor.systemGreenColor];
+            [cell configureTitle:kLang(@"Accounting_Revenue") value:PPAccountingMoneyString(revenue) subtitle:subtitle symbol:@"arrow.up.circle.fill" tint:[UIColor ppSuccess]];
         } else if (indexPath.row == 1) {
             NSString *subtitle = [NSString stringWithFormat:kLang(@"Accounting_ExpensesCount_Format"), @(self.service.expenses.count)];
-            [cell configureTitle:kLang(@"Accounting_Expenses") value:PPAccountingMoneyString(expenses) subtitle:subtitle symbol:@"arrow.down.circle.fill" tint:UIColor.systemRedColor];
+            [cell configureTitle:kLang(@"Accounting_Expenses") value:PPAccountingMoneyString(expenses) subtitle:subtitle symbol:@"arrow.down.circle.fill" tint:[UIColor ppError]];
         } else {
-            [cell configureTitle:kLang(@"Accounting_Profit") value:PPAccountingMoneyString(profit) subtitle:kLang(@"Accounting_ProfitSubtitle") symbol:@"dollarsign.circle.fill" tint:(profit >= 0 ? UIColor.systemGreenColor : UIColor.systemRedColor)];
+            [cell configureTitle:kLang(@"Accounting_Profit") value:PPAccountingMoneyString(profit) subtitle:kLang(@"Accounting_ProfitSubtitle") symbol:@"dollarsign.circle.fill" tint:(profit >= 0 ? [UIColor ppSuccess] : [UIColor ppError])];
         }
         return cell;
     }
@@ -709,7 +705,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
         PPAccountingTransaction *txn = self.service.transactions[indexPath.row];
         PPAccountingEntryCell *cell = [tableView dequeueReusableCellWithIdentifier:@"EntryCell" forIndexPath:indexPath];
         NSString *title = txn.desc.length > 0 ? txn.desc : [NSString stringWithFormat:@"%@ #%@", kLang(@"Accounting_Transaction"), txn.txnID];
-        [cell configureTitle:title subtitle:PPAccountingDateString(txn.createdAt) amount:PPAccountingMoneyString(txn.amount) tint:UIColor.systemGreenColor];
+        [cell configureTitle:title subtitle:PPAccountingDateString(txn.createdAt) amount:PPAccountingMoneyString(txn.amount) tint:[UIColor ppSuccess]];
         return cell;
     }
 
@@ -718,7 +714,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
     PPAccountingEntryCell *cell = [tableView dequeueReusableCellWithIdentifier:@"EntryCell" forIndexPath:indexPath];
     NSString *catKey = [NSString stringWithFormat:@"Accounting_Cat_%@", exp.category.length ? exp.category : @"other"];
     NSString *title = exp.desc.length ? exp.desc : kLang(catKey);
-    [cell configureTitle:title subtitle:[NSString stringWithFormat:@"%@ - %@", kLang(catKey), PPAccountingDateString(exp.createdAt)] amount:PPAccountingMoneyString(exp.amount) tint:UIColor.systemRedColor];
+    [cell configureTitle:title subtitle:[NSString stringWithFormat:@"%@ - %@", kLang(catKey), PPAccountingDateString(exp.createdAt)] amount:PPAccountingMoneyString(exp.amount) tint:[UIColor ppError]];
     return cell;
 }
 

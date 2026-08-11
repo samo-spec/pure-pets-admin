@@ -432,7 +432,7 @@
 
     self.filterCollectionView = [[UICollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
     self.filterCollectionView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.filterCollectionView.backgroundColor = [UIColor secondarySystemBackgroundColor];
+    self.filterCollectionView.backgroundColor = [UIColor ppSurface];
     self.filterCollectionView.dataSource = self;
     self.filterCollectionView.delegate = self;
 

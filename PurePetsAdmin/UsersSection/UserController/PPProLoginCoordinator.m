@@ -121,7 +121,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             return;
         }
 
-        [self pp_gatekeepUsersColForUID:user.uid
+        [self pp_gatekeepStaffAccessForUID:user.uid
                                   email:user.email ?: @""
                                password:@""
                           fromBiometric:NO
@@ -142,7 +142,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     [[FIRAuth auth] sendPasswordResetWithEmail:trimmedEmail completion:^(NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) {
-                completion(error == nil, error.localizedDescription ?: kLang(@"PasswordResetEmailSent"));
+                completion(error == nil, error ? [self pp_authErrorSubtitle:error] : kLang(@"PasswordResetEmailSent"));
             }
         });
     }];
@@ -265,7 +265,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
                 return;
             }
 
-            [self pp_gatekeepUsersColForUID:effectiveUser.uid
+            [self pp_gatekeepStaffAccessForUID:effectiveUser.uid
                                       email:email
                                    password:password
                               fromBiometric:fromBiometric
@@ -296,7 +296,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
     return NO;
 }
 
-- (void)pp_gatekeepUsersColForUID:(NSString *)uid
+- (void)pp_gatekeepStaffAccessForUID:(NSString *)uid
                             email:(NSString *)email
                          password:(NSString *)password
                     fromBiometric:(BOOL)fromBiometric
@@ -346,7 +346,11 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
         [PPHUD dismiss];
         PPAdminSetLoginInProgress(NO);
         [UsrMgr signOut];
-        if (completion) completion(NO, kLang(@"StatusNoAccess"));
+        if (completion) {
+            completion(NO, staffDoc && !staffDoc.isActive
+                       ? kLang(@"StatusAccountDisabled")
+                       : kLang(@"StatusNoAccess"));
+        }
     }];
 }
 
@@ -505,6 +509,21 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 - (NSString *)pp_authErrorSubtitle:(NSError * _Nullable)error {
     NSString *fallback = kLang(@"StatusLoginFailed");
     if (!error) return fallback;
+
+    if ([self pp_isFirebaseAuthError:error]) {
+        switch ([self pp_normalizedAuthErrorCode:error]) {
+            case FIRAuthErrorCodeInvalidCredential:
+            case FIRAuthErrorCodeWrongPassword:
+            case FIRAuthErrorCodeUserNotFound:
+                return kLang(@"StatusInvalidCredentials");
+            case FIRAuthErrorCodeUserDisabled:
+                return kLang(@"StatusAccountDisabled");
+            case FIRAuthErrorCodeNetworkError:
+                return kLang(@"StatusNetworkError");
+            default:
+                break;
+        }
+    }
 
     NSString *backendMessage = [self pp_authBackendMessageFromError:error];
     if (backendMessage.length > 0) {

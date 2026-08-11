@@ -47,10 +47,10 @@
     gradient.name = @"PPGuardianBorderLayer";
     gradient.frame = self.bounds;
     
-    //@[(__bridge id)UIColor.systemBlueColor.CGColor, (__bridge id)UIColor.systemPurpleColor.CGColor];
-    gradient.colors = @[(__bridge id)[UIColor redColor].CGColor,
-                                             (__bridge id)[UIColor orangeColor].CGColor,
-                                             (__bridge id)[UIColor yellowColor].CGColor];
+    // Accent gradient colors are sourced from PPDesignTokens.
+    gradient.colors = @[(__bridge id)[UIColor ppError].CGColor,
+                                             (__bridge id)[UIColor ppWarning].CGColor,
+                                             (__bridge id)[UIColor ppPremiumAccent].CGColor];
     gradient.startPoint = CGPointMake(0, 0.5);
     gradient.endPoint = CGPointMake(1, 0.5);
 
@@ -80,10 +80,10 @@
 
     
     UIColor *c1  = [AppPrimaryClr colorWithAlphaComponent:0.5];
-    UIColor *c2  = [UIColor.yellowColor colorWithAlphaComponent:0.5];
+    UIColor *c2  = [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.5];
     UIColor *c3  = [AppPrimaryClrShiner colorWithAlphaComponent:0.5];
-    UIColor *c4  = [UIColor.redColor colorWithAlphaComponent:0.5];
-    UIColor *c5  = [UIColor.yellowColor colorWithAlphaComponent:0.5];
+    UIColor *c4  = [[UIColor ppError] colorWithAlphaComponent:0.5];
+    UIColor *c5  = [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.5];
     UIColor *c6  = [AppPrimaryClrDarker colorWithAlphaComponent:0.5];
     
     

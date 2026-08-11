@@ -32,8 +32,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)fetchFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *records, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillments(completion:));
 
-- (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *records, NSError * _Nullable error))completion
+- (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *records, BOOL isFromCache, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillments(completion:));
+
+- (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID
+                                       completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(observeFulfillment(_:completion:));
 
 - (void)fetchFulfillmentDetail:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSArray *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillmentDetail(_:completion:));
@@ -51,6 +55,9 @@ NS_ASSUME_NONNULL_BEGIN
                           notify:(BOOL)notify
                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
     NS_SWIFT_NAME(adminOverride(_:targetStatus:reason:note:notify:completion:));
+
+/// Mirrors the callable's canonical `payments.manage` authorization gate.
+- (BOOL)canAdminOverride NS_SWIFT_NAME(canAdminOverride());
 
 + (NSArray<NSString *> *)allowedOverrideTargetsForStatus:(NSString *)currentStatus
     NS_SWIFT_NAME(allowedOverrideTargets(forStatus:));

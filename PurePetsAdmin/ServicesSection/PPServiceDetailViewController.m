@@ -232,7 +232,7 @@
 
     NSArray<NSString *> *icons = @[@"square.and.pencil", @"slider.horizontal.3", (self.service.isDeleted ? @"arrow.uturn.backward.circle" : @"archivebox"), @"trash"];
     NSArray<NSString *> *selectors = @[@"editTapped", @"moderationTapped", @"archiveTapped", @"deleteTapped"];
-    NSArray<UIColor *> *colors = @[UIColor.systemBlueColor, AppPrimaryClr, UIColor.systemOrangeColor, UIColor.systemRedColor];
+    NSArray<UIColor *> *colors = @[[UIColor ppInfo], [UIColor ppPrimary], [UIColor ppWarning], [UIColor ppError]];
 
     UIStackView *stack = [UIStackView new];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -379,10 +379,10 @@
 }
 
 - (UIColor *)currentStatusColor {
-    if (self.service.isDeleted) return UIColor.systemGrayColor;
-    if (self.service.isBlocked) return UIColor.systemRedColor;
-    if (self.service.isDisabled) return UIColor.systemOrangeColor;
-    return UIColor.systemGreenColor;
+    if (self.service.isDeleted) return [UIColor ppTextSecondary];
+    if (self.service.isBlocked) return [UIColor ppError];
+    if (self.service.isDisabled) return [UIColor ppWarning];
+    return [UIColor ppSuccess];
 }
 
 - (NSString *)prettyJSONString:(NSDictionary *)dictionary {

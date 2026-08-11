@@ -33,15 +33,15 @@ static NSString * const kTagExtraJSON = @"serviceExtraJSON";
 static NSString * const kTagAuditNote = @"serviceAuditNote";
 
 static UIColor *PPServiceSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPServiceBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPServiceAccentColor(void) {
-    return AppPrimaryClr ?: UIColor.systemPinkColor;
+    return [UIColor ppPrimary];
 }
 
 @interface PPAddEditServiceViewController () <PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
@@ -236,7 +236,7 @@ static UIColor *PPServiceAccentColor(void) {
 
     UILabel *label = [[UILabel alloc] init];
     label.font = [Styling fontMedium:13];
-    label.textColor = SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    label.textColor = [UIColor ppTextSecondary];
     label.text = title;
     [stack addArrangedSubview:label];
     [stack addArrangedSubview:body];
@@ -249,8 +249,8 @@ static UIColor *PPServiceAccentColor(void) {
      style.cardBorderColor = [PPServiceAccentColor() colorWithAlphaComponent:0.08];
     style.fieldBorderColor = [PPServiceAccentColor() colorWithAlphaComponent:0.10];
     style.accentColor = PPServiceAccentColor();
-    style.primaryTextColor = PrimaryTextClr ?: UIColor.labelColor;
-    style.secondaryTextColor = SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    style.primaryTextColor = [UIColor ppTextPrimary];
+    style.secondaryTextColor = [UIColor ppTextSecondary];
     style.cardCornerRadius = 24.0;
     style.fieldCornerRadius = 18.0;
     return style;

@@ -1,4 +1,5 @@
 #import "PPFulfillmentService.h"
+#import "PPStaffAuth.h"
 @import FirebaseFirestore;
 @import FirebaseFunctions;
 
@@ -85,12 +86,12 @@
     }];
 }
 
-- (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *, NSError *))completion {
+- (id<FIRListenerRegistration>)observeFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *, BOOL, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     FIRQuery *query = [[[db collectionWithPath:@"FulfillmentOrders"] queryOrderedByField:@"updatedAt" descending:YES] queryLimitedTo:100];
-    return [query addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+    return [query addSnapshotListenerWithIncludeMetadataChanges:YES listener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         if (error) {
-            if (completion) completion(@[], error);
+            if (completion) completion(@[], NO, error);
             return;
         }
         NSMutableArray *records = [NSMutableArray array];
@@ -98,7 +99,24 @@
             PPFulfillmentRecord *r = [[PPFulfillmentRecord alloc] initWithDictionary:doc.data documentID:doc.documentID];
             [records addObject:r];
         }
-        if (completion) completion(records, nil);
+        if (completion) completion(records, snapshot.metadata.isFromCache, nil);
+    }];
+}
+
+- (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, NSError *))completion {
+    FIRDocumentReference *ref = [[[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID];
+    return [ref addSnapshotListener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        if (!snapshot.exists) {
+            NSError *notFound = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:nil];
+            if (completion) completion(nil, notFound);
+            return;
+        }
+        PPFulfillmentRecord *record = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
+        if (completion) completion(record, nil);
     }];
 }
 
@@ -107,6 +125,11 @@
     FIRDocumentReference *ref = [[db collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID];
     [ref getDocumentWithCompletion:^(FIRDocumentSnapshot *snap, NSError *error) {
         if (error) { if (completion) completion(nil, @[], error); return; }
+        if (!snap.exists) {
+            NSError *notFound = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:nil];
+            if (completion) completion(nil, @[], notFound);
+            return;
+        }
         PPFulfillmentRecord *r = [[PPFulfillmentRecord alloc] initWithDictionary:snap.data documentID:snap.documentID];
         [[[ref collectionWithPath:@"events"] queryOrderedByField:@"createdAt" descending:YES]
          getDocumentsWithCompletion:^(FIRQuerySnapshot *eventSnap, NSError *eventError) {
@@ -241,6 +264,11 @@
         NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
         if (completion) completion(dict, error);
     }];
+}
+
+- (BOOL)canAdminOverride {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasPermission:kStaffPermPaymentsManage];
 }
 
 + (NSArray<NSString *> *)allowedOverrideTargetsForStatus:(NSString *)currentStatus {

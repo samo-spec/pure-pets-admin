@@ -187,7 +187,7 @@
              
          case PPButtonAnimationStyleGlow:
          {
-             view.layer.shadowColor = [UIColor systemBlueColor].CGColor;
+             view.layer.shadowColor = [UIColor ppPrimary].CGColor;
              view.layer.shadowOpacity = 0.6;
              view.layer.shadowRadius = 6;
              view.layer.shadowOffset = CGSizeZero;

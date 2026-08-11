@@ -9,15 +9,15 @@ static NSString *const kAuditCellID = @"AuditCell";
 
 static UIColor *PPAuditColorForAction(NSString *action) {
     if ([action hasPrefix:@"set_blocked"] || [action hasPrefix:@"set_unblocked"]) {
-        return [action containsString:@"unblocked"] ? UIColor.systemGreenColor : UIColor.systemRedColor;
+        return [action containsString:@"unblocked"] ? [UIColor ppSuccess] : [UIColor ppError];
     }
-    if ([action hasPrefix:@"set_permission"]) return UIColor.systemPurpleColor;
-    if ([action hasPrefix:@"set_role"]) return UIColor.systemIndigoColor;
-    if ([action hasPrefix:@"create_"]) return UIColor.systemBlueColor;
-    if ([action hasPrefix:@"delete_"]) return UIColor.systemRedColor;
-    if ([action hasPrefix:@"update_"]) return UIColor.systemOrangeColor;
-    if ([action hasPrefix:@"set_admin"]) return UIColor.systemTealColor;
-    return UIColor.systemGrayColor;
+    if ([action hasPrefix:@"set_permission"]) return [UIColor ppQuickActionAnimals];
+    if ([action hasPrefix:@"set_role"]) return [UIColor ppQuickActionCommunity];
+    if ([action hasPrefix:@"create_"]) return [UIColor ppInfo];
+    if ([action hasPrefix:@"delete_"]) return [UIColor ppError];
+    if ([action hasPrefix:@"update_"]) return [UIColor ppWarning];
+    if ([action hasPrefix:@"set_admin"]) return [UIColor ppQuickActionServices];
+    return [UIColor ppTextSecondary];
 }
 
 static NSString *PPAuditLocalizedAction(NSString *action) {
@@ -67,15 +67,15 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor ppBackground];
     UIBarButtonItem *close = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissVC)];
     self.navigationItem.rightBarButtonItem = close;
     _textView = [[UITextView alloc] init];
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.editable = NO;
     _textView.font = [UIFont fontWithName:@"Menlo" size:12] ?: [UIFont systemFontOfSize:12];
-    _textView.textColor = [UIColor labelColor];
-    _textView.backgroundColor = [UIColor systemBackgroundColor];
+    _textView.textColor = [UIColor ppTextPrimary];
+    _textView.backgroundColor = [UIColor ppBackground];
     _textView.text = _jsonText;
     _textView.contentInset = UIEdgeInsetsMake(PPSpaceBase, PPSpaceBase, PPSpaceBase, PPSpaceBase);
     [self.view addSubview:_textView];
@@ -238,20 +238,20 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
         UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, tableView.bounds.size.width, 200)];
         container.clipsToBounds = NO;
         UIView *card = [[UIView alloc] init];
-        card.backgroundColor = [UIColor systemBackgroundColor];
+        card.backgroundColor = [UIColor ppBackground];
         card.translatesAutoresizingMaskIntoConstraints = NO;
         PPApplyContinuousCorners(card, PPCornerMedium);
         PPApplyCardShadow(card);
         [container addSubview:card];
         self.heroTitleLabel = [[UILabel alloc] init];
         self.heroTitleLabel.font = PPFontMedium(PPFontTitle2);
-        self.heroTitleLabel.textColor = [UIColor labelColor];
+        self.heroTitleLabel.textColor = [UIColor ppTextPrimary];
         self.heroTitleLabel.text = kLang(@"Audit_Title");
         self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:self.heroTitleLabel];
         UILabel *subtitle = [[UILabel alloc] init];
         subtitle.font = PPFontRegular(PPFontSubheadline);
-        subtitle.textColor = [UIColor secondaryLabelColor];
+        subtitle.textColor = [UIColor ppTextSecondary];
         subtitle.text = kLang(@"Audit_Total");
         subtitle.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:subtitle];
@@ -265,7 +265,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
         self.selectedFilterIndex = 0;
         _filterButton = [UIButton buttonWithType:UIButtonTypeSystem];
         _filterButton.translatesAutoresizingMaskIntoConstraints = NO;
-        _filterButton.backgroundColor = [UIColor systemGray5Color];
+        _filterButton.backgroundColor = [UIColor ppSecondarySurface];
         _filterButton.tintColor = AppPrimaryClr;
         _filterButton.titleLabel.font = PPFontMedium(PPFontSubheadline);
         _filterButton.layer.cornerRadius = PPCornerMedium;
@@ -333,7 +333,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     if (self.filteredEntries.count == 0) {
         UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:kAuditCellID forIndexPath:indexPath];
         cell.textLabel.text = kLang(@"Audit_NoEntries");
-        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+        cell.textLabel.textColor = [UIColor ppTextSecondary];
         cell.textLabel.textAlignment = NSTextAlignmentCenter;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType = UITableViewCellAccessoryNone;
@@ -369,19 +369,19 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
         targetLabel = [[UILabel alloc] init];
         targetLabel.tag = 103;
         targetLabel.font = PPFontRegular(PPFontSubheadline);
-        targetLabel.textColor = [UIColor secondaryLabelColor];
+        targetLabel.textColor = [UIColor ppTextSecondary];
         targetLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:targetLabel];
         timeLabel = [[UILabel alloc] init];
         timeLabel.tag = 104;
         timeLabel.font = PPFontRegular(PPFontCaption1);
-        timeLabel.textColor = [UIColor tertiaryLabelColor];
+        timeLabel.textColor = [UIColor ppTextTertiary];
         timeLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:timeLabel];
         reasonLabel = [[UILabel alloc] init];
         reasonLabel.tag = 105;
         reasonLabel.font = PPFontRegular(PPFontCaption1);
-        reasonLabel.textColor = [UIColor tertiaryLabelColor];
+        reasonLabel.textColor = [UIColor ppTextTertiary];
         reasonLabel.numberOfLines = 2;
         reasonLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:reasonLabel];

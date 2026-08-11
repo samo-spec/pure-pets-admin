@@ -7,6 +7,7 @@
 
 #import <XCTest/XCTest.h>
 #import "PPPaymentManagementModels.h"
+#import "PPStaffAuth.h"
 
 @interface PurePetsAdminTests : XCTestCase
 
@@ -117,6 +118,41 @@
     XCTAssertFalse([PPPaymentAdminRecord canResolveRequest:refundApproved
                                                 withAction:PPPaymentAdminRequestResolutionComplete
                                                     order:order]);
+}
+
+- (void)testRoleOnlyCanonicalStaffRecordUsesInfraDefaults {
+    PPStaffDoc *staff = [[PPStaffDoc alloc] initWithDictionary:@{
+        @"status": @"active",
+        @"role": @"payments_manager"
+    } uid:@"staff_1"];
+
+    XCTAssertTrue(staff.canAccessStaffWorkspace);
+    XCTAssertTrue([staff hasPermission:kStaffPermPaymentsView]);
+    XCTAssertTrue([staff hasPermission:kStaffPermPosHistory]);
+    XCTAssertFalse([staff hasPermission:kStaffPermStockManage]);
+}
+
+- (void)testDisabledCanonicalStaffRecordCannotAuthorize {
+    PPStaffDoc *staff = [[PPStaffDoc alloc] initWithDictionary:@{
+        @"status": @"disabled",
+        @"role": @"owner"
+    } uid:@"staff_2"];
+
+    XCTAssertFalse(staff.isActive);
+    XCTAssertFalse(staff.canAccessStaffWorkspace);
+    XCTAssertFalse([staff hasPermission:kStaffPermPaymentsView]);
+}
+
+- (void)testUnknownCanonicalRoleFallsBackToViewerWithoutDroppingExplicitPermission {
+    PPStaffDoc *staff = [[PPStaffDoc alloc] initWithDictionary:@{
+        @"status": @"active",
+        @"role": @"custom_operations_label",
+        @"permissions": @[kStaffPermDashboardView, kStaffPermSupportView]
+    } uid:@"staff_3"];
+
+    XCTAssertEqualObjects(staff.role, PPStaffRoleViewer);
+    XCTAssertTrue([staff hasPermission:kStaffPermSupportView]);
+    XCTAssertFalse([staff hasPermission:kStaffPermPaymentsManage]);
 }
 
 @end

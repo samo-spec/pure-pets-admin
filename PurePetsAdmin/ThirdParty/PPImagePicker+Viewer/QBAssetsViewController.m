@@ -314,8 +314,8 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
     } else {
         // Legacy fallback — manual styling
         self.infoBTN.layer.cornerRadius = height / 2;
-        self.infoBTN.backgroundColor = AppBackgroundClr ?: [UIColor colorWithWhite:0.95 alpha:1.0];
-        [self.infoBTN setTitleColor:UIColor.labelColor forState:UIControlStateNormal];
+        self.infoBTN.backgroundColor = [UIColor ppBackground];
+        [self.infoBTN setTitleColor:[UIColor ppTextPrimary] forState:UIControlStateNormal];
         self.infoBTN.titleLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:16];
     }
 
@@ -392,12 +392,12 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
         
         // Visual state: tinted fill when enabled, light background when disabled
         if (enabled) {
-            btn.backgroundColor = [UIColor systemPinkColor]; // change color to match app primary color
+            btn.backgroundColor = [UIColor ppPrimary]; // change color to match app primary color
             btn.tintColor = UIColor.whiteColor;
             btn.layer.shadowOpacity = 0.18;
         } else {
-            btn.backgroundColor = [UIColor secondarySystemBackgroundColor];
-            btn.tintColor = [UIColor labelColor];
+            btn.backgroundColor = [UIColor ppSurface];
+            btn.tintColor = [UIColor ppTextPrimary];
             btn.layer.shadowOpacity = 0.06;
         }
         

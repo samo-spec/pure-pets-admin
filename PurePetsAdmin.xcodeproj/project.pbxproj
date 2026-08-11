@@ -25,16 +25,27 @@
 		A3088EA6E670D8BABF21EACD /* QBAlbumsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 63514318000226D7F46DE080 /* QBAlbumsViewController.m */; };
 		A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E100012FF1000100A5E001 /* PPHeroApex.swift */; };
 		A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */; };
+		A6C000012FA9000100A6C001 /* App/AdminAppRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */; };
+		A6C000022FA9000100A6C002 /* App/AdminAppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */; };
+		A6C000032FA9000100A6C003 /* App/AdminTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001032FA9000100A6C003 /* App/AdminTab.swift */; };
+		A6C000042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */; };
+		A6C000052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */; };
+		A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */; };
+		A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */; };
+		A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */; };
+		A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */; };
+		A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */; };
+		A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */; };
+		A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A9F100B12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */; };
 		A9F100B22F70000100C0DE01 /* PPMarketplaceSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A42F70000100C0DE01 /* PPMarketplaceSettingsViewController.m */; };
 		A9F100B32F70000100C0DE01 /* PPPaymentManagementRecordCell.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A62F70000100C0DE01 /* PPPaymentManagementRecordCell.m */; };
-		ABE31BEAA85D476F8D0300B9 /* PPVetsListViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7B74675FA34741BDBDDAC5AB /* PPVetsListViewController.m */; };
 		AD00E5DEAF8C418DD0AD8D20 /* QBVideoIconView.m in Sources */ = {isa = PBXBuildFile; fileRef = 068FBBDA955D966F979652B5 /* QBVideoIconView.m */; };
+		B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100012FAA000100B0A001 /* PPVetsListView.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
 		C1A000010000000000000101 /* PPAdminWebAppViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = C1A000010000000000000103 /* PPAdminWebAppViewController.m */; };
 		C54AFB88580CEB55093C550F /* ImageViewerController.m in Sources */ = {isa = PBXBuildFile; fileRef = 1F4961B9BADF9C82FBB7B6FC /* ImageViewerController.m */; };
-		CC56314264F8477EAADF6431 /* PPVetCell.m in Sources */ = {isa = PBXBuildFile; fileRef = 70515340F318451EA70F47F6 /* PPVetCell.m */; };
 		CE43F5BCB3D542799240B55C /* PPPaymentManagementViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 4D2191B785CC472BBAF4447F /* PPPaymentManagementViewController.m */; };
 		D2980444903339DC203D029F /* PPPickerAssetManager.m in Sources */ = {isa = PBXBuildFile; fileRef = EFBAA62442349371CE398FC6 /* PPPickerAssetManager.m */; };
 		F2052C842F7E175A00C06FDF /* PPPaddingLabel.m in Sources */ = {isa = PBXBuildFile; fileRef = F2052C832F7E175A00C06FDF /* PPPaddingLabel.m */; };
@@ -201,6 +212,7 @@
 		F2A347D42E58622D00C6713D /* AddAccessoryViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A347D02E5861CA00C6713D /* AddAccessoryViewController.m */; };
 		F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A347D62E58689900C6713D /* AccessoryCell.m */; };
 		F2A347DA2E58807200C6713D /* AlertHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A347D92E58807200C6713D /* AlertHelper.m */; };
+		F2B1390C302BBC1300C3C672 /* PPGlobalNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2B1390B302BBC1300C3C672 /* PPGlobalNavigation.swift */; };
 		F2B198472E6049FE0023ABAF /* PPSubtitleSwitchCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */; };
 		F2C23F3330055AD6005E31C6 /* PPChatsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3230055AD6005E31C6 /* PPChatsViewController.m */; };
 		F2C23F3630055AD6005E31C6 /* PPSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2C23F3530055AD6005E31C6 /* PPSettingsViewController.m */; };
@@ -232,6 +244,7 @@
 		F2E33F2B30055F98005E31C6 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = F2E33F2930055F98005E31C6 /* README.md */; };
 		F2E33F2C30055F98005E31C6 /* PPFormEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2730055F98005E31C6 /* PPFormEngine.m */; };
 		F2E33F2D30055F98005E31C6 /* PPFormEngineUsageExample.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */; };
+		F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2E30055AD6005E31C6 /* PPDesignTokens.m */; };
 		F2E33F323005D48C005E31C6 /* PPBranchesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */; };
 		F2E33F333005D496005E31C6 /* PPBranchEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */; };
 		F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */; };
@@ -312,24 +325,35 @@
 		4FB5C3BC68A541BBACAADE46 /* PPPaymentDetailsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentDetailsViewController.h; sourceTree = "<group>"; };
 		5049D2B95AC57DD90700A7C7 /* QBAssetCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetCell.m; sourceTree = "<group>"; };
 		"5180A33C-6D47-48AC-90BB-A3ECA9946F74" /* PPBranchEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchEditorViewController.h; sourceTree = "<group>"; };
-		5AF3BB8E18684C34BF70BE83 /* PPVetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetCell.h; sourceTree = "<group>"; };
 		63514318000226D7F46DE080 /* QBAlbumsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumsViewController.m; sourceTree = "<group>"; };
 		"6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchEditorViewController.m; sourceTree = "<group>"; };
 		7020D445371E4CC79C849CA0 /* PPPaymentManagementService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementService.h; sourceTree = "<group>"; };
 		704DED2A8C08AC77378B7093 /* PPPickerAssetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPickerAssetManager.h; sourceTree = "<group>"; };
-		70515340F318451EA70F47F6 /* PPVetCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetCell.m; sourceTree = "<group>"; };
 		7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetsViewController.m; sourceTree = "<group>"; };
-		7B74675FA34741BDBDDAC5AB /* PPVetsListViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetsListViewController.m; sourceTree = "<group>"; };
 		7E5643B7071482941D64A720 /* QBCheckmarkView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBCheckmarkView.h; sourceTree = "<group>"; };
 		86ED84CAB52487E1E5197671 /* QBImagePickerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBImagePickerController.m; sourceTree = "<group>"; };
 		89D9BA66609441F18AB155D7 /* PPVetModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetModel.h; sourceTree = "<group>"; };
 		9845D8DDEB1134D0A9F7E3BB /* QBImagePicker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBImagePicker.h; sourceTree = "<group>"; };
 		98D40889C7DB786D327F9792 /* QBAssetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetCell.h; sourceTree = "<group>"; };
-		9A0C834C2B4F42FEB58566DF /* PPVetsListViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPVetsListViewController.h; sourceTree = "<group>"; };
 		A1E5604CF63D542D8056E8CC /* QBSlomoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBSlomoIconView.h; sourceTree = "<group>"; };
 		"A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchesViewController.m; sourceTree = "<group>"; };
 		A5E100012FF1000100A5E001 /* PPHeroApex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPHeroApex.swift; sourceTree = "<group>"; };
 		A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPHeroApexBridge.m; sourceTree = "<group>"; };
+		A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppRoot.swift; sourceTree = "<group>"; };
+		A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppShell.swift; sourceTree = "<group>"; };
+		A6C001032FA9000100A6C003 /* App/AdminTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminTab.swift; sourceTree = "<group>"; };
+		A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AuthenticationState.swift; sourceTree = "<group>"; };
+		A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AdminLoginView.swift; sourceTree = "<group>"; };
+		A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterModels.swift; sourceTree = "<group>"; };
+		A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterState.swift; sourceTree = "<group>"; };
+		A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterView.swift; sourceTree = "<group>"; };
+		A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Routing/AdminRoute.swift; sourceTree = "<group>"; };
+		A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/Session/PPAdminSessionBridge.h; sourceTree = "<group>"; };
+		A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/Session/PPAdminSessionBridge.m; sourceTree = "<group>"; };
+		A6C0010C2FA9000100A6C00C /* Services/CommandCenter/PPAdminCommandCenterService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/CommandCenter/PPAdminCommandCenterService.h; sourceTree = "<group>"; };
+		A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/CommandCenter/PPAdminCommandCenterService.m; sourceTree = "<group>"; };
+		A6C0010E2FA9000100A6C00E /* Shared/Routing/PPAdminRouteFactory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Shared/Routing/PPAdminRouteFactory.h; sourceTree = "<group>"; };
+		A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Shared/Routing/PPAdminRouteFactory.m; sourceTree = "<group>"; };
 		"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentsViewController.h; sourceTree = "<group>"; };
 		A9F100A12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentBasicsSettingsViewController.h; sourceTree = "<group>"; };
 		A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentBasicsSettingsViewController.m; sourceTree = "<group>"; };
@@ -338,6 +362,7 @@
 		A9F100A52F70000100C0DE01 /* PPPaymentManagementRecordCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementRecordCell.h; sourceTree = "<group>"; };
 		A9F100A62F70000100C0DE01 /* PPPaymentManagementRecordCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementRecordCell.m; sourceTree = "<group>"; };
 		AFB8946774C24C23A585F8C5 /* PPPaymentManagementService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementService.m; sourceTree = "<group>"; };
+		B0A100012FAA000100B0A001 /* PPVetsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetsListView.swift; sourceTree = "<group>"; };
 		B4B25A3F0AC9C2AC1635B8EF /* PPImageCollectionRow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollectionRow.h; sourceTree = "<group>"; };
 		B7D4E5F62A1B4C6D8E9F0011 /* PPFirebaseCompat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFirebaseCompat.h; sourceTree = "<group>"; };
 		C1A000010000000000000102 /* PPAdminWebAppViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAdminWebAppViewController.h; sourceTree = "<group>"; };
@@ -661,6 +686,7 @@
 		F2A347D82E58806200C6713D /* AlertHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AlertHelper.h; sourceTree = "<group>"; };
 		F2A347D92E58807200C6713D /* AlertHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AlertHelper.m; sourceTree = "<group>"; };
 		F2A8FA362E6E233300ED3B1E /* PurePetsAdmin-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PurePetsAdmin-Bridging-Header.h"; sourceTree = "<group>"; };
+		F2B1390B302BBC1300C3C672 /* PPGlobalNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPGlobalNavigation.swift; sourceTree = "<group>"; };
 		F2B198452E6049F50023ABAF /* PPSubtitleSwitchCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPSubtitleSwitchCell.h; sourceTree = "<group>"; };
 		F2B198462E6049FE0023ABAF /* PPSubtitleSwitchCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPSubtitleSwitchCell.m; sourceTree = "<group>"; };
 		F2C23F3130055AD6005E31C6 /* PPChatsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPChatsViewController.h; sourceTree = "<group>"; };
@@ -724,6 +750,7 @@
 		F2E33F2930055AD6005E31C6 /* PPThemeRefresh.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPThemeRefresh.h; sourceTree = "<group>"; };
 		F2E33F2930055F98005E31C6 /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPThemeRefresh.m; sourceTree = "<group>"; };
+		F2E33F2E30055AD6005E31C6 /* PPDesignTokens.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPDesignTokens.m; sourceTree = "<group>"; };
 		F2E33F3A3005E7FB005E31C6 /* PPListingsAdminViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPListingsAdminViewController.h; sourceTree = "<group>"; };
 		F2E33F3B3005E7FB005E31C6 /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPListingsAdminViewController.m; sourceTree = "<group>"; };
 		F2E33F403005E8D6005E31C6 /* PPAuditLogEntryModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAuditLogEntryModel.h; sourceTree = "<group>"; };
@@ -736,7 +763,6 @@
 		F2E33F473005E8D6005E31C6 /* PPCategoryEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPCategoryEditorViewController.m; sourceTree = "<group>"; };
 		F2E33F483005E8D6005E31C6 /* PPContentModerationViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPContentModerationViewController.h; sourceTree = "<group>"; };
 		F2E33F493005E8D6005E31C6 /* PPContentModerationViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPContentModerationViewController.m; sourceTree = "<group>"; };
-		F2E33F503005EDF4005E31C6 /* PurePetsColorPattle.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PurePetsColorPattle.h; sourceTree = "<group>"; };
 		F2E8EDCA2F77CBB700530CA4 /* PPMediaItem.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaItem.h; sourceTree = "<group>"; };
 		F2E8EDCB2F77CBB700530CA4 /* PPMediaItem.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPMediaItem.m; sourceTree = "<group>"; };
 		F2E8EDCC2F77CBB700530CA4 /* PPMediaPicker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMediaPicker.h; sourceTree = "<group>"; };
@@ -1103,6 +1129,22 @@
 		F28AE12E2E569026007279F5 /* PurePetsAdmin */ = {
 			isa = PBXGroup;
 			children = (
+				F2B1390A302BBBCB00C3C672 /* PPComponent */,
+				A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */,
+				A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */,
+				A6C001032FA9000100A6C003 /* App/AdminTab.swift */,
+				A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */,
+				A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */,
+				A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */,
+				A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */,
+				A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */,
+				A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */,
+				A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */,
+				A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */,
+				A6C0010C2FA9000100A6C00C /* Services/CommandCenter/PPAdminCommandCenterService.h */,
+				A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */,
+				A6C0010E2FA9000100A6C00E /* Shared/Routing/PPAdminRouteFactory.h */,
+				A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */,
 				F2A24ADB3003C4D3003AB79D /* Accounting */,
 				"C6983AD2-C833-4E69-8BBD-6C718C5934AC" /* CategoriesSection */,
 				F2A24AE03003C4D3003AB79D /* Delivery */,
@@ -1167,7 +1209,6 @@
 		F28AE1442E5690D0007279F5 /* ThirdParty */ = {
 			isa = PBXGroup;
 			children = (
-				F2E33F503005EDF4005E31C6 /* PurePetsColorPattle.h */,
 				A0D748145397FB48759DC863 /* PPImagePicker+Viewer */,
 				F29D11BB2E72F535001A3F2E /* CLImageEditor */,
 				F27434EB2E5EBEA00054C091 /* OtherLib */,
@@ -1601,6 +1642,14 @@
 			path = AccessorySection;
 			sourceTree = "<group>";
 		};
+		F2B1390A302BBBCB00C3C672 /* PPComponent */ = {
+			isa = PBXGroup;
+			children = (
+				F2B1390B302BBC1300C3C672 /* PPGlobalNavigation.swift */,
+			);
+			path = PPComponent;
+			sourceTree = "<group>";
+		};
 		F2B41E892E5647BD0054D8CD = {
 			isa = PBXGroup;
 			children = (
@@ -1657,6 +1706,7 @@
 			children = (
 				F2E33F2A30055F98005E31C6 /* PPFormEngine */,
 				F2E33F2630055AD6005E31C6 /* PPDesignTokens.h */,
+				F2E33F2E30055AD6005E31C6 /* PPDesignTokens.m */,
 				F2E33F2330055AD6005E31C6 /* PPHero.h */,
 				F2E33F2430055AD6005E31C6 /* PPHero.m */,
 				A5E100012FF1000100A5E001 /* PPHeroApex.swift */,
@@ -1784,10 +1834,7 @@
 				48315371333844CE99A6638A /* PPVetModel.m */,
 				C67FD10A53834BD89FCDBB2D /* PPVetManager.h */,
 				35927158F3DE4461BAA4F526 /* PPVetManager.m */,
-				5AF3BB8E18684C34BF70BE83 /* PPVetCell.h */,
-				70515340F318451EA70F47F6 /* PPVetCell.m */,
-				9A0C834C2B4F42FEB58566DF /* PPVetsListViewController.h */,
-				7B74675FA34741BDBDDAC5AB /* PPVetsListViewController.m */,
+				B0A100012FAA000100B0A001 /* PPVetsListView.swift */,
 				09ACEFCC8F7A4CF99078A5AF /* PPAddEditVetViewController.h */,
 				2C97DB99BC4542DD8F31D494 /* PPAddEditVetViewController.m */,
 				458FA916CB944554AF3741C4 /* PPVetDetailViewController.h */,
@@ -1997,10 +2044,20 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A6C000012FA9000100A6C001 /* App/AdminAppRoot.swift in Sources */,
+				A6C000022FA9000100A6C002 /* App/AdminAppShell.swift in Sources */,
+				A6C000032FA9000100A6C003 /* App/AdminTab.swift in Sources */,
+				A6C000042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift in Sources */,
+				A6C000052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift in Sources */,
+				A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */,
+				A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */,
+				A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */,
+				A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */,
+				A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */,
+				A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */,
+				A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */,
 				FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */,
 				6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */,
-				CC56314264F8477EAADF6431 /* PPVetCell.m in Sources */,
-				ABE31BEAA85D476F8D0300B9 /* PPVetsListViewController.m in Sources */,
 				66213DB3EE11415A8153A6AA /* PPAddEditVetViewController.m in Sources */,
 				86200C95A3CA4EA2AD869767 /* PPVetDetailViewController.m in Sources */,
 				46E5A999B95D4FD8BDD6A964 /* PPVetSubscriptionViewController.m in Sources */,
@@ -2111,6 +2168,7 @@
 				F29D11DD2E72F535001A3F2E /* CLEffectTool.m in Sources */,
 				F266EA312E5AFEDE0072C2C2 /* PPS.m in Sources */,
 				F266CCB52E60032600AB5935 /* PPTextField.m in Sources */,
+				F2B1390C302BBC1300C3C672 /* PPGlobalNavigation.swift in Sources */,
 				F2E8EDD52F77CBB700530CA4 /* PPMediaPicker.m in Sources */,
 				F2E8EDD62F77CBB700530CA4 /* PPMediaPickerDemoVC.m in Sources */,
 				F2E8EDD72F77CBB700530CA4 /* PPMediaItem.m in Sources */,
@@ -2132,7 +2190,9 @@
 				F25AF32F2E674BCD00DD9787 /* FUManager.m in Sources */,
 				F2A347D72E5868A700C6713D /* AccessoryCell.m in Sources */,
 				A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */,
+				B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */,
 				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,
+				F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */,
 				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,
 				F2D542E62E5A400C004F6B9F /* UIViewController+PPNavBar.m in Sources */,
 				F2A1BB072E74AC8600B86BF9 /* PPBottomBar.m in Sources */,
@@ -2331,6 +2391,7 @@
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore",
 					"${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController/**",
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore/**",
+					"$(SRCROOT)/PurePetsAdmin",
 				);
 				INFOPLIST_FILE = PurePetsAdmin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pure Pets Admin";
@@ -2356,6 +2417,10 @@
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
 				PRODUCT_BUNDLE_IDENTIFIER = "Ali-Ahmed.PurePetsAdmin";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PurePetsAdmin/PurePetsAdmin-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -2411,6 +2476,7 @@
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore",
 					"${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController/**",
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore/**",
+					"$(SRCROOT)/PurePetsAdmin",
 				);
 				INFOPLIST_FILE = PurePetsAdmin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pure Pets Admin";
@@ -2436,6 +2502,10 @@
 				MODULE_VERIFIER_SUPPORTED_LANGUAGE_STANDARDS = "gnu17 gnu++20";
 				PRODUCT_BUNDLE_IDENTIFIER = "Ali-Ahmed.PurePetsAdmin";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "PurePetsAdmin/PurePetsAdmin-Bridging-Header.h";
 				SWIFT_VERSION = 6.0;
@@ -2600,6 +2670,7 @@
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore",
 					"${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController/**",
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore/**",
+					"$(SRCROOT)/PurePetsAdmin",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;
@@ -2642,6 +2713,7 @@
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore",
 					"${PODS_ROOT}/TOCropViewController/Objective-C/TOCropViewController/**",
 					"${PODS_ROOT}/FirebaseFirestore/FirebaseFirestoreInternal/FirebaseFirestore/**",
+					"$(SRCROOT)/PurePetsAdmin",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
 				MARKETING_VERSION = 1.0;

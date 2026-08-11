@@ -19,7 +19,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = [UIColor systemBackgroundColor];
+    self.view.backgroundColor = [UIColor ppBackground];
     self.title = @"Media Picker Demo";
     
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];

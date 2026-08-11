@@ -53,6 +53,12 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
                   status:(NSString *)status
               completion:(AdminServiceCompletion)completion;
 
++ (void)updateUserStatus:(NSString *)uid
+                  status:(NSString *)status
+                  reason:(nullable NSString *)reason
+                duration:(nullable NSString *)duration
+              completion:(AdminServiceCompletion)completion;
+
 + (void)updateUserSubscription:(NSString *)uid
                   subscription:(NSDictionary *)subscription
                     completion:(AdminServiceCompletion)completion;
@@ -105,5 +111,4 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
 @end
 
 NS_ASSUME_NONNULL_END
-
 

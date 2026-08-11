@@ -13,7 +13,6 @@
 #import "PPStaffAuth.h"
 #import "UsersListVC.h"
 #import "PPImageCollection.h"
-#import "PPHero.h"
 #import "PPFormEngine.h"
 #import "PPDesignTokens.h"
 
@@ -36,7 +35,7 @@ static NSString *const PPAddUserModeAssignValue = @"assign";
 
 static CGFloat const PPAddUserHorizontalInset = 18.0;
 static CGFloat const PPAddUserWideHorizontalInset = 28.0;
-static CGFloat const PPAddUserHeaderCornerRadius = 30.0;
+static CGFloat const PPAddUserHeaderCornerRadius = PPCornerHero;
 
 static UIFont *PPAddUserScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
     if (@available(iOS 11.0, *)) {
@@ -46,23 +45,23 @@ static UIFont *PPAddUserScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) 
 }
 
 static UIColor *PPAddUserSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPAddUserBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPAddUserPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPAddUserPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPAddUserSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static UIColor *PPAddUserBorderColor(void) {
@@ -77,6 +76,27 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     return [value isKindOfClass:NSDictionary.class] ? (NSDictionary *)value : @{};
 }
 
+static PermissionAction *PPAddUserPermissionAction(NSString *key, NSString *localizedKey) {
+    PermissionAction *action = [PermissionAction new];
+    action.key = key ?: @"";
+    // Keep the localization key until render time so a live language change
+    // does not leave this long-lived editor with stale labels.
+    action.labelEn = localizedKey ?: @"";
+    action.labelAr = localizedKey ?: @"";
+    return action;
+}
+
+static PermissionModule *PPAddUserPermissionModule(NSString *key,
+                                                    NSString *localizedKey,
+                                                    NSArray<PermissionAction *> *actions) {
+    PermissionModule *module = [PermissionModule new];
+    module.key = key ?: @"";
+    module.labelEn = localizedKey ?: @"";
+    module.labelAr = localizedKey ?: @"";
+    module.actions = actions ?: @[];
+    return module;
+}
+
 @interface PPAddUserTagLabel : UILabel
 - (void)applyWithText:(NSString *)text tintColor:(UIColor *)tintColor fillAlpha:(CGFloat)fillAlpha;
 @end
@@ -88,13 +108,14 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
         self.textAlignment = NSTextAlignmentCenter;
-        self.numberOfLines = 1;
-        self.lineBreakMode = NSLineBreakByTruncatingTail;
+        self.numberOfLines = 2;
+        self.lineBreakMode = NSLineBreakByWordWrapping;
+        self.preferredMaxLayoutWidth = 180.0;
         self.adjustsFontForContentSizeCategory = YES;
         self.layer.cornerRadius = 13.0;
         self.layer.masksToBounds = YES;
         [NSLayoutConstraint activateConstraints:@[
-            [self.heightAnchor constraintEqualToConstant:26.0],
+            [self.heightAnchor constraintGreaterThanOrEqualToConstant:26.0],
             [self.widthAnchor constraintGreaterThanOrEqualToConstant:76.0],
             [self.widthAnchor constraintLessThanOrEqualToConstant:180.0]
         ]];
@@ -117,9 +138,9 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 @property (nonatomic, strong) UIView *headerRoot;
 @property (nonatomic, strong) UIView *heroCard;
-@property (nonatomic, strong) PPHero *heroBackground;
 @property (nonatomic, strong) UIImageView *avatarIMV;
 @property (nonatomic, strong) UIButton *addPhotoBtn;
+@property (nonatomic, strong) UILabel *headerEyebrowLabel;
 @property (nonatomic, strong) UILabel *headerTitleLabel;
 @property (nonatomic, strong) UILabel *headerSubtitleLabel;
 @property (nonatomic, strong) UIImageView *headerIconView;
@@ -139,9 +160,10 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 @property (nonatomic, strong) PPFormEngineView *assignFormView;
 @property (nonatomic, strong) PPFormEngineView *roleStatusFormView;
 @property (nonatomic, strong) PPFormEngineView *featureFormView;
-@property (nonatomic, strong) PPFormEngineView *permissionFormView;
+@property (nonatomic, copy) NSArray<PPFormEngineView *> *permissionFormViews;
 @property (nonatomic, strong) UIView *embeddedSaveSectionView;
 @property (nonatomic, strong) UIButton *embeddedSaveButton;
+@property (nonatomic, strong) UIButton *navigationSaveButton;
 
 @property (nonatomic, strong) PPImageCollection *avatarPicker;
 @property (nonatomic, strong, nullable) UIImage *pendingAvatarImage;
@@ -155,6 +177,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 @property (nonatomic, assign) BOOL editExistingStaff;
 @property (nonatomic, assign) BOOL didApplyInitialUserContext;
 @property (nonatomic, assign) BOOL suppressModePickerPresentation;
+@property (nonatomic, assign) BOOL isSaving;
 @end
 
 @implementation AddUserViewController
@@ -209,9 +232,6 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    if (!UIAccessibilityIsReduceMotionEnabled()) {
-        [self.heroBackground startAnimations];
-    }
     [self pp_playEntranceAnimationIfNeeded];
 }
 
@@ -229,13 +249,19 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 - (void)pp_configureNavigationBar {
     UIButton *save = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
-    [self pp_navBarWithOtherButton:save title:[self pp_navigationTitle]];
+    self.navigationSaveButton = save;
+    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto
+                       button:save
+                        title:[self pp_navigationTitle]
+                     showBack:YES];
+    [self pp_updateSaveActionPresentation];
 }
 
 - (void)pp_updateNavigationAndEmbeddedAction {
     BOOL embedded = [self pp_isEmbeddedInStaffManagement];
     [self pp_updateEmbeddedSaveVisibility];
     if (embedded) {
+        self.navigationSaveButton = nil;
         [self pp_removeNavBar];
         return;
     }
@@ -333,34 +359,28 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     header.translatesAutoresizingMaskIntoConstraints = NO;
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    CGFloat headerHeight = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? 316.0 : 248.0;
+    CGFloat headerHeight = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? 420.0 : 272.0;
     [header.heightAnchor constraintEqualToConstant:headerHeight].active = YES;
 
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = UIColor.clearColor;
+    card.backgroundColor = [[UIColor ppSoftRose] colorWithAlphaComponent:0.32];
     card.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     card.layer.cornerRadius = PPAddUserHeaderCornerRadius;
     if (@available(iOS 13.0, *)) card.layer.cornerCurve = kCACornerCurveContinuous;
-    card.layer.borderWidth = 1.0;
-    card.layer.borderColor = PPAddUserBorderColor().CGColor;
-    card.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1.0].CGColor;
-    card.layer.shadowOpacity = 0.08;
-    card.layer.shadowRadius = 24.0;
-    card.layer.shadowOffset = CGSizeMake(0, 14.0);
+    card.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    card.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.68].CGColor;
+    card.layer.shadowColor = [UIColor ppShadow].CGColor;
+    card.layer.shadowOpacity = PPShadowElevatedOpacity;
+    card.layer.shadowRadius = PPShadowElevatedRadius;
+    card.layer.shadowOffset = CGSizeMake(0, PPShadowElevatedOffsetY);
     [header addSubview:card];
     self.heroCard = card;
-
-    PPHero *hero = [PPHero new];
-    hero.translatesAutoresizingMaskIntoConstraints = NO;
-    hero.accentColorOverride = PPAddUserPrimaryColor();
-    [card addSubview:hero];
-    self.heroBackground = hero;
 
     UIView *avatarShell = [[UIView alloc] init];
     avatarShell.translatesAutoresizingMaskIntoConstraints = NO;
     avatarShell.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
-    avatarShell.layer.cornerRadius = 32.0;
+    avatarShell.layer.cornerRadius = 30.0;
     if (@available(iOS 13.0, *)) avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
     [card addSubview:avatarShell];
 
@@ -370,20 +390,18 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     self.avatarIMV.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarIMV.tintColor = PPAddUserPrimaryColor();
     self.avatarIMV.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.08];
-    self.avatarIMV.userInteractionEnabled = YES;
     self.avatarIMV.isAccessibilityElement = NO;
-    self.avatarIMV.layer.cornerRadius = 28.0;
+    self.avatarIMV.layer.cornerRadius = 26.0;
     self.avatarIMV.layer.masksToBounds = YES;
     [avatarShell addSubview:self.avatarIMV];
 
-    UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(didTapAddPhoto)];
-    [self.avatarIMV addGestureRecognizer:tap];
-
     self.addPhotoBtn = [UIButton buttonWithType:UIButtonTypeSystem];
     self.addPhotoBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    self.addPhotoBtn.accessibilityLabel = kLang(@"Staff_Access_Preview_Photo");
+    self.addPhotoBtn.accessibilityHint = kLang(@"Staff_Access_Preview_Photo_Hint");
+    [self.addPhotoBtn setTitle:kLang(@"Staff_Access_Preview_Photo") forState:UIControlStateNormal];
     UIImageSymbolConfiguration *cameraConfig = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightSemibold];
     [self.addPhotoBtn setImage:[UIImage systemImageNamed:@"camera.fill" withConfiguration:cameraConfig] forState:UIControlStateNormal];
-    [self.addPhotoBtn setTitle:kLang(@"Add Photo") forState:UIControlStateNormal];
     self.addPhotoBtn.titleLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
     self.addPhotoBtn.titleLabel.adjustsFontForContentSizeCategory = YES;
     self.addPhotoBtn.tintColor = PPAddUserPrimaryColor();
@@ -392,7 +410,6 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     self.addPhotoBtn.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 6.0, 0, -6.0) : UIEdgeInsetsMake(0, -6.0, 0, 6.0);
     self.addPhotoBtn.layer.cornerRadius = 17.0;
     if (@available(iOS 13.0, *)) self.addPhotoBtn.layer.cornerCurve = kCACornerCurveContinuous;
-    self.addPhotoBtn.accessibilityLabel = kLang(@"Add Photo");
     [self.addPhotoBtn addTarget:self action:@selector(didTapAddPhoto) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:self.addPhotoBtn];
 
@@ -409,6 +426,16 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     self.headerIconView.tintColor = PPAddUserPrimaryColor();
     self.headerIconView.contentMode = UIViewContentModeScaleAspectFit;
     [iconShell addSubview:self.headerIconView];
+
+    self.headerEyebrowLabel = [[UILabel alloc] init];
+    self.headerEyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.headerEyebrowLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontCaption1], UIFontTextStyleCaption1);
+    self.headerEyebrowLabel.textColor = PPAddUserPrimaryColor();
+    self.headerEyebrowLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    self.headerEyebrowLabel.numberOfLines = 1;
+    self.headerEyebrowLabel.adjustsFontForContentSizeCategory = YES;
+    self.headerEyebrowLabel.text = kLang(@"Staff_Access_Eyebrow");
+    [card addSubview:self.headerEyebrowLabel];
 
     self.headerTitleLabel = [[UILabel alloc] init];
     self.headerTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -447,37 +474,36 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-horizontalInset],
         [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-14.0],
 
-        [hero.topAnchor constraintEqualToAnchor:card.topAnchor],
-        [hero.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-        [hero.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
-        [hero.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
-
-        [avatarShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:24.0],
+        [avatarShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0],
         [avatarShell.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-22.0],
-        [avatarShell.widthAnchor constraintEqualToConstant:84.0],
-        [avatarShell.heightAnchor constraintEqualToConstant:84.0],
+        [avatarShell.widthAnchor constraintEqualToConstant:78.0],
+        [avatarShell.heightAnchor constraintEqualToConstant:78.0],
 
         [self.avatarIMV.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
         [self.avatarIMV.centerYAnchor constraintEqualToAnchor:avatarShell.centerYAnchor],
-        [self.avatarIMV.widthAnchor constraintEqualToConstant:68.0],
-        [self.avatarIMV.heightAnchor constraintEqualToConstant:68.0],
+        [self.avatarIMV.widthAnchor constraintEqualToConstant:64.0],
+        [self.avatarIMV.heightAnchor constraintEqualToConstant:64.0],
 
         [self.addPhotoBtn.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
         [self.addPhotoBtn.topAnchor constraintEqualToAnchor:avatarShell.bottomAnchor constant:10.0],
         [self.addPhotoBtn.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
         [self.addPhotoBtn.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
 
-        [iconShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:24.0],
+        [iconShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0],
         [iconShell.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:22.0],
-        [iconShell.widthAnchor constraintEqualToConstant:52.0],
-        [iconShell.heightAnchor constraintEqualToConstant:52.0],
+        [iconShell.widthAnchor constraintEqualToConstant:48.0],
+        [iconShell.heightAnchor constraintEqualToConstant:48.0],
 
         [self.headerIconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
         [self.headerIconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
-        [self.headerIconView.widthAnchor constraintEqualToConstant:25.0],
-        [self.headerIconView.heightAnchor constraintEqualToConstant:25.0],
+        [self.headerIconView.widthAnchor constraintEqualToConstant:23.0],
+        [self.headerIconView.heightAnchor constraintEqualToConstant:23.0],
 
-        [self.headerTitleLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:25.0],
+        [self.headerEyebrowLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:23.0],
+        [self.headerEyebrowLabel.leadingAnchor constraintEqualToAnchor:iconShell.trailingAnchor constant:14.0],
+        [self.headerEyebrowLabel.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
+
+        [self.headerTitleLabel.topAnchor constraintEqualToAnchor:self.headerEyebrowLabel.bottomAnchor constant:3.0],
         [self.headerTitleLabel.leadingAnchor constraintEqualToAnchor:iconShell.trailingAnchor constant:14.0],
         [self.headerTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
 
@@ -502,32 +528,43 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
     self.modeFormView = [[PPFormEngineView alloc] initWithStyle:style];
     [self.modeFormView setFields:@[[self pp_modeField]]];
-    self.modeSectionView = [self pp_makeSectionViewWithTitle:nil bodyView:self.modeFormView];
+    self.modeSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Start_Title")
+                                                     subtitle:kLang(@"Staff_Access_Start_Subtitle")
+                                                     bodyView:self.modeFormView];
     [self.contentStack addArrangedSubview:self.modeSectionView];
 
     self.accountFormView = [[PPFormEngineView alloc] initWithStyle:style];
     [self.accountFormView setFields:[self pp_accountFields]];
-    self.createAccountSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_New_Account_Info") bodyView:self.accountFormView];
+    self.createAccountSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Create_Title")
+                                                              subtitle:kLang(@"Staff_Access_Create_Subtitle")
+                                                              bodyView:self.accountFormView];
     [self.contentStack addArrangedSubview:self.createAccountSectionView];
 
     self.assignFormView = [[PPFormEngineView alloc] initWithStyle:style];
     [self.assignFormView setFields:@[[self pp_existingUserField]]];
-    self.assignExistingSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Select_Existing_User") bodyView:self.assignFormView];
+    self.assignExistingSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Identity_Title")
+                                                               subtitle:kLang(@"Staff_Access_Identity_Subtitle")
+                                                               bodyView:self.assignFormView];
     [self.contentStack addArrangedSubview:self.assignExistingSectionView];
 
     self.roleStatusFormView = [[PPFormEngineView alloc] initWithStyle:style];
     [self.roleStatusFormView setFields:@[[self pp_roleField], [self pp_statusField]]];
-    self.roleSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Role_Status") bodyView:self.roleStatusFormView];
+    self.roleSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Posture_Title")
+                                                     subtitle:kLang(@"Staff_Access_Posture_Subtitle")
+                                                     bodyView:self.roleStatusFormView];
     [self.contentStack addArrangedSubview:self.roleSectionView];
 
     self.featureFormView = [[PPFormEngineView alloc] initWithStyle:style];
     [self.featureFormView setFields:[self pp_featureFields]];
-    self.featuresSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Features") bodyView:self.featureFormView];
+    self.featuresSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Capabilities_Title")
+                                                         subtitle:kLang(@"Staff_Access_Capabilities_Subtitle")
+                                                         bodyView:self.featureFormView];
     [self.contentStack addArrangedSubview:self.featuresSectionView];
 
-    self.permissionFormView = [[PPFormEngineView alloc] initWithStyle:style];
-    [self.permissionFormView setFields:[self pp_permissionFields]];
-    self.permissionsSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Permissions_Title") bodyView:self.permissionFormView];
+    UIView *permissionBody = [self pp_makePermissionBodyWithStyle:style];
+    self.permissionsSectionView = [self pp_makeSectionViewWithTitle:kLang(@"Staff_Access_Permissions_Title")
+                                                            subtitle:kLang(@"Staff_Access_Permissions_Subtitle")
+                                                            bodyView:permissionBody];
     [self.contentStack addArrangedSubview:self.permissionsSectionView];
 
     self.embeddedSaveSectionView = [self pp_makeEmbeddedSaveSection];
@@ -555,9 +592,9 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     button.contentEdgeInsets = UIEdgeInsetsMake(0, 18.0, 0, 18.0);
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightBold];
     [button setImage:[UIImage systemImageNamed:@"checkmark" withConfiguration:config] forState:UIControlStateNormal];
-    [button setTitle:kLang(@"Save") forState:UIControlStateNormal];
+    [button setTitle:kLang(@"Staff_Access_Save") forState:UIControlStateNormal];
     button.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 8.0, 0, -8.0) : UIEdgeInsetsMake(0, -8.0, 0, 8.0);
-    button.accessibilityLabel = kLang(@"Save");
+    button.accessibilityLabel = kLang(@"Staff_Access_Save");
     [button addTarget:self action:@selector(onSave) forControlEvents:UIControlEventTouchUpInside];
     [container addSubview:button];
     self.embeddedSaveButton = button;
@@ -576,9 +613,34 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (void)pp_updateEmbeddedSaveVisibility {
     BOOL embedded = [self pp_isEmbeddedInStaffManagement];
     self.embeddedSaveSectionView.hidden = !embedded;
-    NSString *title = self.editExistingStaff ? kLang(@"Save") : kLang(@"AddStaffMember");
+    [self pp_updateSaveActionPresentation];
+}
+
+- (NSString *)pp_saveActionTitle {
+    if (self.isSaving) {
+        return kLang(@"Staff_Access_Saving");
+    }
+    return self.editExistingStaff ? kLang(@"Staff_Access_Save") : kLang(@"Staff_Access_Create");
+}
+
+- (void)pp_updateSaveActionPresentation {
+    NSString *title = [self pp_saveActionTitle];
+    BOOL enabled = !self.isSaving;
+
     [self.embeddedSaveButton setTitle:title forState:UIControlStateNormal];
     self.embeddedSaveButton.accessibilityLabel = title;
+    self.embeddedSaveButton.enabled = enabled;
+    self.embeddedSaveButton.alpha = enabled ? 1.0 : 0.62;
+
+    self.navigationSaveButton.accessibilityLabel = title;
+    self.navigationSaveButton.enabled = enabled;
+    self.navigationSaveButton.alpha = enabled ? 1.0 : 0.55;
+}
+
+- (void)pp_setSaving:(BOOL)saving {
+    if (_isSaving == saving) return;
+    _isSaving = saving;
+    [self pp_updateSaveActionPresentation];
 }
 
 - (PPFormStyle *)pp_formStyle {
@@ -603,7 +665,9 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     return style;
 }
 
-- (UIView *)pp_makeSectionViewWithTitle:(NSString *)title bodyView:(UIView *)bodyView {
+- (UIView *)pp_makeSectionViewWithTitle:(NSString *)title
+                                subtitle:(NSString *)subtitle
+                                bodyView:(UIView *)bodyView {
     UIView *container = [[UIView alloc] init];
     container.translatesAutoresizingMaskIntoConstraints = NO;
     container.backgroundColor = UIColor.clearColor;
@@ -625,14 +689,34 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         UIView *header = [[UIView alloc] init];
         header.translatesAutoresizingMaskIntoConstraints = NO;
 
+        UIStackView *copyStack = [[UIStackView alloc] init];
+        copyStack.translatesAutoresizingMaskIntoConstraints = NO;
+        copyStack.axis = UILayoutConstraintAxisVertical;
+        copyStack.alignment = UIStackViewAlignmentFill;
+        copyStack.spacing = 2.0;
+        [header addSubview:copyStack];
+
         UILabel *label = [[UILabel alloc] init];
         label.translatesAutoresizingMaskIntoConstraints = NO;
         label.font = PPAddUserScaledFont([Styling fontMedium:PPFontSubheadline], UIFontTextStyleSubheadline);
-        label.textColor = [PPAddUserSecondaryTextColor() colorWithAlphaComponent:0.92];
+        label.textColor = PPAddUserPrimaryTextColor();
         label.textAlignment = Language.alignmentForCurrentLanguage;
         label.text = title;
+        label.numberOfLines = 2;
         label.adjustsFontForContentSizeCategory = YES;
-        [header addSubview:label];
+        [copyStack addArrangedSubview:label];
+
+        if (subtitle.length > 0) {
+            UILabel *detailLabel = [[UILabel alloc] init];
+            detailLabel.translatesAutoresizingMaskIntoConstraints = NO;
+            detailLabel.font = PPAddUserScaledFont([Styling fontRegular:PPFontFootnote], UIFontTextStyleFootnote);
+            detailLabel.textColor = PPAddUserSecondaryTextColor();
+            detailLabel.textAlignment = Language.alignmentForCurrentLanguage;
+            detailLabel.text = subtitle;
+            detailLabel.numberOfLines = 0;
+            detailLabel.adjustsFontForContentSizeCategory = YES;
+            [copyStack addArrangedSubview:detailLabel];
+        }
 
         UIView *line = [[UIView alloc] init];
         line.translatesAutoresizingMaskIntoConstraints = NO;
@@ -641,11 +725,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         [header addSubview:line];
 
         [NSLayoutConstraint activateConstraints:@[
-            [label.topAnchor constraintEqualToAnchor:header.topAnchor constant:7.0],
-            [label.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:2.0],
-            [label.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-8.0],
+            [copyStack.topAnchor constraintEqualToAnchor:header.topAnchor constant:6.0],
+            [copyStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:2.0],
+            [copyStack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-8.0],
 
-            [line.leadingAnchor constraintGreaterThanOrEqualToAnchor:label.trailingAnchor constant:12.0],
+            [line.leadingAnchor constraintGreaterThanOrEqualToAnchor:copyStack.trailingAnchor constant:12.0],
             [line.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
             [line.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-2.0],
             [line.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
@@ -715,6 +799,12 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (PPFormFieldConfig *)pp_statusField {
     PPFormFieldConfig *field = [PPFormFieldConfig fieldWithIdentifier:@"status" title:kLang(@"Active") placeholder:@"" inputType:PPFormInputTypeToggle];
     field.value = @"1";
+    __weak typeof(self) weakSelf = self;
+    field.textChangeBlock = ^(PPFormFieldConfig *config, NSString *value) {
+        (void)config;
+        (void)value;
+        [weakSelf pp_refreshHeroStateAnimated:YES];
+    };
     return field;
 }
 
@@ -733,21 +823,102 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     return fields.copy;
 }
 
-- (NSArray<PPFormFieldConfig *> *)pp_permissionFields {
+- (UIView *)pp_makePermissionBodyWithStyle:(PPFormStyle *)style {
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentFill;
+    stack.spacing = 16.0;
+    [container addSubview:stack];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:container.topAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [stack.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
+    ]];
+
+    NSMutableArray<PPFormEngineView *> *forms = [NSMutableArray array];
+    for (PermissionModule *module in [self pp_allPermissionModules]) {
+        [stack addArrangedSubview:[self pp_makePermissionModuleHeaderForModule:module]];
+
+        PPFormEngineView *form = [[PPFormEngineView alloc] initWithStyle:style];
+        [form setFields:[self pp_permissionFieldsForModule:module]];
+        [forms addObject:form];
+        [stack addArrangedSubview:form];
+    }
+
+    self.permissionFormViews = forms.copy;
+    return container;
+}
+
+- (UIView *)pp_makePermissionModuleHeaderForModule:(PermissionModule *)module {
+    UIView *header = [[UIView alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = PPAddUserScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+    titleLabel.textColor = PPAddUserPrimaryTextColor();
+    titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    titleLabel.numberOfLines = 2;
+    titleLabel.adjustsFontForContentSizeCategory = YES;
+    titleLabel.text = kLang(module.labelEn);
+    [header addSubview:titleLabel];
+
+    UILabel *countLabel = [[UILabel alloc] init];
+    countLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    countLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontCaption1], UIFontTextStyleCaption1);
+    countLabel.textColor = PPAddUserSecondaryTextColor();
+    countLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    countLabel.numberOfLines = 1;
+    countLabel.adjustsFontForContentSizeCategory = YES;
+    countLabel.text = [NSString localizedStringWithFormat:kLang(@"Staff_Access_Module_Permissions_Format"),
+                       (unsigned long)module.actions.count];
+    [header addSubview:countLabel];
+
+    UIView *hairline = [[UIView alloc] init];
+    hairline.translatesAutoresizingMaskIntoConstraints = NO;
+    hairline.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
+    [header addSubview:hairline];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [titleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:2.0],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
+        [titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:countLabel.leadingAnchor constant:-12.0],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-4.0],
+
+        [countLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
+        [countLabel.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
+
+        [hairline.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleLabel.trailingAnchor constant:10.0],
+        [hairline.trailingAnchor constraintLessThanOrEqualToAnchor:countLabel.leadingAnchor constant:-8.0],
+        [hairline.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
+        [hairline.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+        [hairline.widthAnchor constraintGreaterThanOrEqualToConstant:18.0],
+    ]];
+    return header;
+}
+
+- (NSArray<PPFormFieldConfig *> *)pp_permissionFieldsForModule:(PermissionModule *)module {
     NSMutableArray<PPFormFieldConfig *> *fields = [NSMutableArray array];
     __weak typeof(self) weakSelf = self;
-    for (PermissionModule *mod in [self pp_allPermissionModules]) {
-        for (PermissionAction *action in mod.actions) {
-            NSString *label = [Language isRTL] ? action.labelAr : action.labelEn;
-            PPFormFieldConfig *field = [PPFormFieldConfig fieldWithIdentifier:action.key title:label placeholder:@"" inputType:PPFormInputTypeToggle];
-            field.value = @"0";
-            field.textChangeBlock = ^(PPFormFieldConfig *config, NSString *value) {
-                (void)config;
-                (void)value;
-                [weakSelf pp_refreshHeroStateAnimated:YES];
-            };
-            [fields addObject:field];
-        }
+    for (PermissionAction *action in module.actions) {
+        PPFormFieldConfig *field = [PPFormFieldConfig fieldWithIdentifier:action.key
+                                                                      title:kLang(action.labelEn)
+                                                                placeholder:@""
+                                                                  inputType:PPFormInputTypeToggle];
+        field.value = @"0";
+        field.textChangeBlock = ^(PPFormFieldConfig *config, NSString *value) {
+            (void)config;
+            (void)value;
+            [weakSelf pp_refreshHeroStateAnimated:YES];
+        };
+        [fields addObject:field];
     }
     return fields.copy;
 }
@@ -803,6 +974,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (void)pp_applySelectedUserDisplay:(UserModel *)user {
     NSString *display = [self pp_displayNameForUser:user];
     [self.assignFormView setValue:display forIdentifier:@"selectedUser"];
+    [self pp_refreshHeroStateAnimated:YES];
 }
 
 - (NSString *)pp_displayNameForUser:(UserModel *)user {
@@ -825,17 +997,27 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (void)pp_refreshHeroStateAnimated:(BOOL)animated {
     if (!self.modeTagLabel || !self.roleTagLabel || !self.permissionTagLabel) return;
 
-    NSString *modeText = [self pp_currentModeDisplayText];
+    NSString *modeText = [self pp_currentStatusDisplayText];
     NSString *roleText = [self pp_currentRoleDisplayText];
-    NSString *permissionText = [NSString stringWithFormat:@"%lu %@", (unsigned long)[self pp_selectedPermissionCount], kLang(@"Permissions_Title")];
+    NSString *permissionText = [NSString localizedStringWithFormat:kLang(@"Staff_Access_Permissions_Summary_Format"),
+                                (unsigned long)[self pp_selectedPermissionCount]];
     UIColor *accentColor = PPAddUserPrimaryColor();
+    BOOL isActive = self.roleStatusFormView ? [[self.roleStatusFormView valueForIdentifier:@"status"] boolValue] : YES;
+    UIColor *statusColor = isActive
+        ? [UIColor ppSuccess]
+        : [UIColor ppWarning];
+    BOOL presentsEmailIdentity = self.editExistingStaff && [self pp_trimmedStringValue:PPAddUserSafeString(self.selectedUser.UserEmail)].length > 0;
 
     void (^updates)(void) = ^{
         self.headerTitleLabel.text = [self pp_headerTitleText];
         self.headerSubtitleLabel.text = [self pp_headerSubtitleText];
+        self.headerSubtitleLabel.semanticContentAttribute = presentsEmailIdentity
+            ? UISemanticContentAttributeForceLeftToRight
+            : [Language semanticAttributeForCurrentLanguage];
+        self.headerSubtitleLabel.textAlignment = presentsEmailIdentity ? NSTextAlignmentNatural : Language.alignmentForCurrentLanguage;
         self.headerIconView.image = [UIImage systemImageNamed:[self pp_headerIconName]
                                              withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:21 weight:UIImageSymbolWeightSemibold]];
-        [self.modeTagLabel applyWithText:modeText tintColor:accentColor fillAlpha:0.12];
+        [self.modeTagLabel applyWithText:modeText tintColor:statusColor fillAlpha:0.12];
         [self.roleTagLabel applyWithText:roleText tintColor:PPAddUserPrimaryTextColor() fillAlpha:0.08];
         [self.permissionTagLabel applyWithText:permissionText tintColor:PPAddUserSecondaryTextColor() fillAlpha:0.09];
     };
@@ -854,19 +1036,37 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     return [self pp_currentMode] == AddUserModeAssign ? kLang(@"Staff_Assign_Existing") : kLang(@"Staff_Create_New");
 }
 
+- (NSString *)pp_currentStatusDisplayText {
+    if (self.editExistingStaff || self.selectedUser) {
+        BOOL isActive = self.roleStatusFormView ? [[self.roleStatusFormView valueForIdentifier:@"status"] boolValue] : YES;
+        return isActive
+            ? kLang(@"Active")
+            : kLang(@"Disabled");
+    }
+    return [self pp_currentModeDisplayText];
+}
+
 - (NSString *)pp_currentRoleDisplayText {
     return [PPStaffAuth localizedRoleName:self.selectedRoleValue ?: PPStaffRoleViewer];
 }
 
 - (NSUInteger)pp_selectedPermissionCount {
     NSUInteger count = 0;
-    NSDictionary<NSString *, NSString *> *values = [self.permissionFormView values];
+    NSDictionary<NSString *, NSString *> *values = [self pp_permissionValues];
     for (NSString *key in values.allKeys) {
         if ([key containsString:@"."] && [values[key] boolValue]) {
             count += 1;
         }
     }
     return count;
+}
+
+- (NSDictionary<NSString *, NSString *> *)pp_permissionValues {
+    NSMutableDictionary<NSString *, NSString *> *values = [NSMutableDictionary dictionary];
+    for (PPFormEngineView *formView in self.permissionFormViews) {
+        [values addEntriesFromDictionary:[formView values]];
+    }
+    return values.copy;
 }
 
 - (void)pp_playEntranceAnimationIfNeeded {
@@ -1151,9 +1351,9 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 - (void)pp_applyPermissionValues:(NSArray<NSString *> *)permissions {
     NSSet<NSString *> *activePermissions = [NSSet setWithArray:permissions ?: @[]];
-    for (PermissionModule *module in [self pp_allPermissionModules]) {
-        for (PermissionAction *action in module.actions) {
-            [self.permissionFormView setValue:([activePermissions containsObject:action.key] ? @"1" : @"0") forIdentifier:action.key];
+    for (PPFormEngineView *formView in self.permissionFormViews) {
+        for (NSString *key in formView.rowsByIdentifier.allKeys) {
+            [formView setValue:([activePermissions containsObject:key] ? @"1" : @"0") forIdentifier:key];
         }
     }
     [self pp_refreshHeroStateAnimated:YES];
@@ -1185,9 +1385,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         @{@"key": @"canSellAccessories", @"titleKey": @"Feature_CanSellAccessories"},
         @{@"key": @"canOfferServices", @"titleKey": @"Feature_CanOfferServices"},
         @{@"key": @"canDelivery", @"titleKey": @"Feature_CanDelivery"},
+        @{@"key": @"canDeliveryCompany", @"titleKey": @"Feature_CanDeliveryCompany"},
         @{@"key": @"canUseStories", @"titleKey": @"Feature_CanUseStories"},
         @{@"key": @"canUseChat", @"titleKey": @"Feature_CanUseChat"},
         @{@"key": @"canAccessPremiumMarketplace", @"titleKey": @"Feature_CanAccessPremiumMarketplace"},
+        @{@"key": @"canAccessProviderMarketplace", @"titleKey": @"Feature_CanAccessProviderMarketplace"},
         @{@"key": @"canPharmacy", @"titleKey": @"Feature_CanPharmacy"},
         @{@"key": @"canVet", @"titleKey": @"Feature_CanVet"}
     ];
@@ -1206,9 +1408,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         @"canSellAccessories": @YES,
         @"canOfferServices": @NO,
         @"canDelivery": @NO,
+        @"canDeliveryCompany": @NO,
         @"canUseStories": @YES,
         @"canUseChat": @YES,
         @"canAccessPremiumMarketplace": @NO,
+        @"canAccessProviderMarketplace": @NO,
         @"canPharmacy": @NO,
         @"canVet": @NO
     };
@@ -1256,12 +1460,14 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 #pragma mark - Save
 
 - (void)onSave {
+    if (self.isSaving) return;
+
     AddUserMode mode = [self pp_currentMode];
     PPStaffRole role = self.selectedRoleValue.length > 0 ? (PPStaffRole)self.selectedRoleValue : PPStaffRoleViewer;
     NSDictionary<NSString *, NSNumber *> *features = [self pp_canManageUserFeatures] ? [self pp_featurePayload] : nil;
 
     NSMutableArray<NSString *> *permissions = [NSMutableArray array];
-    NSDictionary<NSString *, NSString *> *permissionValues = [self.permissionFormView values];
+    NSDictionary<NSString *, NSString *> *permissionValues = [self pp_permissionValues];
     for (NSString *key in permissionValues.allKeys) {
         if ([key containsString:@"."] && [permissionValues[key] boolValue]) {
             [permissions addObject:key];
@@ -1286,10 +1492,12 @@ static NSDictionary *PPAddUserSafeDict(id value) {
             return;
         }
 
-        [PPHUD showRingIn:self.view title:kLang(@"Saving") subtitle:@""];
+        [self pp_setSaving:YES];
+        [PPHUD showRingIn:self.view title:kLang(@"Staff_Access_Saving") subtitle:@""];
         [AdminService createStaffMemberWithEmail:email name:name password:password role:role permissions:permissions scope:nil completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
             if (error) {
                 [PPHUD dismiss];
+                [self pp_setSaving:NO];
                 [PPHUD showError:error.localizedDescription];
             } else {
                 NSString *uid = PPAddUserSafeString(result[@"uid"]);
@@ -1305,7 +1513,8 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         return;
     }
 
-    [PPHUD showRingIn:self.view title:kLang(@"Saving") subtitle:@""];
+    [self pp_setSaving:YES];
+    [PPHUD showRingIn:self.view title:kLang(@"Staff_Access_Saving") subtitle:@""];
 
     BOOL active = [[self.roleStatusFormView valueForIdentifier:@"status"] boolValue];
     if ([self pp_userLooksLikeStaff:user]) {
@@ -1317,6 +1526,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
         [AdminService updateStaffMember:user.uid updates:updates completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
             if (error) {
                 [PPHUD dismiss];
+                [self pp_setSaving:NO];
                 [PPHUD showError:error.localizedDescription];
             } else {
                 [self pp_finishStaffSaveForUID:user.uid features:features];
@@ -1328,6 +1538,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     [AdminService assignExistingUserAsStaff:user.uid role:role permissions:permissions scope:nil completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
         if (error) {
             [PPHUD dismiss];
+            [self pp_setSaving:NO];
             [PPHUD showError:error.localizedDescription];
         } else {
             [self pp_finishStaffSaveForUID:user.uid features:features];
@@ -1338,12 +1549,14 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 - (void)pp_finishStaffSaveForUID:(NSString *)uid features:(NSDictionary<NSString *, NSNumber *> *)features {
     if (uid.length == 0) {
         [PPHUD dismiss];
+        [self pp_setSaving:NO];
         [PPHUD showError:kLang(@"MissingUserId_Title")];
         return;
     }
 
     if (!features.count) {
         [PPHUD dismiss];
+        [self pp_setSaving:NO];
         [PPHUD showSuccess:kLang(@"Success")];
         [self.navigationController popViewControllerAnimated:YES];
         return;
@@ -1352,9 +1565,11 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     [AdminService updateUserFeatures:uid features:features completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
         [PPHUD dismiss];
         if (error) {
+            [self pp_setSaving:NO];
             [PPHUD showError:error.localizedDescription];
             return;
         }
+        [self pp_setSaving:NO];
         [PPHUD showSuccess:kLang(@"Success")];
         [self.navigationController popViewControllerAnimated:YES];
     }];
@@ -1363,70 +1578,102 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 #pragma mark - Data Helpers
 
 - (NSArray<PermissionModule *> *)pp_allPermissionModules {
-    static NSMutableArray<PermissionModule *> *modules = nil;
-    if (modules) return modules;
-
-    modules = [NSMutableArray array];
-
-    PermissionModule *dashboard = [PermissionModule new];
-    dashboard.key = @"dashboard";
-    dashboard.labelEn = @"Dashboard";
-    dashboard.labelAr = @"لوحة التحكم";
-    PermissionAction *dView = [PermissionAction new]; dView.key = @"dashboard.view"; dView.labelEn = @"View dashboard"; dView.labelAr = @"عرض لوحة التحكم";
-    dashboard.actions = @[dView];
-    [modules addObject:dashboard];
-
-    PermissionModule *staff = [PermissionModule new];
-    staff.key = @"staff";
-    staff.labelEn = @"Staff";
-    staff.labelAr = @"الموظفون";
-    PermissionAction *sView = [PermissionAction new]; sView.key = @"staff.view"; sView.labelEn = @"View staff"; sView.labelAr = @"عرض الموظفين";
-    PermissionAction *sManage = [PermissionAction new]; sManage.key = @"staff.manage"; sManage.labelEn = @"Manage staff"; sManage.labelAr = @"إدارة الموظفين";
-    staff.actions = @[sView, sManage];
-    [modules addObject:staff];
-
-    PermissionModule *users = [PermissionModule new];
-    users.key = @"users";
-    users.labelEn = @"Users";
-    users.labelAr = @"المستخدمون";
-    PermissionAction *uView = [PermissionAction new]; uView.key = @"users.view"; uView.labelEn = @"View users"; uView.labelAr = @"عرض المستخدمين";
-    PermissionAction *uManage = [PermissionAction new]; uManage.key = @"users.manage"; uManage.labelEn = @"Manage users"; uManage.labelAr = @"إدارة المستخدمين";
-    PermissionAction *uBlock = [PermissionAction new]; uBlock.key = @"users.block"; uBlock.labelEn = @"Block / unblock users"; uBlock.labelAr = @"حظر / إلغاء حظر المستخدمين";
-    users.actions = @[uView, uManage, uBlock];
-    [modules addObject:users];
-
-    PermissionModule *stock = [PermissionModule new];
-    stock.key = @"stock";
-    stock.labelEn = @"Stock";
-    stock.labelAr = @"المخزون";
-    PermissionAction *stView = [PermissionAction new]; stView.key = @"stock.view"; stView.labelEn = @"View stock"; stView.labelAr = @"عرض المخزون";
-    PermissionAction *stManage = [PermissionAction new]; stManage.key = @"stock.manage"; stManage.labelEn = @"Manage stock"; stManage.labelAr = @"إدارة المخزون";
-    PermissionAction *stCreate = [PermissionAction new]; stCreate.key = @"stock.create"; stCreate.labelEn = @"Create stock items"; stCreate.labelAr = @"إنشاء عناصر المخزون";
-    PermissionAction *stDelete = [PermissionAction new]; stDelete.key = @"stock.delete"; stDelete.labelEn = @"Delete stock items"; stDelete.labelAr = @"حذف عناصر المخزون";
-    stock.actions = @[stView, stManage, stCreate, stDelete];
-    [modules addObject:stock];
-
-    PermissionModule *listings = [PermissionModule new];
-    listings.key = @"listings";
-    listings.labelEn = @"Listings";
-    listings.labelAr = @"الإعلانات";
-    PermissionAction *lView = [PermissionAction new]; lView.key = @"listings.view"; lView.labelEn = @"View listings"; lView.labelAr = @"عرض الإعلانات";
-    PermissionAction *lManage = [PermissionAction new]; lManage.key = @"listings.manage"; lManage.labelEn = @"Manage listings"; lManage.labelAr = @"إدارة الإعلانات";
-    PermissionAction *lModerate = [PermissionAction new]; lModerate.key = @"listings.moderate"; lModerate.labelEn = @"Moderate listings"; lModerate.labelAr = @"مراجعة الإعلانات";
-    listings.actions = @[lView, lManage, lModerate];
-    [modules addObject:listings];
-
-    PermissionModule *payments = [PermissionModule new];
-    payments.key = @"payments";
-    payments.labelEn = @"Payments";
-    payments.labelAr = @"المدفوعات";
-    PermissionAction *pView = [PermissionAction new]; pView.key = @"payments.view"; pView.labelEn = @"View payments"; pView.labelAr = @"عرض المدفوعات";
-    PermissionAction *pManage = [PermissionAction new]; pManage.key = @"payments.manage"; pManage.labelEn = @"Manage payments"; pManage.labelAr = @"إدارة المدفوعات";
-    PermissionAction *pRefund = [PermissionAction new]; pRefund.key = @"payments.refund"; pRefund.labelEn = @"Process refunds"; pRefund.labelAr = @"معالجة الاسترجاعات";
-    payments.actions = @[pView, pManage, pRefund];
-    [modules addObject:payments];
-
-    return modules;
+    return @[
+        PPAddUserPermissionModule(@"dashboard", @"Staff_Module_Dashboard", @[
+            PPAddUserPermissionAction(kStaffPermDashboardView, @"StaffPerm_dashboard_view"),
+        ]),
+        PPAddUserPermissionModule(@"staff", @"Staff_Module_Staff", @[
+            PPAddUserPermissionAction(kStaffPermStaffView, @"StaffPerm_staff_view"),
+            PPAddUserPermissionAction(kStaffPermStaffManage, @"StaffPerm_staff_manage"),
+        ]),
+        PPAddUserPermissionModule(@"users", @"Staff_Module_Users", @[
+            PPAddUserPermissionAction(kStaffPermUsersView, @"StaffPerm_users_view"),
+            PPAddUserPermissionAction(kStaffPermUsersManage, @"StaffPerm_users_manage"),
+            PPAddUserPermissionAction(kStaffPermUsersBlock, @"StaffPerm_users_block"),
+            PPAddUserPermissionAction(kStaffPermUsersFeaturesView, @"StaffPerm_users_features_view"),
+            PPAddUserPermissionAction(kStaffPermUsersFeaturesManage, @"StaffPerm_users_features_manage"),
+            PPAddUserPermissionAction(kStaffPermUsersSubscriptionsView, @"StaffPerm_users_subscriptions_view"),
+            PPAddUserPermissionAction(kStaffPermUsersSubscriptionsManage, @"StaffPerm_users_subscriptions_manage"),
+            PPAddUserPermissionAction(kStaffPermUsersRestrictionsView, @"StaffPerm_users_restrictions_view"),
+            PPAddUserPermissionAction(kStaffPermUsersRestrictionsManage, @"StaffPerm_users_restrictions_manage"),
+        ]),
+        PPAddUserPermissionModule(@"stock", @"Staff_Module_Stock", @[
+            PPAddUserPermissionAction(kStaffPermStockView, @"StaffPerm_stock_view"),
+            PPAddUserPermissionAction(kStaffPermStockManage, @"StaffPerm_stock_manage"),
+            PPAddUserPermissionAction(kStaffPermStockCreate, @"StaffPerm_stock_create"),
+            PPAddUserPermissionAction(kStaffPermStockDelete, @"StaffPerm_stock_delete"),
+        ]),
+        PPAddUserPermissionModule(@"listings", @"Staff_Module_Listings", @[
+            PPAddUserPermissionAction(kStaffPermListingsView, @"StaffPerm_listings_view"),
+            PPAddUserPermissionAction(kStaffPermListingsManage, @"StaffPerm_listings_manage"),
+            PPAddUserPermissionAction(kStaffPermListingsModerate, @"StaffPerm_listings_moderate"),
+        ]),
+        PPAddUserPermissionModule(@"payments", @"Staff_Module_Payments", @[
+            PPAddUserPermissionAction(kStaffPermPaymentsView, @"StaffPerm_payments_view"),
+            PPAddUserPermissionAction(kStaffPermPaymentsManage, @"StaffPerm_payments_manage"),
+            PPAddUserPermissionAction(kStaffPermPaymentsRefund, @"StaffPerm_payments_refund"),
+        ]),
+        PPAddUserPermissionModule(@"pos", @"Staff_Module_POS", @[
+            PPAddUserPermissionAction(kStaffPermPosView, @"StaffPerm_pos_view"),
+            PPAddUserPermissionAction(kStaffPermPosSell, @"StaffPerm_pos_sell"),
+            PPAddUserPermissionAction(kStaffPermPosHistory, @"StaffPerm_pos_history"),
+        ]),
+        PPAddUserPermissionModule(@"branches", @"Staff_Module_Branches", @[
+            PPAddUserPermissionAction(kStaffPermBranchesView, @"StaffPerm_branches_view"),
+            PPAddUserPermissionAction(kStaffPermBranchesManage, @"StaffPerm_branches_manage"),
+        ]),
+        PPAddUserPermissionModule(@"agents", @"Staff_Module_Agents", @[
+            PPAddUserPermissionAction(kStaffPermAgentsView, @"StaffPerm_agents_view"),
+            PPAddUserPermissionAction(kStaffPermAgentsManage, @"StaffPerm_agents_manage"),
+        ]),
+        PPAddUserPermissionModule(@"support", @"Staff_Module_Support", @[
+            PPAddUserPermissionAction(kStaffPermSupportView, @"StaffPerm_support_view"),
+            PPAddUserPermissionAction(kStaffPermSupportManage, @"StaffPerm_support_manage"),
+        ]),
+        PPAddUserPermissionModule(@"services", @"Staff_Module_Services", @[
+            PPAddUserPermissionAction(kStaffPermServicesView, @"StaffPerm_services_view"),
+            PPAddUserPermissionAction(kStaffPermServicesManage, @"StaffPerm_services_manage"),
+        ]),
+        PPAddUserPermissionModule(@"providers", @"Staff_Module_Providers", @[
+            PPAddUserPermissionAction(kStaffPermProvidersView, @"StaffPerm_providers_view"),
+            PPAddUserPermissionAction(kStaffPermProvidersManage, @"StaffPerm_providers_manage"),
+        ]),
+        PPAddUserPermissionModule(@"settings", @"Staff_Module_Settings", @[
+            PPAddUserPermissionAction(kStaffPermSettingsView, @"StaffPerm_settings_view"),
+            PPAddUserPermissionAction(kStaffPermSettingsManage, @"StaffPerm_settings_manage"),
+        ]),
+        PPAddUserPermissionModule(@"notifications", @"Staff_Module_Notifications", @[
+            PPAddUserPermissionAction(kStaffPermNotificationsView, @"StaffPerm_notifications_view"),
+            PPAddUserPermissionAction(kStaffPermNotificationsSend, @"StaffPerm_notifications_send"),
+        ]),
+        PPAddUserPermissionModule(@"accounting", @"Staff_Module_Accounting", @[
+            PPAddUserPermissionAction(kStaffPermAccountingView, @"StaffPerm_accounting_view"),
+            PPAddUserPermissionAction(kStaffPermAccountingManage, @"StaffPerm_accounting_manage"),
+        ]),
+        PPAddUserPermissionModule(@"reports", @"Staff_Module_Reports", @[
+            PPAddUserPermissionAction(kStaffPermReportsView, @"StaffPerm_reports_view"),
+            PPAddUserPermissionAction(kStaffPermReportsExport, @"StaffPerm_reports_export"),
+        ]),
+        PPAddUserPermissionModule(@"audit", @"Staff_Module_Audit", @[
+            PPAddUserPermissionAction(kStaffPermAuditView, @"StaffPerm_audit_view"),
+        ]),
+        PPAddUserPermissionModule(@"moderation", @"Staff_Module_Moderation", @[
+            PPAddUserPermissionAction(kStaffPermModerationView, @"StaffPerm_moderation_view"),
+            PPAddUserPermissionAction(kStaffPermModerationManage, @"StaffPerm_moderation_manage"),
+        ]),
+        PPAddUserPermissionModule(@"banners", @"Staff_Module_Banners", @[
+            PPAddUserPermissionAction(kStaffPermBannersView, @"StaffPerm_banners_view"),
+            PPAddUserPermissionAction(kStaffPermBannersManage, @"StaffPerm_banners_manage"),
+        ]),
+        PPAddUserPermissionModule(@"categories", @"Staff_Module_Categories", @[
+            PPAddUserPermissionAction(kStaffPermCategoriesView, @"StaffPerm_categories_view"),
+            PPAddUserPermissionAction(kStaffPermCategoriesManage, @"StaffPerm_categories_manage"),
+        ]),
+        PPAddUserPermissionModule(@"veterinarians", @"Staff_Module_Veterinarians", @[
+            PPAddUserPermissionAction(kStaffPermVeterinariansView, @"StaffPerm_veterinarians_view"),
+            PPAddUserPermissionAction(kStaffPermVeterinariansManage, @"StaffPerm_veterinarians_manage"),
+        ]),
+    ];
 }
 
 #pragma mark - Avatar

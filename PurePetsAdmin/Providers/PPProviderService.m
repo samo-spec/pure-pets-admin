@@ -23,12 +23,24 @@ static NSDate *PPProviderServiceDate(id value) {
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID {
     self = [super init];
     if (self) {
-        _applicationID = docID ?: @"";
-        _userId = PPSafeString(dict[@"userId"]);
-        _providerType = PPSafeString(dict[@"providerType"]);
-        _status = PPSafeString(dict[@"status"]);
-        _form = PPSafeDict(dict[@"form"]);
-        _createdAt = PPProviderServiceDate(dict[@"submittedAt"] ?: dict[@"createdAt"]);
+        NSDictionary *safe = PPSafeDict(dict);
+        _applicationID = [PPSafeString(docID) copy];
+        _userId = [PPSafeString(safe[@"userId"]) copy];
+        _providerType = [PPSafeString(safe[@"providerType"]) copy];
+        _status = [PPSafeString(safe[@"status"]) copy];
+        _planId = [PPSafeString(safe[@"planId"]) copy];
+        _profileId = [PPSafeString(safe[@"profileId"]) copy];
+        _deliveryCompanyId = [PPSafeString(safe[@"deliveryCompanyId"]) copy];
+        _form = [PPSafeDict(safe[@"form"]) copy];
+        _planSnapshot = [PPSafeDict(safe[@"planSnapshot"]) copy];
+        _userSummary = [PPSafeDict(safe[@"userSummary"]) copy];
+        _submittedAt = PPProviderServiceDate(safe[@"submittedAt"]);
+        _createdAt = PPProviderServiceDate(safe[@"createdAt"]);
+        _updatedAt = PPProviderServiceDate(safe[@"updatedAt"]);
+        _reviewedAt = PPProviderServiceDate(safe[@"reviewedAt"]);
+        _reviewedBy = [PPSafeString(safe[@"reviewedBy"]) copy];
+        _reviewNotes = [PPSafeString(safe[@"reviewNotes"]) copy];
+        _rejectionReason = [PPSafeString(safe[@"rejectionReason"]) copy];
     }
     return self;
 }
@@ -96,15 +108,22 @@ static NSDate *PPProviderServiceDate(id value) {
 
 - (void)fetchApplicationsWithCompletion:(void(^)(NSArray<PPProviderApplication *> *, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
-    [[db collectionWithPath:@"providerApplications"] getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+    FIRQuery *query = [[db collectionWithPath:@"providerApplications"] queryWhereField:@"providerType" in:@[
+        @"delivery_company",
+        @"service",
+        @"marketplace",
+        @"pharmacy",
+        @"vet"
+    ]];
+    [query getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
         if (error) { if (completion) completion(@[], error); return; }
         NSMutableArray *apps = [NSMutableArray array];
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
             [apps addObject:[[PPProviderApplication alloc] initWithDictionary:doc.data documentID:doc.documentID]];
         }
         [apps sortUsingComparator:^NSComparisonResult(PPProviderApplication *left, PPProviderApplication *right) {
-            NSDate *leftDate = left.createdAt ?: NSDate.distantPast;
-            NSDate *rightDate = right.createdAt ?: NSDate.distantPast;
+            NSDate *leftDate = left.submittedAt ?: left.createdAt ?: left.updatedAt ?: NSDate.distantPast;
+            NSDate *rightDate = right.submittedAt ?: right.createdAt ?: right.updatedAt ?: NSDate.distantPast;
             return [rightDate compare:leftDate];
         }];
         if (completion) completion(apps.copy, nil);
@@ -153,7 +172,10 @@ static NSDate *PPProviderServiceDate(id value) {
     }];
 }
 
-- (void)reviewApplication:(NSString *)appID status:(NSString *)status notes:(nullable NSString *)notes completion:(void(^)(NSError *))completion {
+- (void)reviewApplication:(NSString *)appID
+                    status:(NSString *)status
+                     notes:(nullable NSString *)notes
+                completion:(void(^)(NSDictionary *, NSError *))completion {
     FIRFunctions *functions = [FIRFunctions functions];
     FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"reviewProviderApplication"];
     [callable callWithObject:@{
@@ -161,7 +183,7 @@ static NSDate *PPProviderServiceDate(id value) {
         @"decision": status,
         @"reviewNotes": notes ?: @""
     } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
-        if (completion) completion(error);
+        if (completion) completion(PPSafeDict(result.data), error);
     }];
 }
 

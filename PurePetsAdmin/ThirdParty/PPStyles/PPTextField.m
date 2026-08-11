@@ -69,7 +69,7 @@
 
 - (void)applyPlaceholderStyle {
     if (!self.placeholder) return;
-    UIColor *ph = [UIColor secondaryLabelColor];
+    UIColor *ph = [UIColor ppTextSecondary];
     self.attributedPlaceholder = [[NSAttributedString alloc] initWithString:self.placeholder attributes:@{NSForegroundColorAttributeName: ph}];
 }
 

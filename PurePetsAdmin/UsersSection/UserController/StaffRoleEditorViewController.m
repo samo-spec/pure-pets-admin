@@ -18,23 +18,23 @@ static CGFloat const PPRoleEditorHorizontalInset = 18.0;
 static CGFloat const PPRoleEditorWideHorizontalInset = 28.0;
 
 static UIColor *PPRoleEditorSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPRoleEditorBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPRoleEditorPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPRoleEditorPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPRoleEditorSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static UIColor *PPRoleEditorBorderColor(void) {

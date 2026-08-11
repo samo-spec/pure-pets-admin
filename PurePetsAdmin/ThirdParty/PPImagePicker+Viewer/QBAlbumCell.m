@@ -63,7 +63,7 @@
     _countLabel = [[UILabel alloc] init];
     _countLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _countLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:16];
-    _countLabel.textColor = UIColor.secondaryLabelColor;
+    _countLabel.textColor = [UIColor ppTextSecondary];
 
     [self.contentView addSubview:_titleLabel];
     [self.contentView addSubview:_countLabel];

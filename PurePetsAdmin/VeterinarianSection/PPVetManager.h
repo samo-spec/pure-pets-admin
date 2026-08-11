@@ -30,26 +30,26 @@ typedef void(^PPVetCountBlock)(NSInteger count);
 // ── WRITE ──
 - (void)addVet:(PPVetModel *)vet
          image:(UIImage * _Nullable)image
-    completion:(PPVetVoidBlock)completion;
+    completion:(PPVetVoidBlock _Nullable)completion;
 
 - (void)updateVet:(PPVetModel *)vet
             image:(UIImage * _Nullable)image
-       completion:(PPVetVoidBlock)completion;
+       completion:(PPVetVoidBlock _Nullable)completion;
 
 - (void)deleteVet:(PPVetModel *)vet
-       completion:(PPVetVoidBlock)completion;
+        completion:(PPVetVoidBlock _Nullable)completion NS_SWIFT_NAME(deleteVet(_:completion:));
 
 // ── Admin toggles ──
 - (void)setDisabled:(BOOL)disabled
            forVetID:(NSString *)vetID
-         completion:(PPVetVoidBlock)completion;
+         completion:(PPVetVoidBlock _Nullable)completion NS_SWIFT_NAME(setDisabled(_:forVetID:completion:));
 
 - (void)updateSubscriptionForVetID:(NSString *)vetID
                               tier:(NSInteger)tier
                             active:(BOOL)active
                          startDate:(NSDate * _Nullable)startDate
                            endDate:(NSDate * _Nullable)endDate
-                        completion:(PPVetVoidBlock)completion;
+                        completion:(PPVetVoidBlock _Nullable)completion;
 
 // ── Image ──
 - (void)uploadImage:(UIImage *)image

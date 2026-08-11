@@ -170,7 +170,7 @@
     NSDictionary *value = [self.rowDescriptor.value isKindOfClass:NSDictionary.class]
     ? (NSDictionary *)self.rowDescriptor.value
     : @{};
-    UIColor *tint = [value[@"tint"] isKindOfClass:UIColor.class] ? value[@"tint"] : (AppPrimaryClr ?: UIColor.systemGreenColor);
+    UIColor *tint = [value[@"tint"] isKindOfClass:UIColor.class] ? value[@"tint"] : [UIColor ppPrimary];
     self.iconView.image = [value[@"icon"] isKindOfClass:UIImage.class] ? value[@"icon"] : nil;
     self.titleLabel.text = [value[@"title"] isKindOfClass:NSString.class] ? value[@"title"] : @"";
     self.subtitleLabel.text = [value[@"subtitle"] isKindOfClass:NSString.class] ? value[@"subtitle"] : @"";
@@ -188,7 +188,7 @@
     self.iconView.tintColor = tint;
     self.trailingPlateView.backgroundColor = [AppBackgroundClr colorWithAlphaComponent:isDark ? 0.34 : 0.42];
     self.chevronView.tintColor = [SeconderyTextClr colorWithAlphaComponent:0.50];
-    self.dividerView.backgroundColor = [UIColor.separatorColor colorWithAlphaComponent:isDark ? 0.22 : 0.34];
+    self.dividerView.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:isDark ? 0.22 : 0.34];
     self.titleLabel.textColor = PrimaryTextClr;
     self.subtitleLabel.textColor = [SeconderyTextClr colorWithAlphaComponent:0.82];
     self.titleLabel.numberOfLines = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? 2 : 1;

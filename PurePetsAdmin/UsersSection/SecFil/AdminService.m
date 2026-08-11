@@ -127,8 +127,22 @@
 + (void)updateUserStatus:(NSString *)uid
                   status:(NSString *)status
               completion:(AdminServiceCompletion)completion {
+    [self updateUserStatus:uid status:status reason:nil duration:nil completion:completion];
+}
+
++ (void)updateUserStatus:(NSString *)uid
+                  status:(NSString *)status
+                  reason:(NSString *)reason
+                duration:(NSString *)duration
+              completion:(AdminServiceCompletion)completion {
+    NSMutableDictionary *payload = [@{
+        @"uid": uid ?: @"",
+        @"accountStatus": status ?: @"active"
+    } mutableCopy];
+    if (reason.length) payload[@"reason"] = reason;
+    if (duration.length) payload[@"duration"] = duration;
     [self pp_callCallable:@"updateUserStatus"
-                  payload:@{@"uid": uid ?: @"", @"status": status ?: @"active"}
+                  payload:payload.copy
                completion:completion];
 }
 

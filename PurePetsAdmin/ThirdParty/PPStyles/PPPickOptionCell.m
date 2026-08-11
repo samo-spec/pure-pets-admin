@@ -118,7 +118,7 @@ NSString * const XLFormRowDescriptorTypePickOption = @"XLFormRowDescriptorTypePi
 
     if (!_adminBadgeContainer) {
             _adminBadgeContainer = [UIView new];
-            _adminBadgeContainer.backgroundColor = UIColor.yellowColor;
+            _adminBadgeContainer.backgroundColor = [UIColor ppPremiumAccent];
             _adminBadgeContainer.layer.cornerRadius = 10;
             _adminBadgeContainer.layer.shadowColor = UIColor.blackColor.CGColor;
             _adminBadgeContainer.layer.shadowOpacity = 0.15;
@@ -129,7 +129,7 @@ NSString * const XLFormRowDescriptorTypePickOption = @"XLFormRowDescriptorTypePi
             
             // Crown icon
             _adminBadgeIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"crown.fill"]];
-            _adminBadgeIcon.tintColor = UIColor.systemYellowColor;
+            _adminBadgeIcon.tintColor = [UIColor ppPremiumAccent];
             [_adminBadgeContainer addSubview:_adminBadgeIcon];
             
             // Text label

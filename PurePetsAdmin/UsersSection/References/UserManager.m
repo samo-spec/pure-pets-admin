@@ -875,7 +875,7 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
     
     // ✅ Add shimmer/blur before loading
     UIView *loadingOverlay = [[UIView alloc] initWithFrame:imageView.bounds];
-    loadingOverlay.backgroundColor = [UIColor systemGray5Color];
+    loadingOverlay.backgroundColor = [UIColor ppSecondarySurface];
     loadingOverlay.tag = 9999;
     loadingOverlay.layer.cornerRadius = imageView.layer.cornerRadius;
     loadingOverlay.layer.masksToBounds = YES;
@@ -886,9 +886,9 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
         DLog(@"[ProfileImage] Applying shimmer animation.");
         CAGradientLayer *gradient = [CAGradientLayer layer];
         gradient.frame = loadingOverlay.bounds;
-        gradient.colors = @[(__bridge id)[UIColor systemGray4Color].CGColor,
-                            (__bridge id)[UIColor systemGray6Color].CGColor,
-                            (__bridge id)[UIColor systemGray4Color].CGColor];
+        gradient.colors = @[(__bridge id)[UIColor ppSurfaceBorder].CGColor,
+                            (__bridge id)[UIColor ppSurfaceOverlay].CGColor,
+                            (__bridge id)[UIColor ppSurfaceBorder].CGColor];
         gradient.startPoint = CGPointMake(0, 0.5);
         gradient.endPoint = CGPointMake(1, 0.5);
         gradient.locations = @[@0.0, @0.5, @1.0];

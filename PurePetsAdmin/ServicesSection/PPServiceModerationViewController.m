@@ -399,10 +399,10 @@ static NSString * const kTagAuditNote = @"serviceModerationAudit";
 }
 
 - (UIColor *)currentStatusColor {
-    if (self.service.isDeleted) return UIColor.systemGrayColor;
-    if (self.service.isBlocked) return UIColor.systemRedColor;
-    if (self.service.isDisabled) return UIColor.systemOrangeColor;
-    return UIColor.systemGreenColor;
+    if (self.service.isDeleted) return [UIColor ppTextSecondary];
+    if (self.service.isBlocked) return [UIColor ppError];
+    if (self.service.isDisabled) return [UIColor ppWarning];
+    return [UIColor ppSuccess];
 }
 
 - (NSString *)currentVerificationTitle {
@@ -411,9 +411,9 @@ static NSString * const kTagAuditNote = @"serviceModerationAudit";
 
 - (UIColor *)verificationAccentColor {
     NSString *normalized = [[PPSafeString(self.service.verificationStatus) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
-    if ([normalized isEqualToString:@"verified"]) return UIColor.systemGreenColor;
-    if ([normalized isEqualToString:@"rejected"]) return UIColor.systemRedColor;
-    if ([normalized isEqualToString:@"pending"] || [normalized isEqualToString:@"pending_review"] || [normalized isEqualToString:@"verification_pending"]) return UIColor.systemOrangeColor;
+    if ([normalized isEqualToString:@"verified"]) return [UIColor ppSuccess];
+    if ([normalized isEqualToString:@"rejected"]) return [UIColor ppError];
+    if ([normalized isEqualToString:@"pending"] || [normalized isEqualToString:@"pending_review"] || [normalized isEqualToString:@"verification_pending"]) return [UIColor ppWarning];
     return PrimaryTextClr;
 }
 

@@ -554,10 +554,7 @@ extern BOOL PP_TouchDotsEnabled;
 
             PPStaffDoc *staffSession = [PPStaffAuth shared].cachedCurrentStaff;
             BOOL hasNotificationsView = [staffSession hasPermission:kStaffPermNotificationsView];
-            BOOL hasPaymentsScope = [staffSession hasPermission:kStaffPermPaymentsView] ||
-                [staffSession hasPermission:kStaffPermPaymentsManage] ||
-                [staffSession hasPermission:kStaffPermPaymentsRefund];
-            if (!hasNotificationsView || !hasPaymentsScope) {
+            if (!hasNotificationsView) {
                 NSLog(@"PPLAB NotificationsV2 admin registration skipped | reason=%@ scope_permissions=no appId=%@",
                       safeReason.length > 0 ? safeReason : @"unknown",
                       PPAdminNotificationV2AppID);
@@ -599,7 +596,25 @@ extern BOOL PP_TouchDotsEnabled;
                             return;
                         }
 
-                        NSArray<NSString *> *notificationScopes = @[@"staff.orders", @"staff.payments", @"staff.delivery"];
+                        NSMutableArray<NSString *> *notificationScopes = [NSMutableArray array];
+                        BOOL hasPayments = [staffSession hasPermission:kStaffPermPaymentsView] ||
+                            [staffSession hasPermission:kStaffPermPaymentsManage] ||
+                            [staffSession hasPermission:kStaffPermPaymentsRefund];
+                        BOOL hasSupport = [staffSession hasPermission:kStaffPermSupportView] ||
+                            [staffSession hasPermission:kStaffPermSupportManage];
+                        BOOL hasModeration = [staffSession hasPermission:kStaffPermModerationView] ||
+                            [staffSession hasPermission:kStaffPermModerationManage];
+                        if (hasPayments) {
+                            [notificationScopes addObjectsFromArray:@[@"staff.orders", @"staff.payments", @"staff.delivery"]];
+                        }
+                        if (hasSupport) [notificationScopes addObject:@"staff.support"];
+                        if (hasModeration) [notificationScopes addObject:@"staff.moderation"];
+                        if ([staffSession hasPermission:kStaffPermNotificationsSend]) [notificationScopes addObject:@"staff.manual"];
+                        if (notificationScopes.count == 0) {
+                            NSLog(@"PPLAB NotificationsV2 admin registration skipped | reason=scope_permissions_no_v2_scope appId=%@", PPAdminNotificationV2AppID);
+                            [strongSelf pp_finishAdminNotificationV2RegistrationCycle];
+                            return;
+                        }
                         NSMutableDictionary *payload = [@{
                             @"installationId": safeInstallationId,
                             @"platform": @"ios",

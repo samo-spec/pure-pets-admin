@@ -2,8 +2,25 @@ import SwiftUI
 import UIKit
 
 private extension Color {
-    static func pp(_ name: String, fallback: UIColor) -> Color {
-        Color(uiColor: UIColor(named: name) ?? fallback)
+    static func pp(_ name: String) -> Color {
+        switch name {
+        case "AppPrimaryClr":
+            return Color(uiColor: .ppPrimary)
+        case "AppPrimaryClrDarker":
+            return Color(uiColor: .ppPressedAction)
+        case "AppPrimaryClrShiner":
+            return Color(uiColor: .ppPrimaryShiner)
+        case "AppBackgroundClr":
+            return Color(uiColor: .ppBackground)
+        case "AppBackgroundClrShiner", "AppForgroundColr":
+            return Color(uiColor: .ppElevatedSurface)
+        case "PrimaryTextClr":
+            return Color(uiColor: .ppTextPrimary)
+        case "SeconderyTextClr":
+            return Color(uiColor: .ppTextSecondary)
+        default:
+            return Color(uiColor: .ppTextSecondary)
+        }
     }
 }
 
@@ -151,7 +168,7 @@ private struct PPProLoginScreen: View {
             }
         }
         .environment(\.layoutDirection, viewModel.layoutDirection)
-        .background(Color.pp("AppBackgroundClr", fallback: .systemGroupedBackground))
+        .background(Color.pp("AppBackgroundClr"))
         .onAppear {
             focusedField = nil
             withAnimation(.easeInOut(duration: 4.8).repeatForever(autoreverses: true)) {
@@ -171,9 +188,9 @@ private struct PPProLoginScreen: View {
         ZStack {
             LinearGradient(
                 colors: [
-                    Color.pp("AppBackgroundClr", fallback: .systemGroupedBackground),
-                    Color.pp("AppBackgroundClrShiner", fallback: .secondarySystemBackground).opacity(0.95),
-                    Color.pp("AppBackgroundClr", fallback: .systemGroupedBackground)
+                    Color.pp("AppBackgroundClr"),
+                    Color.pp("AppBackgroundClrShiner").opacity(0.95),
+                    Color.pp("AppBackgroundClr")
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -181,13 +198,13 @@ private struct PPProLoginScreen: View {
             .ignoresSafeArea()
 
             Circle()
-                .fill(Color.pp("AppPrimaryClr", fallback: .systemBlue).opacity(0.16))
+                .fill(Color.pp("AppPrimaryClr").opacity(0.16))
                 .frame(width: 240, height: 240)
                 .blur(radius: 18)
                 .offset(x: drift ? 116 : 72, y: -190)
 
             Circle()
-                .fill(Color.pp("AppPrimaryClrShiner", fallback: .systemTeal).opacity(0.18))
+                .fill(Color.pp("AppPrimaryClrShiner").opacity(0.18))
                 .frame(width: 180, height: 180)
                 .blur(radius: 20)
                 .offset(x: drift ? -114 : -72, y: 210)
@@ -204,7 +221,7 @@ private struct PPProLoginScreen: View {
         HStack {
             Text(viewModel.localized("ProLoginWelcomeBadge"))
                 .font(.custom("Beiruti-Bold", size: 16))
-                .foregroundStyle(Color.pp("AppPrimaryClrDarker", fallback: .label))
+                        .foregroundStyle(Color.pp("AppPrimaryClrDarker"))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .background(
@@ -225,7 +242,7 @@ private struct PPProLoginScreen: View {
                     Text(viewModel.currentLanguageCode == "en" ? "AR" : "EN")
                         .font(.custom("Beiruti-Bold", size: 15))
                 }
-                .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                .foregroundStyle(Color.pp("PrimaryTextClr"))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
@@ -249,8 +266,8 @@ private struct PPProLoginScreen: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.pp("AppForgroundColr", fallback: .white),
-                                Color.pp("AppBackgroundClrShiner", fallback: .secondarySystemBackground)
+                                Color.pp("AppForgroundColr"),
+                                Color.pp("AppBackgroundClrShiner")
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -271,13 +288,13 @@ private struct PPProLoginScreen: View {
             VStack(spacing: 6) {
                 Text(viewModel.localized("ProLoginTitle"))
                     .font(.custom("Beiruti-Bold", size: 36))
-                    .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                    .foregroundStyle(Color.pp("PrimaryTextClr"))
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
 
                 Text(viewModel.localized("ProLoginSubtitle"))
                     .font(.custom("Beiruti-Regular", size: 18))
-                    .foregroundStyle(Color.pp("SeconderyTextClr", fallback: .secondaryLabel))
+                    .foregroundStyle(Color.pp("SeconderyTextClr"))
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
                     .padding(.horizontal, 10)
@@ -295,7 +312,7 @@ private struct PPProLoginScreen: View {
                 Image(systemName: "shield.lefthalf.filled")
                     .resizable()
                     .scaledToFit()
-                    .foregroundStyle(Color.pp("AppPrimaryClr", fallback: .systemBlue))
+                    .foregroundStyle(Color.pp("AppPrimaryClr"))
             }
         }
     }
@@ -304,7 +321,7 @@ private struct PPProLoginScreen: View {
         VStack(alignment: .leading, spacing: 18) {
             Text(viewModel.localized("AdminLoginTitle"))
                 .font(.custom("Beiruti-Bold", size: 24))
-                .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                .foregroundStyle(Color.pp("PrimaryTextClr"))
 
             VStack(spacing: 14) {
                 PPProFieldRow(
@@ -340,16 +357,16 @@ private struct PPProLoginScreen: View {
                 Toggle(isOn: $viewModel.rememberMe) {
                     Text(viewModel.localized("RememberMe"))
                         .font(.custom("Beiruti-Medium", size: 16))
-                        .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                        .foregroundStyle(Color.pp("PrimaryTextClr"))
                 }
-                .toggleStyle(SwitchToggleStyle(tint: Color.pp("AppPrimaryClr", fallback: .systemBlue)))
+                .toggleStyle(SwitchToggleStyle(tint: Color.pp("AppPrimaryClr")))
 
                 Spacer(minLength: 12)
 
                 Button(action: viewModel.requestPasswordReset) {
                     Text(viewModel.localized("ForgotPassword"))
                         .font(.custom("Beiruti-Medium", size: 15))
-                        .foregroundStyle(Color.pp("AppPrimaryClr", fallback: .systemBlue))
+                        .foregroundStyle(Color.pp("AppPrimaryClr"))
                 }
                 .buttonStyle(.plain)
             }
@@ -376,8 +393,8 @@ private struct PPProLoginScreen: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    Color.pp("AppPrimaryClr", fallback: .systemBlue),
-                                    Color.pp("AppPrimaryClrDarker", fallback: .systemBlue).opacity(0.92)
+                                    Color.pp("AppPrimaryClr"),
+                                    Color.pp("AppPrimaryClrDarker").opacity(0.92)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -388,7 +405,7 @@ private struct PPProLoginScreen: View {
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
                         .stroke(Color.white.opacity(0.16), lineWidth: 1)
                 )
-                .shadow(color: Color.pp("AppPrimaryClr", fallback: .systemBlue).opacity(0.28), radius: 18, x: 0, y: 14)
+                .shadow(color: Color.pp("AppPrimaryClr").opacity(0.28), radius: 18, x: 0, y: 14)
             }
             .buttonStyle(PPProScaleButtonStyle())
             .disabled(viewModel.isBusy)
@@ -403,12 +420,12 @@ private struct PPProLoginScreen: View {
                         if viewModel.isPerforming(.google) {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle())
-                                .tint(Color.pp("AppPrimaryClr", fallback: .systemBlue))
+                                .tint(Color.pp("AppPrimaryClr"))
                                 .scaleEffect(0.76)
                         } else {
                             Text("G")
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundStyle(Color.pp("AppPrimaryClr", fallback: .systemBlue))
+                                .foregroundStyle(Color.pp("AppPrimaryClr"))
                         }
                     }
 
@@ -419,9 +436,9 @@ private struct PPProLoginScreen: View {
 
                     Image(systemName: "arrow.up.right")
                         .font(.custom("Beiruti-Medium", size: 15))
-                        .foregroundStyle(Color.pp("AppPrimaryClr", fallback: .systemBlue).opacity(0.9))
+                        .foregroundStyle(Color.pp("AppPrimaryClr").opacity(0.9))
                 }
-                .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                .foregroundStyle(Color.pp("PrimaryTextClr"))
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
@@ -445,7 +462,7 @@ private struct PPProLoginScreen: View {
                         if viewModel.isPerforming(.biometric) {
                             ProgressView()
                                 .progressViewStyle(CircularProgressViewStyle())
-                                .tint(Color.pp("AppPrimaryClrDarker", fallback: .label))
+                                .tint(Color.pp("AppPrimaryClrDarker"))
                         } else {
                             Image(systemName: "faceid")
                                 .font(.custom("Beiruti-Medium", size: 18))
@@ -453,7 +470,7 @@ private struct PPProLoginScreen: View {
                         Text(viewModel.biometricTitle)
                             .font(.custom("Beiruti-Bold", size: 17))
                     }
-                    .foregroundStyle(Color.pp("AppPrimaryClrDarker", fallback: .label))
+                    .foregroundStyle(Color.pp("AppPrimaryClrDarker"))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(
@@ -471,7 +488,7 @@ private struct PPProLoginScreen: View {
 
             Text(viewModel.localized("ProLoginHint"))
                 .font(.custom("Beiruti-Regular", size: 15))
-                .foregroundStyle(Color.pp("SeconderyTextClr", fallback: .secondaryLabel))
+                .foregroundStyle(Color.pp("SeconderyTextClr"))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 2)
@@ -493,7 +510,7 @@ private struct PPProLoginScreen: View {
     private var footerLabel: some View {
         Text(viewModel.localized("ProLoginFooter"))
             .font(.custom("Beiruti-Regular", size: 14))
-            .foregroundStyle(Color.pp("SeconderyTextClr", fallback: .secondaryLabel))
+            .foregroundStyle(Color.pp("SeconderyTextClr"))
             .padding(.bottom, 4)
     }
 }
@@ -515,17 +532,17 @@ private struct PPProFieldRow: View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.pp("AppBackgroundClr", fallback: .secondarySystemBackground))
+                    .fill(Color.pp("AppBackgroundClr"))
                     .frame(width: 46, height: 46)
                 Image(systemName: icon)
                     .font(.custom("Beiruti-Medium", size: 17))
-                    .foregroundStyle(Color.pp("AppPrimaryClr", fallback: .systemBlue))
+                    .foregroundStyle(Color.pp("AppPrimaryClr"))
             }
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(title)
                     .font(.custom("Beiruti-Medium", size: 15))
-                    .foregroundStyle(Color.pp("SeconderyTextClr", fallback: .secondaryLabel))
+                    .foregroundStyle(Color.pp("SeconderyTextClr"))
 
                 Group {
                     if isSecure && !revealSecureText {
@@ -535,7 +552,7 @@ private struct PPProFieldRow: View {
                     }
                 }
                 .font(.custom("Beiruti-Medium", size: 18))
-                .foregroundStyle(Color.pp("PrimaryTextClr", fallback: .label))
+                .foregroundStyle(Color.pp("PrimaryTextClr"))
                 .textInputAutocapitalization(.never)
                 .disableAutocorrection(true)
                 .keyboardType(keyboardType)
@@ -549,7 +566,7 @@ private struct PPProFieldRow: View {
                 Button(action: { revealSecureText.toggle() }) {
                     Image(systemName: revealSecureText ? "eye.slash" : "eye")
                         .font(.custom("Beiruti-Medium", size: 17))
-                        .foregroundStyle(Color.pp("SeconderyTextClr", fallback: .secondaryLabel))
+                        .foregroundStyle(Color.pp("SeconderyTextClr"))
                         .padding(10)
                 }
                 .buttonStyle(.plain)
@@ -562,7 +579,7 @@ private struct PPProFieldRow: View {
                 .fill(Color.white.opacity(0.68))
                 .overlay(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(focusedField.wrappedValue == field ? Color.pp("AppPrimaryClr", fallback: .systemBlue).opacity(0.35) : Color.white.opacity(0.66), lineWidth: 1.2)
+                        .stroke(focusedField.wrappedValue == field ? Color.pp("AppPrimaryClr").opacity(0.35) : Color.white.opacity(0.66), lineWidth: 1.2)
                 )
         )
     }
@@ -583,7 +600,7 @@ final class PPProLoginHostingController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(named: "AppBackgroundClr") ?? .systemGroupedBackground
+        view.backgroundColor = .ppBackground
 
         let coordinator = PPProLoginCoordinator(presenting: self)
         let viewModel = PPProLoginViewModel(coordinator: coordinator)

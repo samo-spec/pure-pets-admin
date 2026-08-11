@@ -27,13 +27,13 @@
     
     self.deleteButton = [UIButton buttonWithType:UIButtonTypeCustom];
     [self.deleteButton setImage:[UIImage systemImageNamed:@"xmark.circle.fill"] forState:UIControlStateNormal];
-    self.deleteButton.tintColor = [UIColor systemRedColor];
+    self.deleteButton.tintColor = [UIColor ppError];
     [self.deleteButton addTarget:self action:@selector(deleteTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.contentView addSubview:self.deleteButton];
     
     self.editButton = [UIButton buttonWithType:UIButtonTypeCustom];
     [self.editButton setImage:[UIImage systemImageNamed:@"pencil.circle.fill"] forState:UIControlStateNormal];
-    self.editButton.tintColor = [UIColor systemBlueColor];
+    self.editButton.tintColor = [UIColor ppPrimary];
     [self.editButton addTarget:self action:@selector(editTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.contentView addSubview:self.editButton];
     

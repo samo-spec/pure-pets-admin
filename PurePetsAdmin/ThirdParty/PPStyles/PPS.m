@@ -231,7 +231,7 @@ static CGFloat PPRelevanceScore(NSString *query, NSString *candidate) {
     _tf.delegate = self;
     _tf.font = [Styling fontMedium:16];
     _tf.textAlignment = Language.alignmentForCurrentLanguage;
-    _tf.textColor = UIColor.labelColor;
+    _tf.textColor = [UIColor ppTextPrimary];
     _tf.tintColor = AppPrimaryClr;
     _tf.placeholder = kLang(@"SearchHere");
 
@@ -239,7 +239,7 @@ static CGFloat PPRelevanceScore(NSString *query, NSString *candidate) {
         /*
          UIImageView *mag = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]];
          mag.contentMode = UIViewContentModeScaleAspectFit;
-         mag.tintColor = [UIColor secondaryLabelColor];
+         mag.tintColor = [UIColor ppTextSecondary];
          mag.frame = CGRectMake(0, 0, 20, 20);
          UIView *lv = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 26, 20)];
          [lv addSubview:mag];

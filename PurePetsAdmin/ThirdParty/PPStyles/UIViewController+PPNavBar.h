@@ -19,6 +19,12 @@ typedef NS_ENUM(NSInteger, PPNavBarBaseLayout) {
     PPNavBarBaseLayoutRTL         // [button][title][back]
 };
 
+/// Marks a navigation stack as a Command Center workflow. Legacy controllers
+/// on that stack keep their actions but render through native UINavigationItem
+/// APIs, preventing their overlay bar from colliding with the workflow chrome.
+FOUNDATION_EXPORT void PPSetCommandCenterNavigationManaged(UINavigationController * _Nullable navigationController,
+                                                           BOOL managed);
+
 // ===== Associated keys =====
 static const void *kPPNavBarViewKey  = &kPPNavBarViewKey;
 static const void *kPPTitleLabelKey  = &kPPTitleLabelKey;
@@ -92,5 +98,4 @@ static NSString * const kPPKeyBaseButton = @"__base_button";
 @end
 
 NS_ASSUME_NONNULL_END
-
 

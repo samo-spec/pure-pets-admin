@@ -130,7 +130,7 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
         vc.modalTransitionStyle = UIModalTransitionStyleCoverVertical;
 
         vc.modalPresentationCapturesStatusBarAppearance = YES;
-        vc.view.backgroundColor = UIColor.systemBackgroundColor;
+        vc.view.backgroundColor = [UIColor ppSurface];
         vc.modalPresentationStyle = UIModalPresentationPageSheet;
         if (@available(iOS 15.0, *)) {
             UISheetPresentationController *sheet = vc.sheetPresentationController;

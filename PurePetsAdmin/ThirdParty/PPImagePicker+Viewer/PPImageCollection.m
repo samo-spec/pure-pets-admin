@@ -119,7 +119,7 @@
     UIImageSymbolConfiguration *symConfig = [[UIImageSymbolConfiguration configurationWithPointSize:17 weight:UIImageSymbolWeightRegular]
                                              configurationByApplyingConfiguration:
                                                  [UIImageSymbolConfiguration configurationWithPaletteColors:@[
-                                                    [UIColor secondaryLabelColor],
+                                                    [UIColor ppTextSecondary],
                                                     [AppPrimaryClr  colorWithAlphaComponent:1.1]
                                                  ]]];
     
@@ -127,13 +127,13 @@
     _iconView = [[UIImageView alloc] initWithImage:icon];
     _iconView.translatesAutoresizingMaskIntoConstraints = NO;
     _iconView.contentMode = UIViewContentModeScaleAspectFit;
-    _iconView.tintColor = [UIColor labelColor];
+    _iconView.tintColor = [UIColor ppTextPrimary];
     
     // Title label
     _titleLabel = [[UILabel alloc] init];
     _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _titleLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:14];
-    _titleLabel.textColor = [UIColor secondaryLabelColor];
+    _titleLabel.textColor = [UIColor ppTextSecondary];
     
     [_titleContainer addSubview:_iconView];
     [_titleContainer addSubview:_titleLabel];
@@ -179,7 +179,7 @@
     }
     _loadingSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:style];
     _loadingSpinner.translatesAutoresizingMaskIntoConstraints = NO;
-    _loadingSpinner.color = AppPrimaryClr ?: UIColor.labelColor;
+    _loadingSpinner.color = [UIColor ppPrimary];
     
     [_loadingOverlay addSubview:_loadingSpinner];
     [self addSubview:_loadingOverlay];
@@ -627,7 +627,7 @@
             UIImage *placeholder = [UIImage systemImageNamed:@"photo"];
             cell.imageView.image = placeholder;
             cell.imageView.contentMode = UIViewContentModeScaleAspectFit;
-            cell.imageView.tintColor = [UIColor secondaryLabelColor];
+            cell.imageView.tintColor = [UIColor ppTextSecondary];
             cell.imageView.backgroundColor = [UIColor tertiarySystemFillColor];
         }
     }

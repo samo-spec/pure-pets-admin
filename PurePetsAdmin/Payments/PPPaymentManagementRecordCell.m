@@ -49,11 +49,11 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
 
     _surfaceContentView = [UIView new];
     _surfaceContentView.translatesAutoresizingMaskIntoConstraints = NO;
-    _surfaceContentView.backgroundColor = AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    _surfaceContentView.backgroundColor = [UIColor ppElevatedSurface];
     _surfaceContentView.layer.cornerRadius = 22.0;
     _surfaceContentView.layer.masksToBounds = YES;
     _surfaceContentView.layer.borderWidth = 1.0;
-    _surfaceContentView.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.18].CGColor;
+    _surfaceContentView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.18].CGColor;
     [_surfaceView addSubview:_surfaceContentView];
 
     _gradientLayer = [CAGradientLayer layer];
@@ -71,13 +71,13 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     _orderLabel = [UILabel new];
     _orderLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _orderLabel.font = [Styling fontBold:16];
-    _orderLabel.textColor = PrimaryTextClr ?: UIColor.labelColor;
+    _orderLabel.textColor = [UIColor ppTextPrimary];
     _orderLabel.numberOfLines = 2;
 
     _amountLabel = [UILabel new];
     _amountLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _amountLabel.font = [Styling fontBold:16];
-    _amountLabel.textColor = PrimaryTextClr ?: UIColor.labelColor;
+    _amountLabel.textColor = [UIColor ppTextPrimary];
     _amountLabel.textAlignment = NSTextAlignmentRight;
     _amountLabel.numberOfLines = 2;
     [_amountLabel setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
@@ -85,7 +85,7 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     _customerLabel = [UILabel new];
     _customerLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _customerLabel.font = [Styling fontRegular:13];
-    _customerLabel.textColor = UIColor.secondaryLabelColor;
+    _customerLabel.textColor = [UIColor ppTextSecondary];
     _customerLabel.numberOfLines = 2;
 
     _statusIconWrapView = [UIView new];
@@ -110,7 +110,7 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     _subtitleLabel = [UILabel new];
     _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _subtitleLabel.font = [Styling fontRegular:11];
-    _subtitleLabel.textColor = UIColor.tertiaryLabelColor;
+    _subtitleLabel.textColor = [UIColor ppTextTertiary];
     _subtitleLabel.numberOfLines = 2;
 
     _actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
@@ -257,14 +257,14 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     _subtitleLabel.textAlignment = alignment;
     _amountLabel.textAlignment = [Language isRTL] ? NSTextAlignmentLeft : NSTextAlignmentRight;
 
-    UIColor *resolvedStatusColor = statusColor ?: (AppPrimaryClr ?: UIColor.systemBlueColor);
-    UIColor *resolvedActionTint = actionTint ?: (AppPrimaryClr ?: UIColor.systemBlueColor);
+    UIColor *resolvedStatusColor = statusColor ?: [UIColor ppPrimary];
+    UIColor *resolvedActionTint = actionTint ?: [UIColor ppPrimary];
 
     _surfaceContentView.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.16].CGColor;
     _gradientLayer.colors = @[
         (id)[resolvedStatusColor colorWithAlphaComponent:0.01].CGColor,
-        (id)[(AppForgroundColr ?: UIColor.secondarySystemBackgroundColor) colorWithAlphaComponent:0.16].CGColor,
-        (id)[UIColor.systemBackgroundColor colorWithAlphaComponent:0.24].CGColor
+        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.16].CGColor,
+        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.24].CGColor
     ];
     _haloView.backgroundColor = resolvedStatusColor;
 
@@ -293,10 +293,10 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
         _actionButton.layer.shadowOpacity = 0.16f;
         [_actionButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
     } else {
-        _actionButton.backgroundColor = [UIColor.systemBackgroundColor colorWithAlphaComponent:0.74];
-        _actionButton.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.30].CGColor;
+        _actionButton.backgroundColor = [[UIColor ppSurface] colorWithAlphaComponent:0.74];
+        _actionButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.30].CGColor;
         _actionButton.layer.shadowOpacity = 0.04f;
-        [_actionButton setTitleColor:PrimaryTextClr ?: UIColor.labelColor forState:UIControlStateNormal];
+        [_actionButton setTitleColor:[UIColor ppTextPrimary] forState:UIControlStateNormal];
     }
 }
 

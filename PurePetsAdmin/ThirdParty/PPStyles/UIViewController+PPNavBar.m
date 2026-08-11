@@ -34,6 +34,104 @@ static inline NSMutableDictionary<NSString *, UIView *> *PPDictForVC(UIViewContr
     return d;
 }
 
+static const void *kPPCommandCenterNavigationManagedKey = &kPPCommandCenterNavigationManagedKey;
+
+void PPSetCommandCenterNavigationManaged(UINavigationController *navigationController, BOOL managed) {
+    if (!navigationController) return;
+    objc_setAssociatedObject(navigationController,
+                             kPPCommandCenterNavigationManagedKey,
+                             @(managed),
+                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static BOOL PPUsesCommandCenterSystemNavigation(UIViewController *vc) {
+    if (!vc.navigationController) return NO;
+    return [objc_getAssociatedObject(vc.navigationController, kPPCommandCenterNavigationManagedKey) boolValue];
+}
+
+static void PPRemoveOverlayNavigationBar(UIViewController *vc) {
+    UIView *bar = PPBarForVC(vc);
+    if (bar) [bar removeFromSuperview];
+    objc_setAssociatedObject(vc, kPPNavBarViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(vc, kPPTitleLabelKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(vc, kPPLeftStackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(vc, kPPRightStackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static void PPRemoveCommandCenterSystemButton(UIViewController *vc, NSString *key) {
+    UIButton *button = (UIButton *)PPDictForVC(vc, NO)[key];
+    if (!button) return;
+
+    UINavigationItem *item = vc.navigationItem;
+    NSMutableArray<UIBarButtonItem *> *right = [item.rightBarButtonItems mutableCopy] ?: [NSMutableArray array];
+    NSMutableArray<UIBarButtonItem *> *left = [item.leftBarButtonItems mutableCopy] ?: [NSMutableArray array];
+    NSIndexSet *rightMatches = [right indexesOfObjectsPassingTest:^BOOL(UIBarButtonItem *candidate, NSUInteger idx, BOOL *stop) {
+        (void)idx;
+        (void)stop;
+        return candidate.customView == button;
+    }];
+    NSIndexSet *leftMatches = [left indexesOfObjectsPassingTest:^BOOL(UIBarButtonItem *candidate, NSUInteger idx, BOOL *stop) {
+        (void)idx;
+        (void)stop;
+        return candidate.customView == button;
+    }];
+    [right removeObjectsAtIndexes:rightMatches];
+    [left removeObjectsAtIndexes:leftMatches];
+    item.rightBarButtonItems = right.count > 0 ? right : nil;
+    item.leftBarButtonItems = left.count > 0 ? left : nil;
+    [PPDictForVC(vc, NO) removeObjectForKey:key];
+}
+
+static void PPSetCommandCenterSystemButton(UIViewController *vc,
+                                           UIButton *button,
+                                           NSString *key,
+                                           BOOL onRight) {
+    if (!button || key.length == 0) return;
+    PPRemoveCommandCenterSystemButton(vc, key);
+    [button removeFromSuperview];
+
+    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithCustomView:button];
+    UINavigationItem *navigationItem = vc.navigationItem;
+    NSMutableArray<UIBarButtonItem *> *items = [(onRight
+                                                  ? navigationItem.rightBarButtonItems
+                                                  : navigationItem.leftBarButtonItems) mutableCopy] ?: [NSMutableArray array];
+    [items addObject:item];
+    if (onRight) {
+        navigationItem.rightBarButtonItems = items;
+    } else {
+        navigationItem.leftBarButtonItems = items;
+        BOOL hasSystemBack = !navigationItem.hidesBackButton &&
+            vc.navigationController.viewControllers.firstObject != vc;
+        navigationItem.leftItemsSupplementBackButton = hasSystemBack;
+    }
+    PPDictForVC(vc, YES)[key] = button;
+}
+
+static UIView *PPConfigureCommandCenterSystemNavigation(UIViewController *vc,
+                                                         UIButton * _Nullable actionButton,
+                                                         NSString * _Nullable title,
+                                                         BOOL showBack,
+                                                         BOOL actionOnRight) {
+    UINavigationController *navigationController = vc.navigationController;
+    if (!navigationController) return nil;
+
+    PPRemoveOverlayNavigationBar(vc);
+    NSString *resolvedTitle = title.length > 0 ? title : vc.title;
+    if (resolvedTitle.length > 0) {
+        vc.navigationItem.title = resolvedTitle;
+    }
+    vc.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+    BOOL isRoot = navigationController.viewControllers.firstObject == vc;
+    vc.navigationItem.hidesBackButton = !showBack || isRoot;
+
+    if (actionButton) {
+        PPSetCommandCenterSystemButton(vc, actionButton, kPPKeyBaseButton, actionOnRight);
+    } else {
+        PPRemoveCommandCenterSystemButton(vc, kPPKeyBaseButton);
+    }
+    return navigationController.navigationBar;
+}
+
 #pragma mark - Private helpers
 
 static BOOL PPIsRTL(UIViewController *vc) {
@@ -50,41 +148,41 @@ static NSString *PPNavBackSymbolName(void) {
     return Language.isRTL ? @"arrow.right" : @"arrow.left";
 }
 
-#pragma mark - Command Bar tokens (warm settle + gold ops signal)
+#pragma mark - Command Bar tokens (shared semantic design tokens)
 
-/// Warm settle surface — light ivory / warm charcoal.
+/// Warm settle surface — mapped to the shared elevated surface.
 static inline UIColor *PPNavWarmSurface(void) {
-    return PPDynamicColor(0xFFFDFB, 0x23201E, 1.0, 1.0);
+    return [UIColor ppElevatedSurface];
 }
 
-/// Slightly raised warm surface for buttons.
+/// Slightly raised surface for buttons.
 static inline UIColor *PPNavWarmRaised(void) {
-    return PPDynamicColor(0xFFFEFD, 0x2A2622, 1.0, 1.0);
+    return [UIColor ppSurface];
 }
 
-/// Gold ops signal — Console #D7A45C family.
+/// Premium ops signal from the shared design system.
 static inline UIColor *PPNavGold(void) {
-    return PPDynamicColor(0xD7A45C, 0xE3B878, 1.0, 1.0);
+    return [UIColor ppPremiumAccent];
 }
 
-/// Gold ink — readable icon/text tone on warm surfaces.
+/// Accent ink — readable icon/text tone on warm surfaces.
 static inline UIColor *PPNavGoldInk(void) {
-    return PPDynamicColor(0x8A5F14, 0xF0CF94, 1.0, 1.0);
+    return [UIColor ppAccentText];
 }
 
-/// Gold hairline separator for the settle surface.
+/// Accent hairline separator for the settle surface.
 static inline UIColor *PPNavGoldHairline(void) {
-    return PPDynamicColor(0xD7A45C, 0xD7A45C, 0.35, 0.30);
+    return [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.35];
 }
 
-/// Ink chevron for the gold back button (dark in both modes for contrast).
+/// Ink chevron for the back button.
 static inline UIColor *PPNavBackInk(void) {
-    return PPColorFromRGB(0x171513, 1.0);
+    return [UIColor ppTextPrimary];
 }
 
-/// Ink title color — warm text primary.
+/// Title color — shared text primary.
 static inline UIColor *PPNavInk(void) {
-    return PPDynamicColor(0x171513, 0xFFF8F5, 1.0, 1.0);
+    return [UIColor ppTextPrimary];
 }
 
 /// Title attributes shared by the appearance and the overlay label.
@@ -102,9 +200,10 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Attach base bar (left/title/right)
 
 - (UIView *)pp_navBarAttachWithTitle:(NSString *)titleString {
-    
-    
     NSAssert(self.navigationController, @"pp_navBar requires a UINavigationController.");
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        return PPConfigureCommandCenterSystemNavigation(self, nil, titleString, YES, YES);
+    }
     UINavigationBar *navBar = self.navigationController.navigationBar;
     [self pp_applyPurePetsNavAppearance];
     UIView *bar = PPBarForVC(self);
@@ -174,6 +273,9 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Command Bar appearance (per-instance, RTL-safe)
 
 - (void)pp_applyPurePetsNavAppearance {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        return;
+    }
     UINavigationBar *navBar = nil;
     if ([self isKindOfClass:UINavigationController.class]) {
         navBar = [(UINavigationController *)self navigationBar];
@@ -218,8 +320,18 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Swizzled implementations
 
 - (void)pp_swz_viewWillAppear:(BOOL)animated {
+    BOOL usesSystemNavigation = PPUsesCommandCenterSystemNavigation(self);
+    if (usesSystemNavigation) {
+        PPRemoveOverlayNavigationBar(self);
+    }
+
     // call original
     [self pp_swz_viewWillAppear:animated];
+
+    if (usesSystemNavigation) {
+        PPRemoveOverlayNavigationBar(self);
+        return;
+    }
     
     // if this VC already has a PPNavBar attached, make sure it's visible
     UIView *bar = objc_getAssociatedObject(self, kPPNavBarViewKey);
@@ -241,6 +353,13 @@ static NSDictionary *PPNavTitleAttributes(void) {
 
 
 - (void)pp_navBarSetTitle:(NSString *)titleString {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        NSString *resolvedTitle = titleString.length > 0 ? titleString : self.title;
+        if (resolvedTitle.length > 0) {
+            self.navigationItem.title = resolvedTitle;
+        }
+        return;
+    }
     UILabel *lbl = PPTitleForVC(self);
     if (!lbl) { [self pp_navBarAttachWithTitle:titleString]; lbl = PPTitleForVC(self); }
     lbl.text = titleString ?: (self.title ?: @"");
@@ -251,6 +370,9 @@ static NSDictionary *PPNavTitleAttributes(void) {
 - (UIView *)pp_navBarWithOtherButton:(UIButton * _Nullable)otherBtn
                                title:(NSString * _Nullable)titleString
 {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        return PPConfigureCommandCenterSystemNavigation(self, otherBtn, titleString, YES, YES);
+    }
     UIView *bar = [self pp_navBarAttachWithTitle:titleString];
     
     // Ensure default back on LEFT (your old behavior)
@@ -270,13 +392,10 @@ static NSDictionary *PPNavTitleAttributes(void) {
 }
 
 - (void)pp_removeNavBar {
-    UIView *bar = PPBarForVC(self);
-    if (bar) [bar removeFromSuperview];
-    objc_setAssociatedObject(self, kPPNavBarViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, kPPTitleLabelKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, kPPLeftStackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, kPPRightStackKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, kPPButtonsDictKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    PPRemoveOverlayNavigationBar(self);
+    if (!PPUsesCommandCenterSystemNavigation(self)) {
+        objc_setAssociatedObject(self, kPPButtonsDictKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 }
 
 #pragma mark - Base layout you asked for
@@ -286,6 +405,16 @@ static NSDictionary *PPNavTitleAttributes(void) {
                                    title:(NSString * _Nullable)title
                                 showBack:(BOOL)showBack
 {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        if (!button && !title && !showBack) {
+            PPRemoveOverlayNavigationBar(self);
+            return nil;
+        }
+        BOOL isRTL = (layout == PPNavBarBaseLayoutRTL)
+            || (layout == PPNavBarBaseLayoutAuto && PPIsRTL(self));
+        return PPConfigureCommandCenterSystemNavigation(self, button, title, showBack, !isRTL);
+    }
+
     // [nil][nil][nil] → remove bar
     if (!button && !title && !showBack) { [self pp_removeNavBar]; return nil; }
     
@@ -354,9 +483,20 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Keyed icon buttons (advanced)
 
 - (UIButton *)pp_navBarSetRightIcon:(NSString *)systemImage key:(NSString *)key
-                             target:(id)target action:(SEL)action
-                                tap:(PPNavBarTapBlock)tapBlock
+                              target:(id)target action:(SEL)action
+                                 tap:(PPNavBarTapBlock)tapBlock
 {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        UIButton *btn = (UIButton *)PPDictForVC(self, NO)[key];
+        if (!btn) {
+            btn = [self _pp_makeIconButton:systemImage target:target action:action tap:tapBlock];
+        } else {
+            [btn setImage:[UIImage systemImageNamed:systemImage] forState:UIControlStateNormal];
+            [self _pp_updateButton:btn target:target action:action tap:tapBlock];
+        }
+        PPSetCommandCenterSystemButton(self, btn, key, YES);
+        return btn;
+    }
     UIView *bar = PPBarForVC(self); if (!bar) [self pp_navBarAttachWithTitle:nil];
     UIButton *btn = (UIButton *)PPDictForVC(self, YES)[key];
     if (!btn) {
@@ -371,9 +511,20 @@ static NSDictionary *PPNavTitleAttributes(void) {
 }
 
 - (UIButton *)pp_navBarSetLeftIcon:(NSString *)systemImage  key:(NSString *)key
-                            target:(id)target action:(SEL)action
-                               tap:(PPNavBarTapBlock)tapBlock
+                             target:(id)target action:(SEL)action
+                                tap:(PPNavBarTapBlock)tapBlock
 {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        UIButton *btn = (UIButton *)PPDictForVC(self, NO)[key];
+        if (!btn) {
+            btn = [self _pp_makeIconButton:systemImage target:target action:action tap:tapBlock];
+        } else {
+            [btn setImage:[UIImage systemImageNamed:systemImage] forState:UIControlStateNormal];
+            [self _pp_updateButton:btn target:target action:action tap:tapBlock];
+        }
+        PPSetCommandCenterSystemButton(self, btn, key, NO);
+        return btn;
+    }
     UIView *bar = PPBarForVC(self); if (!bar) [self pp_navBarAttachWithTitle:nil];
     UIButton *btn = (UIButton *)PPDictForVC(self, YES)[key];
     if (!btn) {
@@ -394,6 +545,10 @@ static NSDictionary *PPNavTitleAttributes(void) {
 }
 
 - (void)pp_navBarRemoveButtonForKey:(NSString *)key {
+    if (PPUsesCommandCenterSystemNavigation(self)) {
+        PPRemoveCommandCenterSystemButton(self, key);
+        return;
+    }
     NSMutableDictionary<NSString *, UIView *> *dict = PPDictForVC(self, NO);
     UIButton *btn = (UIButton *)dict[key]; if (!btn) return;
     [btn removeFromSuperview];
@@ -420,7 +575,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
     if (@available(iOS 26.0, *)) {
         UIButtonConfiguration *cfg = [UIButtonConfiguration glassButtonConfiguration];
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-        //cfg.background.backgroundColor = AppBackgroundClrShiner ?: [UIColor colorWithWhite:0.95 alpha:1.0];
+        //cfg.background.backgroundColor = AppBackgroundClrShiner;
 
         btn = [UIButton new];
         btn.configuration = cfg;
@@ -583,7 +738,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         btn.configuration = cfg;
         btn.configuration.cornerStyle = UIButtonConfigurationCornerStyleFixed;
         btn.configuration.baseBackgroundColor = UIColor.whiteColor;
-        btn.configuration.baseForegroundColor = UIColor.redColor;
+        btn.configuration.baseForegroundColor = [UIColor ppError];
         [btn setImage:[UIImage systemImageNamed:symbolName] forState:UIControlStateNormal];
     } else {
         btn = [UIButton new];
@@ -591,7 +746,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
     }
     btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tintColor = AppPrimaryClr ?: [UIColor systemBlueColor];
+    btn.tintColor = AppPrimaryClr;
     
     
     

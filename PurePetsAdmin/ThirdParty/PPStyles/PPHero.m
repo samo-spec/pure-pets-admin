@@ -62,7 +62,7 @@ static CGFloat PPHeroGlassNormalizedDistanceSquared(CGPoint first, CGPoint secon
 
 static UIColor *PPHeroGlassAccentColor(void)
 {
-    return AppPrimaryClr ?: UIColor.systemRedColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPHeroGlassDotColor(UIColor *accent,
@@ -122,18 +122,7 @@ static BOOL PPHeroGlassIsDark(UITraitCollection *traitCollection)
 
 static UIColor *PPHeroGlassSurfaceBaseColor(UITraitCollection *traitCollection)
 {
-    UIColor *fallback = [UIColor colorWithRed:0.992 green:0.989 blue:0.991 alpha:1.0];
-    if (@available(iOS 13.0, *)) {
-        fallback = PPMarketplaceHeroCardResolvedColor(
-            [UIColor colorWithDynamicProvider:^UIColor * _Nonnull(UITraitCollection * _Nonnull traits) {
-                return traits.userInterfaceStyle == UIUserInterfaceStyleDark
-                    ? [UIColor colorWithWhite:0.104 alpha:1.0]
-                    : [UIColor colorWithRed:0.992 green:0.989 blue:0.991 alpha:1.0];
-            }],
-            traitCollection
-        );
-    }
-    return AppForgroundColr ?: fallback;
+    return PPMarketplaceHeroCardResolvedColor([UIColor ppElevatedSurface], traitCollection);
 }
 
 static UIColor *PPHeroGlassSurfaceHighlightColor(UIColor *surfaceBase,
@@ -653,7 +642,7 @@ static UIColor *PPHeroGlassStrokeColor(BOOL darkMode)
     self.backgroundColor = UIColor.clearColor;
     self.materialView.backgroundColor = UIColor.clearColor;
     [self pp_setBorderColor:PPHeroGlassStrokeColor(darkMode)];
-    [self pp_setShadowColor:[UIColor colorWithWhite:0.0 alpha:1.0]];
+    [self pp_setShadowColor:[UIColor ppShadow]];
     self.layer.shadowOpacity = 0.08f;
     self.layer.shadowRadius = 20.0f;
     self.layer.shadowOffset = CGSizeMake(0.0, 10.0);
@@ -690,12 +679,12 @@ static UIColor *PPHeroGlassStrokeColor(BOOL darkMode)
                                                                                  darkMode,
                                                                                  self.traitCollection),
                                                            self.traitCollection);
-    UIColor *line = PPMarketplaceHeroCardResolvedColor(PPHeroGlassConstellationLineColor(AppBackgroundClr,
+    UIColor *line = PPMarketplaceHeroCardResolvedColor(PPHeroGlassConstellationLineColor([UIColor ppBackground],
                                                                                          surfaceBase,
                                                                                          darkMode,
                                                                                          self.traitCollection),
                                                         self.traitCollection);
-    UIColor *traceAccent = self.accentColorOverride ?: [AppPrimaryClrShiner colorWithAlphaComponent:(CGFloat)0.92];
+    UIColor *traceAccent = self.accentColorOverride ?: [[UIColor ppPrimaryShiner] colorWithAlphaComponent:(CGFloat)0.92];
     UIColor *trace = PPMarketplaceHeroCardResolvedColor(PPHeroGlassConstellationTraceColor(traceAccent,
                                                                                            darkMode,
                                                                                            self.traitCollection),

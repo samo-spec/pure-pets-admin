@@ -15,24 +15,24 @@ static NSString *PPPaymentAdminListTrimmedString(id value)
 static UIColor *PPPaymentAdminWorkflowColor(NSString *statusKey)
 {
     NSString *normalized = [PPPaymentAdminRecord normalizedStatusString:statusKey];
-    if ([normalized isEqualToString:@"paid"]) return UIColor.systemGreenColor;
-    if ([normalized isEqualToString:@"processing"]) return UIColor.systemBlueColor;
-    if ([normalized isEqualToString:@"shipped"]) return UIColor.systemPurpleColor;
-    if ([normalized isEqualToString:@"delivered"]) return UIColor.systemTealColor;
+    if ([normalized isEqualToString:@"paid"]) return [UIColor ppSuccess];
+    if ([normalized isEqualToString:@"processing"]) return [UIColor ppInfo];
+    if ([normalized isEqualToString:@"shipped"]) return [UIColor ppQuickActionCommunity];
+    if ([normalized isEqualToString:@"delivered"]) return [UIColor ppSuccess];
     if ([normalized isEqualToString:@"pending"] || [normalized isEqualToString:@"pending_collection"] || [normalized isEqualToString:@"verification_pending"]) {
-        return UIColor.systemBlueColor;
+        return [UIColor ppInfo];
     }
-    if ([normalized isEqualToString:@"failed"]) return UIColor.systemRedColor;
-    if ([normalized isEqualToString:@"cancelled"]) return UIColor.systemGrayColor;
+    if ([normalized isEqualToString:@"failed"]) return [UIColor ppError];
+    if ([normalized isEqualToString:@"cancelled"]) return [UIColor ppTextSecondary];
     if ([normalized isEqualToString:@"refunded"] || [normalized isEqualToString:@"partially_refunded"]) {
-        return UIColor.systemOrangeColor;
+        return [UIColor ppWarning];
     }
-    if ([normalized isEqualToString:@"preparing"] || [normalized isEqualToString:@"packed"]) return UIColor.systemIndigoColor;
-    if ([normalized isEqualToString:@"completed"]) return UIColor.systemGreenColor;
+    if ([normalized isEqualToString:@"preparing"] || [normalized isEqualToString:@"packed"]) return [UIColor ppQuickActionAnimals];
+    if ([normalized isEqualToString:@"completed"]) return [UIColor ppSuccess];
     if ([normalized isEqualToString:@"shipping"] || [normalized isEqualToString:@"in_transit"] || [normalized isEqualToString:@"out_for_delivery"]) {
-        return UIColor.systemCyanColor ?: UIColor.systemBlueColor;
+        return [UIColor ppInfo];
     }
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static NSString *PPPaymentAdminWorkflowSymbolForManagement(NSString *statusKey)
@@ -190,7 +190,7 @@ descripe every that completelly and dont keep any thing
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = AppPrimaryClrShiner ?: AppPrimaryClr;
+    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self setupSearchHeader];
@@ -500,7 +500,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeApprove),
             @"title": kLang(@"PaymentMgmt_Action_ApprovePayment_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_ApprovePayment_Subtitle"),
-            @"tint": UIColor.systemGreenColor,
+            @"tint": [UIColor ppSuccess],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderProcessingForOrder:record]) {
@@ -508,7 +508,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeProcessing),
             @"title": kLang(@"PaymentMgmt_Action_MarkProcessing_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkProcessing_Subtitle"),
-            @"tint": UIColor.systemBlueColor,
+            @"tint": [UIColor ppInfo],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderShippedStatus:record.rawStatus]) {
@@ -516,7 +516,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeShipped),
             @"title": kLang(@"PaymentMgmt_Action_MarkShipped_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkShipped_Subtitle"),
-            @"tint": UIColor.systemIndigoColor,
+            @"tint": [UIColor ppQuickActionCommunity],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderDeliveredStatus:record.rawStatus]) {
@@ -524,7 +524,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeDelivered),
             @"title": kLang(@"PaymentMgmt_Action_MarkDelivered_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkDelivered_Subtitle"),
-            @"tint": UIColor.systemTealColor,
+            @"tint": [UIColor ppQuickActionServices],
         }];
     }
     if ([PPPaymentAdminRecord canCollectCashPaymentForOrder:record]) {
@@ -532,7 +532,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeCollectPayment),
             @"title": kLang(@"PaymentMgmt_Action_CollectPayment_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_CollectPayment_Subtitle"),
-            @"tint": UIColor.systemGreenColor,
+            @"tint": [UIColor ppSuccess],
         }];
     }
     if ([PPPaymentAdminRecord canCancelOrderStatus:record.rawStatus]) {
@@ -540,7 +540,7 @@ descripe every that completelly and dont keep any thing
             @"type": @(PPPaymentManagementListActionTypeCancel),
             @"title": kLang(@"PaymentMgmt_Action_CancelOrder_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_CancelOrder_Subtitle"),
-            @"tint": UIColor.systemRedColor,
+            @"tint": [UIColor ppError],
         }];
     }
     return rows.copy;
@@ -816,7 +816,7 @@ descripe every that completelly and dont keep any thing
         cell.textLabel.text = kLang(@"PaymentMgmt_Placeholder_LoadingTitle");
         cell.detailTextLabel.text = kLang(@"PaymentMgmt_Placeholder_LoadingSubtitle");
         cell.imageView.image = [UIImage systemImageNamed:@"arrow.clockwise.circle"];
-        cell.imageView.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+        cell.imageView.tintColor = [UIColor ppPrimary];
         return cell;
     }
 
@@ -859,7 +859,7 @@ descripe every that completelly and dont keep any thing
         : [NSString stringWithFormat:kLang(@"PaymentMgmt_Summary_Loaded_Plural"), (long)self.records.count];
     cell.detailTextLabel.text = [parts componentsJoinedByString:@"\n"];
     cell.imageView.image = [UIImage systemImageNamed:@"creditcard.and.123"];
-    cell.imageView.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+        cell.imageView.tintColor = [UIColor ppPrimary];
     return cell;
 }
 
@@ -878,7 +878,7 @@ descripe every that completelly and dont keep any thing
     cell.textLabel.text = self.hasLoadedOnce ? kLang(@"PaymentMgmt_Placeholder_NoPaymentsTitle") : kLang(@"PaymentMgmt_Placeholder_NoPaymentsIdleTitle");
     cell.detailTextLabel.text = kLang(@"PaymentMgmt_Placeholder_NoPaymentsSubtitle");
     cell.imageView.image = [UIImage systemImageNamed:@"tray"];
-    cell.imageView.tintColor = UIColor.secondaryLabelColor;
+    cell.imageView.tintColor = [UIColor ppTextSecondary];
     return cell;
 }
 
@@ -926,8 +926,8 @@ descripe every that completelly and dont keep any thing
         ? ([nextAction[@"title"] isKindOfClass:NSString.class] ? nextAction[@"title"] : [self pp_titleForListOrderAction:actionType])
         : PPPaymentAdminListDetailsActionTitle();
     UIColor *actionTint = hasNextAction
-        ? (nextAction[@"tint"] ?: (AppPrimaryClr ?: UIColor.systemBlueColor))
-        : (PrimaryTextClr ?: UIColor.labelColor);
+        ? (nextAction[@"tint"] ?: [UIColor ppPrimary])
+        : [UIColor ppTextPrimary];
 
     [cell configureWithOrderTitle:orderTitle
                        amountText:PPPaymentAdminListCurrencyTitle(record)
@@ -978,7 +978,7 @@ descripe every that completelly and dont keep any thing
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
     header.textLabel.font = [Styling fontMedium:14];
-    header.textLabel.textColor = UIColor.secondaryLabelColor;
+    header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 }

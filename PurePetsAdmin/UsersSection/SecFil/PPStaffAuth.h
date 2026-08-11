@@ -2,8 +2,9 @@
 //  PPStaffAuth.h
 //  PurePetsAdmin
 //
-//  Staff authorization sourced from `UsersCol/{uid}`.
-//  Active staff access is resolved from `accountType = "staff"` plus `staffProfile`.
+//  Staff authorization is sourced from canonical `staff_users/{uid}` records.
+//  A staff record must be explicitly active and permissioned before it can enter
+//  the Admin workspace. `UsersCol` remains profile compatibility data only.
 //
 
 #import <Foundation/Foundation.h>
@@ -132,15 +133,23 @@ extern NSString * const kStaffPermVeterinariansManage;
 @property (nonatomic, copy) NSString *uid;
 @property (nonatomic, copy) NSString *accountType;
 @property (nonatomic, copy) PPStaffRole role;
+@property (nonatomic, copy) NSString *roleIdentifier;
+@property (nonatomic, copy, nullable) NSString *roleName;
 @property (nonatomic, copy) PPStaffStatus status;
 @property (nonatomic, copy) NSArray<NSString *> *permissions;
 @property (nonatomic, copy, nullable) NSDictionary *scope;
+@property (nonatomic, copy, nullable) NSString *displayName;
+@property (nonatomic, copy, nullable) NSString *email;
+@property (nonatomic, copy, nullable) NSString *phone;
+@property (nonatomic, copy, nullable) NSString *photoURL;
+@property (nonatomic, assign, getter=isVerified) BOOL verified;
 @property (nonatomic, assign) NSInteger claimsVersion;
 @property (nonatomic, copy, nullable) NSString *updatedBy;
 
 - (instancetype)initWithDictionary:(NSDictionary *)dict uid:(NSString *)uid;
 - (BOOL)isActive;
 - (BOOL)isAdmin;
+- (BOOL)hasGlobalScope;
 - (BOOL)canAccessStaffWorkspace;
 - (BOOL)hasPermission:(NSString *)perm;
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms;
@@ -165,10 +174,10 @@ typedef void (^PPStaffListCompletion)(NSArray<PPStaffDoc *> * _Nullable docs, NS
 - (id<FIRListenerRegistration>)listenStaffDoc:(NSString *)uid
                                      onChange:(PPStaffDocCompletion)block;
 
-/// Fetch all active staff members from UsersCol.
+/// Fetch all active staff members from canonical staff_users.
 - (void)fetchAllStaff:(PPStaffListCompletion)completion;
 
-/// Listen to all staff members from UsersCol.
+/// Listen to all staff members from canonical staff_users.
 - (id<FIRListenerRegistration>)listenAllStaff:(PPStaffListCompletion)block;
 
 /// Check if current user is active staff.

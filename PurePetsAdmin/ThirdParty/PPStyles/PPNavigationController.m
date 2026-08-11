@@ -21,7 +21,7 @@
     UIFont *titleFont = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:20.0]];
     NSDictionary *titleAttributes = @{
         NSFontAttributeName: titleFont,
-        NSForegroundColorAttributeName: PrimaryTextClr ?: UIColor.labelColor
+        NSForegroundColorAttributeName: [UIColor ppTextPrimary]
     };
 
     UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
@@ -34,7 +34,7 @@
     self.navigationBar.standardAppearance = appearance;
     self.navigationBar.scrollEdgeAppearance = appearance;
     self.navigationBar.compactAppearance = appearance;
-    self.navigationBar.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    self.navigationBar.tintColor = [UIColor ppPrimary];
     self.navigationBar.prefersLargeTitles = NO;
 }
 

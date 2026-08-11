@@ -13,9 +13,10 @@
 #import "AlertHelper.h"
 @import FirebaseAuth;
 @import FirebaseFirestore;
+@import FirebaseFunctions;
 
-static NSString * const PPChatsSupportConversationType = @"support";
-static NSString * const PPChatsSupportContextType = @"user_support";
+static NSString * const PPChatsSupportConversationType = @"user_support";
+static NSString * const PPChatsSupportContextType = @"support";
 static NSString * const PPChatsOfficialSupportActorKey = @"support:official";
 static NSString * const PPChatsOfficialSupportUserID = @"PUIDPOFFICILAL20262214";
 static NSString * const PPChatsCustomerChatScope = @"customer.chat";
@@ -63,23 +64,23 @@ static UIFont *PPChatsFont(UIFont *baseFont, UIFontTextStyle style) {
 }
 
 static UIColor *PPChatsAccentColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBrownColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPChatsCanvasColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPChatsSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemGroupedBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPChatsPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPChatsSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static void PPChatsApplyContinuousCorners(UIView *view, CGFloat radius) {
@@ -221,9 +222,9 @@ static NSString *PPChatsStatusText(NSString *status) {
 
 static UIColor *PPChatsStatusColor(NSString *status) {
     NSString *safe = PPChatsSafeString(status).lowercaseString;
-    if ([safe isEqualToString:@"resolved"]) return UIColor.systemGreenColor;
-    if ([safe isEqualToString:@"closed"]) return UIColor.systemGrayColor;
-    if ([safe isEqualToString:@"active"]) return UIColor.systemBlueColor;
+    if ([safe isEqualToString:@"resolved"]) return [UIColor ppSuccess];
+    if ([safe isEqualToString:@"closed"]) return [UIColor ppTextSecondary];
+    if ([safe isEqualToString:@"active"]) return [UIColor ppInfo];
     return PPChatsAccentColor();
 }
 
@@ -357,13 +358,15 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
         _iconPlate = [UIView new];
         _iconPlate.translatesAutoresizingMaskIntoConstraints = NO;
-        _iconPlate.backgroundColor = [PPChatsAccentColor() colorWithAlphaComponent:0.11];
+        _iconPlate.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
         PPChatsApplyContinuousCorners(_iconPlate, 18.0);
+        _iconPlate.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        _iconPlate.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
         [_cardView addSubview:_iconPlate];
 
         _iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
         _iconView.translatesAutoresizingMaskIntoConstraints = NO;
-        _iconView.tintColor = PPChatsAccentColor();
+        _iconView.tintColor = [UIColor ppPrimary];
         _iconView.contentMode = UIViewContentModeScaleAspectFit;
         [_iconPlate addSubview:_iconView];
 
@@ -401,6 +404,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         _statusLabel.numberOfLines = 1;
         PPChatsApplyContinuousCorners(_statusLabel, 12.0);
         _statusLabel.layer.masksToBounds = YES;
+        _statusLabel.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
         [_cardView addSubview:_statusLabel];
 
         _unreadDot = [UIView new];
@@ -484,7 +488,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.timeLabel.text = time;
     self.statusLabel.text = status;
     self.statusLabel.textColor = accent;
-    self.statusLabel.backgroundColor = [accent colorWithAlphaComponent:0.11];
+    self.statusLabel.backgroundColor = [accent colorWithAlphaComponent:0.12];
+    self.statusLabel.layer.borderColor = [accent colorWithAlphaComponent:0.35].CGColor;
     self.unreadDot.hidden = !unread;
     self.iconView.image = [UIImage systemImageNamed:unread ? @"exclamationmark.bubble.fill" : @"person.crop.circle.fill"];
     self.iconView.tintColor = accent;
@@ -743,7 +748,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.messageField.textAlignment = [Language alignmentForCurrentLanguage];
     self.messageField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     if (@available(iOS 13.0, *)) {
-        self.messageField.backgroundColor = UIColor.tertiarySystemGroupedBackgroundColor;
+        self.messageField.backgroundColor = [UIColor ppSurfaceOverlay];
     } else {
         self.messageField.backgroundColor = [UIColor colorWithWhite:0.94 alpha:1.0];
     }
@@ -797,18 +802,26 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
     UIView *card = [UIView new];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = PPChatsSurfaceColor();
-    PPChatsApplySoftCardChrome(card, 22.0);
+    card.backgroundColor = UIColor.clearColor;
     [header addSubview:card];
+
+    PPHero *glassBG = [PPHero new];
+    glassBG.translatesAutoresizingMaskIntoConstraints = NO;
+    glassBG.accentStyle = PPHeroGlassAccentStyleCornerGlow;
+    glassBG.cornerGlowOpacityMultiplier = 0.55;
+    glassBG.accentColorOverride = [UIColor ppPrimary];
+    [card addSubview:glassBG];
 
     UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
     backButton.translatesAutoresizingMaskIntoConstraints = NO;
     UIImageSymbolConfiguration *backSymbol = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightSemibold];
     NSString *backSymbolName = Language.isRTL ? @"chevron.right" : @"chevron.left";
     [backButton setImage:[UIImage systemImageNamed:backSymbolName withConfiguration:backSymbol] forState:UIControlStateNormal];
-    backButton.tintColor = PPChatsPrimaryTextColor();
-    backButton.backgroundColor = [PPChatsSurfaceColor() colorWithAlphaComponent:0.96];
-    PPChatsApplySoftCardChrome(backButton, 22.0);
+    backButton.tintColor = [UIColor ppPrimary];
+    backButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
+    PPChatsApplyContinuousCorners(backButton, 22.0);
+    backButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    backButton.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.30].CGColor;
     backButton.accessibilityLabel = PPChatsL(@"Back");
     [backButton addTarget:self action:@selector(backTapped) forControlEvents:UIControlEventTouchUpInside];
     [card addSubview:backButton];
@@ -824,9 +837,9 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
     UILabel *subtitle = [UILabel new];
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitle.font = PPChatsFont([Styling fontRegular:13.0], UIFontTextStyleSubheadline);
+    subtitle.font = PPChatsFont([Styling fontBold:12.0], UIFontTextStyleCaption1);
     subtitle.adjustsFontForContentSizeCategory = YES;
-    subtitle.textColor = PPChatsSecondaryTextColor();
+    subtitle.textColor = [UIColor ppPrimary];
     subtitle.textAlignment = [Language alignmentForCurrentLanguage];
     subtitle.text = self.canManageSupport ? PPChatsL(@"SupportChats_SupportReady") : PPChatsL(@"SupportChats_ReadOnly");
     [card addSubview:subtitle];
@@ -839,6 +852,11 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     ]];
     self.statusControl.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusControl.enabled = self.canManageSupport;
+    if (@available(iOS 13.0, *)) {
+        self.statusControl.selectedSegmentTintColor = [UIColor ppPrimary];
+        [self.statusControl setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.whiteColor, NSFontAttributeName: [Styling fontBold:13.0]} forState:UIControlStateSelected];
+        [self.statusControl setTitleTextAttributes:@{NSForegroundColorAttributeName: PPChatsSecondaryTextColor(), NSFontAttributeName: [Styling fontRegular:13.0]} forState:UIControlStateNormal];
+    }
     [self.statusControl addTarget:self action:@selector(statusChanged:) forControlEvents:UIControlEventValueChanged];
     [card addSubview:self.statusControl];
     [self refreshStatusControl];
@@ -848,6 +866,11 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
         [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-10.0],
+
+        [glassBG.topAnchor constraintEqualToAnchor:card.topAnchor],
+        [glassBG.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
+        [glassBG.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
+        [glassBG.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
 
         [name.topAnchor constraintEqualToAnchor:card.topAnchor constant:16.0],
         [name.leadingAnchor constraintEqualToAnchor:backButton.trailingAnchor constant:10.0],
@@ -927,37 +950,17 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 - (void)markThreadRead {
     NSString *threadID = [self threadID];
     if (threadID.length == 0 || self.currentUID.length == 0) return;
-    NSMutableDictionary *payload = [@{
-        @"lastReadAt": [FIRFieldValue fieldValueForServerTimestamp],
-        @"lastReadBy": self.currentUID,
-    } mutableCopy];
-    [payload addEntriesFromDictionary:PPChatsReadV2Fields(self.currentUID)];
-    [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] updateData:payload completion:nil];
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
+    callable.timeoutInterval = 30.0;
+    [callable callWithObject:@{
+        @"action": @"mark_read",
+        @"threadId": threadID,
+        @"expectedLastMessageId": PPChatsSafeString(self.thread[@"lastMessageId"] ?: self.thread[@"lastProjectedMessageId"])
+    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {}];
 }
 
 - (void)markMessagesReadIfNeeded {
-    if (self.currentUID.length == 0) return;
-    NSString *threadID = [self threadID];
-    if (threadID.length == 0) return;
-    FIRCollectionReference *messagesRef = [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] collectionWithPath:@"Messages"];
-    FIRQuery *unreadQuery = [messagesRef queryWhereField:@"status" isLessThan:@3];
-    __weak typeof(self) weakSelf = self;
-    [unreadQuery getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self || error) return;
-        for (FIRDocumentSnapshot *doc in snapshot.documents) {
-            NSDictionary *data = doc.data ?: @{};
-            if (PPChatsIsSupportOfficialSender(data) || !PPChatsTargetsSupportOfficial(data)) continue;
-            NSMutableDictionary *payload = [@{
-                @"status": @3,
-                @"readAt": [FIRFieldValue fieldValueForServerTimestamp],
-                @"readBy": self.currentUID,
-                @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp],
-            } mutableCopy];
-            [payload addEntriesFromDictionary:PPChatsMessageReadV2Fields(self.currentUID)];
-            [doc.reference updateData:payload completion:nil];
-        }
-    }];
+    [self markThreadRead];
 }
 
 - (void)scrollToBottomAnimated:(BOOL)animated {
@@ -972,19 +975,29 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     if (sender.selectedSegmentIndex < 0 || sender.selectedSegmentIndex >= (NSInteger)statuses.count) return;
     NSString *nextStatus = statuses[sender.selectedSegmentIndex];
     NSString *threadID = [self threadID];
-    NSString *customerID = [self customerID];
-    if (threadID.length == 0 || customerID.length == 0 || self.currentUID.length == 0) return;
-
-    NSMutableDictionary *payload = PPChatsSupportBaseFields(threadID, customerID, self.currentUID);
-    payload[@"supportStatus"] = nextStatus;
-    payload[@"supportUserId"] = PPChatsOfficialSupportUserID;
-    payload[@"employeeID"] = self.currentUID;
-    payload[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
-    [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] updateData:payload completion:nil];
-
-    NSMutableDictionary *nextThread = [self.thread mutableCopy];
-    nextThread[@"supportStatus"] = nextStatus;
-    self.thread = nextThread.copy;
+    if (threadID.length == 0 || self.currentUID.length == 0) return;
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
+    callable.timeoutInterval = 30.0;
+    [callable callWithObject:@{
+        @"action": @"transition",
+        @"threadId": threadID,
+        @"toStatus": nextStatus,
+        @"expectedVersion": self.thread[@"supportLifecycleVersion"] ?: @0,
+        @"reason": @"admin_status_change"
+    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                [self refreshStatusControl];
+                [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
+                return;
+            }
+            NSMutableDictionary *nextThread = [self.thread mutableCopy];
+            nextThread[@"supportStatus"] = nextStatus;
+            NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+            nextThread[@"supportLifecycleVersion"] = response[@"supportLifecycleVersion"] ?: nextThread[@"supportLifecycleVersion"];
+            self.thread = nextThread.copy;
+        });
+    }];
 }
 
 - (void)sendTapped {
@@ -1006,23 +1019,18 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.isSending = YES;
     self.sendButton.enabled = NO;
     self.messageField.text = @"";
-
-    FIRCollectionReference *messagesRef = [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] collectionWithPath:@"Messages"];
-    FIRDocumentReference *messageRef = [messagesRef documentWithAutoID];
-    NSMutableDictionary *message = PPChatsSupportOutgoingMessageFields(threadID, messageRef.documentID, customerID, self.currentUID);
-    [message addEntriesFromDictionary:@{
-        @"text": text,
-        @"senderID": PPChatsOfficialSupportUserID,
-        @"employeeID": self.currentUID,
-        @"receiverID": customerID,
-        @"timestamp": [FIRFieldValue fieldValueForServerTimestamp],
-        @"createdAt": [FIRFieldValue fieldValueForServerTimestamp],
-        @"status": @1,
-        @"type": @0,
-    }];
-
     __weak typeof(self) weakSelf = self;
-    [messageRef setData:message completion:^(NSError * _Nullable error) {
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
+    callable.timeoutInterval = 30.0;
+    [callable callWithObject:@{
+        @"action": @"send_staff_reply",
+        @"threadId": threadID,
+        @"messageId": [NSUUID UUID].UUIDString,
+        @"expectedVersion": self.thread[@"supportLifecycleVersion"] ?: @0,
+        @"sourceApp": @"admin_ios",
+        @"sourcePlatform": @"ios",
+        @"message": @{ @"text": text, @"type": @0 }
+    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
             if (!self) return;
@@ -1033,39 +1041,13 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
                 [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
                 return;
             }
-
-            NSMutableDictionary *threadUpdate = PPChatsSupportOutgoingThreadFields(threadID, customerID, self.currentUID);
-            [threadUpdate addEntriesFromDictionary:@{
-                @"lastMessage": text,
-                @"senderID": PPChatsOfficialSupportUserID,
-                @"employeeID": self.currentUID,
-                @"supportUserId": PPChatsOfficialSupportUserID,
-                @"timestamp": [FIRFieldValue fieldValueForServerTimestamp],
-                @"lastMessageAt": [FIRFieldValue fieldValueForServerTimestamp],
-                @"lastReadAt": [FIRFieldValue fieldValueForServerTimestamp],
-                @"lastReadBy": self.currentUID,
-                @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp],
-            }];
-            [threadUpdate addEntriesFromDictionary:PPChatsReadV2Fields(self.currentUID)];
-
-            NSString *status = PPChatsSafeString(self.thread[@"supportStatus"]);
-            if (status.length == 0 || [status isEqualToString:@"waiting_for_agent"]) {
-                threadUpdate[@"supportStatus"] = @"active";
-            }
-            NSString *assignedTo = PPChatsSafeString(self.thread[@"assignedTo"]);
-            if (assignedTo.length == 0 || [assignedTo isEqualToString:PPChatsOfficialSupportUserID]) {
-                threadUpdate[@"assignedTo"] = self.currentUID;
-            }
-
-            [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] updateData:threadUpdate completion:^(NSError * _Nullable threadError) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    self.isSending = NO;
-                    self.sendButton.enabled = self.canManageSupport;
-                    if (threadError) {
-                        [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
-                    }
-                });
-            }];
+            self.isSending = NO;
+            self.sendButton.enabled = self.canManageSupport;
+            NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+            NSMutableDictionary *nextThread = [self.thread mutableCopy];
+            nextThread[@"supportStatus"] = response[@"supportStatus"] ?: @"active";
+            nextThread[@"supportLifecycleVersion"] = response[@"supportLifecycleVersion"] ?: nextThread[@"supportLifecycleVersion"];
+            self.thread = nextThread.copy;
         });
     }];
 }
@@ -1247,20 +1229,22 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     PPHero *glassBG = [PPHero new];
     glassBG.translatesAutoresizingMaskIntoConstraints = NO;
     glassBG.accentStyle = PPHeroGlassAccentStyleCornerGlow;
-    glassBG.cornerGlowOpacityMultiplier = 0.40;
-    glassBG.accentColorOverride = PPChatsAccentColor();
+    glassBG.cornerGlowOpacityMultiplier = 0.65;
+    glassBG.accentColorOverride = [UIColor ppPrimary];
     [card addSubview:glassBG];
     self.heroGlassBG = glassBG;
 
     UIView *identityPlate = [UIView new];
     identityPlate.translatesAutoresizingMaskIntoConstraints = NO;
-    identityPlate.backgroundColor = [PPChatsAccentColor() colorWithAlphaComponent:0.11];
+    identityPlate.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.16];
     PPChatsApplyContinuousCorners(identityPlate, 20.0);
+    identityPlate.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    identityPlate.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.35].CGColor;
     [card addSubview:identityPlate];
 
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.lefthalf.filled.badge.checkmark"]];
+    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.checkered"]];
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    iconView.tintColor = PPChatsAccentColor();
+    iconView.tintColor = [UIColor ppPrimary];
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     [identityPlate addSubview:iconView];
 
@@ -1268,7 +1252,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     kickerLabel.translatesAutoresizingMaskIntoConstraints = NO;
     kickerLabel.font = PPChatsFont([Styling fontBold:12.0], UIFontTextStyleCaption1);
     kickerLabel.adjustsFontForContentSizeCategory = YES;
-    kickerLabel.textColor = PPChatsAccentColor();
+    kickerLabel.textColor = [UIColor ppPrimary];
     kickerLabel.textAlignment = [Language alignmentForCurrentLanguage];
     kickerLabel.text = PPChatsL(@"SupportChats_HeroKicker");
     [card addSubview:kickerLabel];
@@ -1597,12 +1581,13 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 - (void)markThreadRead:(NSDictionary *)thread {
     NSString *threadID = PPChatsSafeString(thread[@"id"]);
     if (threadID.length == 0 || self.currentUID.length == 0) return;
-    NSMutableDictionary *payload = [@{
-        @"lastReadAt": [FIRFieldValue fieldValueForServerTimestamp],
-        @"lastReadBy": self.currentUID,
-    } mutableCopy];
-    [payload addEntriesFromDictionary:PPChatsReadV2Fields(self.currentUID)];
-    [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] updateData:payload completion:nil];
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
+    callable.timeoutInterval = 30.0;
+    [callable callWithObject:@{
+        @"action": @"mark_read",
+        @"threadId": threadID,
+        @"expectedLastMessageId": PPChatsSafeString(thread[@"lastMessageId"] ?: thread[@"lastProjectedMessageId"])
+    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {}];
 }
 
 #pragma mark - Search Bar Delegate

@@ -15,6 +15,7 @@
 @import FirebaseMessaging;
 @import FirebaseAuth;
 #import "PPBannersManager.h"
+#import "PPDesignTokens.h"
 @import Firebase;
 @import FirebaseAuth;
 // Your app headers (adjust if needed)
@@ -32,52 +33,70 @@
 @property (nonatomic, strong) NSMutableArray<MainBannerModel *> *banners;
 @property (nonatomic, strong) NSMutableArray<MainBannerModel *> *filteredBanners;
 @property (nonatomic, copy)   NSString *currentQuery;
-@property (nonatomic, strong) CAGradientLayer *PPGradient;
+@property (nonatomic, strong) UIView *summaryHeader;
+@property (nonatomic, strong) UILabel *totalMetricLabel;
+@property (nonatomic, strong) UILabel *visibleMetricLabel;
+@property (nonatomic, strong) UILabel *hiddenMetricLabel;
+@property (nonatomic, strong) UILabel *groupMetricLabel;
+@property (nonatomic, assign) BOOL isSizingSummaryHeader;
 @end
 
 @implementation PPBannersListVC
 
+static void PPBannerApplyCardChrome(UIView *view, CGFloat radius) {
+    view.layer.cornerRadius = radius;
+    if (@available(iOS 13.0, *)) view.layer.cornerCurve = kCACornerCurveContinuous;
+    view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    view.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.72].CGColor;
+    view.layer.shadowColor = [UIColor ppShadow].CGColor;
+    view.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+    view.layer.shadowRadius = 18.0;
+    view.layer.shadowOpacity = 0.045;
+}
+
+static UIView *PPBannerMetric(NSString *caption, UILabel * __strong *valueLabel) {
+    UIView *metric = [UIView new];
+    metric.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UILabel *value = [UILabel new];
+    value.translatesAutoresizingMaskIntoConstraints = NO;
+    value.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleTitle3] scaledFontForFont:[Styling fontBold:20]];
+    value.textColor = [UIColor ppPrimary];
+    value.textAlignment = NSTextAlignmentCenter;
+    value.adjustsFontForContentSizeCategory = YES;
+    value.text = @"0";
+    [metric addSubview:value];
+
+    UILabel *captionLabel = [UILabel new];
+    captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    captionLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCaption1] scaledFontForFont:[Styling fontMedium:11]];
+    captionLabel.textColor = [UIColor ppTextSecondary];
+    captionLabel.textAlignment = NSTextAlignmentCenter;
+    captionLabel.adjustsFontForContentSizeCategory = YES;
+    captionLabel.text = caption;
+    [metric addSubview:captionLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [value.topAnchor constraintEqualToAnchor:metric.topAnchor constant:8.0],
+        [value.leadingAnchor constraintEqualToAnchor:metric.leadingAnchor constant:4.0],
+        [value.trailingAnchor constraintEqualToAnchor:metric.trailingAnchor constant:-4.0],
+        [captionLabel.topAnchor constraintEqualToAnchor:value.bottomAnchor constant:2.0],
+        [captionLabel.leadingAnchor constraintEqualToAnchor:metric.leadingAnchor constant:4.0],
+        [captionLabel.trailingAnchor constraintEqualToAnchor:metric.trailingAnchor constant:-4.0],
+        [captionLabel.bottomAnchor constraintEqualToAnchor:metric.bottomAnchor constant:-8.0]
+    ]];
+    if (valueLabel) *valueLabel = value;
+    return metric;
+}
+
 -(void)viewWillLayoutSubviews
 {
     [super viewWillLayoutSubviews];
-    
-   
-       
 }
 - (void)tableView:(UITableView *)tableView willDisplayHeaderView:(UIView *)view forSection:(NSInteger)section {
-    // Update gradient layer frame when header is displayed
-    
-    [NSLayoutConstraint activateConstraints:@[
-        // Container constraints
-        [containerView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:0],
-        [containerView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-0],
-        [containerView.heightAnchor constraintEqualToConstant:50.0],
-        [containerView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-1],
-        
-    ]];
-    
-    [view setNeedsLayout];
-    [view layoutIfNeeded];
-
-    
-    
-    containerView.layer.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
-    self.PPGradient.maskedCorners = kCALayerMinXMinYCorner | kCALayerMaxXMinYCorner;
-    
-    if ( self.PPGradient) {
-        // Force layout of the header and container
-        [view setNeedsLayout];
-        [view layoutIfNeeded];
-
-        CGRect gradientFrame = containerView.bounds;
-        gradientFrame.origin.x = 0;
-        gradientFrame.origin.y = 0;
-        gradientFrame.size.height = containerView.bounds.size.height - 0;
-        gradientFrame.size.width = containerView.bounds.size.width - 0;
-        self.PPGradient.frame = gradientFrame;
-    }
-    
-    
+    (void)tableView;
+    (void)view;
+    (void)section;
 }
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
@@ -108,6 +127,7 @@
     
     cell.titleLabel.text = PPSafeString([banner localizedTitleText]);
     cell.subtitleLabel.text = PPSafeString([banner localizedDescText]);
+    cell.detailLabel.text = PPSafeString(banner.postDateText);
     cell.delegate = self;
 
     if (banner.sampleImageURL) {
@@ -150,19 +170,19 @@
     // Add button
     UIButton *addBtn = [self pp_circleButtonWithSystemName:@"plus" action:@selector(onAddBannerToGroup:)];
     addBtn.tag = section;
-    //addBtn.backgroundColor = UIColor.yellowColor;
+    //addBtn.backgroundColor = [UIColor ppWarning];
     [container addSubview:addBtn];
     
     // Update button
     UIButton *editBtn = [self pp_circleButtonWithSystemName:@"pencil" action:@selector(editGroup:)];
     editBtn.tag = section;
-    //editBtn.backgroundColor = UIColor.redColor;
+    //editBtn.backgroundColor = [UIColor ppError];
     [container addSubview:editBtn];
     
     // Delete button
     UIButton *delBtn = [self pp_circleButtonWithSystemName:@"trash" action:@selector(deleteGroup:)];
     delBtn.tag = section;
-   // delBtn.backgroundColor = UIColor.greenColor;
+   // delBtn.backgroundColor = [UIColor ppSuccess];
     [container addSubview:delBtn];
     [header addSubview:container];
     // Disable autoresizing mask translation
@@ -253,58 +273,35 @@
     
     
     UIView *header = [[UIView alloc] init];
-    header.backgroundColor = AppClearClr;
-    
-    
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
     containerView = [[UIView alloc] init];
-    containerView.backgroundColor = AppClearClr;
+    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    containerView.backgroundColor = [UIColor ppElevatedSurface];
+    PPBannerApplyCardChrome(containerView, 18.0);
     [header addSubview:containerView];
 
-    // Gradient
-    self.PPGradient = [CAGradientLayer layer];
-    self.PPGradient.colors = @[
-        (__bridge id)UIColor.lightGrayColor.CGColor,
-        (__bridge id)UIColor.darkGrayColor.CGColor
-    ];
-    self.PPGradient.startPoint = CGPointMake(0.2, 0.9);
-    self.PPGradient.endPoint   = CGPointMake(0.7, 1.0);
-    
-    
-    self.PPGradient.colors = @[
-        (__bridge id)[AppPrimaryClr colorWithAlphaComponent:1.0].CGColor,
-        (__bridge id)[AppPrimaryClrDarker colorWithAlphaComponent:1.0].CGColor
-    ];
-    self.PPGradient.startPoint = CGPointMake(0.0, 0.5);
-    self.PPGradient.endPoint = CGPointMake(1.0, 0.5);
-    
-    
-    self.PPGradient.cornerRadius = 20.0;
-    [containerView.layer insertSublayer:self.PPGradient atIndex:0];
-
-    // Keep reference
-    objc_setAssociatedObject(containerView, "PPGradient", self.PPGradient, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    // Constraints for containerView
     containerView.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [containerView.leadingAnchor constraintEqualToAnchor:header.leadingAnchor],
-        [containerView.trailingAnchor constraintEqualToAnchor:header.trailingAnchor],
-        [containerView.heightAnchor constraintEqualToConstant:60.0],
-        [containerView.bottomAnchor constraintEqualToAnchor:header.bottomAnchor],
+        [containerView.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
+        [containerView.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
+        [containerView.topAnchor constraintEqualToAnchor:header.topAnchor constant:5.0],
+        [containerView.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-5.0],
     ]];
-    
-    // Add gradient as sublayer
     
     UILabel *title = [[UILabel alloc] init];
     title.text = [NSString stringWithFormat:@"%@: %@",kLang(@"screen"), [self _holderName:group.bannerViewHolder]];
    // title.text = [NSString stringWithFormat:@"%@: %@ • %@",kLang(@"screen"), [self _holderName:group.bannerViewHolder], [self _bannerPositionName:group.bannerViewPosition]];
   //    title.text = [NSString stringWithFormat:@"%@: %@",kLang(@"screen"), [self _holderName:group.bannerViewHolder]];
 
-    title.font = [Styling fontBold:18];
+    title.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[Styling fontBold:16]];
     title.numberOfLines = 1;
     title.adjustsFontSizeToFitWidth = YES;
     title.minimumScaleFactor = 0.9;
-    title.textColor = AppForgroundColr; // White text for better contrast on gradient
+    title.adjustsFontForContentSizeCategory = YES;
+    title.textAlignment = [Language alignmentForCurrentLanguage];
+    title.textColor = [UIColor ppTextPrimary];
     [containerView addSubview:title];
     
     // Create button container
@@ -326,10 +323,11 @@
     
     
     UIButton *optionsButton = [self currentCircleButtonWithSystemName:@"ellipsis" action:nil];  // hand.point.up.braille.badge.ellipsis
-    optionsButton.backgroundColor = [AppPrimaryClrDarker colorWithAlphaComponent:0.0];
+    optionsButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    optionsButton.tintColor = [UIColor ppPrimary];
     
     [optionsButton.imageView addSymbolEffect: [[NSSymbolWiggleEffect wiggleBackwardEffect] effectWithByLayer] options: [NSSymbolEffectOptions optionsWithRepeatBehavior:[NSSymbolEffectOptionsRepeatBehavior behaviorPeriodicWithDelay:3.0]]];
-    optionsButton.layer.cornerRadius = 20;
+    optionsButton.layer.cornerRadius = 18;
     optionsButton.clipsToBounds = YES;
     __weak typeof(self) weakSelf = self;
     NSInteger currentSection = section; // capture section
@@ -563,7 +561,9 @@
     [super viewDidLoad];
 
     self.view.backgroundColor = AppBackgroundClr;
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.backgroundColor = AppBackgroundClr;
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = 100;
     [self.tableView registerClass:[PPCellWithButtons class] forCellReuseIdentifier:@"PPCellWithButtons"];
@@ -612,34 +612,112 @@
 #pragma mark - UI header (search)
 
 - (void)setupSearchHeader {
-    CGFloat barH = 50.0, pad = 16.0, containerH = barH + pad * 2;
-    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, containerH)];
+    CGFloat barH = 50.0, pad = 16.0;
+    UIView *container = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 1.0)];
     container.backgroundColor = UIColor.clearColor;
+    container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *stack = [[UIStackView alloc] init];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.spacing = 12.0;
+    [container addSubview:stack];
+
+    UIView *summary = [UIView new];
+    summary.translatesAutoresizingMaskIntoConstraints = NO;
+    summary.backgroundColor = [UIColor ppElevatedSurface];
+    PPBannerApplyCardChrome(summary, 22.0);
+    [stack addArrangedSubview:summary];
+    [summary.heightAnchor constraintGreaterThanOrEqualToConstant:96.0].active = YES;
+
+    UIStackView *metrics = [[UIStackView alloc] initWithArrangedSubviews:@[
+        PPBannerMetric(kLang(@"Banners_Stat_Total"), &_totalMetricLabel),
+        PPBannerMetric(kLang(@"Banners_Stat_Visible"), &_visibleMetricLabel),
+        PPBannerMetric(kLang(@"Banners_Stat_Hidden"), &_hiddenMetricLabel),
+        PPBannerMetric(kLang(@"Banners_Stat_Groups"), &_groupMetricLabel)
+    ]];
+    metrics.translatesAutoresizingMaskIntoConstraints = NO;
+    metrics.axis = UILayoutConstraintAxisHorizontal;
+    metrics.alignment = UIStackViewAlignmentFill;
+    metrics.distribution = UIStackViewDistributionFillEqually;
+    metrics.spacing = 1.0;
+    [summary addSubview:metrics];
 
     PPS *sv = [[PPS alloc] initWithFrame:CGRectZero];
     sv.translatesAutoresizingMaskIntoConstraints = NO;
     sv.delegate = self;
     sv.cornerRadius = barH/2.0;
     sv.blurEnabled = NO;
-    sv.shadowEnabled = YES;
-    sv.strokeColor = [UIColor colorWithWhite:1 alpha:0.12];
-    sv.textField.placeholder = kLang(@"Search banners, IDs, child titles…");
-    sv.backgroundColor = AppForgroundColr;
+    sv.shadowEnabled = NO;
+    sv.strokeColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.85];
+    sv.textField.placeholder = kLang(@"Banners_Search_Placeholder");
+    sv.textField.textColor = [UIColor ppTextPrimary];
+   // sv.textField.adjustsFontForContentSizeCategory = YES;
+  //  sv.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+   // sv.backgroundColor = [UIColor ppElevatedSurface];
 
     UIImage *filterImg = [UIImage pp_symbolNamed:@"calendar.day.timeline.leading.circle" pointSize:22 weight:UIImageSymbolWeightRegular scale:UIImageSymbolScaleLarge palette:@[AppPrimaryClr,AppBackgroundClr] makeTemplate:YES];
     [sv configurePrimaryButtonWithImage:filterImg target:self action:@selector(onFilterTapped)];
     sv.showsPrimaryButton = YES;
 
-    [container addSubview:sv];
+    [stack addArrangedSubview:sv];
+    [sv.heightAnchor constraintEqualToConstant:barH].active = YES;
     [NSLayoutConstraint activateConstraints:@[
-        [sv.topAnchor constraintEqualToAnchor:container.safeAreaLayoutGuide.topAnchor constant:pad],
-        [sv.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:pad],
-        [sv.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-pad],
-        [sv.heightAnchor constraintEqualToConstant:barH]
+        [stack.topAnchor constraintEqualToAnchor:container.topAnchor constant:pad],
+        [stack.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:pad],
+        [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-pad],
+        [stack.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-pad],
+        [metrics.topAnchor constraintEqualToAnchor:summary.topAnchor constant:10.0],
+        [metrics.leadingAnchor constraintEqualToAnchor:summary.leadingAnchor constant:10.0],
+        [metrics.trailingAnchor constraintEqualToAnchor:summary.trailingAnchor constant:-10.0],
+        [metrics.bottomAnchor constraintEqualToAnchor:summary.bottomAnchor constant:-10.0]
     ]];
 
     self.tableView.tableHeaderView = container;
     self.searchView = sv;
+    self.summaryHeader = container;
+    [self pp_updateSummaryHeader];
+    [self pp_sizeSummaryHeader];
+}
+
+- (void)pp_sizeSummaryHeader {
+    if (!self.summaryHeader || self.isSizingSummaryHeader) return;
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width <= 0.0) return;
+    self.isSizingSummaryHeader = YES;
+    CGRect frame = self.summaryHeader.frame;
+    BOOL widthChanged = fabs(frame.size.width - width) > 0.5;
+    frame.size.width = width;
+    self.summaryHeader.frame = frame;
+    [self.summaryHeader setNeedsLayout];
+    [self.summaryHeader layoutIfNeeded];
+    CGFloat height = [self.summaryHeader systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                         withHorizontalFittingPriority:UILayoutPriorityRequired
+                                               verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
+    CGFloat targetHeight = ceil(MAX(1.0, height));
+    BOOL heightChanged = fabs(frame.size.height - targetHeight) > 0.5;
+    if (widthChanged || heightChanged) {
+        frame.size.height = targetHeight;
+        self.summaryHeader.frame = frame;
+        self.tableView.tableHeaderView = self.summaryHeader;
+    }
+    self.isSizingSummaryHeader = NO;
+}
+
+- (void)pp_updateSummaryHeader {
+    NSInteger total = 0;
+    NSInteger visible = 0;
+    NSInteger hidden = 0;
+    for (MainBannerModel *group in self.banners ?: @[]) {
+        NSInteger groupCount = group.childBanners.count;
+        total += groupCount;
+        if (group.bannerViewVisible) visible += groupCount;
+        else hidden += groupCount;
+    }
+    self.totalMetricLabel.text = [NSString stringWithFormat:@"%ld", (long)total];
+    self.visibleMetricLabel.text = [NSString stringWithFormat:@"%ld", (long)visible];
+    self.hiddenMetricLabel.text = [NSString stringWithFormat:@"%ld", (long)hidden];
+    self.groupMetricLabel.text = [NSString stringWithFormat:@"%ld", (long)self.banners.count];
 }
 
 - (void)onFilterTapped {
@@ -648,11 +726,7 @@
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    for (CALayer *layer in self.view.layer.sublayers) {
-        if ([layer isKindOfClass:[CAGradientLayer class]]) {
-            layer.frame = CGRectMake(0, 0, self.view.bounds.size.width, 80);
-        }
-    }
+    [self pp_sizeSummaryHeader];
 }
 
 #pragma mark - Search delegate
@@ -680,6 +754,7 @@
         }];
         self.filteredBanners = [[self.banners filteredArrayUsingPredicate:p] mutableCopy];
     }
+    [self pp_updateSummaryHeader];
     [self.tableView reloadData];
 }
 
@@ -697,19 +772,19 @@
 
 #pragma mark - TableView delegate
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    return 80.0;
+    return 112.0;
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayCell:(PPCellWithButtons *)cell
 forRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    
-    [self applyBackgroundStyleForTableView:tableView
-                                    cell:cell
-                               indexPath:indexPath
-                           useRowCardMode:NO
-                          buttonRowIndex:0
-                                buttonSection:20];
+    (void)tableView;
+    (void)indexPath;
+    cell.backgroundColor = UIColor.clearColor;
+    cell.contentView.backgroundColor = UIColor.clearColor;
+    cell.tintColor = [UIColor ppPrimary];
+    cell.layer.mask = nil;
+    cell.layer.shadowOpacity = 0.0;
     
     if (@available(iOS 17.0, *)) {
        //NSSymbolWiggleEffect *wiggle = [NSSymbolWiggleEffect effect];
@@ -724,79 +799,15 @@ forRowAtIndexPath:(NSIndexPath *)indexPath
                         buttonRowIndex:(NSInteger)buttonRowIndex
                           buttonSection:(NSInteger)buttonSection
 {
-    // Clear defaults for card mode
-    if (useRowCardMode) {
-        cell.backgroundColor = UIColor.clearColor;
-        cell.contentView.backgroundColor = UIColor.clearColor;
-    }
-    
-    
-    if(indexPath.row == buttonRowIndex && indexPath.section == buttonSection)
-    {
-        cell.backgroundColor = AppPrimaryClr;
-        cell.contentView.backgroundColor = AppPrimaryClr;
-        cell.tintColor  = AppForgroundColr;
-
-    }
-    else
-    {
-        cell.backgroundColor = AppForgroundColr;
-        cell.contentView.backgroundColor = AppForgroundColr;
-        cell.tintColor  = AppPrimaryClr;
-    }
-    cell.contentView.tintColor  = AppPrimaryClr;
-    // Determine rounding based on position
-    NSInteger rows = [tableView numberOfRowsInSection:indexPath.section];
-    CGFloat radius = 22.0;
-    CGRect bounds = cell.bounds; // willDisplayCell timing
-
-   
-
-    UIBezierPath *path = nil;
-
-    if (rows == 1) {
-        //path = [UIBezierPath bezierPathWithRoundedRect:bounds cornerRadius:radius];
-        path = [UIBezierPath bezierPathWithRoundedRect:bounds byRoundingCorners:(UIRectCornerBottomLeft | UIRectCornerBottomRight) cornerRadii:CGSizeMake(radius, radius)];
-
-        // Optional: tweak appearance for the button row only:
-        // cell.contentView.backgroundColor = AppPrimaryClr;
-        // cell.textLabel.textColor = UIColor.whiteColor;
-        // tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    } else if (rows <= 1) {
-        path = [UIBezierPath bezierPathWithRoundedRect:bounds cornerRadius:radius];
-    } else if (indexPath.row == 0) {
-        path = [UIBezierPath bezierPathWithRoundedRect:bounds byRoundingCorners:(UIRectCornerTopLeft | UIRectCornerTopRight) cornerRadii:CGSizeMake(0, 0)];
-    } else if (indexPath.row == rows - 1) {
-        path = [UIBezierPath bezierPathWithRoundedRect:bounds
-                                     byRoundingCorners:(UIRectCornerBottomLeft | UIRectCornerBottomRight)
-                                           cornerRadii:CGSizeMake(radius, radius)];
-    } else {
-        path = [UIBezierPath bezierPathWithRect:bounds];
-    }
-    path.lineWidth = 2.0;
-    
-    // Apply mask
-    CAShapeLayer *mask = [CAShapeLayer layer];
-    mask.path = path.CGPath;
-    cell.layer.mask = mask;
-    cell.layer.masksToBounds = NO;
-
-    // Optional: shadow in card mode (applied on cell.layer)
-    /*if (!useRowCardMode) {
-        cell.layer.shadowColor = [UIColor colorWithWhite:0 alpha:0.12].CGColor;
-        cell.layer.shadowOpacity = 1.0;
-        cell.layer.shadowOffset = CGSizeMake(0, 2);
-        cell.layer.shadowRadius = 6;
-        cell.layer.masksToBounds = NO; // shadow needs this
-    } else {
-        cell.layer.shadowOpacity = 0.0;
-        cell.layer.masksToBounds = YES;
-    }*/
-    
-    cell.layer.shadowColor = [UIColor blackColor].CGColor;
-    cell.layer.shadowOpacity = 1.0;
-    cell.layer.shadowOffset = CGSizeMake(0, 2);
-    cell.layer.shadowRadius = 6;
+    (void)tableView;
+    (void)indexPath;
+    (void)useRowCardMode;
+    (void)buttonRowIndex;
+    (void)buttonSection;
+    cell.backgroundColor = UIColor.clearColor;
+    cell.contentView.backgroundColor = UIColor.clearColor;
+    cell.layer.mask = nil;
+    cell.layer.shadowOpacity = 0.0;
 }
 
 #pragma mark - Swipe actions (Update / Offer / Delete)
@@ -827,7 +838,7 @@ leadingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath
     
     UIContextualAction *deleteAction =
     [self styledActionWithTitle:kLang(@"Delete")
-                          color:[UIColor systemRedColor]
+                          color:[UIColor ppError]
                           image:@"trash.circle"
                         handler:^(NSIndexPath *idx) {
        // __weak typeof(self) w = weakSelf;

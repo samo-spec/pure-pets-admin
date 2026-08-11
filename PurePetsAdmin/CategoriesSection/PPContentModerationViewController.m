@@ -28,10 +28,10 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     return self.collectionName;
 }
 - (UIColor *)sourceColor {
-    if ([self.collectionName isEqualToString:@"pet_ads"]) return [UIColor systemBlueColor];
-    if ([self.collectionName isEqualToString:@"adopt_pets"]) return [UIColor systemGreenColor];
-    if ([self.collectionName isEqualToString:@"serviceOffers"]) return [UIColor systemOrangeColor];
-    return [UIColor systemGrayColor];
+    if ([self.collectionName isEqualToString:@"pet_ads"]) return [UIColor ppPrimary];
+    if ([self.collectionName isEqualToString:@"adopt_pets"]) return [UIColor ppSuccess];
+    if ([self.collectionName isEqualToString:@"serviceOffers"]) return [UIColor ppWarning];
+    return [UIColor ppTextTertiary];
 }
 @end
 
@@ -277,7 +277,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     if (self.contentItems.count == 0) {
         UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:kModerationCellID forIndexPath:indexPath];
         cell.textLabel.text = kLang(@"Moderation_NoContent");
-        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+        cell.textLabel.textColor = [UIColor ppTextSecondary];
         cell.textLabel.textAlignment = NSTextAlignmentCenter;
         cell.accessoryType = UITableViewCellAccessoryNone;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -331,7 +331,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
         statusLabel = [[UILabel alloc] init];
         statusLabel.tag = 102;
         statusLabel.font = PPFontRegular(PPFontSubheadline);
-        statusLabel.textColor = [UIColor secondaryLabelColor];
+        statusLabel.textColor = [UIColor ppTextSecondary];
         statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:statusLabel];
 
@@ -357,7 +357,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     if (self.chatReports.count == 0) {
         UITableViewCell *cell = [self.tableView dequeueReusableCellWithIdentifier:kChatReportCellID forIndexPath:indexPath];
         cell.textLabel.text = kLang(@"Moderation_NoContent");
-        cell.textLabel.textColor = [UIColor secondaryLabelColor];
+        cell.textLabel.textColor = [UIColor ppTextSecondary];
         cell.textLabel.textAlignment = NSTextAlignmentCenter;
         cell.accessoryType = UITableViewCellAccessoryNone;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -389,7 +389,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
         metaLabel = [[UILabel alloc] init];
         metaLabel.tag = 201;
         metaLabel.font = PPFontRegular(PPFontSubheadline);
-        metaLabel.textColor = [UIColor secondaryLabelColor];
+        metaLabel.textColor = [UIColor ppTextSecondary];
         metaLabel.numberOfLines = 2;
         metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:metaLabel];
@@ -437,14 +437,14 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
             [self approveContent:item atIndex:indexPath];
             completion(YES);
         }];
-        approve.backgroundColor = [UIColor systemGreenColor];
+        approve.backgroundColor = [UIColor ppSuccess];
 
         UIContextualAction *reject = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
             title:kLang(@"Moderation_Reject") handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)) {
             [self rejectContent:item atIndex:indexPath];
             completion(YES);
         }];
-        reject.backgroundColor = [UIColor systemRedColor];
+        reject.backgroundColor = [UIColor ppError];
 
         return [UISwipeActionsConfiguration configurationWithActions:@[reject, approve]];
     }
@@ -457,14 +457,14 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
         [self resolveChatReport:report atIndex:indexPath];
         completion(YES);
     }];
-    resolve.backgroundColor = [UIColor systemBlueColor];
+    resolve.backgroundColor = [UIColor ppPrimary];
 
     UIContextualAction *dismiss = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive
         title:kLang(@"Moderation_Dismiss") handler:^(UIContextualAction *action, UIView *view, void (^completion)(BOOL)) {
         [self dismissChatReport:report atIndex:indexPath];
         completion(YES);
     }];
-    dismiss.backgroundColor = [UIColor systemGrayColor];
+    dismiss.backgroundColor = [UIColor ppTextTertiary];
 
     return [UISwipeActionsConfiguration configurationWithActions:@[dismiss, resolve]];
 }

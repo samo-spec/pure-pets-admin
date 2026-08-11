@@ -380,7 +380,7 @@
         [weakSelf editAccessoryAtIndexPath:indexPath];
         completionHandler(YES);
     }];
-    editAction.backgroundColor = [UIColor systemBlueColor];
+    editAction.backgroundColor = [UIColor ppPrimary];
     editAction.image = [UIImage systemImageNamed:@"pencil.fill"];
 
     UISwipeActionsConfiguration *config = [UISwipeActionsConfiguration configurationWithActions:@[deleteAction, editAction]];

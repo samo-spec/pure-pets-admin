@@ -21,7 +21,7 @@ const CGFloat CHUNK_WIDTH = 120.0f;
         self.clipsToBounds = YES;
 
         self.trackTintColor = [UIColor whiteColor];
-        self.progressTintColor = [UIColor blueColor];
+        self.progressTintColor = [UIColor ppPrimary];
 
         self.hidesWhenStopped = YES;
         self.hidden = YES;

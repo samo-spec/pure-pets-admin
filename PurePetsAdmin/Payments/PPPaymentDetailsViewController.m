@@ -40,14 +40,14 @@ static NSString *PPPaymentAdminDetailsTrimmedString(id value)
 static UIColor *PPPaymentAdminDetailsStatusColor(NSString *statusKey)
 {
     NSString *normalized = [PPPaymentAdminRecord normalizedStatusString:statusKey];
-    if ([normalized isEqualToString:@"paid"]) return UIColor.systemGreenColor;
-    if ([normalized isEqualToString:@"processing"]) return UIColor.systemBlueColor;
-    if ([normalized isEqualToString:@"shipped"]) return UIColor.systemIndigoColor;
-    if ([normalized isEqualToString:@"delivered"]) return UIColor.systemTealColor;
-    if ([normalized isEqualToString:@"failed"]) return UIColor.systemRedColor;
-    if ([normalized isEqualToString:@"cancelled"]) return UIColor.systemGrayColor;
-    if ([normalized isEqualToString:@"refunded"] || [normalized isEqualToString:@"partially_refunded"]) return UIColor.systemOrangeColor;
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    if ([normalized isEqualToString:@"paid"]) return [UIColor ppSuccess];
+    if ([normalized isEqualToString:@"processing"]) return [UIColor ppInfo];
+    if ([normalized isEqualToString:@"shipped"]) return [UIColor ppQuickActionCommunity];
+    if ([normalized isEqualToString:@"delivered"]) return [UIColor ppSuccess];
+    if ([normalized isEqualToString:@"failed"]) return [UIColor ppError];
+    if ([normalized isEqualToString:@"cancelled"]) return [UIColor ppTextSecondary];
+    if ([normalized isEqualToString:@"refunded"] || [normalized isEqualToString:@"partially_refunded"]) return [UIColor ppWarning];
+    return [UIColor ppPrimary];
 }
 
 static NSString *PPPaymentAdminDetailsCurrencyTitle(PPPaymentAdminRecord *record)
@@ -123,27 +123,27 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
 
     _cardSurface = [UIView new];
     _cardSurface.translatesAutoresizingMaskIntoConstraints = NO;
-    _cardSurface.backgroundColor = AppForgroundColr ?: UIColor.systemBackgroundColor;
+    _cardSurface.backgroundColor = [UIColor ppElevatedSurface];
     _cardSurface.layer.cornerRadius = 26.0;
     _cardSurface.layer.masksToBounds = YES;
     _cardSurface.layer.borderWidth = 1.0;
-    _cardSurface.layer.borderColor = [UIColor.separatorColor colorWithAlphaComponent:0.28].CGColor;
+    _cardSurface.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.28].CGColor;
     [_cardContainer addSubview:_cardSurface];
 
     _cardGradientLayer = [CAGradientLayer layer];
     _cardGradientLayer.startPoint = CGPointMake(0.0, 0.0);
     _cardGradientLayer.endPoint = CGPointMake(1.0, 1.0);
     _cardGradientLayer.colors = @[
-        (id)[UIColor.systemBackgroundColor colorWithAlphaComponent:0.75].CGColor,
-        (id)[UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:0.6].CGColor,
-        (id)[UIColor.tertiarySystemFillColor colorWithAlphaComponent:0.2].CGColor
+        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.75].CGColor,
+        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.6].CGColor,
+        (id)[[UIColor ppSurfaceOverlay] colorWithAlphaComponent:0.2].CGColor
     ];
     _cardGradientLayer.locations = @[@0.0, @0.62, @1.0];
     [_cardSurface.layer insertSublayer:_cardGradientLayer atIndex:0];
 
     _haloView = [UIView new];
     _haloView.translatesAutoresizingMaskIntoConstraints = NO;
-    _haloView.backgroundColor = AppPrimaryClrShiner ?: AppPrimaryClr;
+    _haloView.backgroundColor = [UIColor ppPrimaryShiner];
     _haloView.alpha = 0.3;
     _haloView.userInteractionEnabled = NO;
     _haloView.layer.cornerRadius = 56.0;
@@ -152,7 +152,7 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     _captionLabel = [UILabel new];
     _captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _captionLabel.font = [Styling fontMedium:11];
-    _captionLabel.textColor = UIColor.tertiaryLabelColor;
+    _captionLabel.textColor = [UIColor ppTextTertiary];
     _captionLabel.text = kLang(@"PaymentMgmt_Field_Workflow");
     _captionLabel.text = _captionLabel.text.uppercaseString ?: @"";
 
@@ -160,7 +160,7 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     _workflowIconView.translatesAutoresizingMaskIntoConstraints = NO;
     _workflowIconView.contentMode = UIViewContentModeScaleAspectFit;
     _workflowIconView.tintColor = UIColor.whiteColor;
-    _workflowIconView.backgroundColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    _workflowIconView.backgroundColor = [UIColor ppPrimary];
     _workflowIconView.layer.cornerRadius = 14.0;
     _workflowIconView.layer.masksToBounds = YES;
     _workflowIconView.image = [[UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"]
@@ -170,7 +170,7 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _statusLabel.font = [Styling fontBold:12];
     _statusLabel.textAlignment = NSTextAlignmentCenter;
-    _statusLabel.textColor = UIColor.labelColor;
+    _statusLabel.textColor = [UIColor ppTextPrimary];
     _statusLabel.textAlignment = NSTextAlignmentCenter;
     _statusLabel.layer.cornerRadius = 15.0;
     _statusLabel.layer.masksToBounds = YES;
@@ -198,7 +198,7 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     _subtitleLabel = [UILabel new];
     _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     _subtitleLabel.font = [Styling fontRegular:12];
-    _subtitleLabel.textColor = UIColor.secondaryLabelColor;
+    _subtitleLabel.textColor = [UIColor ppTextSecondary];
     _subtitleLabel.numberOfLines = 0;
 
     UIStackView *statusChipRow = [[UIStackView alloc] initWithArrangedSubviews:@[_workflowIconView, _statusLabel]];
@@ -284,18 +284,18 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     _captionLabel.textAlignment = alignment;
     _subtitleLabel.textAlignment = alignment;
 
-    UIColor *resolvedStatusColor = statusColor ?: (AppPrimaryClr ?: UIColor.systemBlueColor);
-    UIColor *resolvedActionTint = actionTint ?: (AppPrimaryClr ?: UIColor.systemBlueColor);
+    UIColor *resolvedStatusColor = statusColor ?: [UIColor ppPrimary];
+    UIColor *resolvedActionTint = actionTint ?: [UIColor ppPrimary];
 
     _workflowIconView.backgroundColor = resolvedActionTint;
     _workflowIconView.tintColor = UIColor.whiteColor;
     _cardGradientLayer.colors = @[
         (id)[resolvedActionTint colorWithAlphaComponent:0.24].CGColor,
-        (id)[UIColor.secondarySystemBackgroundColor colorWithAlphaComponent:0.85].CGColor,
-        (id)[UIColor.systemBackgroundColor colorWithAlphaComponent:0.95].CGColor
+        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.85].CGColor,
+        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.95].CGColor
     ];
     _haloView.backgroundColor = resolvedActionTint;
-    _captionLabel.textColor = UIColor.secondaryLabelColor;
+    _captionLabel.textColor = [UIColor ppTextSecondary];
     _statusLabel.text = [NSString stringWithFormat:@"  %@  ", statusTitle ?: @"--"];
     _statusLabel.textColor = UIColor.whiteColor;
     _statusLabel.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.28];
@@ -361,7 +361,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.tableView.estimatedRowHeight = 74.0;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = AppPrimaryClrShiner ?: AppPrimaryClr;
+    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self pp_rebuildSections];
@@ -509,7 +509,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeApprove),
             @"title": kLang(@"PaymentMgmt_Action_ApprovePayment_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_ApprovePayment_Subtitle"),
-            @"tint": UIColor.systemGreenColor,
+            @"tint": [UIColor ppSuccess],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderProcessingForOrder:self.record]) {
@@ -517,7 +517,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeProcessing),
             @"title": kLang(@"PaymentMgmt_Action_MarkProcessing_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkProcessing_Subtitle"),
-            @"tint": UIColor.systemBlueColor,
+            @"tint": [UIColor ppInfo],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderShippedStatus:self.record.rawStatus]) {
@@ -525,7 +525,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeShipped),
             @"title": kLang(@"PaymentMgmt_Action_MarkShipped_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkShipped_Subtitle"),
-            @"tint": UIColor.systemIndigoColor,
+            @"tint": [UIColor ppQuickActionCommunity],
         }];
     }
     if ([PPPaymentAdminRecord canMarkOrderDeliveredStatus:self.record.rawStatus]) {
@@ -533,7 +533,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeDelivered),
             @"title": kLang(@"PaymentMgmt_Action_MarkDelivered_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_MarkDelivered_Subtitle"),
-            @"tint": UIColor.systemTealColor,
+            @"tint": [UIColor ppQuickActionServices],
         }];
     }
     if ([PPPaymentAdminRecord canCollectCashPaymentForOrder:self.record]) {
@@ -541,7 +541,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeCollectPayment),
             @"title": kLang(@"PaymentMgmt_Action_CollectPayment_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_CollectPayment_Subtitle"),
-            @"tint": UIColor.systemGreenColor,
+            @"tint": [UIColor ppSuccess],
         }];
     }
     if ([PPPaymentAdminRecord canCancelOrderStatus:self.record.rawStatus]) {
@@ -549,7 +549,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             @"type": @(PPPaymentOrderAdminActionTypeCancel),
             @"title": kLang(@"PaymentMgmt_Action_CancelOrder_Title"),
             @"subtitle": kLang(@"PaymentMgmt_Action_CancelOrder_Subtitle"),
-            @"tint": UIColor.systemRedColor,
+            @"tint": [UIColor ppError],
         }];
     }
     return rows.copy;
@@ -635,7 +635,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     cell.textLabel.text = title;
     cell.detailTextLabel.text = subtitle;
     cell.imageView.image = [UIImage systemImageNamed:@"tray"];
-    cell.imageView.tintColor = UIColor.secondaryLabelColor;
+    cell.imageView.tintColor = [UIColor ppTextSecondary];
     cell.accessoryType = UITableViewCellAccessoryNone;
     return cell;
 }
@@ -700,7 +700,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
     header.textLabel.font = [Styling fontMedium:14];
-    header.textLabel.textColor = UIColor.secondaryLabelColor;
+    header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 }
@@ -733,7 +733,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             NSDictionary *row = [self pp_overviewRows][indexPath.row];
             cell.textLabel.text = row[@"title"];
             cell.detailTextLabel.text = row[@"detail"];
-            cell.detailTextLabel.textColor = row[@"tint"] ?: UIColor.secondaryLabelColor;
+            cell.detailTextLabel.textColor = row[@"tint"] ?: [UIColor ppTextSecondary];
             cell.detailTextLabel.font = [row[@"multiline"] boolValue] ? [Styling fontRegular:13] : [Styling fontMedium:14];
             return cell;
         }
@@ -745,9 +745,9 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             UITableViewCell *cell = [self pp_subtitleCellForTableView:tableView reuseIdentifier:@"PPPaymentActionCell"];
             NSDictionary *row = [self pp_orderActions][indexPath.row];
             cell.textLabel.text = row[@"title"];
-            cell.textLabel.textColor = row[@"tint"] ?: UIColor.labelColor;
+            cell.textLabel.textColor = row[@"tint"] ?: [UIColor ppTextPrimary];
             cell.detailTextLabel.text = row[@"subtitle"];
-            cell.detailTextLabel.textColor = UIColor.secondaryLabelColor;
+            cell.detailTextLabel.textColor = [UIColor ppTextSecondary];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             cell.imageView.image = [UIImage systemImageNamed:@"shield.lefthalf.filled"];
             cell.imageView.tintColor = row[@"tint"] ?: AppPrimaryClr;
@@ -780,7 +780,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.accessoryType = UITableViewCellAccessoryNone;
             cell.imageView.image = [UIImage systemImageNamed:@"cube.box"];
-            cell.imageView.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+            cell.imageView.tintColor = [UIColor ppPrimary];
             return cell;
         }
 
@@ -853,7 +853,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             cell.textLabel.text = PPPaymentAdminDisplayTitleForAuditAction(entry.action.length > 0 ? entry.action : @"payment_update");
             cell.detailTextLabel.text = [details componentsJoinedByString:@"\n"];
             cell.imageView.image = [UIImage systemImageNamed:@"person.text.rectangle"];
-            cell.imageView.tintColor = UIColor.systemIndigoColor;
+            cell.imageView.tintColor = [UIColor ppQuickActionCommunity];
             cell.accessoryType = UITableViewCellAccessoryNone;
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             return cell;
@@ -1134,7 +1134,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.tableView.estimatedRowHeight = 72.0;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = AppPrimaryClrShiner ?: AppPrimaryClr;
+    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self pp_reloadRequestShowHUD:YES];
@@ -1155,7 +1155,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
     header.textLabel.font = [Styling fontMedium:14];
-    header.textLabel.textColor = UIColor.secondaryLabelColor;
+    header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 }
@@ -1268,25 +1268,25 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     BOOL canRefund = [self.service currentAdminCanRefundPayments];
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionApprove order:self.orderRecord]) {
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeApprove), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeApprove], @"subtitle": kLang(@"PaymentMgmt_Action_ApproveRequest_Subtitle"), @"tint": UIColor.systemGreenColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeApprove), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeApprove], @"subtitle": kLang(@"PaymentMgmt_Action_ApproveRequest_Subtitle"), @"tint": [UIColor ppSuccess]}];
     }
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionReject order:self.orderRecord]) {
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeReject), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeReject], @"subtitle": kLang(@"PaymentMgmt_Action_RejectRequest_Subtitle"), @"tint": UIColor.systemRedColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeReject), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeReject], @"subtitle": kLang(@"PaymentMgmt_Action_RejectRequest_Subtitle"), @"tint": [UIColor ppError]}];
     }
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionComplete order:self.orderRecord]) {
         NSString *subtitle = [self.request isReturnLike]
             ? kLang(@"PaymentMgmt_Action_CompleteReturnRequest_Subtitle")
             : kLang(@"PaymentMgmt_Action_CompleteRequest_Subtitle");
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeComplete), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeComplete], @"subtitle": subtitle, @"tint": UIColor.systemBlueColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeComplete), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeComplete], @"subtitle": subtitle, @"tint": [UIColor ppInfo]}];
     }
     if (canRefund && [PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionRefund order:self.orderRecord]) {
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundFull_Subtitle"), @"tint": UIColor.systemOrangeColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundFull_Subtitle"), @"tint": [UIColor ppWarning]}];
     }
     if (canRefund && [PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionPartialRefund order:self.orderRecord]) {
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypePartialRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypePartialRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundPartial_Subtitle"), @"tint": UIColor.systemOrangeColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypePartialRefund), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypePartialRefund], @"subtitle": kLang(@"PaymentMgmt_Action_RefundPartial_Subtitle"), @"tint": [UIColor ppWarning]}];
     }
     if ([PPPaymentAdminRecord canResolveRequest:self.request withAction:PPPaymentAdminRequestResolutionClose order:self.orderRecord]) {
-        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeClose), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeClose], @"subtitle": kLang(@"PaymentMgmt_Action_CloseRequest_Subtitle"), @"tint": UIColor.systemGrayColor}];
+        [rows addObject:@{@"type": @(PPPaymentRequestAdminActionTypeClose), @"title": [self pp_titleForRequestAction:PPPaymentRequestAdminActionTypeClose], @"subtitle": kLang(@"PaymentMgmt_Action_CloseRequest_Subtitle"), @"tint": [UIColor ppTextSecondary]}];
     }
     return rows.copy;
 }
@@ -1370,7 +1370,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         NSDictionary *row = [self pp_summaryRows][indexPath.row];
         cell.textLabel.text = row[@"title"];
         cell.detailTextLabel.text = row[@"detail"];
-        cell.detailTextLabel.textColor = row[@"tint"] ?: UIColor.secondaryLabelColor;
+        cell.detailTextLabel.textColor = row[@"tint"] ?: [UIColor ppTextSecondary];
         return cell;
     }
 
@@ -1392,7 +1392,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.accessoryType = UITableViewCellAccessoryNone;
             cell.imageView.image = [UIImage systemImageNamed:@"cube.box"];
-            cell.imageView.tintColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+            cell.imageView.tintColor = [UIColor ppPrimary];
             return cell;
         }
     }
@@ -1407,7 +1407,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             cell.textLabel.text = fileName.length > 0 ? fileName : kLang(@"PaymentMgmt_Value_Attachment");
             cell.detailTextLabel.text = mimeType.length > 0 ? mimeType : url;
             cell.imageView.image = [UIImage systemImageNamed:@"paperclip.circle"];
-            cell.imageView.tintColor = UIColor.systemTealColor;
+            cell.imageView.tintColor = [UIColor ppQuickActionServices];
             cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
             return cell;
         }
@@ -1421,7 +1421,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
             cell.accessoryType = UITableViewCellAccessoryNone;
             cell.imageView.image = [UIImage systemImageNamed:@"clock.badge.xmark"];
-            cell.imageView.tintColor = UIColor.secondaryLabelColor;
+            cell.imageView.tintColor = [UIColor ppTextSecondary];
             return cell;
         }
         UITableViewCell *cell = [self pp_subtitleCellForTableView:tableView reuseIdentifier:@"PPPaymentRequestEventCell"];
@@ -1444,13 +1444,13 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType = UITableViewCellAccessoryNone;
         cell.imageView.image = [UIImage systemImageNamed:@"checkmark.seal"];
-        cell.imageView.tintColor = UIColor.secondaryLabelColor;
+        cell.imageView.tintColor = [UIColor ppTextSecondary];
         return cell;
     }
     UITableViewCell *cell = [self pp_subtitleCellForTableView:tableView reuseIdentifier:@"PPPaymentRequestActionCell"];
     NSDictionary *row = actions[indexPath.row];
     cell.textLabel.text = row[@"title"];
-    cell.textLabel.textColor = row[@"tint"] ?: UIColor.labelColor;
+    cell.textLabel.textColor = row[@"tint"] ?: [UIColor ppTextPrimary];
     cell.detailTextLabel.text = row[@"subtitle"];
     cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     cell.imageView.image = [UIImage systemImageNamed:@"bolt.shield"];

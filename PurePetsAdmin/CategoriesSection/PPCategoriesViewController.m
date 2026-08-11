@@ -109,7 +109,7 @@ static NSString *const kCategoryCellID = @"CategoryCell";
         self.heroHeaderView.clipsToBounds = NO;
         
         UIView *card = [[UIView alloc] init];
-        card.backgroundColor = [UIColor systemBackgroundColor];
+        card.backgroundColor = [UIColor ppBackground];
         card.translatesAutoresizingMaskIntoConstraints = NO;
         PPApplyContinuousCorners(card, PPCornerMedium);
         PPApplyCardShadow(card);
@@ -117,14 +117,14 @@ static NSString *const kCategoryCellID = @"CategoryCell";
         
         self.heroTitleLabel = [[UILabel alloc] init];
         self.heroTitleLabel.font = PPFontMedium(PPFontTitle2);
-        self.heroTitleLabel.textColor = [UIColor labelColor];
+        self.heroTitleLabel.textColor = [UIColor ppTextPrimary];
         self.heroTitleLabel.text = kLang(@"Categories_Title");
         self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:self.heroTitleLabel];
         
         UILabel *subtitle = [[UILabel alloc] init];
         subtitle.font = PPFontRegular(PPFontSubheadline);
-        subtitle.textColor = [UIColor secondaryLabelColor];
+        subtitle.textColor = [UIColor ppTextSecondary];
         subtitle.text = kLang(@"Categories_Subtitle");
         subtitle.translatesAutoresizingMaskIntoConstraints = NO;
         [card addSubview:subtitle];
@@ -233,7 +233,7 @@ static NSString *const kCategoryCellID = @"CategoryCell";
         arLabel = [[UILabel alloc] init];
         arLabel.tag = 102;
         arLabel.font = PPFontRegular(PPFontSubheadline);
-        arLabel.textColor = [UIColor secondaryLabelColor];
+        arLabel.textColor = [UIColor ppTextSecondary];
         arLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:arLabel];
         
@@ -250,7 +250,7 @@ static NSString *const kCategoryCellID = @"CategoryCell";
         metaLabel = [[UILabel alloc] init];
         metaLabel.tag = 103;
         metaLabel.font = PPFontRegular(PPFontCaption1);
-        metaLabel.textColor = [UIColor tertiaryLabelColor];
+        metaLabel.textColor = [UIColor ppTextTertiary];
         metaLabel.translatesAutoresizingMaskIntoConstraints = NO;
         [cell.contentView addSubview:metaLabel];
         

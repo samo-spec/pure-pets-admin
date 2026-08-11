@@ -170,7 +170,7 @@
 
     // Optional: standardize appearance
     button.imageView.contentMode = UIViewContentModeScaleAspectFit;
-    button.tintColor = fallbackTint ?: [UIColor systemBlueColor];
+    button.tintColor = fallbackTint ?: [UIColor ppPrimary];
 
     return button;
 }
@@ -198,14 +198,14 @@
 }
 
 + (UIColor *)pp_selectedCellColorFromPrimaryWithAlpha:(float)cusAlpha {
-    UIColor *baseColor = [UIColor colorWithRed:0.698 green:0.106 blue:0.282 alpha:0.5]; // #B21B48
+    UIColor *baseColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.5];
     CGFloat hue, sat, bright, alpha;
     [baseColor getHue:&hue saturation:&sat brightness:&bright alpha:&alpha];
     return [UIColor colorWithHue:hue saturation:sat brightness:MIN(bright + 0.2, 1.0) alpha:cusAlpha];
 }
 
 + (UIColor *)pp_selectedCellColorFromPrimaryFull {
-    UIColor *baseColor = [UIColor colorWithRed:0.698 green:0.106 blue:0.282 alpha:1.0]; // #B21B48
+    UIColor *baseColor = [UIColor ppPrimary];
     CGFloat hue, sat, bright, alpha;
     [baseColor getHue:&hue saturation:&sat brightness:&bright alpha:&alpha];
     return [UIColor colorWithHue:hue saturation:sat brightness:MIN(bright + 0.2, 1.0) alpha:1.1];

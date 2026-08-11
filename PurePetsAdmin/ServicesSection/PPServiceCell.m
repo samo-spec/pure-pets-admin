@@ -232,31 +232,31 @@ static CGFloat const kPPServiceCellVerticalInset = 14.0;
 
 - (UIColor *)pp_statusColorForService:(PPServiceModel *)service {
     if (service.isDeleted) {
-        return SeconderyTextClr ?: UIColor.systemGrayColor;
+        return [UIColor ppTextSecondary];
     }
     if (service.isBlocked) {
-        return UIColor.systemRedColor;
+        return [UIColor ppError];
     }
     if (service.isDisabled) {
-        return UIColor.systemOrangeColor;
+        return [UIColor ppWarning];
     }
-    return UIColor.systemGreenColor;
+    return [UIColor ppSuccess];
 }
 
 - (UIColor *)pp_verificationColorForService:(PPServiceModel *)service {
     NSString *normalized = [[PPSafeString(service.verificationStatus) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] lowercaseString];
     if ([normalized isEqualToString:@"verified"]) {
-        return UIColor.systemGreenColor;
+        return [UIColor ppSuccess];
     }
     if ([normalized isEqualToString:@"rejected"] || [normalized isEqualToString:@"blocked"]) {
-        return UIColor.systemRedColor;
+        return [UIColor ppError];
     }
     if ([normalized isEqualToString:@"pending"] ||
         [normalized isEqualToString:@"pending_review"] ||
         [normalized isEqualToString:@"verification_pending"]) {
-        return UIColor.systemOrangeColor;
+        return [UIColor ppWarning];
     }
-    return SeconderyTextClr ?: UIColor.systemGrayColor;
+    return [UIColor ppTextSecondary];
 }
 
 - (void)prepareForReuse {

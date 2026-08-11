@@ -16,23 +16,23 @@
 static NSString * const PPStaffRoleCardCellID = @"PPStaffRoleCardCell";
 
 static UIColor *PPStaffRolesSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppElevatedSurface];
 }
 
 static UIColor *PPStaffRolesBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPStaffRolesPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPStaffRolesPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPStaffRolesSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static UIColor *PPStaffRolesBorderColor(void) {
@@ -666,7 +666,7 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
         }];
     }];
     deleteAction.image = [UIImage systemImageNamed:@"trash"];
-    deleteAction.backgroundColor = UIColor.systemRedColor;
+    deleteAction.backgroundColor = [UIColor ppError];
 
     UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[deleteAction]];
     configuration.performsFirstActionWithFullSwipe = NO;

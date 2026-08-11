@@ -59,7 +59,7 @@ static NSString *PPAdminNotificationDetailBody(NotificationModel *model)
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    self.view.backgroundColor = [UIColor ppBackground];
     self.title = kLang(@"Notification");
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 

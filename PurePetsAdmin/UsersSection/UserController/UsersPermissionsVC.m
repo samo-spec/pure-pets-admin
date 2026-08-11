@@ -172,7 +172,7 @@
 - (UILabel *)smallLabel {
     UILabel *l = [UILabel new];
     l.font = [UIFont systemFontOfSize:13 weight:UIFontWeightRegular];
-    l.textColor = [UIColor secondaryLabelColor];
+    l.textColor = [UIColor ppTextSecondary];
     l.numberOfLines = 2;
     return l;
 }

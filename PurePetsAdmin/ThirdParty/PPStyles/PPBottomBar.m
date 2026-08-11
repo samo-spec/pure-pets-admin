@@ -28,7 +28,7 @@
 }
 
 - (void)commonInit {
-    self.backgroundColor = [UIColor.systemBackgroundColor colorWithAlphaComponent:0.96];
+    self.backgroundColor = [[UIColor ppSurface] colorWithAlphaComponent:0.96];
     self.clipsToBounds = NO;
     self.layer.cornerRadius = 30.0;
     self.layer.shadowColor = [UIColor blackColor].CGColor;
@@ -143,7 +143,7 @@
     button.contentVerticalAlignment = UIControlContentVerticalAlignmentCenter;
     button.contentEdgeInsets = UIEdgeInsetsZero;
     button.imageEdgeInsets = UIEdgeInsetsZero;
-    button.tintColor = UIColor.secondaryLabelColor;
+    button.tintColor = [UIColor ppTextSecondary];
     button.imageView.contentMode = UIViewContentModeScaleAspectFit;
 
     UIImageSymbolConfiguration *iconConfig = [UIImageSymbolConfiguration configurationWithPointSize:22.0
@@ -156,10 +156,10 @@
     if (@available(iOS 15.0, *)) {
         __weak typeof(self) weakSelf = self;
         button.configurationUpdateHandler = ^(__kindof UIButton * _Nonnull updatedButton) {
-            UIColor *accent = weakSelf.themeColor ?: [UIColor systemPinkColor];
+            UIColor *accent = weakSelf.themeColor ?: [UIColor ppPrimary];
             BOOL selected = updatedButton.selected;
-            updatedButton.tintColor = selected ? accent : UIColor.secondaryLabelColor;
-            updatedButton.backgroundColor = selected ? [UIColor.systemBackgroundColor colorWithAlphaComponent:0.98] : UIColor.clearColor;
+            updatedButton.tintColor = selected ? accent : [UIColor ppTextSecondary];
+            updatedButton.backgroundColor = selected ? [[UIColor ppSurface] colorWithAlphaComponent:0.98] : UIColor.clearColor;
             updatedButton.layer.borderWidth = selected ? 1.0 : 0.0;
             updatedButton.layer.borderColor = selected ? [accent colorWithAlphaComponent:0.16].CGColor : UIColor.clearColor.CGColor;
             updatedButton.layer.shadowColor = [UIColor blackColor].CGColor;
@@ -175,10 +175,10 @@
     if (!_centerButton) return;
 
     [self pp_applySquareSize:68.0 toButton:_centerButton];
-    _centerButton.backgroundColor = _themeColor ?: [UIColor systemPinkColor];
+    _centerButton.backgroundColor = _themeColor ?: [UIColor ppPrimary];
     _centerButton.tintColor = UIColor.whiteColor;
     _centerButton.layer.cornerRadius = 34.0;
-    _centerButton.layer.shadowColor = (_themeColor ?: [UIColor systemPinkColor]).CGColor;
+    _centerButton.layer.shadowColor = (_themeColor ?: [UIColor ppPrimary]).CGColor;
     _centerButton.layer.shadowOffset = CGSizeMake(0, 10);
     _centerButton.layer.shadowRadius = 20;
     _centerButton.layer.shadowOpacity = 0.24;

@@ -27,7 +27,7 @@
         
         _subtitleLabel = [[UILabel alloc] init];
         _subtitleLabel.font = [UIFont systemFontOfSize:13];
-        _subtitleLabel.textColor = [UIColor secondaryLabelColor];
+        _subtitleLabel.textColor = [UIColor ppTextSecondary];
         _subtitleLabel.numberOfLines = 2;
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         

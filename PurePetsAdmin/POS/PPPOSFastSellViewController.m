@@ -11,17 +11,17 @@ static NSInteger const kPPPOSSearchFieldTag = 6101;
 
 // Warm till surface (warm settle language carried from the Command Bar).
 static UIColor *PPFastSellWarmIvory(void) {
-    return PPDynamicColor(0xFFF8F5, 0x23201E, 1.0, 1.0);
+    return [UIColor ppSurfaceOverlay];
 }
 
 // Gold ops signal for count chip and in-cart badges.
 static UIColor *PPFastSellOpsGold(void) {
-    return PPDynamicColor(0x8A5F14, 0xE3B878, 1.0, 1.0);
+    return [UIColor ppPremiumAccent];
 }
 
 // Gold hairline for the till edge.
 static UIColor *PPFastSellGoldHairline(void) {
-    return PPDynamicColor(0xD7A45C, 0xD7A45C, 0.55, 0.50);
+    return [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.55];
 }
 
 static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
@@ -320,7 +320,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
     self.checkoutButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.checkoutButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.checkoutButton.backgroundColor = PPMaroon600Color();
+    self.checkoutButton.backgroundColor = PPPrimaryColor();
     self.checkoutButton.tintColor = UIColor.whiteColor;
     self.checkoutButton.layer.cornerRadius = PPCornerMedium;
     self.checkoutButton.layer.cornerCurve = kCACornerCurveContinuous;
@@ -526,7 +526,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     UIButton *plus = [UIButton buttonWithType:UIButtonTypeSystem];
     plus.translatesAutoresizingMaskIntoConstraints = NO;
     plus.tag = indexPath.row;
-    plus.backgroundColor = PPMaroon600Color();
+    plus.backgroundColor = PPPrimaryColor();
     plus.tintColor = UIColor.whiteColor;
     plus.layer.cornerRadius = 12.0;
     [plus setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
@@ -615,7 +615,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         badge.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:11.0]];
         badge.adjustsFontForContentSizeCategory = YES;
         badge.textColor = [UIColor whiteColor];
-        badge.backgroundColor = PPMaroon600Color();
+        badge.backgroundColor = PPPrimaryColor();
         badge.layer.cornerRadius = 9.0;
         badge.layer.masksToBounds = YES;
         badge.textAlignment = NSTextAlignmentCenter;
@@ -730,7 +730,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
             cell.detailTextLabel.textAlignment = [Language alignmentForCurrentLanguage];
             cell.textLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:16.0]];
             cell.detailTextLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:13.0]];
-            cell.textLabel.textColor = UIColor.secondaryLabelColor;
+            cell.textLabel.textColor = [UIColor ppTextSecondary];
             cell.imageView.image = [[UIImage systemImageNamed:@"bag"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
             cell.accessoryType = UITableViewCellAccessoryNone;
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
@@ -827,7 +827,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
     if (self.catalogErrorMessage.length) {
         cell.textLabel.text = kLang(@"Error_Title");
-        cell.textLabel.textColor = UIColor.systemRedColor;
+        cell.textLabel.textColor = [UIColor ppError];
         cell.detailTextLabel.text = self.catalogErrorMessage;
         cell.detailTextLabel.textColor = SeconderyTextClr;
         cell.detailTextLabel.numberOfLines = 3;

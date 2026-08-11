@@ -26,7 +26,7 @@
 
         _containerView = [[UIView alloc] init];
         _containerView.translatesAutoresizingMaskIntoConstraints = NO;
-        _containerView.backgroundColor = AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+        _containerView.backgroundColor = [UIColor ppElevatedSurface];
         _containerView.layer.cornerRadius = 24.0;
         _containerView.layer.borderWidth = 1.0;
         _containerView.layer.borderColor = [AppPrimaryClr colorWithAlphaComponent:0.08].CGColor;
@@ -107,7 +107,7 @@
 }
 
 - (void)pp_setSelectedState:(BOOL)selected {
-    UIColor *accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+    UIColor *accentColor = [UIColor ppPrimary];
 
     if (selected) {
         _containerView.layer.borderColor = [accentColor colorWithAlphaComponent:0.4].CGColor;
@@ -120,7 +120,7 @@
         _titleLabel.textColor = accentColor;
     } else {
         _containerView.layer.borderColor = [accentColor colorWithAlphaComponent:0.08].CGColor;
-        _containerView.backgroundColor = AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+        _containerView.backgroundColor = [UIColor ppElevatedSurface];
 
         _iconShellView.backgroundColor = [accentColor colorWithAlphaComponent:0.08];
         _checkIconView.image = nil;

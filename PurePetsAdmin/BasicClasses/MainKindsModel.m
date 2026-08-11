@@ -249,22 +249,22 @@
 - (UIColor *)accentColorForKind:(MainKindsModel *)kind
 {
     if (!kind) {
-        return UIColor.systemGrayColor;
+        return [UIColor ppTextSecondary];
     }
 
     switch (kind.ID) {
         case 1: // Dogs
-            return [UIColor colorWithRed:0.25 green:0.55 blue:0.95 alpha:1.0];
+            return [UIColor ppQuickActionAnimals];
         case 2: // Cats
-            return [UIColor colorWithRed:0.95 green:0.55 blue:0.25 alpha:1.0];
+            return [UIColor ppQuickActionShopping];
         case 3: // Birds
-            return [UIColor colorWithRed:0.30 green:0.75 blue:0.55 alpha:1.0];
+            return [UIColor ppQuickActionServices];
         case 4: // Fish
-            return [UIColor colorWithRed:0.20 green:0.65 blue:0.85 alpha:1.0];
+            return [UIColor ppQuickActionCommunity];
         case 5: // Small Pets
-            return [UIColor colorWithRed:0.70 green:0.55 blue:0.90 alpha:1.0];
+            return [UIColor ppQuickActionAdoption];
         default:
-            return UIColor.systemBlueColor;
+            return [UIColor ppInfo];
     }
 }
 
@@ -275,78 +275,22 @@
         return [UIColor colorWithHexString:self.PetColor];
     }
     
-    if(self.ID == 1)        return [UIColor colorWithRed:0.30 green:0.75 blue:0.55 alpha:1.0]; //[UIColor colorWithHexString:@"#E55B46"];
-    else if(self.ID == 2)    return [UIColor colorWithHexString:@"#D57E3C"];
-    else if(self.ID == 3)    return [UIColor colorWithHexString:@"#491708"];
-    else if(self.ID == 4)    return [UIColor colorWithHexString:@"#A49179"];
-    else if(self.ID == 5)    return [UIColor colorWithRed:0.25 green:0.55 blue:0.95 alpha:1.0]; //[UIColor colorWithHexString:@"#A46C36"];
-    else if(self.ID == 6)    return [UIColor colorWithRed:0.95 green:0.55 blue:0.25 alpha:1.0]; //[UIColor colorWithHexString:@"#BFA779"];
-    else if(self.ID == 7)    return [UIColor colorWithHexString:@"#A4491F"]; //76D6FF
-    else if(self.ID == 8)    return [UIColor colorWithHexString:@"#D7606E"];
-    else if(self.ID == 9)    return [UIColor colorWithHexString:@"#D7606E"];
-    else if(self.ID == 10)    return [UIColor colorWithHexString:@"#B49F80"];
-    else if(self.ID == 11)    return [UIColor colorWithHexString:@"#A4937B"];
-    else  return [UIColor colorWithHexString:@"#"];
+    switch (self.ID) {
+        case 1: return [UIColor ppQuickActionAnimals];
+        case 2: return [UIColor ppQuickActionShopping];
+        case 3: return [UIColor ppQuickActionServices];
+        case 4: return [UIColor ppQuickActionCommunity];
+        case 5: return [UIColor ppQuickActionAdoption];
+        case 6: return [UIColor ppPremiumAccent];
+        case 7: return [UIColor ppCareAccent];
+        case 8: return [UIColor ppDiscount];
+        case 9: return [UIColor ppPrimary];
+        case 10: return [UIColor ppMineralBeige];
+        case 11: return [UIColor ppQuietLilac];
+        default: return [UIColor ppTextSecondary];
+    }
     
 }
-
-
-
-/*
-
--(UIColor *)kindColor
-{
-    if(self.ID == 1)        return [UIColor colorWithHexString:@"#E55B46"];
-    else if(self.ID == 2)    return [UIColor colorWithHexString:@"#D57E3C"];
-    else if(self.ID == 3)    return [UIColor colorWithHexString:@"#491708"];
-    else if(self.ID == 4)    return [UIColor colorWithHexString:@"#A49179"];
-    else if(self.ID == 5)    return [UIColor colorWithHexString:@"#A46C36"];
-    else if(self.ID == 6)    return [UIColor colorWithHexString:@"#BFA779"];
-    else if(self.ID == 7)    return [UIColor colorWithHexString:@"#A4491F"]; //76D6FF
-    else if(self.ID == 8)    return [UIColor colorWithHexString:@"#D7606E"];
-    else if(self.ID == 9)    return [UIColor colorWithHexString:@"#D7606E"];
-    else if(self.ID == 10)    return [UIColor colorWithHexString:@"#B49F80"];
-    else if(self.ID == 11)    return [UIColor colorWithHexString:@"#A4937B"];
-    else  return [UIColor colorWithHexString:@"#"];
-    
-}
- 
- 
- 
- -(UIColor *)kindColor
- {
-     switch (self.ID) {
-
-         case 1: // Parrots
-             return [UIColor colorWithHexString:@"#2FA36B"]; // Soft Emerald Green
-
-         case 2: // Falcons
-             return [UIColor colorWithHexString:@"#3A4A5E"]; // Deep Falcon Blue-Gray
-
-         case 3: // Cats
-             return [UIColor colorWithHexString:@"#9B9BB3"]; // Warm Lavender Gray
-
-         case 4: // Dogs
-             return [UIColor colorWithHexString:@"#5DADE2"]; // Soft Sky Blue
-
-         case 5: // Horses
-             return [UIColor colorWithHexString:@"#8B5E3C"]; // Earthy Saddle Brown
-
-         case 6: // Sheep
-             return [UIColor colorWithHexString:@"#B8B5AF"]; // Warm Stone Gray
-
-         case 7: // Fish
-             return [UIColor colorWithHexString:@"#3CBCC3"]; // Aqua Teal
-
-         case 8: // Camels
-             return [UIColor colorWithHexString:@"#D2B48C"]; // Desert Sand
-
-         default:
-             return [UIColor colorWithHexString:@"#6C757D"]; // Neutral fallback
-     }
- }
- 
- */
 @end
 
  

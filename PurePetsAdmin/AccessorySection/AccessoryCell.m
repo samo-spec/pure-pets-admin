@@ -286,11 +286,11 @@
     _qtyLabel.text = @(qty).stringValue;
 
     if (qty == 0) {
-        _qtyLabel.textColor = UIColor.systemRedColor;
-        _stepperContainer.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.06];
+        _qtyLabel.textColor = [UIColor ppError];
+        _stepperContainer.backgroundColor = [[UIColor ppError] colorWithAlphaComponent:0.06];
     } else if (qty <= 5) {
-        _qtyLabel.textColor = UIColor.systemOrangeColor;
-        _stepperContainer.backgroundColor = [UIColor.systemOrangeColor colorWithAlphaComponent:0.06];
+        _qtyLabel.textColor = [UIColor ppWarning];
+        _stepperContainer.backgroundColor = [[UIColor ppWarning] colorWithAlphaComponent:0.06];
     } else {
         _qtyLabel.textColor = PrimaryTextClr;
         _stepperContainer.backgroundColor = [UIColor colorWithWhite:0.5 alpha:0.06];

@@ -4,9 +4,8 @@
 //
 
 #import "StaffMembersViewController.h"
-#import "PPHero.h"
 #import "UserModel.h"
-#import "FUManager.h"
+#import "PPStaffAuth.h"
 #import "Styling.h"
 #import "Language.h"
 #import "AddUserViewController.h"
@@ -19,6 +18,15 @@
 
 static NSString * const PPStaffMemberCardCellID = @"PPStaffMemberCardCell";
 
+typedef NS_ENUM(NSUInteger, PPStaffMembersListState) {
+    PPStaffMembersListStateContent,
+    PPStaffMembersListStateLoading,
+    PPStaffMembersListStateListenerError,
+    PPStaffMembersListStateAccessDenied,
+    PPStaffMembersListStateSourceEmpty,
+    PPStaffMembersListStateFilteredEmpty,
+};
+
 static UIFont *PPStaffMembersScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
     if (@available(iOS 11.0, *)) {
         return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
@@ -27,59 +35,161 @@ static UIFont *PPStaffMembersScaledFont(UIFont *baseFont, UIFontTextStyle textSt
 }
 
 static UIColor *PPStaffMembersSurfaceColor(void) {
-    return AppForgroundColr ?: UIColor.secondarySystemBackgroundColor;
+    return [UIColor ppSurface];
 }
 
 static UIColor *PPStaffMembersBackgroundColor(void) {
-    return AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    return [UIColor ppBackground];
 }
 
 static UIColor *PPStaffMembersPrimaryColor(void) {
-    return AppPrimaryClr ?: UIColor.systemBlueColor;
+    return [UIColor ppPrimary];
 }
 
 static UIColor *PPStaffMembersPrimaryTextColor(void) {
-    return PrimaryTextClr ?: UIColor.labelColor;
+    return [UIColor ppTextPrimary];
 }
 
 static UIColor *PPStaffMembersSecondaryTextColor(void) {
-    return SeconderyTextClr ?: UIColor.secondaryLabelColor;
+    return [UIColor ppTextSecondary];
 }
 
 static UIColor *PPStaffMembersBorderColor(void) {
-    return [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.08];
+    return [UIColor ppSurfaceBorder];
+}
+
+static NSString *PPStaffMembersSafeString(id value) {
+    if ([value isKindOfClass:NSString.class]) {
+        return [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    }
+    if ([value isKindOfClass:NSNumber.class]) {
+        return [(NSNumber *)value stringValue];
+    }
+    return @"";
+}
+
+static NSDictionary *PPStaffMembersSafeDictionary(id value) {
+    return [value isKindOfClass:NSDictionary.class] ? (NSDictionary *)value : @{};
+}
+
+static UserModel *PPStaffMembersUserModelFromStaffDoc(PPStaffDoc *staff) {
+    if (!staff.uid.length) return nil;
+
+    NSMutableDictionary *profile = [@{
+        @"role": staff.roleIdentifier ?: PPStaffRoleViewer,
+        @"status": staff.status ?: PPStaffStatusDisabled,
+        @"permissions": staff.permissions ?: @[],
+        @"scope": staff.scope ?: @{}
+    } mutableCopy];
+    if (staff.roleName.length) profile[@"roleName"] = staff.roleName;
+
+    NSMutableDictionary *values = [@{
+        @"ID": staff.uid,
+        @"uid": staff.uid,
+        @"accountType": @"staff",
+        @"staffRole": staff.roleIdentifier ?: PPStaffRoleViewer,
+        @"staffProfile": profile,
+        @"accountStatus": staff.status ?: PPStaffStatusDisabled,
+        @"verified": @(staff.isVerified)
+    } mutableCopy];
+    if (staff.displayName.length) {
+        values[@"UserName"] = staff.displayName;
+        values[@"displayName"] = staff.displayName;
+    }
+    if (staff.email.length) {
+        values[@"UserEmail"] = staff.email;
+        values[@"email"] = staff.email;
+    }
+    if (staff.phone.length) values[@"MobileNo"] = staff.phone;
+    if (staff.photoURL.length) {
+        values[@"UserImageUrl"] = staff.photoURL;
+        values[@"photoURL"] = staff.photoURL;
+    }
+    return [[UserModel alloc] initWithDict:values];
+}
+
+static NSString *PPStaffMembersLocalizedCount(NSUInteger count) {
+    return [NSNumberFormatter localizedStringFromNumber:@(count) numberStyle:NSNumberFormatterDecimalStyle];
+}
+
+static NSString *PPStaffMembersLTRIsolate(NSString *value) {
+    NSString *safe = PPStaffMembersSafeString(value);
+    return safe.length ? [NSString stringWithFormat:@"\u2066%@\u2069", safe] : @"";
+}
+
+static NSString *PPStaffMembersResolvedStatus(UserModel *user) {
+    NSDictionary *profile = PPStaffMembersSafeDictionary(user.staffProfile);
+    NSString *status = PPStaffMembersSafeString(profile[@"status"]).lowercaseString;
+    if ([status isEqualToString:PPStaffStatusActive] || [status isEqualToString:PPStaffStatusDisabled]) return status;
+    NSString *accountStatus = PPStaffMembersSafeString(user.accountStatus).lowercaseString;
+    if (user.isBlocked || [accountStatus isEqualToString:@"blocked"]) return @"blocked";
+    if ([accountStatus isEqualToString:@"disabled"]) return PPStaffStatusDisabled;
+    return PPStaffStatusDisabled;
 }
 
 static NSString *PPStaffMembersStatusText(UserModel *user) {
-    NSString *status = user.accountStatus ?: (user.isBlocked ? @"blocked" : @"active");
-    if ([status isEqualToString:@"blocked"] || user.isBlocked) {
+    NSString *status = PPStaffMembersResolvedStatus(user);
+    if ([status isEqualToString:@"blocked"]) {
         return kLang(@"Blocked");
     }
-    if ([status isEqualToString:@"disabled"]) {
+    if ([status isEqualToString:PPStaffStatusDisabled]) {
         return kLang(@"Disabled");
     }
     if ([status isEqualToString:@"pending_review"]) {
         return kLang(@"Pending Review");
     }
-    return kLang(@"Active");
+    return [status isEqualToString:PPStaffStatusActive] ? kLang(@"Active") : kLang(@"Disabled");
 }
 
 static UIColor *PPStaffMembersStatusColor(UserModel *user) {
-    NSString *status = user.accountStatus ?: (user.isBlocked ? @"blocked" : @"active");
-    if ([status isEqualToString:@"blocked"] || user.isBlocked) {
-        return UIColor.systemRedColor;
+    NSString *status = PPStaffMembersResolvedStatus(user);
+    if ([status isEqualToString:@"blocked"]) {
+        return [UIColor ppError];
     }
-    if ([status isEqualToString:@"disabled"]) {
-        return UIColor.systemGrayColor;
+    if ([status isEqualToString:PPStaffStatusDisabled]) {
+        return [UIColor ppTextSecondary];
     }
     if ([status isEqualToString:@"pending_review"]) {
-        return UIColor.systemOrangeColor;
+        return [UIColor ppWarning];
     }
-    return UIColor.systemGreenColor;
+    return [status isEqualToString:PPStaffStatusActive] ? [UIColor ppSuccess] : [UIColor ppTextSecondary];
 }
 
-static NSString *PPStaffMembersSafeString(NSString *value) {
-    return [value isKindOfClass:NSString.class] ? value : @"";
+static BOOL PPStaffMembersIsBuiltInRole(NSString *role) {
+    static NSSet<NSString *> *roles;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        roles = [NSSet setWithArray:@[
+            PPStaffRoleSuperAdmin, PPStaffRoleOwner, PPStaffRoleOperationsManager,
+            PPStaffRoleInventoryManager, PPStaffRolePaymentsManager,
+            PPStaffRoleSupportAgent, PPStaffRoleViewer,
+            @"SuperAdmin", @"Owner", @"Accountant", @"InventoryManager", @"Staff", @"Viewer"
+        ]];
+    });
+    return [roles containsObject:role];
+}
+
+static NSString *PPStaffMembersRoleText(UserModel *user) {
+    NSDictionary *profile = PPStaffMembersSafeDictionary(user.staffProfile);
+    NSString *roleName = PPStaffMembersSafeString(profile[@"roleName"]);
+    if (roleName.length > 0) return roleName;
+    NSString *role = PPStaffMembersSafeString(user.staffRole);
+    if (role.length == 0) role = PPStaffMembersSafeString(profile[@"role"]);
+    if (role.length > 0) {
+        return PPStaffMembersIsBuiltInRole(role)
+            ? [PPStaffAuth localizedRoleName:(PPStaffRole)role]
+            : role;
+    }
+    if (user.isSuperAdmin) {
+        return [PPStaffAuth localizedRoleName:PPStaffRoleSuperAdmin];
+    }
+    if (user.isAdmin) {
+        PPStaffRole legacyRole = [PPStaffAuth staffRoleFromLegacyRole:user.role];
+        return [legacyRole isEqualToString:PPStaffRoleViewer]
+            ? kLang(@"Role_Admin")
+            : [PPStaffAuth localizedRoleName:legacyRole];
+    }
+    return [PPStaffAuth localizedRoleName:PPStaffRoleViewer];
 }
 
 @interface PPStaffMemberTagLabel : UILabel
@@ -92,22 +202,21 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     if (self = [super init]) {
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.font = PPStaffMembersScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
-        self.textAlignment = NSTextAlignmentCenter;
+        self.textAlignment = NSTextAlignmentNatural;
         self.adjustsFontForContentSizeCategory = YES;
-        self.layer.cornerRadius = 13.0;
-        self.layer.masksToBounds = YES;
+        self.numberOfLines = 1;
         [NSLayoutConstraint activateConstraints:@[
-            [self.heightAnchor constraintEqualToConstant:26.0],
-            [self.widthAnchor constraintGreaterThanOrEqualToConstant:72.0]
+            [self.heightAnchor constraintGreaterThanOrEqualToConstant:PPSpaceLG]
         ]];
     }
     return self;
 }
 
 - (void)applyWithText:(NSString *)text tintColor:(UIColor *)tintColor fillAlpha:(CGFloat)fillAlpha {
+    (void)fillAlpha;
     self.text = text;
     self.textColor = tintColor;
-    self.backgroundColor = [tintColor colorWithAlphaComponent:fillAlpha];
+    self.backgroundColor = UIColor.clearColor;
     self.hidden = text.length == 0;
 }
 
@@ -115,6 +224,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
 @interface PPStaffMemberCardCell : UITableViewCell
 @property (nonatomic, strong) UIView *surfaceView;
+@property (nonatomic, strong) UIView *statusRailView;
 @property (nonatomic, strong) UIView *avatarShellView;
 @property (nonatomic, strong) UIImageView *avatarImageView;
 @property (nonatomic, strong) UILabel *titleLabel;
@@ -122,10 +232,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIStackView *tagsStackView;
 @property (nonatomic, strong) PPStaffMemberTagLabel *statusTagLabel;
-@property (nonatomic, strong) PPStaffMemberTagLabel *adminTagLabel;
+@property (nonatomic, strong) PPStaffMemberTagLabel *roleTagLabel;
 @property (nonatomic, strong) UIImageView *chevronView;
 @property (nonatomic, copy) NSString *representedUID;
-- (void)configureWithUser:(UserModel *)user;
+@property (nonatomic, assign) BOOL actionable;
+- (void)configureWithUser:(UserModel *)user actionable:(BOOL)actionable;
 @end
 
 @implementation PPStaffMemberCardCell
@@ -142,57 +253,64 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         _surfaceView = [[UIView alloc] init];
         _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
         _surfaceView.backgroundColor = PPStaffMembersSurfaceColor();
-        _surfaceView.layer.cornerRadius = 28.0;
-        _surfaceView.layer.borderWidth = 1.0;
+        _surfaceView.layer.cornerRadius = PPCornerSmall;
+        _surfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
         _surfaceView.layer.borderColor = PPStaffMembersBorderColor().CGColor;
-        _surfaceView.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1.0].CGColor;
-        _surfaceView.layer.shadowOpacity = 0.08;
-        _surfaceView.layer.shadowRadius = 18.0;
-        _surfaceView.layer.shadowOffset = CGSizeMake(0, 10);
+        _surfaceView.layer.shadowOpacity = 0.0;
+
+        _statusRailView = [[UIView alloc] init];
+        _statusRailView.translatesAutoresizingMaskIntoConstraints = NO;
+        _statusRailView.backgroundColor = [UIColor ppSuccess];
+        _statusRailView.layer.cornerRadius = PPSpaceXXS;
+        _statusRailView.isAccessibilityElement = NO;
 
         _avatarShellView = [[UIView alloc] init];
         _avatarShellView.translatesAutoresizingMaskIntoConstraints = NO;
         _avatarShellView.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.12];
-        _avatarShellView.layer.cornerRadius = 28.0;
+        _avatarShellView.layer.cornerRadius = PPCornerCard;
 
         _avatarImageView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
         _avatarImageView.translatesAutoresizingMaskIntoConstraints = NO;
         _avatarImageView.tintColor = PPStaffMembersPrimaryColor();
         _avatarImageView.contentMode = UIViewContentModeScaleAspectFill;
-        _avatarImageView.layer.cornerRadius = 24.0;
+        _avatarImageView.layer.cornerRadius = PPSpaceLG;
         _avatarImageView.clipsToBounds = YES;
+        _avatarImageView.isAccessibilityElement = NO;
 
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleHeadline);
+        _titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontHeadline], UIFontTextStyleHeadline);
         _titleLabel.textColor = PPStaffMembersPrimaryTextColor();
         _titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-        _titleLabel.numberOfLines = 1;
+        _titleLabel.numberOfLines = 2;
         _titleLabel.adjustsFontForContentSizeCategory = YES;
 
         UIImageSymbolConfiguration *verifiedConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
         _verifiedBadgeView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.seal.fill" withConfiguration:verifiedConfig]];
         _verifiedBadgeView.translatesAutoresizingMaskIntoConstraints = NO;
-        _verifiedBadgeView.tintColor = UIColor.systemBlueColor;
+        _verifiedBadgeView.tintColor = [UIColor ppInfo];
         _verifiedBadgeView.contentMode = UIViewContentModeScaleAspectFit;
         _verifiedBadgeView.hidden = YES;
+        _verifiedBadgeView.isAccessibilityElement = NO;
 
         _subtitleLabel = [[UILabel alloc] init];
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        _subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
+        _subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontFootnote], UIFontTextStyleFootnote);
         _subtitleLabel.textColor = PPStaffMembersSecondaryTextColor();
-        _subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-        _subtitleLabel.numberOfLines = 2;
+        _subtitleLabel.textAlignment = NSTextAlignmentNatural;
+        _subtitleLabel.numberOfLines = 0;
         _subtitleLabel.adjustsFontForContentSizeCategory = YES;
 
         _statusTagLabel = [[PPStaffMemberTagLabel alloc] init];
-        _adminTagLabel = [[PPStaffMemberTagLabel alloc] init];
+        _statusTagLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+        _roleTagLabel = [[PPStaffMemberTagLabel alloc] init];
 
-        _tagsStackView = [[UIStackView alloc] initWithArrangedSubviews:@[_statusTagLabel, _adminTagLabel]];
+        _tagsStackView = [[UIStackView alloc] initWithArrangedSubviews:@[_statusTagLabel, _roleTagLabel]];
         _tagsStackView.translatesAutoresizingMaskIntoConstraints = NO;
         _tagsStackView.axis = UILayoutConstraintAxisHorizontal;
         _tagsStackView.alignment = UIStackViewAlignmentLeading;
-        _tagsStackView.spacing = 8.0;
+        _tagsStackView.spacing = PPSpaceSM;
+        _tagsStackView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
         UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold];
         _chevronView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.forward" withConfiguration:chevronConfig]];
@@ -201,6 +319,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         _chevronView.contentMode = UIViewContentModeScaleAspectFit;
 
         [self.contentView addSubview:_surfaceView];
+        [_surfaceView addSubview:_statusRailView];
         [_surfaceView addSubview:_avatarShellView];
         [_avatarShellView addSubview:_avatarImageView];
         [_surfaceView addSubview:_titleLabel];
@@ -210,51 +329,71 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         [_surfaceView addSubview:_chevronView];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
-            [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:18.0],
-            [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-18.0],
-            [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
+            [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceXXS],
+            [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPSpaceBase],
+            [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-PPSpaceBase],
+            [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceXXS],
 
-            [_avatarShellView.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:18.0],
+            [_statusRailView.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceSM],
+            [_statusRailView.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor],
+            [_statusRailView.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceSM],
+            [_statusRailView.widthAnchor constraintEqualToConstant:PPSpaceXS],
+
+            [_avatarShellView.leadingAnchor constraintEqualToAnchor:_statusRailView.trailingAnchor constant:PPSpaceMD],
             [_avatarShellView.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
-            [_avatarShellView.widthAnchor constraintEqualToConstant:56.0],
-            [_avatarShellView.heightAnchor constraintEqualToConstant:56.0],
+            [_avatarShellView.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
+            [_avatarShellView.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
 
             [_avatarImageView.centerXAnchor constraintEqualToAnchor:_avatarShellView.centerXAnchor],
             [_avatarImageView.centerYAnchor constraintEqualToAnchor:_avatarShellView.centerYAnchor],
-            [_avatarImageView.widthAnchor constraintEqualToConstant:48.0],
-            [_avatarImageView.heightAnchor constraintEqualToConstant:48.0],
+            [_avatarImageView.widthAnchor constraintEqualToConstant:PPSpaceXXXL],
+            [_avatarImageView.heightAnchor constraintEqualToConstant:PPSpaceXXXL],
 
-            [_chevronView.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-18.0],
+            [_chevronView.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-PPSpaceMD],
             [_chevronView.centerYAnchor constraintEqualToAnchor:_surfaceView.centerYAnchor],
-            [_chevronView.widthAnchor constraintEqualToConstant:16.0],
-            [_chevronView.heightAnchor constraintEqualToConstant:16.0],
+            [_chevronView.widthAnchor constraintEqualToConstant:PPSpaceBase],
+            [_chevronView.heightAnchor constraintEqualToConstant:PPSpaceBase],
 
-            [_titleLabel.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:18.0],
-            [_titleLabel.leadingAnchor constraintEqualToAnchor:_avatarShellView.trailingAnchor constant:14.0],
-            [_titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_verifiedBadgeView.leadingAnchor constant:-6.0],
+            [_titleLabel.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceMD],
+            [_titleLabel.leadingAnchor constraintEqualToAnchor:_avatarShellView.trailingAnchor constant:PPSpaceMD],
 
+            [_verifiedBadgeView.leadingAnchor constraintEqualToAnchor:_titleLabel.trailingAnchor constant:PPSpaceMDHalf],
             [_verifiedBadgeView.centerYAnchor constraintEqualToAnchor:_titleLabel.centerYAnchor],
-            [_verifiedBadgeView.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-12.0],
-            [_verifiedBadgeView.widthAnchor constraintEqualToConstant:16.0],
-            [_verifiedBadgeView.heightAnchor constraintEqualToConstant:16.0],
+            [_verifiedBadgeView.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-PPSpaceMD],
+            [_verifiedBadgeView.widthAnchor constraintEqualToConstant:PPSpaceBase],
+            [_verifiedBadgeView.heightAnchor constraintEqualToConstant:PPSpaceBase],
 
             [_subtitleLabel.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-            [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-12.0],
-            [_subtitleLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:6.0],
+            [_subtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-PPSpaceMD],
+            [_subtitleLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:PPSpaceXS],
 
             [_tagsStackView.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-            [_tagsStackView.topAnchor constraintEqualToAnchor:_subtitleLabel.bottomAnchor constant:10.0],
-            [_tagsStackView.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-12.0],
-            [_tagsStackView.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-18.0]
+            [_tagsStackView.topAnchor constraintEqualToAnchor:_subtitleLabel.bottomAnchor constant:PPSpaceSM],
+            [_tagsStackView.trailingAnchor constraintLessThanOrEqualToAnchor:_chevronView.leadingAnchor constant:-PPSpaceMD],
+            [_tagsStackView.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceMD]
         ]];
+
+        [self pp_updateMetadataAxis];
     }
     return self;
 }
 
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    self.surfaceView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.surfaceView.bounds cornerRadius:self.surfaceView.layer.cornerRadius].CGPath;
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    [self pp_updateMetadataAxis];
+    if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+        self.surfaceView.backgroundColor = PPStaffMembersSurfaceColor();
+        self.surfaceView.layer.borderColor = PPStaffMembersBorderColor().CGColor;
+    }
+}
+
+- (void)pp_updateMetadataAxis {
+    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    self.tagsStackView.axis = accessibilityCategory ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    self.tagsStackView.spacing = accessibilityCategory ? PPSpaceXS : PPSpaceSM;
+    self.titleLabel.numberOfLines = accessibilityCategory ? 0 : 2;
+    self.statusTagLabel.numberOfLines = accessibilityCategory ? 0 : 1;
+    self.roleTagLabel.numberOfLines = accessibilityCategory ? 0 : 1;
 }
 
 - (void)prepareForReuse {
@@ -262,9 +401,13 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     self.representedUID = nil;
     self.avatarImageView.image = [UIImage systemImageNamed:@"person.crop.circle.fill"];
     self.verifiedBadgeView.hidden = YES;
-    self.adminTagLabel.hidden = YES;
+    self.roleTagLabel.hidden = YES;
+    self.statusRailView.backgroundColor = [UIColor ppSuccess];
+    self.actionable = NO;
     self.surfaceView.transform = CGAffineTransformIdentity;
     self.surfaceView.alpha = 1.0;
+    self.contentView.transform = CGAffineTransformIdentity;
+    self.contentView.alpha = 1.0;
 }
 
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
@@ -278,6 +421,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 }
 
 - (void)pp_updateInteractionStateHighlighted:(BOOL)highlighted {
+    if (!self.actionable) {
+        self.surfaceView.alpha = 1.0;
+        self.surfaceView.transform = CGAffineTransformIdentity;
+        return;
+    }
     CGFloat scale = highlighted ? 0.985 : 1.0;
     CGFloat alpha = highlighted ? 0.96 : 1.0;
     if (UIAccessibilityIsReduceMotionEnabled()) {
@@ -293,8 +441,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     } completion:nil];
 }
 
-- (void)configureWithUser:(UserModel *)user {
+- (void)configureWithUser:(UserModel *)user actionable:(BOOL)actionable {
     self.representedUID = user.uid;
+    self.actionable = actionable;
+    self.selectionStyle = actionable ? UITableViewCellSelectionStyleDefault : UITableViewCellSelectionStyleNone;
+    self.chevronView.hidden = !actionable;
 
     NSString *displayName = PPStaffMembersSafeString(user.UserName);
     NSString *email = PPStaffMembersSafeString(user.UserEmail);
@@ -304,7 +455,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     self.verifiedBadgeView.hidden = !user.isVerified;
 
     if (email.length && phone.length) {
-        self.subtitleLabel.text = [NSString stringWithFormat:@"%@  •  %@", email, phone];
+        self.subtitleLabel.text = [NSString stringWithFormat:@"%@\n%@", email, phone];
     } else if (email.length) {
         self.subtitleLabel.text = email;
     } else if (phone.length) {
@@ -314,23 +465,27 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     }
 
     UIColor *statusTint = PPStaffMembersStatusColor(user);
+    self.statusRailView.backgroundColor = statusTint;
     [self.statusTagLabel applyWithText:PPStaffMembersStatusText(user) tintColor:statusTint fillAlpha:0.14];
-    if (user.isAdmin || user.isSuperAdmin) {
-        [self.adminTagLabel applyWithText:kLang(@"Role_Admin") tintColor:PPStaffMembersPrimaryColor() fillAlpha:0.12];
-    } else {
-        [self.adminTagLabel applyWithText:@"" tintColor:PPStaffMembersPrimaryColor() fillAlpha:0.12];
-    }
+    NSString *role = PPStaffMembersRoleText(user);
+    [self.roleTagLabel applyWithText:role tintColor:PPStaffMembersSecondaryTextColor() fillAlpha:0.0];
 
     self.avatarImageView.image = [UIImage systemImageNamed:@"person.crop.circle.fill"];
     if (user.UserImageUrl.absoluteString.length > 0) {
-        [self.avatarImageView setImageFromUrl:user.UserImageUrl.absoluteString Blr:NO Shimmering:YES];
+        [self.avatarImageView setImageFromUrl:user.UserImageUrl.absoluteString Blr:NO Shimmering:NO];
     }
 
     NSString *status = PPStaffMembersStatusText(user);
-    NSString *role = (user.isAdmin || user.isSuperAdmin) ? kLang(@"Role_Admin") : @"";
-    NSArray<NSString *> *parts = @[self.titleLabel.text ?: @"", self.subtitleLabel.text ?: @"", status ?: @"", role ?: @""];
+    NSMutableArray<NSString *> *parts = [NSMutableArray arrayWithArray:@[
+        self.titleLabel.text ?: @"",
+        PPStaffMembersLTRIsolate(self.subtitleLabel.text),
+        status ?: @"",
+        role ?: @""
+    ]];
+    if (user.isVerified) [parts addObject:kLang(@"Verified_Users")];
     self.accessibilityLabel = [[parts filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@", "];
-    self.accessibilityHint = kLang(@"Staff_EditMember_Title");
+    self.accessibilityHint = actionable ? kLang(@"Staff_EditMember_Title") : nil;
+    self.accessibilityTraits = actionable ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
 }
 
 @end
@@ -340,60 +495,122 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 @property (nonatomic, strong) NSMutableArray<UserModel *> *allStaff;
 @property (nonatomic, strong) NSMutableArray<UserModel *> *filteredStaff;
 @property (nonatomic, copy) NSString *currentQuery;
-@property (nonatomic, strong) UILabel *heroCountLabel;
-@property (nonatomic, strong) UILabel *heroTotalLabel;
+@property (nonatomic, strong) UILabel *visibleCountLabel;
+@property (nonatomic, strong) UILabel *totalCountLabel;
+@property (nonatomic, strong) UILabel *activeCountLabel;
+@property (nonatomic, strong) UILabel *disabledCountLabel;
+@property (nonatomic, strong) UIView *visibleMetricView;
+@property (nonatomic, strong) UIView *totalMetricView;
+@property (nonatomic, strong) UIView *activeMetricView;
+@property (nonatomic, strong) UIView *disabledMetricView;
 @property (nonatomic, strong) UIView *emptyStateView;
+@property (nonatomic, strong) UIImageView *stateIconView;
+@property (nonatomic, strong) UILabel *stateTitleLabel;
+@property (nonatomic, strong) UILabel *stateSubtitleLabel;
+@property (nonatomic, strong) UIButton *stateRetryButton;
 @property (nonatomic, assign) CGFloat headerWidth;
-@property (nonatomic, strong) PPHero *heroGlassBG;
 @property (nonatomic, strong) NSMutableSet<NSString *> *animatedStaffIDs;
+@property (nonatomic, assign) BOOL loadingStaff;
+@property (nonatomic, strong) NSError *listenerError;
+@property (nonatomic, assign) BOOL accessDenied;
 @end
 
 @implementation StaffMembersViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-   // self.title = kLang(@"StaffMembers_Title");
     self.view.backgroundColor = PPStaffMembersBackgroundColor();
-
-    
-    [self pp_configureTableView];
-    [self setupHeaderUI];
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.allStaff = [NSMutableArray array];
     self.filteredStaff = [NSMutableArray array];
     self.animatedStaffIDs = [NSMutableSet set];
     self.currentQuery = @"";
+    self.loadingStaff = YES;
 
+    [self pp_configureTableView];
+    [self setupHeaderUI];
+    [self pp_refreshBriefingMetrics];
+    [self pp_updateListState];
+
+    self.accessDenied = ![self pp_hasStaffViewAccess];
+    if (self.accessDenied) {
+        self.loadingStaff = NO;
+        [self pp_updateListState];
+    } else {
+        [self pp_startStaffListener];
+    }
+}
+
+- (BOOL)pp_hasStaffViewAccess {
+    return [[PPStaffAuth shared].cachedCurrentStaff hasPermission:kStaffPermStaffView];
+}
+
+- (void)pp_startStaffListener {
+    [self.staffReg remove];
+    self.staffReg = nil;
+    self.accessDenied = ![self pp_hasStaffViewAccess];
+    if (self.accessDenied) {
+        self.loadingStaff = NO;
+        [self pp_updateListState];
+        return;
+    }
+
+    self.loadingStaff = self.allStaff.count == 0;
+    self.listenerError = nil;
+    [self pp_updateListState];
     __weak typeof(self) weakSelf = self;
-    self.staffReg = [[FUManager shared] listenStaffUsersWithCompletion:^(NSArray<UserModel *> * _Nullable staff, NSError * _Nullable error) {
-        if (error) return;
+    self.staffReg = [[PPStaffAuth shared] listenAllStaff:^(NSArray<PPStaffDoc *> * _Nullable staff, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            weakSelf.allStaff = staff.mutableCopy ?: [NSMutableArray array];
-            [weakSelf _applyFilterAndReload];
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            self.loadingStaff = NO;
+            if (error) {
+                self.listenerError = error;
+                [self pp_updateListState];
+                [self.tableView reloadData];
+                if (self.view.window && self.allStaff.count == 0) {
+                    UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification, self.stateTitleLabel.text);
+                }
+                return;
+            }
+            self.listenerError = nil;
+            NSMutableArray<UserModel *> *mappedStaff = [NSMutableArray arrayWithCapacity:staff.count];
+            for (PPStaffDoc *staffDoc in staff ?: @[]) {
+                UserModel *user = PPStaffMembersUserModelFromStaffDoc(staffDoc);
+                if (user) [mappedStaff addObject:user];
+            }
+            self.allStaff = mappedStaff;
+            [self _applyFilterAndReload];
         });
     }];
+}
+
+- (void)pp_retryStaffListener {
+    [self pp_startStaffListener];
 }
 
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
+    BOOL deniedNow = ![self pp_hasStaffViewAccess];
+    if (deniedNow && !self.accessDenied) {
+        self.accessDenied = YES;
+        [self.staffReg remove];
+        self.staffReg = nil;
+        [self.allStaff removeAllObjects];
+        [self.filteredStaff removeAllObjects];
+        [self pp_refreshBriefingMetrics];
+        [self pp_updateListState];
+    } else if (!deniedNow && self.accessDenied) {
+        [self pp_startStaffListener];
+    }
+    [self.tableView reloadData];
     if ([self pp_isEmbeddedInStaffManagement]) {
         [self pp_removeNavBar];
         return;
     }
     [self pp_configureNavigationBar];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    if (!UIAccessibilityIsReduceMotionEnabled()) {
-        [self.heroGlassBG startAnimations];
-    }
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-    [super viewWillDisappear:animated];
-    [self.heroGlassBG stopAnimations];
 }
 
 - (void)dealloc {
@@ -402,8 +619,21 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
+    BOOL contentSizeChanged = previousTraitCollection &&
+        ![self.traitCollection.preferredContentSizeCategory isEqualToString:previousTraitCollection.preferredContentSizeCategory];
+    if (contentSizeChanged) {
+        CGFloat width = CGRectGetWidth(self.view.bounds);
+        self.headerWidth = width;
+        [self pp_installHeaderViewForWidth:width withText:self.currentQuery ?: @""];
+        [self pp_refreshBriefingMetrics];
+    }
     if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
-        [self.heroGlassBG reapplyPalette];
+        self.view.backgroundColor = PPStaffMembersBackgroundColor();
+        self.tableView.backgroundColor = PPStaffMembersBackgroundColor();
+        self.searchView.backgroundColor = PPStaffMembersSurfaceColor();
+        self.searchView.strokeColor = PPStaffMembersBorderColor();
+        [self.searchView setNeedsLayout];
+        [self.tableView reloadData];
     }
 }
 
@@ -415,14 +645,19 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         self.headerWidth = width;
         NSString *currentText = self.currentQuery ?: @"";
         [self pp_installHeaderViewForWidth:width withText:currentText];
-        [self pp_refreshHeroMetrics];
+        [self pp_refreshBriefingMetrics];
     }
 }
 
 - (void)pp_configureNavigationBar {
     UIButton *addButton = [self pp_ButtonWithSystemName:@"plus" action:@selector(didTapAddStaff)];
+    BOOL canMutateStaff = [self pp_canMutateStaffMembers];
+    addButton.enabled = canMutateStaff;
+    addButton.hidden = !canMutateStaff;
+    if (!canMutateStaff) {
+        addButton.accessibilityTraits |= UIAccessibilityTraitNotEnabled;
+    }
     [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:addButton title:kLang(@"StaffMembers_Title") showBack:YES];
-     
 }
 
 - (BOOL)pp_isEmbeddedInStaffManagement {
@@ -439,10 +674,10 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 118.0;
-    self.tableView.contentInset = UIEdgeInsetsMake(8.0, 0.0, 34.0, 0.0);
+    self.tableView.estimatedRowHeight = 104.0;
+    self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceXS, 0.0, PPSpaceXXL, 0.0);
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, 20)];
+    self.tableView.tableFooterView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 1, PPSpaceLG)];
     [self.tableView registerClass:PPStaffMemberCardCell.class forCellReuseIdentifier:PPStaffMemberCardCellID];
     if (@available(iOS 15.0, *)) {
         self.tableView.sectionHeaderTopPadding = 0.0;
@@ -457,7 +692,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
-    self.emptyStateView = [self pp_buildEmptyStateView];
+    self.emptyStateView = [self pp_buildListStateView];
     self.emptyStateView.hidden = YES;
     self.tableView.backgroundView = self.emptyStateView;
 }
@@ -467,108 +702,154 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 }
 
 - (void)pp_installHeaderViewForWidth:(CGFloat)width withText:(NSString *)text {
-    CGFloat horizontalInset = width > 800.0 ? 28.0 : 18.0;
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 228.0)];
+    width = MAX(width, 1.0);
+    CGFloat horizontalInset = width > 800.0 ? PPSpaceXL : PPSpaceBase;
+    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 1.0)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIView *card = [[UIView alloc] initWithFrame:CGRectMake(horizontalInset, 8.0, width - (horizontalInset * 2.0), 208.0)];
-    card.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    card.backgroundColor = UIColor.clearColor;
-    card.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [header addSubview:card];
+    UIStackView *contentStack = [[UIStackView alloc] init];
+    contentStack.translatesAutoresizingMaskIntoConstraints = NO;
+    contentStack.axis = UILayoutConstraintAxisVertical;
+    contentStack.alignment = UIStackViewAlignmentFill;
+    contentStack.spacing = PPSpaceMD;
+    contentStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:contentStack];
 
-    PPHero *glassBG = [PPHero new];
-    glassBG.frame = card.bounds;
-    glassBG.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [card addSubview:glassBG];
-    self.heroGlassBG = glassBG;
-
-    BOOL isRTL = [Language isRTL];
-    CGFloat countX = isRTL ? 22.0 : (CGRectGetWidth(card.bounds) - 94.0);
-    UIViewAutoresizing countAutoresizing = isRTL ? UIViewAutoresizingFlexibleRightMargin : UIViewAutoresizingFlexibleLeftMargin;
-    UIView *countShell = [[UIView alloc] initWithFrame:CGRectMake(countX, 28.0, 72.0, 72.0)];
-    countShell.autoresizingMask = countAutoresizing;
-    countShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.1];
-    countShell.layer.cornerRadius = 24.0;
-    [card addSubview:countShell];
-
-    self.heroCountLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 12.0, CGRectGetWidth(countShell.bounds), 28.0)];
-    self.heroCountLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.heroCountLabel.font = PPStaffMembersScaledFont([UIFont monospacedDigitSystemFontOfSize:24 weight:UIFontWeightBold], UIFontTextStyleTitle2);
-    self.heroCountLabel.textColor = PPStaffMembersPrimaryTextColor();
-    self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
-    self.heroCountLabel.text = @"0";
-    self.heroCountLabel.adjustsFontForContentSizeCategory = YES;
-    [countShell addSubview:self.heroCountLabel];
-
-    self.heroTotalLabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 42.0, CGRectGetWidth(countShell.bounds), 18.0)];
-    self.heroTotalLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
-    self.heroTotalLabel.font = PPStaffMembersScaledFont([UIFont monospacedDigitSystemFontOfSize:PPFontFootnote weight:UIFontWeightMedium], UIFontTextStyleFootnote);
-    self.heroTotalLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.9];
-    self.heroTotalLabel.textAlignment = NSTextAlignmentCenter;
-    self.heroTotalLabel.text = @"/ 0";
-    self.heroTotalLabel.adjustsFontForContentSizeCategory = YES;
-    [countShell addSubview:self.heroTotalLabel];
-
-    CGFloat iconX = isRTL ? (CGRectGetWidth(card.bounds) - 74.0) : 22.0;
-    UIViewAutoresizing iconAutoresizing = isRTL ? UIViewAutoresizingFlexibleLeftMargin : UIViewAutoresizingFlexibleRightMargin;
-    UIView *iconShell = [[UIView alloc] initWithFrame:CGRectMake(iconX, 32.0, 52.0, 52.0)];
-    iconShell.autoresizingMask = iconAutoresizing;
-    iconShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.12];
-    iconShell.layer.cornerRadius = 18.0;
-    [card addSubview:iconShell];
-
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.sequence.fill"
-                                                                        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:21 weight:UIImageSymbolWeightSemibold]]];
-    iconView.frame = CGRectMake(14.0, 14.0, 24.0, 24.0);
-    iconView.tintColor = PPStaffMembersPrimaryColor();
-    iconView.contentMode = UIViewContentModeScaleAspectFit;
-    [iconShell addSubview:iconView];
-
-    CGFloat textLeading = isRTL ? CGRectGetMaxX(countShell.frame) + 16.0 : CGRectGetMaxX(iconShell.frame) + 16.0;
-    CGFloat textTrailingEdge = isRTL ? CGRectGetMinX(iconShell.frame) - 16.0 : CGRectGetMinX(countShell.frame) - 14.0;
-    CGFloat textWidth = MAX(88.0, textTrailingEdge - textLeading);
-    UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, 34.0, textWidth, 32.0)];
+    UILabel *titleLabel = [[UILabel alloc] init];
     titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
     titleLabel.textColor = PPStaffMembersPrimaryTextColor();
     titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-    titleLabel.numberOfLines = 1;
+    titleLabel.numberOfLines = 2;
     titleLabel.adjustsFontForContentSizeCategory = YES;
     titleLabel.text = kLang(@"StaffMembers_Title");
-    [card addSubview:titleLabel];
+    titleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
+    [contentStack addArrangedSubview:titleLabel];
 
-    UILabel *subtitleLabel = [[UILabel alloc] initWithFrame:CGRectMake(textLeading, CGRectGetMaxY(titleLabel.frame) + 10.0, textWidth, 40.0)];
-    subtitleLabel.autoresizingMask = UIViewAutoresizingFlexibleWidth;
+    UILabel *subtitleLabel = [[UILabel alloc] init];
     subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
-    subtitleLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.9];
+    subtitleLabel.textColor = PPStaffMembersSecondaryTextColor();
     subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-    subtitleLabel.numberOfLines = 2;
+    subtitleLabel.numberOfLines = 0;
     subtitleLabel.adjustsFontForContentSizeCategory = YES;
-    subtitleLabel.text = kLang(@"EditUsersRolePerms_List_Subtitle");
-    [card addSubview:subtitleLabel];
+    subtitleLabel.text = kLang(@"StaffMembers_Subtitle");
+    [contentStack addArrangedSubview:subtitleLabel];
 
-    self.searchView = [[PPS alloc] initWithFrame:CGRectMake(18.0, CGRectGetHeight(card.bounds) - 70.0, CGRectGetWidth(card.bounds) - 36.0, 50.0)];
-    self.searchView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleTopMargin;
+    self.visibleCountLabel = [UILabel new];
+    self.totalCountLabel = [UILabel new];
+    self.activeCountLabel = [UILabel new];
+    self.disabledCountLabel = [UILabel new];
+    self.visibleMetricView = [self pp_metricViewWithCountLabel:self.visibleCountLabel
+                                                        title:kLang(@"Visible")
+                                                         tint:PPStaffMembersPrimaryColor()];
+    self.totalMetricView = [self pp_metricViewWithCountLabel:self.totalCountLabel
+                                                      title:kLang(@"MissionControl_Staff_Total")
+                                                       tint:PPStaffMembersPrimaryTextColor()];
+    self.activeMetricView = [self pp_metricViewWithCountLabel:self.activeCountLabel
+                                                       title:kLang(@"Active")
+                                                        tint:[UIColor ppSuccess]];
+    self.disabledMetricView = [self pp_metricViewWithCountLabel:self.disabledCountLabel
+                                                         title:kLang(@"Disabled")
+                                                          tint:PPStaffMembersSecondaryTextColor()];
+
+    UIStackView *metricsStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.visibleMetricView, self.totalMetricView, self.activeMetricView, self.disabledMetricView
+    ]];
+    metricsStack.axis = accessibilityCategory ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    metricsStack.alignment = UIStackViewAlignmentFill;
+    metricsStack.distribution = UIStackViewDistributionFillEqually;
+    metricsStack.spacing = accessibilityCategory ? PPSpaceXS : PPSpaceSM;
+    metricsStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [contentStack addArrangedSubview:metricsStack];
+
+    UIView *divider = [UIView new];
+    divider.translatesAutoresizingMaskIntoConstraints = NO;
+    divider.backgroundColor = [UIColor ppSurfaceBorder];
+    [divider.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+    [contentStack addArrangedSubview:divider];
+
+    self.searchView = [[PPS alloc] initWithFrame:CGRectZero];
+    self.searchView.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchView.delegate = self;
     self.searchView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.searchView.textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.searchView.textField.textAlignment = Language.alignmentForCurrentLanguage;
+    self.searchView.textField.font = PPStaffMembersScaledFont([Styling fontMedium:PPFontBody], UIFontTextStyleBody);
+    self.searchView.textField.adjustsFontForContentSizeCategory = YES;
+    self.searchView.textField.autocorrectionType = UITextAutocorrectionTypeNo;
+    self.searchView.textField.autocapitalizationType = UITextAutocapitalizationTypeNone;
     self.searchView.textField.placeholder = kLang(@"SetPermissions_Search_Placeholder");
     self.searchView.textField.accessibilityLabel = kLang(@"SetPermissions_Search_Placeholder");
     self.searchView.textField.text = text;
-    self.searchView.cornerRadius = 22.0;
-    self.searchView.layer.cornerRadius = 22.0;
-    self.searchView.layer.borderWidth = 1.0;
-    self.searchView.layer.borderColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.12].CGColor;
-    self.searchView.layer.shadowColor = [UIColor colorWithWhite:0 alpha:1.0].CGColor;
-    self.searchView.layer.shadowOpacity = 0.06;
-    self.searchView.layer.shadowRadius = 14.0;
-    self.searchView.layer.shadowOffset = CGSizeMake(0, 8);
+    self.searchView.blurEnabled = NO;
+    self.searchView.shadowEnabled = NO;
+    self.searchView.backgroundColor = PPStaffMembersSurfaceColor();
+    self.searchView.strokeColor = PPStaffMembersBorderColor();
+    self.searchView.cornerRadius = PPCornerSmall;
+    self.searchView.layer.cornerRadius = PPCornerSmall;
+    self.searchView.layer.borderWidth = 0.0;
+    self.searchView.layer.shadowOpacity = 0.0;
     [self pp_configureSearchAdornmentForView:self.searchView];
-    [card addSubview:self.searchView];
+    [self.searchView.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
+    [contentStack addArrangedSubview:self.searchView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [contentStack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceMD],
+        [contentStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:horizontalInset],
+        [contentStack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-horizontalInset],
+        [contentStack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceMD]
+    ]];
+
+    CGSize fittingSize = [header systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                               withHorizontalFittingPriority:UILayoutPriorityRequired
+                                     verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect headerFrame = header.frame;
+    headerFrame.size.height = ceil(MAX(fittingSize.height, 1.0));
+    header.frame = headerFrame;
 
     self.tableView.tableHeaderView = header;
+}
+
+- (UIView *)pp_metricViewWithCountLabel:(UILabel *)countLabel title:(NSString *)title tint:(UIColor *)tint {
+    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    UIView *container = [UIView new];
+    container.backgroundColor = UIColor.clearColor;
+    container.isAccessibilityElement = YES;
+    container.accessibilityTraits = UIAccessibilityTraitStaticText;
+
+    countLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleHeadline);
+    countLabel.textColor = tint;
+    countLabel.textAlignment = accessibilityCategory ? Language.alignmentForCurrentLanguage : NSTextAlignmentCenter;
+    countLabel.adjustsFontForContentSizeCategory = YES;
+    countLabel.text = @"0";
+    countLabel.isAccessibilityElement = NO;
+
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.font = PPStaffMembersScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
+    titleLabel.textColor = PPStaffMembersSecondaryTextColor();
+    titleLabel.textAlignment = accessibilityCategory ? Language.alignmentForCurrentLanguage : NSTextAlignmentCenter;
+    titleLabel.adjustsFontForContentSizeCategory = YES;
+    titleLabel.numberOfLines = 2;
+    titleLabel.text = title;
+    titleLabel.isAccessibilityElement = NO;
+
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[countLabel, titleLabel]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = accessibilityCategory ? UILayoutConstraintAxisHorizontal : UILayoutConstraintAxisVertical;
+    stack.alignment = accessibilityCategory ? UIStackViewAlignmentCenter : UIStackViewAlignmentFill;
+    stack.spacing = accessibilityCategory ? PPSpaceSM : PPSpaceXXS;
+    stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:stack];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:container.topAnchor constant:PPSpaceXS],
+        [stack.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:PPSpaceXS],
+        [stack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-PPSpaceXS],
+        [stack.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-PPSpaceXS],
+        [container.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin]
+    ]];
+    return container;
 }
 
 - (void)pp_configureSearchAdornmentForView:(PPS *)searchView {
@@ -594,75 +875,78 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     }
 }
 
-- (UIView *)pp_buildEmptyStateView {
+- (UIView *)pp_buildListStateView {
     UIView *container = [[UIView alloc] initWithFrame:CGRectZero];
     container.backgroundColor = UIColor.clearColor;
+    container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    container.isAccessibilityElement = NO;
 
-    UIView *card = [[UIView alloc] init];
-    card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = UIColor.clearColor;
-    [container addSubview:card];
+    UIImageSymbolConfiguration *iconConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:PPFontTitle1 weight:UIImageSymbolWeightMedium];
+    self.stateIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.sequence.fill" withConfiguration:iconConfiguration]];
+    self.stateIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.stateIconView.tintColor = PPStaffMembersPrimaryColor();
+    self.stateIconView.contentMode = UIViewContentModeScaleAspectFit;
+    self.stateIconView.isAccessibilityElement = NO;
 
-    UIView *iconShell = [[UIView alloc] init];
-    iconShell.translatesAutoresizingMaskIntoConstraints = NO;
-    iconShell.backgroundColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.08];
-    iconShell.layer.cornerRadius = 28.0;
-    [card addSubview:iconShell];
+    self.stateTitleLabel = [UILabel new];
+    self.stateTitleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleTitle3);
+    self.stateTitleLabel.textColor = PPStaffMembersPrimaryTextColor();
+    self.stateTitleLabel.textAlignment = NSTextAlignmentCenter;
+    self.stateTitleLabel.numberOfLines = 0;
+    self.stateTitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.stateTitleLabel.isAccessibilityElement = YES;
+    self.stateTitleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
 
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.sequence.fill"
-                                                                        withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:22 weight:UIImageSymbolWeightSemibold]]];
-    iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    iconView.tintColor = [PPStaffMembersPrimaryColor() colorWithAlphaComponent:0.9];
-    iconView.contentMode = UIViewContentModeScaleAspectFit;
-    [iconShell addSubview:iconView];
+    self.stateSubtitleLabel = [UILabel new];
+    self.stateSubtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
+    self.stateSubtitleLabel.textColor = PPStaffMembersSecondaryTextColor();
+    self.stateSubtitleLabel.textAlignment = NSTextAlignmentCenter;
+    self.stateSubtitleLabel.numberOfLines = 0;
+    self.stateSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.stateSubtitleLabel.isAccessibilityElement = YES;
 
-    UILabel *titleLabel = [[UILabel alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.font = PPStaffMembersScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleTitle3);
-    titleLabel.textColor = PPStaffMembersPrimaryTextColor();
-    titleLabel.textAlignment = NSTextAlignmentCenter;
-    titleLabel.text = kLang(@"NoUsersFound");
-    titleLabel.adjustsFontForContentSizeCategory = YES;
-    [card addSubview:titleLabel];
+    self.stateRetryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    [self.stateRetryButton setTitle:kLang(@"Retry") forState:UIControlStateNormal];
+    [self.stateRetryButton setImage:[UIImage systemImageNamed:@"arrow.clockwise"] forState:UIControlStateNormal];
+    self.stateRetryButton.titleLabel.font = PPStaffMembersScaledFont([Styling fontMedium:PPFontBody], UIFontTextStyleBody);
+    self.stateRetryButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.stateRetryButton.tintColor = PPStaffMembersPrimaryColor();
+    self.stateRetryButton.backgroundColor = [UIColor ppSurface];
+    self.stateRetryButton.layer.cornerRadius = PPCornerSmall;
+    self.stateRetryButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    self.stateRetryButton.layer.borderColor = PPStaffMembersBorderColor().CGColor;
+    self.stateRetryButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+    [self.stateRetryButton addTarget:self action:@selector(pp_retryStaffListener) forControlEvents:UIControlEventTouchUpInside];
+    self.stateRetryButton.hidden = YES;
 
-    UILabel *subtitleLabel = [[UILabel alloc] init];
-    subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitleLabel.font = PPStaffMembersScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
-    subtitleLabel.textColor = [PPStaffMembersSecondaryTextColor() colorWithAlphaComponent:0.88];
-    subtitleLabel.textAlignment = NSTextAlignmentCenter;
-    subtitleLabel.numberOfLines = 2;
-    subtitleLabel.adjustsFontForContentSizeCategory = YES;
-    subtitleLabel.text = kLang(@"SetPermissionsSubtitle");
-    [card addSubview:subtitleLabel];
+    UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.stateIconView, self.stateTitleLabel, self.stateSubtitleLabel, self.stateRetryButton
+    ]];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentCenter;
+    stack.spacing = PPSpaceSM;
+    [container addSubview:stack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
-        [card.centerYAnchor constraintEqualToAnchor:container.centerYAnchor constant:28.0],
-        [card.leadingAnchor constraintGreaterThanOrEqualToAnchor:container.leadingAnchor constant:24.0],
-        [card.trailingAnchor constraintLessThanOrEqualToAnchor:container.trailingAnchor constant:-24.0],
-
-        [iconShell.topAnchor constraintEqualToAnchor:card.topAnchor],
-        [iconShell.centerXAnchor constraintEqualToAnchor:card.centerXAnchor],
-        [iconShell.widthAnchor constraintEqualToConstant:56.0],
-        [iconShell.heightAnchor constraintEqualToConstant:56.0],
-
-        [iconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
-        [iconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
-
-        [titleLabel.topAnchor constraintEqualToAnchor:iconShell.bottomAnchor constant:18.0],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-        [titleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
-
-        [subtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8.0],
-        [subtitleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-        [subtitleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
-        [subtitleLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor]
+        [stack.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [stack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [stack.leadingAnchor constraintGreaterThanOrEqualToAnchor:container.leadingAnchor constant:PPSpaceXL],
+        [stack.trailingAnchor constraintLessThanOrEqualToAnchor:container.trailingAnchor constant:-PPSpaceXL],
+        [stack.widthAnchor constraintLessThanOrEqualToConstant:420.0],
+        [self.stateIconView.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.stateIconView.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.stateRetryButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin]
     ]];
 
     return container;
 }
 
 - (void)didTapAddStaff {
+    if (![self pp_canMutateStaffMembers]) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        return;
+    }
     AddUserViewController *vc = [AddUserViewController new];
     [self.navigationController pushViewController:vc animated:YES];
 }
@@ -697,20 +981,99 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
         self.filteredStaff = [[self.allStaff filteredArrayUsingPredicate:predicate] mutableCopy] ?: [NSMutableArray array];
     }
 
-    [self pp_refreshHeroMetrics];
-    [self pp_updateEmptyStateVisibility];
+    [self pp_refreshBriefingMetrics];
+    [self pp_updateListState];
     [self.tableView reloadData];
-    UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.searchView ?: self.tableView);
+    if (self.view.window) {
+        UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.searchView ?: self.tableView);
+    }
 }
 
-- (void)pp_refreshHeroMetrics {
-    self.heroCountLabel.text = [NSString stringWithFormat:@"%lu", (unsigned long)self.filteredStaff.count];
-    self.heroTotalLabel.text = [NSString stringWithFormat:@"/ %lu", (unsigned long)self.allStaff.count];
-    self.heroCountLabel.accessibilityLabel = [NSString stringWithFormat:@"%@ %@", self.heroCountLabel.text, kLang(@"StaffMembers_Title")];
+- (void)pp_refreshBriefingMetrics {
+    NSUInteger activeCount = 0;
+    for (UserModel *user in self.allStaff) {
+        if ([PPStaffMembersResolvedStatus(user) isEqualToString:PPStaffStatusActive]) {
+            activeCount += 1;
+        }
+    }
+    NSUInteger disabledCount = self.allStaff.count - activeCount;
+
+    self.visibleCountLabel.text = PPStaffMembersLocalizedCount(self.filteredStaff.count);
+    self.totalCountLabel.text = PPStaffMembersLocalizedCount(self.allStaff.count);
+    self.activeCountLabel.text = PPStaffMembersLocalizedCount(activeCount);
+    self.disabledCountLabel.text = PPStaffMembersLocalizedCount(disabledCount);
+
+    [self pp_setMetricAccessibilityForView:self.visibleMetricView label:kLang(@"Visible") count:self.visibleCountLabel.text];
+    [self pp_setMetricAccessibilityForView:self.totalMetricView label:kLang(@"MissionControl_Staff_Total") count:self.totalCountLabel.text];
+    [self pp_setMetricAccessibilityForView:self.activeMetricView label:kLang(@"Active") count:self.activeCountLabel.text];
+    [self pp_setMetricAccessibilityForView:self.disabledMetricView label:kLang(@"Disabled") count:self.disabledCountLabel.text];
 }
 
-- (void)pp_updateEmptyStateVisibility {
-    self.emptyStateView.hidden = (self.filteredStaff.count > 0);
+- (void)pp_setMetricAccessibilityForView:(UIView *)view label:(NSString *)label count:(NSString *)count {
+    view.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", label ?: @"", count ?: @"0"];
+}
+
+- (PPStaffMembersListState)pp_currentListState {
+    if (self.accessDenied) return PPStaffMembersListStateAccessDenied;
+    if (self.loadingStaff && self.allStaff.count == 0) return PPStaffMembersListStateLoading;
+    if (self.listenerError && self.allStaff.count == 0) return PPStaffMembersListStateListenerError;
+    if (self.allStaff.count == 0) return PPStaffMembersListStateSourceEmpty;
+    if (self.filteredStaff.count == 0) return PPStaffMembersListStateFilteredEmpty;
+    return PPStaffMembersListStateContent;
+}
+
+- (void)pp_updateListState {
+    PPStaffMembersListState state = [self pp_currentListState];
+    NSString *iconName = nil;
+    NSString *title = nil;
+    NSString *subtitle = nil;
+    UIColor *tintColor = PPStaffMembersPrimaryColor();
+    self.stateRetryButton.hidden = YES;
+
+    switch (state) {
+        case PPStaffMembersListStateAccessDenied:
+            iconName = @"lock.fill";
+            title = kLang(@"CommandCenter_Permission_Denied_Title");
+            subtitle = kLang(@"CommandCenter_Permission_Denied_Message");
+            tintColor = [UIColor ppError];
+            break;
+        case PPStaffMembersListStateLoading:
+            iconName = @"arrow.triangle.2.circlepath";
+            title = kLang(@"Loading");
+            subtitle = kLang(@"MissionControl_Staff_Loading_Subtitle");
+            break;
+        case PPStaffMembersListStateListenerError:
+            iconName = @"exclamationmark.triangle";
+            title = kLang(@"Staff_Preview_Load_Error");
+            subtitle = kLang(@"Staff_Preview_Load_Error_Subtitle");
+            tintColor = [UIColor ppWarning];
+            self.stateRetryButton.hidden = NO;
+            break;
+        case PPStaffMembersListStateSourceEmpty:
+            iconName = @"person.3.sequence";
+            title = kLang(@"Staff_Preview_Empty");
+            subtitle = kLang(@"MissionControl_Staff_SourceEmpty_Subtitle");
+            break;
+        case PPStaffMembersListStateFilteredEmpty:
+            iconName = @"magnifyingglass";
+            title = kLang(@"MissionControl_Staff_FilteredEmpty_Title");
+            subtitle = kLang(@"MissionControl_Staff_FilteredEmpty_Subtitle");
+            break;
+        case PPStaffMembersListStateContent:
+            break;
+    }
+
+    self.emptyStateView.hidden = state == PPStaffMembersListStateContent;
+    if (state != PPStaffMembersListStateContent) {
+        UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:PPFontTitle1 weight:UIImageSymbolWeightMedium];
+        self.stateIconView.image = [UIImage systemImageNamed:iconName withConfiguration:configuration];
+        self.stateIconView.tintColor = tintColor;
+        self.stateTitleLabel.text = title;
+        self.stateSubtitleLabel.text = subtitle;
+        self.emptyStateView.accessibilityLabel = [@[title ?: @"", subtitle ?: @""] componentsJoinedByString:@", "];
+    } else {
+        self.emptyStateView.accessibilityLabel = nil;
+    }
 }
 
 #pragma mark - Table
@@ -720,23 +1083,39 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 }
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return 12.0;
+    return PPSpaceSM;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section {
-    return [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(tableView.bounds), 12.0)];
+    return [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(tableView.bounds), PPSpaceSM)];
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
     PPStaffMemberCardCell *cell = [tableView dequeueReusableCellWithIdentifier:PPStaffMemberCardCellID forIndexPath:indexPath];
-    [cell configureWithUser:self.filteredStaff[indexPath.row]];
+    UserModel *user = self.filteredStaff[indexPath.row];
+    BOOL isCurrentStaff = [[FIRAuth auth].currentUser.uid isEqualToString:user.uid];
+    [cell configureWithUser:user actionable:[self pp_canMutateStaffMembers] && !isCurrentStaff];
     return cell;
+}
+
+- (NSIndexPath *)tableView:(UITableView *)tableView willSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    UserModel *user = self.filteredStaff[indexPath.row];
+    BOOL isCurrentStaff = [[FIRAuth auth].currentUser.uid isEqualToString:user.uid];
+    return [self pp_canMutateStaffMembers] && !isCurrentStaff ? indexPath : nil;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    if (![self pp_canMutateStaffMembers]) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        return;
+    }
 
     UserModel *user = self.filteredStaff[indexPath.row];
+    if ([[FIRAuth auth].currentUser.uid isEqualToString:user.uid]) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        return;
+    }
     AddUserViewController *vc = [[AddUserViewController alloc] initWithStaffMember:user];
     [self.navigationController pushViewController:vc animated:YES];
 }
@@ -764,12 +1143,15 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 #pragma mark - Swipe Actions
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (![self pp_canMutateStaffMembers] || indexPath.row >= self.filteredStaff.count) return nil;
     UserModel *user = self.filteredStaff[indexPath.row];
+    if ([[FIRAuth auth].currentUser.uid isEqualToString:user.uid] ||
+        [PPStaffMembersResolvedStatus(user) isEqualToString:PPStaffStatusDisabled]) return nil;
 
-    UIContextualAction *disableAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:kLang(@"Service_Action_Block") handler:^(__unused UIContextualAction * _Nonnull action, __unused __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
+    UIContextualAction *disableAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:kLang(@"Service_Action_Disable") handler:^(__unused UIContextualAction * _Nonnull action, __unused __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
         [self pp_confirmDisableStaff:user completion:completionHandler];
     }];
-    disableAction.backgroundColor = UIColor.systemOrangeColor;
+    disableAction.backgroundColor = [UIColor ppWarning];
     disableAction.image = [UIImage systemImageNamed:@"person.slash"];
 
     UISwipeActionsConfiguration *configuration = [UISwipeActionsConfiguration configurationWithActions:@[disableAction]];
@@ -778,6 +1160,11 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
 }
 
 - (void)pp_confirmDisableStaff:(UserModel *)user completion:(void(^)(BOOL handled))completion {
+    if (![self pp_canMutateStaffMembers]) {
+        [PPToast toast:kLang(@"StatusNoAccess")];
+        if (completion) completion(NO);
+        return;
+    }
     if ([[FIRAuth auth].currentUser.uid isEqualToString:user.uid]) {
         [PPToast toast:kLang(@"StatusNoAccess")];
         if (completion) completion(NO);
@@ -785,7 +1172,7 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     }
 
     NSString *displayName = PPStaffMembersSafeString(user.UserName);
-    NSString *subtitle = [NSString stringWithFormat:@"%@ %@", kLang(@"Disable"), displayName.length ? displayName : PPStaffMembersSafeString(user.UserEmail)];
+    NSString *subtitle = [NSString stringWithFormat:@"%@ %@", kLang(@"Service_Action_Disable"), displayName.length ? displayName : PPStaffMembersSafeString(user.UserEmail)];
     [AlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:subtitle placeholder:nil confirmButton:kLang(@"Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
         [AdminService disableStaffMember:user.uid completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
             if (error) [PPToast toast:error.localizedDescription];
@@ -795,6 +1182,13 @@ static NSString *PPStaffMembersSafeString(NSString *value) {
     } cancelBlock:^{
         if (completion) completion(NO);
     }];
+}
+
+#pragma mark - Access
+
+- (BOOL)pp_canMutateStaffMembers {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasPermission:kStaffPermStaffManage];
 }
 
 @end

@@ -50,14 +50,14 @@
         _titleLabel = [[UILabel alloc] init];
         _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _titleLabel.font = [UIFont boldSystemFontOfSize:15];
-        _titleLabel.textColor = UIColor.labelColor;
+        _titleLabel.textColor = [UIColor ppTextPrimary];
         [_bgCardView addSubview:_titleLabel];
         
         // Subtitle
         _subtitleLabel = [[UILabel alloc] init];
         _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _subtitleLabel.font = [UIFont systemFontOfSize:14];
-        _subtitleLabel.textColor = UIColor.secondaryLabelColor;
+        _subtitleLabel.textColor = [UIColor ppTextSecondary];
         _subtitleLabel.numberOfLines = 1;
         [_bgCardView addSubview:_subtitleLabel];
         

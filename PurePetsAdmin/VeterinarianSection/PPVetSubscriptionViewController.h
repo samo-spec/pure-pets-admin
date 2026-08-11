@@ -4,6 +4,7 @@
 //
 
 #import <UIKit/UIKit.h>
+#import <XLForm/XLForm.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

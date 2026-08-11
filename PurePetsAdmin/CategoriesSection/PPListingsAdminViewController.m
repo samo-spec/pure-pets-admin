@@ -38,12 +38,12 @@ static UIColor *PPListingsSurfaceStrokeColor(void) {
 
 /// Gold-ink for stats and needs-review signals (matches the Console gold ops language).
 static UIColor *PPListingsOpsGold(void) {
-    return PPDynamicColor(0x8A5F14, 0xE3B878, 1.0, 1.0);
+    return [UIColor ppPremiumAccent];
 }
 
 /// Needs-review hairline (gold at a quiet alpha).
 static UIColor *PPListingsNeedsReviewStroke(void) {
-    return PPDynamicColor(0xD7A45C, 0xD7A45C, 0.55, 0.50);
+    return [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.55];
 }
 
 static NSString *PPListingsLocalizedInteger(NSInteger value) {
@@ -129,20 +129,20 @@ typedef struct {
 static PPListingsStatusStyle PPListingsStatusStyleForStatus(NSInteger status, BOOL blocked) {
     PPListingsStatusStyle style;
     if (blocked || status == 5) {
-        style.background = PPDynamicColor(0xFBEAEA, 0x3A1C1C, 1.0, 1.0);
-        style.foreground = PPDynamicColor(0xC62828, 0xF0A3A3, 1.0, 1.0);
+        style.background = [[UIColor ppError] colorWithAlphaComponent:0.14];
+        style.foreground = [UIColor ppError];
     } else if (status == 1) {
-        style.background = PPDynamicColor(0xE7F3EA, 0x16301E, 1.0, 1.0);
-        style.foreground = PPDynamicColor(0x1E7A34, 0x8FD6A5, 1.0, 1.0);
+        style.background = [[UIColor ppSuccess] colorWithAlphaComponent:0.14];
+        style.foreground = [UIColor ppSuccess];
     } else if (status == 4) {
-        style.background = PPDynamicColor(0xFFEFD9, 0x382A14, 1.0, 1.0);
-        style.foreground = PPDynamicColor(0xB35C00, 0xF5B158, 1.0, 1.0);
+        style.background = [[UIColor ppWarning] colorWithAlphaComponent:0.16];
+        style.foreground = [UIColor ppWarning];
     } else if (status == 0) {
-        style.background = PPDynamicColor(0xF7EDDC, 0x33291A, 1.0, 1.0);
+        style.background = [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.16];
         style.foreground = PPListingsOpsGold();
     } else {
-        style.background = PPDynamicColor(0xEEEEEF, 0x2C2C2E, 1.0, 1.0);
-        style.foreground = PPDynamicColor(0x5A5A5E, 0xBDBDC2, 1.0, 1.0);
+        style.background = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.42];
+        style.foreground = [UIColor ppTextSecondary];
     }
     return style;
 }
@@ -249,7 +249,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
 
         // Maroon leading accent stripe
         UIView *accentStripe = [[UIView alloc] init];
-        accentStripe.backgroundColor = PPMaroon600Color();
+        accentStripe.backgroundColor = PPPrimaryColor();
         accentStripe.layer.cornerRadius = 2.0;
         accentStripe.translatesAutoresizingMaskIntoConstraints = NO;
         [self addSubview:accentStripe];
@@ -294,7 +294,7 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
             if ([config[@"style"] isEqualToString:@"gold"]) {
                 valueLabel.textColor = PPListingsOpsGold();
             } else if ([config[@"style"] isEqualToString:@"green"]) {
-                valueLabel.textColor = PPDynamicColor(0x1E7A34, 0x8FD6A5, 1.0, 1.0);
+                valueLabel.textColor = [UIColor ppSuccess];
             } else {
                 valueLabel.textColor = PPTextPrimaryColor();
             }
@@ -492,13 +492,13 @@ PPListingSource const PPListingSourceAdoption = @"adopt_pets";
         NSString *chipTitle = [NSString stringWithFormat:@"%@ · %@", label, countText];
         [chip setTitle:chipTitle forState:UIControlStateNormal];
         chip.titleLabel.font = PPListingMedium(PPFontCaption1, UIFontTextStyleCaption1);
-        [chip setTitleColor:(selected ? [UIColor whiteColor] : [UIColor labelColor]) forState:UIControlStateNormal];
+        [chip setTitleColor:(selected ? [UIColor whiteColor] : [UIColor ppTextPrimary]) forState:UIControlStateNormal];
 
-        chip.backgroundColor = selected ? PPMaroon600Color() : PPSurfaceColor();
+        chip.backgroundColor = selected ? PPPrimaryColor() : PPSurfaceColor();
         chip.layer.cornerRadius = 20.0;
         chip.layer.cornerCurve = kCACornerCurveContinuous;
         chip.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-        chip.layer.borderColor = selected ? PPMaroon600Color().CGColor : PPListingsSurfaceStrokeColor().CGColor;
+        chip.layer.borderColor = selected ? PPPrimaryColor().CGColor : PPListingsSurfaceStrokeColor().CGColor;
         chip.accessibilityLabel = [NSString stringWithFormat:@"%@, %@", label, countText];
         chip.accessibilityTraits = selected ? (UIAccessibilityTraitButton | UIAccessibilityTraitSelected) : UIAccessibilityTraitButton;
     }
@@ -729,7 +729,7 @@ static const CGFloat kIconTileSize = 88.0;
     self.titleLabel.textColor = item.isBlocked ? PPDisabledContentColor() : PPTextPrimaryColor();
     self.surfaceView.backgroundColor = item.isBlocked ? [PPSurfaceColor() colorWithAlphaComponent:0.72] : PPSurfaceColor();
 
-    UIColor *sourceColor = item.isMarketplace ? PPMaroon600Color() : [UIColor colorWithRed:0.184 green:0.365 blue:0.290 alpha:1.0];
+    UIColor *sourceColor = item.isMarketplace ? PPPrimaryColor() : [UIColor ppQuickActionServices];
     self.sourceBadge.text = item.isMarketplace ? kLang(@"ListingsAdmin_Marketplace") : kLang(@"ListingsAdmin_Adoption");
     self.sourceBadge.backgroundColor = sourceColor;
     self.sourceBadge.textColor = UIColor.whiteColor;
@@ -910,7 +910,7 @@ static NSString *const kListingCellID = @"PPListingCell";
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.view.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    self.view.backgroundColor = [UIColor ppBackground];
     [self setupNavigation];
     [self setupTableView];
     [self setupTableHeader];
@@ -1016,7 +1016,7 @@ static NSString *const kListingCellID = @"PPListingCell";
     _stateOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
     _stateOverlay.autoresizingMask = UIViewAutoresizingNone;
     _stateOverlay.hidden = YES;
-    _stateOverlay.backgroundColor = AppBackgroundClr ?: UIColor.systemGroupedBackgroundColor;
+    _stateOverlay.backgroundColor = [UIColor ppBackground];
     [self.view addSubview:_stateOverlay];
 
     [self buildLoadingView];
@@ -1151,7 +1151,7 @@ static NSString *const kListingCellID = @"PPListingCell";
         [container.trailingAnchor constraintLessThanOrEqualToAnchor:_stateOverlay.trailingAnchor constant:-PPSpaceXL],
     ]];
 
-    UIView *icon = [self stateGlyphWithName:@"exclamationmark.triangle" tint:[[UIColor systemRedColor] colorWithAlphaComponent:0.14] glyphTint:[UIColor systemRedColor]];
+    UIView *icon = [self stateGlyphWithName:@"exclamationmark.triangle" tint:[[UIColor ppError] colorWithAlphaComponent:0.14] glyphTint:[UIColor ppError]];
     [container addSubview:icon];
 
     UILabel *title = [self stateTitleLabel];
@@ -1528,7 +1528,7 @@ static NSString *const kListingCellID = @"PPListingCell";
             [self approveListing:item];
             completionHandler(YES);
         }];
-        approve.backgroundColor = [UIColor systemGreenColor];
+        approve.backgroundColor = [UIColor ppSuccess];
         [actions addObject:approve];
     }
 
@@ -1539,7 +1539,7 @@ static NSString *const kListingCellID = @"PPListingCell";
             [self rejectListing:item];
             completionHandler(YES);
         }];
-        reject.backgroundColor = [UIColor systemRedColor];
+        reject.backgroundColor = [UIColor ppError];
         [actions addObject:reject];
     }
 
@@ -1550,7 +1550,7 @@ static NSString *const kListingCellID = @"PPListingCell";
             [self archiveListing:item];
             completionHandler(YES);
         }];
-        archive.backgroundColor = [UIColor systemOrangeColor];
+        archive.backgroundColor = [UIColor ppWarning];
         [actions addObject:archive];
     }
 

@@ -113,7 +113,7 @@
     UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
 
     btn.backgroundColor = self.backgroundColorForButton;
-    btn.backgroundColor = [UIColor.redColor colorWithAlphaComponent:0.1];
+    btn.backgroundColor = [[UIColor ppError] colorWithAlphaComponent:0.1];
 
     btn.layer.cornerRadius = self.cornerRadius;
     btn.layer.masksToBounds = YES;
@@ -123,26 +123,26 @@
     iv.tintColor = self.tintColorForIcon;
     iv.contentMode = UIViewContentModeScaleAspectFit;
     iv.userInteractionEnabled = YES;
-    btn.backgroundColor = [UIColor.greenColor colorWithAlphaComponent:0.1];
+    btn.backgroundColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.1];
 
     UILabel *lbl = [UILabel new];
     lbl.text = kLang(item.titleKey);
     lbl.font = [Styling fontMedium:14];
-    lbl.textColor = UIColor.labelColor;
+    lbl.textColor = [UIColor ppTextPrimary];
     lbl.textAlignment = NSTextAlignmentCenter;
     lbl.numberOfLines = 1;
     lbl.translatesAutoresizingMaskIntoConstraints = NO;
     lbl.userInteractionEnabled = YES;
     [NSLayoutConstraint activateConstraints:@[ [lbl.widthAnchor constraintEqualToConstant:self.buttonWidth+30] ]];
     //[lbl sizeToFit];
-    btn.backgroundColor = [UIColor.blueColor colorWithAlphaComponent:0.1];
+    btn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.1];
 
     UIStackView *sv = [[UIStackView alloc] initWithArrangedSubviews:@[iv, lbl]];
     sv.axis = UILayoutConstraintAxisVertical;
     sv.alignment = UIStackViewAlignmentFill;
     sv.spacing = 6;
     sv.userInteractionEnabled = YES;
-    btn.backgroundColor = [UIColor.yellowColor colorWithAlphaComponent:0.1];
+    btn.backgroundColor = [[UIColor ppWarning] colorWithAlphaComponent:0.1];
 
     [btn addSubview:sv];
     
@@ -213,7 +213,7 @@
      UILabel *lbl = [UILabel new];
      lbl.text = kLang(item.titleKey);
      lbl.font = [Styling fontMedium:14];
-     lbl.textColor = UIColor.labelColor;
+     lbl.textColor = [UIColor ppTextPrimary];
      lbl.textAlignment = NSTextAlignmentCenter;
      lbl.numberOfLines = 1;
 

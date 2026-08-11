@@ -430,7 +430,7 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
         m.isRead = !m.isRead;
         [[NotificationManager shared] markRead:m forUser:self.uid completion:^(__unused NSError *err) { completionHandler(YES); }];
     }];
-    read.backgroundColor = [UIColor systemBlueColor];
+    read.backgroundColor = [UIColor ppPrimary];
 
     UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:kLang(@"Delete") handler:^(__unused UIContextualAction *a, __unused UIView *v, void (^completion)(BOOL)) {
         __strong typeof(weakSelf) self = weakSelf;
@@ -481,7 +481,7 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
          m.isRead = !m.isRead;
          [[NotificationManager shared] markRead:m forUser:self.uid completion:^(__unused NSError *err) { completionHandler(YES); }];
      }];
-     read.backgroundColor = [UIColor systemBlueColor];
+     read.backgroundColor = [UIColor ppPrimary];
 
      UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:kLang(@"Delete") handler:^(__unused UIContextualAction *a, __unused UIView *v, void (^completion)(BOOL)) {
          __strong typeof(weakSelf) self = weakSelf;

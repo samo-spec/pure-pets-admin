@@ -21,6 +21,7 @@
 #import "AlertHelper.h"
 #import "PPImageCollectionRow.h"
 #import "PPDesignTokens.h"
+#import <math.h>
 @import Photos;
 @import Firebase;
 @import FirebaseAuth;
@@ -33,7 +34,7 @@
 static NSString * const PPMainStoreID = @"main_store";
 static NSString * const PPMainStoreFallbackName = @"Main Store";
 static NSString * const PPMyStoreFallbackName = @"My Store";
-static CGFloat const PPAccessoryDefaultRowHeight = 48.0;
+static CGFloat const PPAccessoryDefaultRowHeight = PPButtonHeightMD;
 
 static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
     if (@available(iOS 11.0, *)) {
@@ -42,6 +43,40 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     return baseFont;
 }
 
+@class AddAccessoryViewController;
+
+@interface AddAccessoryViewController (PPAccessoryImageCollectionProxySupport)
+- (void)pp_imageCollectionDidUpdate:(PPImageCollection *)collection;
+- (void)pp_presentImageEditorForCollection:(PPImageCollection *)collection index:(NSInteger)index;
+@end
+
+/// Keeps the XLForm row as the mutation owner while giving the accessory flow
+/// ownership of the editor presentation seam.
+@interface PPAccessoryImageCollectionDelegateProxy : NSObject <PPImageCollectionDelegate>
+@property (nonatomic, weak) PPImageCollectionRow *row;
+@property (nonatomic, weak) AddAccessoryViewController *owner;
+@end
+
+@implementation PPAccessoryImageCollectionDelegateProxy
+
+- (void)imageCollection:(PPImageCollection *)collection didUpdateImages:(NSArray<UIImage *> *)images {
+    [self.row imageCollection:collection didUpdateImages:images];
+    BOOL isExistingPreload = self.owner.editingAccessory.imageURLsArray.count > 0 && !self.row.imagesModified;
+    if (!isExistingPreload) {
+        [self.owner pp_imageCollectionDidUpdate:collection];
+    }
+}
+
+- (void)imageCollection:(PPImageCollection *)collection didSelectImage:(UIImage *)image AtIndex:(NSInteger)index {
+    [self.owner pp_presentImageEditorForCollection:collection index:index];
+}
+
+- (void)imageCollectionDidRequestAddImage:(PPImageCollection *)collection {
+    (void)collection;
+}
+
+@end
+
 @interface AddAccessoryViewController ()
 
 @property (nonatomic, strong) NSArray<UIBarButtonItem *> *prevLeftItems;
@@ -49,6 +84,37 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 @property (nonatomic, assign) BOOL prevHidesBack;
 
 @property (nonatomic, copy) NSDictionary<NSString *, NSString *> *storeNamesByID;
+
+@property (nonatomic, strong) UIButton *navigationSaveButton;
+@property (nonatomic, strong) UIView *dossierHeader;
+@property (nonatomic, strong) UILabel *dossierTypeLabel;
+@property (nonatomic, strong) UILabel *dossierTitleLabel;
+@property (nonatomic, strong) UIView *dossierStateBanner;
+@property (nonatomic, strong) UIImageView *dossierStateIcon;
+@property (nonatomic, strong) UIActivityIndicatorView *dossierStateSpinner;
+@property (nonatomic, strong) UILabel *dossierStateLabel;
+@property (nonatomic, strong) UIButton *dossierRetryButton;
+
+@property (nonatomic, strong) UIView *saveDock;
+@property (nonatomic, strong) UIButton *saveDockButton;
+@property (nonatomic, strong) UILabel *saveDockStatusLabel;
+@property (nonatomic, strong) NSLayoutConstraint *saveDockBottomConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *saveDockHeightConstraint;
+@property (nonatomic, assign) UIEdgeInsets baseTableContentInset;
+@property (nonatomic, assign) CGFloat keyboardOverlap;
+
+@property (nonatomic, strong) PPAccessoryImageCollectionDelegateProxy *imageDelegateProxy;
+@property (nonatomic, strong) NSMutableSet<NSString *> *invalidRowTags;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *validationMessagesByTag;
+@property (nonatomic, assign) BOOL hasUnsavedChanges;
+@property (nonatomic, assign) BOOL isSubmitting;
+@property (nonatomic, assign) BOOL isLeavingAfterSave;
+@property (nonatomic, assign) BOOL suppressChangeTracking;
+@property (nonatomic, assign) BOOL mainKindsLoadInFlight;
+@property (nonatomic, assign) BOOL capturedInteractivePopState;
+@property (nonatomic, assign) BOOL previousInteractivePopEnabled;
+
+@property (nonatomic, assign) CGFloat dossierHeaderMeasuredWidth;
 
 @end
 
@@ -70,6 +136,401 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
 - (instancetype)init {
     return [self initWithAccessory:nil];
+}
+
+- (NSString *)pp_typeDisplayNameForKind:(AccessKindType)kind {
+    switch (kind) {
+        case AccessTypeFood:
+            return kLang(@"Food");
+        case AccessTypeLivePets:
+            return kLang(@"Live pets");
+        case AccessTypeAccessory:
+        default:
+            return kLang(@"Accessory");
+    }
+}
+
+- (NSString *)pp_screenTitle {
+    AccessKindType kind = [self pp_resolvedKind];
+    BOOL isFood = (kind == AccessTypeFood);
+    BOOL isLivePets = (kind == AccessTypeLivePets);
+
+    if (self.editingAccessory) {
+        if (isFood) return kLang(@"EditFood");
+        if (isLivePets) return kLang(@"EditLivePet");
+        return kLang(@"EditAccessory");
+    }
+
+    if (isFood) return kLang(@"AddFood");
+    if (isLivePets) return kLang(@"AddLivePet");
+    return kLang(@"AddAccessory");
+}
+
+- (void)pp_setupDossierHeader {
+    if (self.dossierHeader) return;
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *stack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentFill;
+    stack.spacing = PPSpaceXS;
+    stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:stack];
+
+    self.dossierTypeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dossierTypeLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontSubheadline], UIFontTextStyleSubheadline);
+    self.dossierTypeLabel.textColor = [UIColor ppPrimary];
+    self.dossierTypeLabel.numberOfLines = 1;
+    self.dossierTypeLabel.adjustsFontForContentSizeCategory = YES;
+    self.dossierTypeLabel.textAlignment = NSTextAlignmentNatural;
+    self.dossierTypeLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    self.dossierTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dossierTitleLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
+    self.dossierTitleLabel.textColor = [UIColor ppTextPrimary];
+    self.dossierTitleLabel.numberOfLines = 0;
+    self.dossierTitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.dossierTitleLabel.textAlignment = NSTextAlignmentNatural;
+    self.dossierTitleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    self.dossierStateBanner = [[UIView alloc] initWithFrame:CGRectZero];
+    self.dossierStateBanner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dossierStateBanner.hidden = YES;
+    self.dossierStateBanner.layer.cornerRadius = PPCornerSmall;
+    self.dossierStateBanner.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    self.dossierStateBanner.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *stateStack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    stateStack.translatesAutoresizingMaskIntoConstraints = NO;
+    stateStack.axis = UILayoutConstraintAxisHorizontal;
+    stateStack.alignment = UIStackViewAlignmentCenter;
+    stateStack.spacing = PPSpaceSM;
+    stateStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.dossierStateBanner addSubview:stateStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stateStack.topAnchor constraintEqualToAnchor:self.dossierStateBanner.topAnchor constant:PPSpaceSM],
+        [stateStack.leadingAnchor constraintEqualToAnchor:self.dossierStateBanner.leadingAnchor constant:PPSpaceSM],
+        [stateStack.trailingAnchor constraintEqualToAnchor:self.dossierStateBanner.trailingAnchor constant:-PPSpaceSM],
+        [stateStack.bottomAnchor constraintEqualToAnchor:self.dossierStateBanner.bottomAnchor constant:-PPSpaceSM]
+    ]];
+
+    self.dossierStateIcon = [[UIImageView alloc] initWithFrame:CGRectZero];
+    self.dossierStateIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dossierStateIcon.contentMode = UIViewContentModeScaleAspectFit;
+    self.dossierStateIcon.hidden = YES;
+    [stateStack addArrangedSubview:self.dossierStateIcon];
+    [self.dossierStateIcon.widthAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+    [self.dossierStateIcon.heightAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+
+    self.dossierStateSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.dossierStateSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dossierStateSpinner.hidden = YES;
+    [stateStack addArrangedSubview:self.dossierStateSpinner];
+    [self.dossierStateSpinner.widthAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+    [self.dossierStateSpinner.heightAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+
+    self.dossierStateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dossierStateLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    self.dossierStateLabel.numberOfLines = 0;
+    self.dossierStateLabel.adjustsFontForContentSizeCategory = YES;
+    self.dossierStateLabel.textAlignment = NSTextAlignmentNatural;
+    self.dossierStateLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [stateStack addArrangedSubview:self.dossierStateLabel];
+    [self.dossierStateLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+
+    self.dossierRetryButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.dossierRetryButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.dossierRetryButton setTitle:kLang(@"Retry") forState:UIControlStateNormal];
+    self.dossierRetryButton.titleLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+    self.dossierRetryButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.dossierRetryButton.tintColor = [UIColor ppPrimary];
+    self.dossierRetryButton.hidden = YES;
+    self.dossierRetryButton.accessibilityLabel = kLang(@"Retry");
+    [self.dossierRetryButton addTarget:self action:@selector(pp_retryMainKinds) forControlEvents:UIControlEventTouchUpInside];
+    [stateStack addArrangedSubview:self.dossierRetryButton];
+    [self.dossierRetryButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
+
+    [stack addArrangedSubview:self.dossierTypeLabel];
+    [stack addArrangedSubview:self.dossierTitleLabel];
+    [stack addArrangedSubview:self.dossierStateBanner];
+
+    UIView *rule = [[UIView alloc] initWithFrame:CGRectZero];
+    rule.translatesAutoresizingMaskIntoConstraints = NO;
+    rule.backgroundColor = [UIColor ppSeparator];
+    [stack addArrangedSubview:rule];
+    [rule.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXL],
+        [stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
+        [stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
+        [stack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM]
+    ]];
+
+    self.dossierHeader = header;
+    [self pp_updateDossierHeaderText];
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)pp_updateDossierHeaderText {
+    if (!self.dossierHeader) return;
+
+    AccessKindType kind = [self pp_resolvedKind];
+    self.dossierTypeLabel.text = [self pp_typeDisplayNameForKind:kind];
+    self.dossierTitleLabel.text = [self pp_screenTitle];
+    self.dossierHeaderMeasuredWidth = 0.0;
+    [self pp_updateDossierHeaderFrame];
+}
+
+- (void)pp_updateDossierHeaderFrame {
+    if (!self.dossierHeader || !self.tableView) return;
+
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width <= 0.0) return;
+
+    CGRect frame = self.dossierHeader.frame;
+    if (fabs(self.dossierHeaderMeasuredWidth - width) < 0.5 && frame.size.height > 0.0) return;
+
+    self.dossierHeader.frame = CGRectMake(0.0, 0.0, width, 1.0);
+    [self.dossierHeader setNeedsLayout];
+    [self.dossierHeader layoutIfNeeded];
+
+    CGSize fittingSize = [self.dossierHeader systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                             withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                   verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGFloat height = MAX(PPSpace4XL, ceil(fittingSize.height));
+    self.dossierHeader.frame = CGRectMake(0.0, 0.0, width, height);
+    self.dossierHeaderMeasuredWidth = width;
+    self.tableView.tableHeaderView = self.dossierHeader;
+}
+
+- (void)pp_setDossierStateMessage:(NSString *)message
+                          isLoading:(BOOL)isLoading
+                             isError:(BOOL)isError
+                          showsRetry:(BOOL)showsRetry {
+    if (![NSThread isMainThread]) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf pp_setDossierStateMessage:message
+                                       isLoading:isLoading
+                                          isError:isError
+                                       showsRetry:showsRetry];
+        });
+        return;
+    }
+
+    BOOL visible = message.length > 0;
+    self.dossierStateBanner.hidden = !visible;
+    self.dossierStateLabel.text = message;
+    self.dossierStateLabel.accessibilityLabel = message;
+    self.dossierStateLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
+    self.dossierRetryButton.hidden = !showsRetry;
+    self.dossierStateIcon.hidden = isLoading || !visible;
+    self.dossierStateSpinner.hidden = !isLoading || !visible;
+
+    if (isLoading) {
+        self.dossierStateBanner.backgroundColor = [[UIColor ppInfo] colorWithAlphaComponent:0.08];
+        self.dossierStateBanner.layer.borderColor = [[UIColor ppInfo] colorWithAlphaComponent:0.22].CGColor;
+        self.dossierStateLabel.textColor = [UIColor ppInfo];
+        self.dossierStateSpinner.color = [UIColor ppInfo];
+        [self.dossierStateSpinner startAnimating];
+    } else if (isError) {
+        self.dossierStateBanner.backgroundColor = [[UIColor ppError] colorWithAlphaComponent:0.08];
+        self.dossierStateBanner.layer.borderColor = [[UIColor ppError] colorWithAlphaComponent:0.22].CGColor;
+        self.dossierStateIcon.image = [UIImage systemImageNamed:@"exclamationmark.triangle.fill"];
+        self.dossierStateIcon.tintColor = [UIColor ppError];
+        self.dossierStateLabel.textColor = [UIColor ppError];
+        [self.dossierStateSpinner stopAnimating];
+    } else {
+        self.dossierStateBanner.backgroundColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.08];
+        self.dossierStateBanner.layer.borderColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.22].CGColor;
+        self.dossierStateIcon.image = [UIImage systemImageNamed:@"checkmark.circle.fill"];
+        self.dossierStateIcon.tintColor = [UIColor ppSuccess];
+        self.dossierStateLabel.textColor = [UIColor ppSuccess];
+        [self.dossierStateSpinner stopAnimating];
+    }
+
+    self.dossierStateBanner.accessibilityLabel = message;
+    [self.dossierHeader setNeedsLayout];
+    self.dossierHeaderMeasuredWidth = 0.0;
+    [self pp_updateDossierHeaderFrame];
+}
+
+- (void)pp_clearDossierState {
+    [self pp_setDossierStateMessage:nil isLoading:NO isError:NO showsRetry:NO];
+}
+
+- (void)pp_setupSaveDock {
+    if (self.saveDock) return;
+
+    UIView *dock = [[UIView alloc] initWithFrame:CGRectZero];
+    dock.translatesAutoresizingMaskIntoConstraints = NO;
+    dock.backgroundColor = [UIColor ppSurface];
+    dock.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    PPApplyElevatedShadow(dock);
+    [self.view addSubview:dock];
+
+    UIView *hairline = [[UIView alloc] initWithFrame:CGRectZero];
+    hairline.translatesAutoresizingMaskIntoConstraints = NO;
+    hairline.backgroundColor = [UIColor ppSeparator];
+    [dock addSubview:hairline];
+
+    self.saveDockStatusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.saveDockStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.saveDockStatusLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    self.saveDockStatusLabel.textColor = [UIColor ppTextSecondary];
+    self.saveDockStatusLabel.numberOfLines = 2;
+    self.saveDockStatusLabel.adjustsFontForContentSizeCategory = YES;
+    self.saveDockStatusLabel.textAlignment = NSTextAlignmentNatural;
+    self.saveDockStatusLabel.hidden = YES;
+    self.saveDockStatusLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [dock addSubview:self.saveDockStatusLabel];
+
+    self.saveDockButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.saveDockButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.saveDockButton.accessibilityLabel = kLang(@"Save");
+    self.saveDockButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    [self.saveDockButton addTarget:self action:@selector(onSave) forControlEvents:UIControlEventTouchUpInside];
+    [dock addSubview:self.saveDockButton];
+
+    self.saveDockHeightConstraint = [dock.heightAnchor constraintEqualToConstant:PPButtonHeightLG + PPSpaceBase];
+    [NSLayoutConstraint activateConstraints:@[
+        [dock.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [dock.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        self.saveDockHeightConstraint,
+        [hairline.topAnchor constraintEqualToAnchor:dock.topAnchor],
+        [hairline.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor],
+        [hairline.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor],
+        [hairline.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+        [self.saveDockButton.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor constant:-PPScreenMargin],
+        [self.saveDockButton.centerYAnchor constraintEqualToAnchor:dock.centerYAnchor],
+        [self.saveDockButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightLG],
+        [self.saveDockStatusLabel.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor constant:PPScreenMargin],
+        [self.saveDockStatusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.saveDockButton.leadingAnchor constant:-PPSpaceMD],
+        [self.saveDockStatusLabel.centerYAnchor constraintEqualToAnchor:self.saveDockButton.centerYAnchor]
+    ]];
+
+    self.saveDock = dock;
+    self.saveDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
+    self.saveDockBottomConstraint.active = YES;
+    [self pp_updateSaveDockState];
+}
+
+- (void)pp_applySaveDockButtonConfiguration {
+    NSString *title = self.isSubmitting ? kLang(@"Uploading") : kLang(@"Save");
+    self.saveDockButton.accessibilityLabel = self.isSubmitting ? kLang(@"Uploading") : kLang(@"Save");
+
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *configuration = [UIButtonConfiguration filledButtonConfiguration];
+        configuration.baseBackgroundColor = [UIColor ppPrimary];
+        configuration.baseForegroundColor = PPOnPrimaryColor();
+        configuration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+        configuration.contentInsets = NSDirectionalEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+        configuration.title = title;
+        configuration.showsActivityIndicator = self.isSubmitting;
+        self.saveDockButton.configuration = configuration;
+    } else {
+        [self.saveDockButton setTitle:title forState:UIControlStateNormal];
+        self.saveDockButton.backgroundColor = [UIColor ppPrimary];
+        [self.saveDockButton setTitleColor:PPOnPrimaryColor() forState:UIControlStateNormal];
+        PPApplyContinuousCorners(self.saveDockButton, PPCornerSmall);
+        self.saveDockButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+    }
+}
+
+- (void)pp_updateSaveDockState {
+    if (!self.saveDockButton) return;
+
+    BOOL disabled = self.isSubmitting || self.isLeavingAfterSave;
+    self.saveDockButton.enabled = !disabled;
+    self.navigationSaveButton.enabled = !disabled;
+    self.tableView.userInteractionEnabled = !disabled;
+    [self pp_updateInteractivePopGestureState];
+    self.saveDockStatusLabel.textColor = self.isLeavingAfterSave ? [UIColor ppSuccess] : [UIColor ppTextSecondary];
+
+    if (self.isSubmitting) {
+        self.saveDockStatusLabel.hidden = NO;
+        self.saveDockStatusLabel.text = kLang(@"Uploading");
+    } else if (self.isLeavingAfterSave) {
+        self.saveDockStatusLabel.hidden = NO;
+        self.saveDockStatusLabel.text = kLang(@"Saved");
+    }
+
+    [self pp_applySaveDockButtonConfiguration];
+    [self pp_updateTableInsets];
+}
+
+- (void)pp_updateInteractivePopGestureState {
+    if (!self.capturedInteractivePopState || !self.navigationController.interactivePopGestureRecognizer) return;
+    BOOL canPopWithoutConfirmation = !self.hasUnsavedChanges && !self.isSubmitting && !self.isLeavingAfterSave;
+    self.navigationController.interactivePopGestureRecognizer.enabled = canPopWithoutConfirmation && self.previousInteractivePopEnabled;
+}
+
+- (void)pp_registerKeyboardNotifications {
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self selector:@selector(pp_keyboardWillChange:) name:UIKeyboardWillChangeFrameNotification object:nil];
+    [center addObserver:self selector:@selector(pp_keyboardWillChange:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)pp_updateTableInsets {
+    if (!self.tableView) return;
+
+    UIEdgeInsets insets = self.baseTableContentInset;
+    CGFloat dockHeight = CGRectGetHeight(self.saveDock.bounds);
+    insets.bottom += dockHeight + PPSpaceLG + self.keyboardOverlap;
+    self.tableView.contentInset = insets;
+    self.tableView.scrollIndicatorInsets = insets;
+}
+
+- (void)pp_keyboardWillChange:(NSNotification *)notification {
+    NSDictionary *userInfo = notification.userInfo;
+    CGRect endFrame = [userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect keyboardFrameInView = [self.view convertRect:endFrame fromView:nil];
+    BOOL isHiding = [notification.name isEqualToString:UIKeyboardWillHideNotification];
+    self.keyboardOverlap = (isHiding || CGRectIsEmpty(endFrame))
+        ? 0.0
+        : MAX(0.0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(keyboardFrameInView));
+
+    NSTimeInterval duration = [userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationCurve curve = [userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue];
+    UIViewAnimationOptions options = (UIViewAnimationOptions)(curve << 16) | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction;
+    [UIView animateWithDuration:duration delay:0.0 options:options animations:^{
+        self.saveDockBottomConstraint.constant = -self.keyboardOverlap;
+        [self.view layoutIfNeeded];
+        [self pp_updateTableInsets];
+    } completion:nil];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.saveDockHeightConstraint.constant = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+        ? PPButtonHeightLG + PPSpaceXL
+        : PPButtonHeightLG + PPSpaceBase;
+    [self pp_updateDossierHeaderFrame];
+    [self pp_updateTableInsets];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (![self.traitCollection.preferredContentSizeCategory isEqualToString:previousTraitCollection.preferredContentSizeCategory]) {
+        self.dossierTypeLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontSubheadline], UIFontTextStyleSubheadline);
+        self.dossierTitleLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
+        self.dossierStateLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+        self.saveDockStatusLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+        self.dossierRetryButton.titleLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
+        self.dossierHeaderMeasuredWidth = 0.0;
+        [self.tableView reloadData];
+        [self pp_updateSaveDockState];
+    }
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 /// Effective kind considering showTypeRow, the current form selection, the editing item, and defaultKind
@@ -134,7 +595,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
 - (void)pp_applyDefaultRowHeight:(XLFormRowDescriptor *)row {
     row.height = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
-        ? MAX(PPAccessoryDefaultRowHeight, PPButtonHeightLG)
+        ? MAX(PPAccessoryDefaultRowHeight, PPButtonHeightLG + PPSpaceSM)
         : PPAccessoryDefaultRowHeight;
 }
 
@@ -337,11 +798,14 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     XLFormDescriptor *form = [XLFormDescriptor formDescriptor];
 
     // ===== Section 0: Type (Accessory/Food) when visible =====
-    XLFormSectionDescriptor *section = [XLFormSectionDescriptor formSection];
-    [form addFormSection:section];
+    XLFormSectionDescriptor *section = nil;
 
     AccessKindType initialKind = AccessTypeAccessory;
     if (self.showTypeRow) {
+        section = [XLFormSectionDescriptor formSection];
+        section.title = kLang(@"Kind");
+        [form addFormSection:section];
+
         XLFormRowDescriptor *typeRow =
         [XLFormRowDescriptor formRowDescriptorWithTag:@"itemType"
                                               rowType:XLFormRowDescriptorTypeSelectorSegmentedControl
@@ -385,6 +849,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
     // ===== Section 1: Basic =====
     section = [XLFormSectionDescriptor formSection];
+    section.title = kLang(@"Info");
     [form addFormSection:section];
 
     // Name
@@ -406,12 +871,13 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
                                              title:kLang(@"Description")];
     row.value = self.editingAccessory.desc;
     row.cellConfigAtConfigure[@"textView.placeholder"] = kLang(@"Enter description");
-    row.height = 60;
+    row.height = PPButtonHeightLG + PPSpaceSM;
     [Styling applyGlobalStyleToRow:row];
     [section addFormRow:row];
 
     // ===== Section 2: Species / Breed =====
     section = [XLFormSectionDescriptor formSection];
+    section.title = kLang(@"Species");
     [form addFormSection:section];
 
     // Species (required)
@@ -464,6 +930,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
     // ===== Section 3: Pricing & Condition =====
     section = [XLFormSectionDescriptor formSection];
+    section.title = kLang(@"Price");
     [form addFormSection:section];
 
     // Price
@@ -523,6 +990,10 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     [self pp_applyDefaultRowHeight:row];
     [Styling applyGlobalStyleToRow:row];
     [section addFormRow:row];
+
+    section = [XLFormSectionDescriptor formSection];
+    section.title = kLang(@"StockSection");
+    [form addFormSection:section];
 
     // Quantity
     row =
@@ -584,6 +1055,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
     // ===== Section 4: Store =====
     section = [XLFormSectionDescriptor formSection];
+    section.title = kLang(@"Store");
     [form addFormSection:section];
 
     XLFormRowDescriptor *storeRow =
@@ -615,7 +1087,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     XLFormRowDescriptor *photosRow =
     [XLFormRowDescriptor formRowDescriptorWithTag:@"photos"
                                            rowType:XLFormRowDescriptorTypePPImageCollection
-                                             title:nil];
+                                              title:kLang(@"Images")];
     photosRow.cellConfigAtConfigure[@"maxImages"] = @(9);
     // Preload existing images when editing
     if (accessory.imageURLsArray.count > 0) {
@@ -630,10 +1102,10 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 - (void)pp_applyKindDrivenUIAndTitle {
     AccessKindType kind = [self pp_resolvedKind];
     BOOL isFood = (kind == AccessTypeFood);
-    BOOL isLivePets = (kind == AccessTypeLivePets);
 
     // Toggle condition row
     XLFormRowDescriptor *cond = [self.form formRowWithTag:@"condition"];
+    if (!cond) return;
     cond.hidden   = @(isFood);
     cond.disabled = @(isFood);
     if (isFood && [cond.selectorOptions count] > 0) {
@@ -641,12 +1113,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     }
     [self updateFormRow:cond];
 
-    // Live title only for "add" flow (editing title is locked)
-    if (!self.editingAccessory) {
-        if (isFood) self.title = kLang(@"AddFood");
-        else if (isLivePets) self.title = kLang(@"AddLivePet");
-        else self.title = kLang(@"AddAccessory");
-    }
+    [self pp_updateDossierHeaderText];
 }
 
 #pragma mark - View Lifecycle
@@ -655,81 +1122,93 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     [super viewDidLoad];
     self.view.backgroundColor = AppBackgroundClr;
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.invalidRowTags = [NSMutableSet set];
+    self.validationMessagesByTag = [NSMutableDictionary dictionary];
 
     [self pp_backfillMissingEditFieldsIfNeeded];
-    
-       if (!self.editingAccessory) {
-           // New accessory — nothing to prefill
-       }
 
-       // ✅ Now build the form using the final values of showTypeRow/defaultKind
-       [self setForm:[self buildFormWithAccessory:self.editingAccessory]];
-       [self pp_refreshFinalPriceRow];
+    [self setForm:[self buildFormWithAccessory:self.editingAccessory]];
+    [self pp_refreshFinalPriceRow];
+    [self pp_installFormStateTracking];
+    [self pp_setupDossierHeader];
+    [self pp_setupSaveDock];
+    [self pp_registerKeyboardNotifications];
+    [self pp_loadMainKindsIfNeeded];
 
-       // (keep your existing main kinds fetch, etc.)
-       if (AppMgr.MainKindsArray.count == 0) {
-           __weak typeof(self) weakSelf = self;
-           [AppMgr fetchMainKindsWithCompletion:^(NSArray<MainKindsModel *> * _Nullable kinds, NSError * _Nullable error) {
-               __strong typeof(weakSelf) self = weakSelf;
-               if (error) return;
-               XLFormRowDescriptor *mkRow = [self.form formRowWithTag:@"mainKind"];
-               mkRow.selectorOptions = kinds ?: @[];
-               [self updateFormRow:mkRow];
-           }];
-       }
-    
-   /*
-    // Ensure Species options loaded; update row if they arrive later
-    if (AppMgr.MainKindsArray.count == 0) {
-        DLog(@"[AddAccessory] mainKinds empty -> fetching…");
-        __weak typeof(self) weakSelf = self;
-        [AppMgr fetchMainKindsWithCompletion:^(NSArray<MainKindsModel *> * _Nullable kinds, NSError * _Nullable error) {
-            __strong typeof(weakSelf) self = weakSelf;
-            if (error) {
-                DLog(@"[AddAccessory] fetchMainKinds error: %@", error.localizedDescription);
-                return;
-            }
-            XLFormRowDescriptor *mkRow = [self.form formRowWithTag:@"mainKind"];
-            mkRow.selectorOptions = kinds ?: @[];
-            [self updateFormRow:mkRow];
-            DLog(@"[AddAccessory] mainKinds loaded: %lu", (unsigned long)kinds.count);
-        }];
-    }
-    */
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.showsHorizontalScrollIndicator = NO;
-    
-    // Premium Form TableView Styling
     self.tableView.backgroundColor = AppBackgroundClr;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceXXXL, 0);
+    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceSM, 0);
+    self.tableView.contentInset = self.baseTableContentInset;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    self.tableView.estimatedRowHeight = PPAccessoryDefaultRowHeight;
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.title = [self pp_screenTitle];
+    [self pp_updateDossierHeaderText];
+    [self pp_updateSaveDockState];
 }
 
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
 
-    AccessKindType kind = [self pp_resolvedKind];
-    BOOL isFood = (kind == AccessTypeFood);
-    BOOL isLivePets = (kind == AccessTypeLivePets);
+    if (!self.capturedInteractivePopState) {
+        self.previousInteractivePopEnabled = self.navigationController.interactivePopGestureRecognizer.enabled;
+        self.capturedInteractivePopState = YES;
+    }
+    self.title = [self pp_screenTitle];
+    if (!self.navigationSaveButton) {
+        self.navigationSaveButton = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
+        self.navigationSaveButton.accessibilityLabel = kLang(@"Save");
+    }
+    [self pp_navBarWithOtherButton:self.navigationSaveButton title:self.title];
+    [self pp_updateDossierHeaderText];
+    [self pp_updateSaveDockState];
+}
 
-    NSString *title = @"";
-    if (self.editingAccessory) {
-        if (isFood) title = kLang(@"EditFood");
-        else if (isLivePets) title = kLang(@"EditLivePet");
-        else title = kLang(@"EditAccessory");
-    } else {
-        if (isFood) title = kLang(@"AddFood");
-        else if (isLivePets) title = kLang(@"AddLivePet");
-        else title = kLang(@"AddAccessory");
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    if (self.capturedInteractivePopState) {
+        self.navigationController.interactivePopGestureRecognizer.enabled = self.previousInteractivePopEnabled;
+        self.capturedInteractivePopState = NO;
+    }
+}
+
+- (void)onSave {
+    if (self.isSubmitting || self.isLeavingAfterSave) return;
+    [self saveAccessory];
+}
+
+- (void)onBack {
+    if (self.isSubmitting || self.isLeavingAfterSave) return;
+    if (![self pp_hasPendingChanges]) {
+        [self pp_discardAndPop];
+        return;
     }
 
-    UIButton *save = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
-    [self pp_navBarWithOtherButton:save title:title];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Warning")
+                                                                     message:kLang(@"Are you sure you want to continue?")
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    alert.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel")
+                                               style:UIAlertActionStyleCancel
+                                             handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Confirm")
+                                               style:UIAlertActionStyleDestructive
+                                             handler:^(__unused UIAlertAction *action) {
+        [weakSelf pp_discardAndPop];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
-- (void)onSave { [self saveAccessory]; }
-- (void)onBack { [self.navigationController popViewControllerAnimated:YES]; }
+
+- (void)pp_discardAndPop {
+    self.hasUnsavedChanges = NO;
+    [self.view endEditing:YES];
+    [self.navigationController popViewControllerAnimated:YES];
+}
 
 
 
@@ -737,16 +1216,217 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     UIButton *b = [UIButton buttonWithType:UIButtonTypeSystem];
     b.translatesAutoresizingMaskIntoConstraints = NO;
     [b setImage:[UIImage systemImageNamed:sfName] forState:UIControlStateNormal];
-    b.tintColor = AppPrimaryClr;
-    b.contentEdgeInsets = UIEdgeInsetsMake(6,6,6,6);
-    b.layer.cornerRadius = 18;
-    b.backgroundColor = [UIColor colorWithWhite:0 alpha:0.05]; // subtle touch target
+    b.tintColor = [UIColor ppPrimary];
+    b.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceSM, PPSpaceSM, PPSpaceSM);
+    PPApplyContinuousCorners(b, PPCornerMedium);
+    b.backgroundColor = [UIColor ppSurfaceOverlay];
     [NSLayoutConstraint activateConstraints:@[
-        [b.widthAnchor constraintEqualToConstant:38],
-        [b.heightAnchor constraintEqualToConstant:38]
+        [b.widthAnchor constraintEqualToConstant:PPButtonHeightXS],
+        [b.heightAnchor constraintEqualToConstant:PPButtonHeightXS]
     ]];
     [b addTarget:self action:sel forControlEvents:UIControlEventTouchUpInside];
     return b;
+}
+
+- (BOOL)pp_hasPendingChanges {
+    return self.hasUnsavedChanges;
+}
+
+- (void)pp_installFormStateTracking {
+    for (XLFormSectionDescriptor *section in self.form.formSections) {
+        for (XLFormRowDescriptor *row in section.formRows) {
+            XLOnChangeBlock previousBlock = row.onChangeBlock;
+            __weak typeof(self) weakSelf = self;
+            row.onChangeBlock = ^(id oldValue, id newValue, XLFormRowDescriptor *changedRow) {
+                if (previousBlock) {
+                    previousBlock(oldValue, newValue, changedRow);
+                }
+                [weakSelf pp_markFormDirtyForRow:changedRow];
+            };
+        }
+    }
+}
+
+- (void)pp_markFormDirtyForRow:(XLFormRowDescriptor *)row {
+    if (self.suppressChangeTracking || self.isLeavingAfterSave) return;
+
+    self.hasUnsavedChanges = YES;
+    if (row.tag.length > 0) {
+        [self.invalidRowTags removeObject:row.tag];
+        [self.validationMessagesByTag removeObjectForKey:row.tag];
+        [self pp_applyValidationStyleToVisibleCellForTag:row.tag];
+    }
+    if (!self.mainKindsLoadInFlight) {
+        [self pp_clearDossierState];
+    }
+    self.saveDockStatusLabel.hidden = NO;
+    self.saveDockStatusLabel.text = kLang(@"Save");
+    self.saveDockStatusLabel.textColor = [UIColor ppTextSecondary];
+    [self pp_updateSaveDockState];
+}
+
+- (void)pp_clearValidationErrors {
+    [self.invalidRowTags removeAllObjects];
+    [self.validationMessagesByTag removeAllObjects];
+    for (NSIndexPath *indexPath in self.tableView.indexPathsForVisibleRows ?: @[]) {
+        XLFormRowDescriptor *row = [self.form formRowAtIndex:indexPath];
+        [self pp_applyValidationStyleToCell:[self.tableView cellForRowAtIndexPath:indexPath] row:row];
+    }
+    if (!self.mainKindsLoadInFlight) {
+        [self pp_clearDossierState];
+    }
+}
+
+- (void)pp_setValidationError:(NSString *)message forRowTag:(NSString *)tag {
+    if (tag.length == 0) return;
+
+    [self.invalidRowTags addObject:tag];
+    if (message.length > 0) {
+        self.validationMessagesByTag[tag] = message;
+    }
+    [self pp_applyValidationStyleToVisibleCellForTag:tag];
+    [self pp_setDossierStateMessage:message isLoading:NO isError:YES showsRetry:NO];
+    [self pp_focusRowTag:tag];
+}
+
+- (void)pp_applyValidationStyleToVisibleCellForTag:(NSString *)tag {
+    XLFormRowDescriptor *row = [self.form formRowWithTag:tag];
+    NSIndexPath *indexPath = row ? [self.form indexPathOfFormRow:row] : nil;
+    if (!indexPath) return;
+    [self pp_applyValidationStyleToCell:[self.tableView cellForRowAtIndexPath:indexPath] row:row];
+}
+
+- (void)pp_applyValidationStyleToCell:(UITableViewCell *)cell row:(XLFormRowDescriptor *)row {
+    if (!cell || !row) return;
+
+    BOOL invalid = [self.invalidRowTags containsObject:row.tag];
+    cell.contentView.layer.borderWidth = invalid ? 1.0 / UIScreen.mainScreen.scale : 0.0;
+    cell.contentView.layer.borderColor = invalid ? [[UIColor ppError] colorWithAlphaComponent:0.55].CGColor : UIColor.clearColor.CGColor;
+    cell.contentView.layer.cornerRadius = PPCornerSmall;
+    cell.textLabel.textColor = invalid ? [UIColor ppError] : [UIColor ppTextPrimary];
+    cell.accessibilityHint = invalid ? self.validationMessagesByTag[row.tag] : nil;
+
+    UITextField *textField = (UITextField *)[self findSubviewOfClass:[UITextField class] inView:cell];
+    if (textField && invalid) {
+        textField.accessibilityHint = self.validationMessagesByTag[row.tag];
+    }
+}
+
+- (void)pp_focusRowTag:(NSString *)tag {
+    XLFormRowDescriptor *row = [self.form formRowWithTag:tag];
+    NSIndexPath *indexPath = row ? [self.form indexPathOfFormRow:row] : nil;
+    if (!indexPath) return;
+
+    [self.tableView scrollToRowAtIndexPath:indexPath atScrollPosition:UITableViewScrollPositionMiddle animated:YES];
+    if (![tag isEqualToString:@"name"] && ![tag isEqualToString:@"price"]) return;
+
+    NSTimeInterval delay = UIAccessibilityIsReduceMotionEnabled() ? 0.0 : PPAnimDurationNormal;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        UITableViewCell *cell = [self.tableView cellForRowAtIndexPath:indexPath];
+        UITextField *field = (UITextField *)[self findSubviewOfClass:[UITextField class] inView:cell];
+        [field becomeFirstResponder];
+    });
+}
+
+- (void)pp_loadMainKindsIfNeeded {
+    XLFormRowDescriptor *mainKindRow = [self.form formRowWithTag:@"mainKind"];
+    if (!mainKindRow) return;
+
+    NSArray<MainKindsModel *> *cachedKinds = AppMgr.MainKindsArray ?: @[];
+    if (cachedKinds.count > 0) {
+        mainKindRow.selectorOptions = cachedKinds;
+        mainKindRow.disabled = @NO;
+        [self pp_restoreCategorySelectionIfNeeded];
+        [self updateFormRow:mainKindRow];
+        return;
+    }
+
+    self.mainKindsLoadInFlight = YES;
+    mainKindRow.disabled = @YES;
+    [self updateFormRow:mainKindRow];
+    [self pp_setDossierStateMessage:kLang(@"Loading") isLoading:YES isError:NO showsRetry:NO];
+
+    __weak typeof(self) weakSelf = self;
+    [AppMgr fetchMainKindsWithCompletion:^(NSArray<MainKindsModel *> * _Nullable kinds, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+
+            self.mainKindsLoadInFlight = NO;
+            XLFormRowDescriptor *row = [self.form formRowWithTag:@"mainKind"];
+            if (!row) return;
+
+            if (error || kinds.count == 0) {
+                row.selectorOptions = kinds ?: @[];
+                row.disabled = @NO;
+                [self updateFormRow:row];
+                [self pp_setDossierStateMessage:kLang(@"Something went wrong.") isLoading:NO isError:YES showsRetry:YES];
+                return;
+            }
+
+            row.selectorOptions = kinds;
+            row.disabled = @NO;
+            [self pp_restoreCategorySelectionIfNeeded];
+            [self updateFormRow:row];
+            [self pp_clearDossierState];
+        });
+    }];
+}
+
+- (void)pp_retryMainKinds {
+    if (self.mainKindsLoadInFlight) return;
+    [self pp_loadMainKindsIfNeeded];
+}
+
+- (void)pp_restoreCategorySelectionIfNeeded {
+    if (!self.editingAccessory) return;
+
+    MainKindsModel *mainKind = [self mainKindForID:self.editingAccessory.petMainCategoryID];
+    XLFormRowDescriptor *mainKindRow = [self.form formRowWithTag:@"mainKind"];
+    XLFormRowDescriptor *subKindRow = [self.form formRowWithTag:@"subKind"];
+    if (!mainKind || !mainKindRow || !subKindRow) return;
+
+    self.suppressChangeTracking = YES;
+    mainKindRow.value = mainKind;
+    subKindRow.selectorOptions = mainKind.SubKindsArray ?: @[];
+    subKindRow.hidden = @NO;
+    if (self.editingAccessory.petSubCategoryID > 0) {
+        SubKindModel *subKind = [self subKindForID:self.editingAccessory.petSubCategoryID
+                                             mainID:self.editingAccessory.petMainCategoryID];
+        if (subKind) subKindRow.value = subKind;
+    }
+    [self updateFormRow:mainKindRow];
+    [self updateFormRow:subKindRow];
+    self.suppressChangeTracking = NO;
+}
+
+- (void)pp_imageCollectionDidUpdate:(PPImageCollection *)collection {
+    if (!collection) return;
+    [self pp_markFormDirtyForRow:[self.form formRowWithTag:@"photos"]];
+}
+
+- (void)pp_presentImageEditorForCollection:(PPImageCollection *)collection index:(NSInteger)index {
+    if (!collection || self.isSubmitting || self.isLeavingAfterSave) return;
+    [collection presentEditorForImageAtIndex:index fromViewController:self];
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    XLFormRowDescriptor *row = [self.form formRowAtIndex:indexPath];
+    if ([row.tag isEqualToString:@"photos"]) {
+        return (PPButtonHeightLG * 2.0) + PPSpaceXL;
+    }
+    if ([row.tag isEqualToString:@"desc"]) {
+        return UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+            ? PPButtonHeightLG + PPSpaceXL
+            : PPButtonHeightLG + PPSpaceSM;
+    }
+    return UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+        ? PPButtonHeightLG + PPSpaceSM
+        : PPAccessoryDefaultRowHeight;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView estimatedHeightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    return [self tableView:tableView heightForRowAtIndexPath:indexPath];
 }
 
 
@@ -754,6 +1434,8 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 #pragma mark - Save
 
 - (void)saveAccessory {
+    if (self.isSubmitting || self.isLeavingAfterSave) return;
+
     NSDictionary *values = [self.form formValues];
     DLog(@"[AddAccessory] saveAccessory tapped. values=%@", values);
 
@@ -768,15 +1450,36 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     if (storeID.length == 0) storeID = PPMainStoreID;
     NSString *storeName = [self pp_storeNameForID:storeID];
 
+    [self pp_clearValidationErrors];
     if (name.length == 0 || !price) {
+        if (name.length == 0) {
+            [self.invalidRowTags addObject:@"name"];
+            self.validationMessagesByTag[@"name"] = kLang(@"NamePriceRequired");
+            [self pp_applyValidationStyleToVisibleCellForTag:@"name"];
+        }
+        if (!price) {
+            [self.invalidRowTags addObject:@"price"];
+            self.validationMessagesByTag[@"price"] = kLang(@"NamePriceRequired");
+            [self pp_applyValidationStyleToVisibleCellForTag:@"price"];
+        }
+        [self pp_setDossierStateMessage:kLang(@"NamePriceRequired") isLoading:NO isError:YES showsRetry:NO];
+        [self pp_focusRowTag:(name.length == 0 ? @"name" : @"price")];
         [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"NamePriceRequired")];
         return;
     }
     if (!mk) {
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"SpeciesPlaceholder")];
+        if (self.mainKindsLoadInFlight) {
+            [self pp_setDossierStateMessage:kLang(@"Loading") isLoading:YES isError:NO showsRetry:NO];
+            return;
+        }
+        [self pp_setValidationError:kLang(@"SpeciesRequired") forRowTag:@"mainKind"];
+        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"SpeciesRequired")];
         return;
     }
 
+    [self.view endEditing:YES];
+    self.isSubmitting = YES;
+    [self pp_updateSaveDockState];
     [PPHUD showRingIn:self.view title:kLang(@"Uploading") subtitle:kLang(@"PleaseWait")];
 
     PetAccessory *accessory = self.editingAccessory ?: [PetAccessory new];
@@ -939,13 +1642,39 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 }
 
 - (void)handleSaveResult:(NSError *)error {
+    if (![NSThread isMainThread]) {
+        __weak typeof(self) weakSelf = self;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf handleSaveResult:error];
+        });
+        return;
+    }
+
     if (error) {
+        self.isSubmitting = NO;
+        self.isLeavingAfterSave = NO;
+        self.saveDockStatusLabel.hidden = NO;
+        self.saveDockStatusLabel.text = kLang(@"Error");
+        self.saveDockStatusLabel.textColor = [UIColor ppError];
+        [self pp_updateSaveDockState];
         [PPHUD dismiss];
+        [self pp_setDossierStateMessage:kLang(@"Something went wrong.") isLoading:NO isError:YES showsRetry:NO];
         [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Something went wrong.")];
         DLog(@"[AddAccessory] save error: %@", error.localizedDescription);
         return;
     }
-    [PPHUD showSuccess:kLang(@"Saved") subtitle:kLang(@"AccessoryPosted")];
+
+    self.isSubmitting = NO;
+    self.isLeavingAfterSave = YES;
+    self.hasUnsavedChanges = NO;
+    [self pp_clearValidationErrors];
+    self.saveDockStatusLabel.hidden = NO;
+    self.saveDockStatusLabel.text = kLang(@"Saved");
+    self.saveDockStatusLabel.textColor = [UIColor ppSuccess];
+    [self pp_updateSaveDockState];
+    NSString *successMessage = self.editingAccessory ? kLang(@"Your changes were saved successfully.") : kLang(@"AccessoryPosted");
+    [self pp_setDossierStateMessage:successMessage isLoading:NO isError:NO showsRetry:NO];
+    [PPHUD showSuccess:kLang(@"Saved") subtitle:successMessage];
 
     DLog(@"[AddAccessory] save success");
     // pop after a short delay so user sees the success
@@ -990,34 +1719,60 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 #pragma mark - TableView Custom Headers & Footers
 
 - (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)sectionIndex {
+    if (sectionIndex < 0 || sectionIndex >= (NSInteger)self.form.formSections.count) return 0.0;
     XLFormSectionDescriptor *section = self.form.formSections[sectionIndex];
-    if (section.title.length == 0) return 12.0;
-    return 36.0;
+    if (section.title.length == 0) return PPSpaceMD;
+    return UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+        ? PPSpaceXXL + PPSpaceSM
+        : PPSpaceXXL;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)sectionIndex {
+    return sectionIndex == self.form.formSections.count - 1 ? PPSpaceLG : PPSpaceSM;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)sectionIndex {
+    UIView *footer = [[UIView alloc] initWithFrame:CGRectZero];
+    footer.backgroundColor = UIColor.clearColor;
+    return footer;
 }
 
 - (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)sectionIndex {
+    if (sectionIndex < 0 || sectionIndex >= (NSInteger)self.form.formSections.count) return nil;
     XLFormSectionDescriptor *section = self.form.formSections[sectionIndex];
     if (section.title.length == 0) return nil;
-    
-    UIView *header = [[UIView alloc] init];
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
     header.backgroundColor = UIColor.clearColor;
-    
+
+    UIView *accent = [[UIView alloc] initWithFrame:CGRectZero];
+    accent.translatesAutoresizingMaskIntoConstraints = NO;
+    accent.backgroundColor = [UIColor ppPrimary];
+    PPApplyContinuousCorners(accent, PPSpaceXXS);
+    [header addSubview:accent];
+
     UILabel *label = [[UILabel alloc] init];
     label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.font = PPAccessoryScaledFont([Styling fontMedium:PPFontSubheadline], UIFontTextStyleSubheadline);
-    label.textColor = SeconderyTextClr;
-    label.text = [section.title uppercaseString];
-    label.textAlignment = Language.isRTL ? NSTextAlignmentRight : NSTextAlignmentLeft;
+    label.font = PPAccessoryScaledFont([Styling fontBold:PPFontSubheadline], UIFontTextStyleSubheadline);
+    label.textColor = [UIColor ppTextSecondary];
+    label.text = section.title;
+    label.textAlignment = NSTextAlignmentNatural;
+    label.numberOfLines = 0;
     label.adjustsFontForContentSizeCategory = YES;
-    
     [header addSubview:label];
-    
+
     [NSLayoutConstraint activateConstraints:@[
-        [label.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20.0],
-        [label.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20.0],
-        [label.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-6.0]
+        [accent.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
+        [accent.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [accent.widthAnchor constraintEqualToConstant:PPSpaceXXS],
+        [accent.heightAnchor constraintEqualToConstant:PPSpaceMD],
+        [label.leadingAnchor constraintEqualToAnchor:accent.trailingAnchor constant:PPSpaceSM],
+        [label.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
+        [label.topAnchor constraintGreaterThanOrEqualToAnchor:header.topAnchor constant:PPSpaceSM],
+        [label.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceXS]
     ]];
-    
+
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     return header;
 }
 
@@ -1030,52 +1785,83 @@ static const void *kHasAnimatedFormCellKey = &kHasAnimatedFormCellKey;
 forRowAtIndexPath:(NSIndexPath *)indexPath {
 
     [Styling applyBackgroundStyleForTableView:tableView cell:cell indexPath:indexPath useRowCardMode:NO];
+    XLFormRowDescriptor *row = [self.form formRowAtIndex:indexPath];
 
-    // Dynamic Premium Font and Color Overrides for Form Rows
     cell.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     cell.textLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
-    cell.textLabel.textColor = PrimaryTextClr;
+    cell.textLabel.textColor = [UIColor ppTextPrimary];
     cell.textLabel.adjustsFontForContentSizeCategory = YES;
-    
+
     cell.detailTextLabel.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
-    cell.detailTextLabel.textColor = SeconderyTextClr;
+    cell.detailTextLabel.textColor = [UIColor ppTextSecondary];
     cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
-    
+
     UITextField *textField = (UITextField *)[self findSubviewOfClass:[UITextField class] inView:cell];
     if (textField) {
         textField.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
-        textField.textColor = PrimaryTextClr;
+        textField.textColor = [UIColor ppTextPrimary];
         textField.adjustsFontForContentSizeCategory = YES;
         textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
         textField.textAlignment = [Language alignmentForCurrentLanguage];
+        textField.accessibilityLabel = row.title;
     }
-    
+
     UITextView *textView = (UITextView *)[self findSubviewOfClass:[UITextView class] inView:cell];
     if (textView) {
         textView.font = PPAccessoryScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
-        textView.textColor = PrimaryTextClr;
+        textView.textColor = [UIColor ppTextPrimary];
         textView.adjustsFontForContentSizeCategory = YES;
         textView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
         textView.textAlignment = [Language alignmentForCurrentLanguage];
+        textView.accessibilityLabel = row.title;
     }
-    
+
     UISegmentedControl *segmented = (UISegmentedControl *)[self findSubviewOfClass:[UISegmentedControl class] inView:cell];
     if (segmented) {
-        segmented.selectedSegmentTintColor = AppPrimaryClr;
-        
+        segmented.selectedSegmentTintColor = [UIColor ppPrimary];
+        segmented.backgroundColor = [UIColor ppSurfaceOverlay];
+        segmented.accessibilityLabel = row.title;
+
         NSDictionary *normalAttributes = @{
             NSFontAttributeName: PPAccessoryScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote),
-            NSForegroundColorAttributeName: SeconderyTextClr
+            NSForegroundColorAttributeName: [UIColor ppTextSecondary]
         };
         NSDictionary *selectedAttributes = @{
             NSFontAttributeName: PPAccessoryScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote),
-            NSForegroundColorAttributeName: [UIColor whiteColor]
+            NSForegroundColorAttributeName: PPOnPrimaryColor()
         };
         [segmented setTitleTextAttributes:normalAttributes forState:UIControlStateNormal];
         [segmented setTitleTextAttributes:selectedAttributes forState:UIControlStateSelected];
-        segmented.layer.cornerRadius = 10.0;
+        segmented.layer.cornerRadius = PPCornerSmall;
         segmented.clipsToBounds = YES;
     }
+
+    if ([row.tag isEqualToString:@"finalPrice"]) {
+        cell.contentView.backgroundColor = [UIColor ppPrimaryShiner];
+        cell.textLabel.textColor = [UIColor ppAccentText];
+        if (textField) textField.textColor = [UIColor ppAccentText];
+    }
+
+    if ([cell isKindOfClass:[PPImageCollectionRow class]]) {
+        PPImageCollectionRow *imageRow = (PPImageCollectionRow *)cell;
+        if (!self.imageDelegateProxy) {
+            self.imageDelegateProxy = [PPAccessoryImageCollectionDelegateProxy new];
+            self.imageDelegateProxy.owner = self;
+        }
+        self.imageDelegateProxy.row = imageRow;
+        imageRow.imageCollection.delegate = self.imageDelegateProxy;
+        imageRow.imageCollection.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        imageRow.imageCollection.accessibilityLabel = kLang(@"Images");
+        cell.accessibilityLabel = kLang(@"Images");
+    }
+
+    if ([row.rowType isEqualToString:XLFormRowDescriptorTypeSelectorPush] ||
+        [row.rowType isEqualToString:XLFormRowDescriptorTypeDate]) {
+        cell.accessibilityLabel = row.title;
+        cell.accessibilityValue = row.displayTextValue;
+    }
+
+    [self pp_applyValidationStyleToCell:cell row:row];
 
     // Spring Staggered Entrance Animation for Form Rows
     if (!UIAccessibilityIsReduceMotionEnabled() && !objc_getAssociatedObject(cell, kHasAnimatedFormCellKey)) {

@@ -1,11 +1,11 @@
 #import "AlertHelper.h"
 
 #ifndef PrimaryTextClr
-#define PrimaryTextClr (AppPrimaryTextClr ?: UIColor.labelColor)
+#define PrimaryTextClr AppPrimaryTextClr
 #endif
 
 #ifndef SeconderyTextClr
-#define SeconderyTextClr (AppSecondaryTextClr ?: UIColor.secondaryLabelColor)
+#define SeconderyTextClr AppSecondaryTextClr
 #endif
 
 static UIWindow *ppAlertOverlayWindow = nil;
@@ -70,27 +70,27 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     PPAlertAppearance *appearance = [[self alloc] init];
     switch (type) {
         case PPAlertTypeSuccess:
-            appearance.accentColor = UIColor.systemGreenColor;
+            appearance.accentColor = [UIColor ppSuccess];
             appearance.iconSystemName = @"checkmark.seal.fill";
             break;
         case PPAlertTypeError:
-            appearance.accentColor = UIColor.systemRedColor;
+            appearance.accentColor = [UIColor ppError];
             appearance.iconSystemName = @"xmark.seal.fill";
             break;
         case PPAlertTypeWarning:
-            appearance.accentColor = UIColor.systemOrangeColor;
+            appearance.accentColor = [UIColor ppWarning];
             appearance.iconSystemName = @"exclamationmark.triangle.fill";
             break;
         case PPAlertTypeInfo:
-            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+            appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"info.circle.fill";
             break;
         case PPAlertTypeConfirmation:
-            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+            appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"questionmark.circle.fill";
             break;
         case PPAlertTypeTextInput:
-            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
+            appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"square.and.pencil.circle.fill";
             break;
     }
@@ -460,7 +460,7 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
             borderColor = UIColor.clearColor;
             break;
         case PPAlertActionStyleDestructive:
-            backgroundColor = UIColor.systemRedColor;
+            backgroundColor = [UIColor ppError];
             titleColor = UIColor.whiteColor;
             borderColor = UIColor.clearColor;
             break;

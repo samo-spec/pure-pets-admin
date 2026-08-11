@@ -425,47 +425,18 @@ static NSArray<NSString *> *PPLegacyPermissionNames(NSString *canonicalName) {
         return;
     }
 
-    // Use the new Cloud Function for user status management
+    // The callable owns the status, compatibility mirrors, context, and audit log.
     NSString *newStatus = blocked ? @"blocked" : @"active";
-    __weak typeof(self) weakSelf = self;
-    [AdminService updateUserStatus:uid status:newStatus completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
-        __strong typeof(weakSelf) self = weakSelf;
+    [AdminService updateUserStatus:uid
+                            status:newStatus
+                            reason:reason
+                          duration:duration
+                        completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
+        (void)result;
         if (error) {
             DLog(@"[RP] updateUserStatus failed: %@", error.localizedDescription);
         }
-
-        // Also write block metadata to UsersCol for backward compat
-        NSMutableDictionary *payload = [@{
-            @"isBlocked": @(blocked),
-            @"blocked": @(blocked),
-            @"accountStatus": blocked ? @"blocked" : @"active",
-            @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]
-        } mutableCopy];
-
-        if (blocked) {
-            payload[@"blockedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
-            payload[@"blockedReason"] = reason.length ? reason : @"";
-            payload[@"blockedDuration"] = duration.length ? duration : @"";
-            payload[@"blockedBy"] = [FIRAuth auth].currentUser.uid ?: @"admin";
-        } else {
-            payload[@"unblockedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
-            payload[@"blockedReason"] = [FIRFieldValue fieldValueForDelete];
-            payload[@"blockedDuration"] = [FIRFieldValue fieldValueForDelete];
-            payload[@"blockedBy"] = [FIRFieldValue fieldValueForDelete];
-        }
-
-        [[self userDoc:uid] setData:payload merge:YES completion:^(NSError * _Nullable writeError) {
-            NSError *finalError = writeError ?: error;
-            if (!finalError) {
-                [self logAdminAuditAction:@"set_blocked"
-                                targetUID:uid
-                                   before:@{}
-                                    after:@{@"isBlocked": @(blocked)}
-                                   reason:reason
-                               completion:nil];
-            }
-            if (completion) completion(finalError);
-        }];
+        if (completion) completion(error);
     }];
 }
 

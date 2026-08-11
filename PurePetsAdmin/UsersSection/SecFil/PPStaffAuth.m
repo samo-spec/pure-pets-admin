@@ -2,10 +2,11 @@
 //  PPStaffAuth.m
 //  PurePetsAdmin
 //
-//  Staff authorization sourced from `UsersCol/{uid}`.
+//  Staff authorization sourced from canonical `staff_users/{uid}`.
 //
 
 #import "PPStaffAuth.h"
+#import <CoreFoundation/CoreFoundation.h>
 @import Firebase;
 @import FirebaseAuth;
 
@@ -22,7 +23,7 @@ PPStaffRole const PPStaffRoleViewer            = @"viewer";
 PPStaffStatus const PPStaffStatusActive   = @"active";
 PPStaffStatus const PPStaffStatusDisabled = @"disabled";
 
-static NSString * const kPPStaffAuthUsersCollection = @"UsersCol";
+static NSString * const kPPStaffAuthUsersCollection = @"staff_users";
 static NSString * const kPPStaffAuthAccountTypeStaff = @"staff";
 
 #pragma mark - Permission Key Constants
@@ -110,114 +111,72 @@ static NSString *PPStaffSafeString(id value) {
     return @"";
 }
 
-static NSString *PPStaffLowercaseString(id value) {
-    return [PPStaffSafeString(value).lowercaseString copy];
-}
-
 static NSDictionary *PPStaffSafeDictionary(id value) {
     return [value isKindOfClass:NSDictionary.class] ? (NSDictionary *)value : @{};
 }
 
-static NSArray<NSString *> *PPStaffUniqueStrings(id value) {
+static BOOL PPStaffStrictBooleanTrue(id value) {
+    if (![value isKindOfClass:NSNumber.class]) return NO;
+    CFTypeRef type = (__bridge CFTypeRef)value;
+    return CFGetTypeID(type) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)type);
+}
+
+static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
     NSMutableOrderedSet<NSString *> *ordered = [NSMutableOrderedSet orderedSet];
 
-    if ([value isKindOfClass:NSArray.class]) {
-        for (id entry in (NSArray *)value) {
-            NSString *normalized = PPStaffSafeString(entry);
-            if (normalized.length > 0) {
-                [ordered addObject:normalized];
-            }
-        }
-        return ordered.array ?: @[];
+    if (![value isKindOfClass:NSArray.class]) {
+        return @[];
     }
 
-    if ([value isKindOfClass:NSDictionary.class]) {
-        NSDictionary *dictionary = (NSDictionary *)value;
-        for (id rawKey in dictionary) {
-            NSString *permission = PPStaffSafeString(rawKey);
-            if (permission.length == 0) {
-                continue;
-            }
-
-            id rawAllowed = dictionary[rawKey];
-            BOOL allowed = NO;
-            if ([rawAllowed isKindOfClass:NSDictionary.class]) {
-                allowed = [rawAllowed[@"allowed"] respondsToSelector:@selector(boolValue)] ? [rawAllowed[@"allowed"] boolValue] : NO;
-            } else if ([rawAllowed respondsToSelector:@selector(boolValue)]) {
-                allowed = [rawAllowed boolValue];
-            }
-
-            if (allowed) {
-                [ordered addObject:permission];
-            }
+    for (id entry in (NSArray *)value) {
+        NSString *normalized = PPStaffSafeString(entry);
+        if (normalized.length > 0 && [normalized containsString:@"."]) {
+            [ordered addObject:normalized];
         }
     }
 
     return ordered.array ?: @[];
 }
 
-static NSArray<NSString *> *PPStaffConsolePermissionKeys(id value) {
-    NSMutableArray<NSString *> *consolePermissions = [NSMutableArray array];
-    for (NSString *permission in PPStaffUniqueStrings(value)) {
-        if ([permission containsString:@"."]) {
-            [consolePermissions addObject:permission];
+static PPStaffRole PPStaffNormalizedRole(id value) {
+    NSString *rawRole = PPStaffSafeString(value);
+    if (rawRole.length == 0) {
+        return PPStaffRoleViewer;
+    }
+
+    // Mirror infra's explicit legacy migration aliases; arbitrary role labels
+    // must never become an elevated Admin role on the client.
+    if ([rawRole isEqualToString:@"SuperAdmin"]) return PPStaffRoleSuperAdmin;
+    if ([rawRole isEqualToString:@"Owner"]) return PPStaffRoleOwner;
+    if ([rawRole isEqualToString:@"Accountant"]) return PPStaffRolePaymentsManager;
+    if ([rawRole isEqualToString:@"InventoryManager"]) return PPStaffRoleInventoryManager;
+    if ([rawRole isEqualToString:@"Staff"]) return PPStaffRoleViewer;
+    if ([rawRole isEqualToString:@"Viewer"]) return PPStaffRoleViewer;
+
+    NSMutableString *canonicalCandidate = [rawRole.lowercaseString mutableCopy];
+    NSCharacterSet *allowedCharacters = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz_"];
+    for (NSUInteger index = 0; index < canonicalCandidate.length; index++) {
+        unichar character = [canonicalCandidate characterAtIndex:index];
+        if (![allowedCharacters characterIsMember:character]) {
+            [canonicalCandidate replaceCharactersInRange:NSMakeRange(index, 1) withString:@"_"];
         }
     }
-    return consolePermissions.copy;
-}
 
-static PPStaffRole PPStaffNormalizedRole(id value) {
-    NSString *role = PPStaffLowercaseString(value);
-    if (role.length == 0) {
-        return PPStaffRoleViewer;
+    NSArray<NSString *> *knownRoles = @[
+        PPStaffRoleSuperAdmin,
+        PPStaffRoleOwner,
+        PPStaffRoleOperationsManager,
+        PPStaffRoleInventoryManager,
+        PPStaffRolePaymentsManager,
+        PPStaffRoleSupportAgent,
+        PPStaffRoleViewer,
+    ];
+    if ([knownRoles containsObject:canonicalCandidate]) {
+        return canonicalCandidate;
     }
 
-    if ([role isEqualToString:PPStaffRoleSuperAdmin] ||
-        [role isEqualToString:@"superadmin"] ||
-        [role isEqualToString:@"super admin"] ||
-        [role isEqualToString:@"admin"]) {
-        return PPStaffRoleSuperAdmin;
-    }
-
-    if ([role isEqualToString:PPStaffRoleOwner]) {
-        return PPStaffRoleOwner;
-    }
-
-    if ([role isEqualToString:PPStaffRoleOperationsManager] ||
-        [role isEqualToString:@"operationsmanager"] ||
-        [role isEqualToString:@"operations manager"] ||
-        [role isEqualToString:@"moderator"]) {
-        return PPStaffRoleOperationsManager;
-    }
-
-    if ([role isEqualToString:PPStaffRoleInventoryManager] ||
-        [role isEqualToString:@"inventorymanager"] ||
-        [role isEqualToString:@"inventory manager"] ||
-        [role isEqualToString:@"storemanager"] ||
-        [role isEqualToString:@"store manager"]) {
-        return PPStaffRoleInventoryManager;
-    }
-
-    if ([role isEqualToString:PPStaffRolePaymentsManager] ||
-        [role isEqualToString:@"paymentsmanager"] ||
-        [role isEqualToString:@"payments manager"] ||
-        [role isEqualToString:@"accountant"]) {
-        return PPStaffRolePaymentsManager;
-    }
-
-    if ([role isEqualToString:PPStaffRoleSupportAgent] ||
-        [role isEqualToString:@"supportagent"] ||
-        [role isEqualToString:@"support agent"] ||
-        [role isEqualToString:@"staff"] ||
-        [role isEqualToString:@"vet"]) {
-        return PPStaffRoleSupportAgent;
-    }
-
-    if ([role isEqualToString:PPStaffRoleViewer] ||
-        [role isEqualToString:@"user"]) {
-        return PPStaffRoleViewer;
-    }
-
+    // Infra normalizes unknown/custom labels to viewer. Preserve that exact
+    // fallback so role display, default permissions, and client IAM agree.
     return PPStaffRoleViewer;
 }
 
@@ -270,25 +229,6 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
     return keys;
 }
 
-static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
-                                                       NSDictionary *staffProfile,
-                                                       PPStaffRole role) {
-    NSArray<NSString *> *explicitPermissions = PPStaffConsolePermissionKeys(staffProfile[@"permissions"]);
-    if (explicitPermissions.count == 0) {
-        explicitPermissions = PPStaffConsolePermissionKeys(root[@"permissions"]);
-    }
-
-    NSArray<NSString *> *permissions = explicitPermissions.count > 0
-        ? explicitPermissions
-        : [PPStaffAuth defaultPermissionsForStaffRole:role];
-
-    NSMutableOrderedSet<NSString *> *normalized = [NSMutableOrderedSet orderedSetWithArray:permissions];
-    if (![normalized containsObject:kStaffPermDashboardView]) {
-        [normalized addObject:kStaffPermDashboardView];
-    }
-    return normalized.array ?: @[];
-}
-
 #pragma mark - PPStaffDoc
 
 @implementation PPStaffDoc
@@ -296,38 +236,60 @@ static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
 - (instancetype)initWithDictionary:(NSDictionary *)dict uid:(NSString *)uid {
     if ((self = [super init])) {
         NSDictionary *root = PPStaffSafeDictionary(dict);
-        NSDictionary *staffProfile = PPStaffSafeDictionary(root[@"staffProfile"]);
 
-        NSString *resolvedRoleValue = PPStaffSafeString(staffProfile[@"role"]);
+        NSString *resolvedRoleValue = PPStaffSafeString(root[@"role"]);
         if (resolvedRoleValue.length == 0) resolvedRoleValue = PPStaffSafeString(root[@"staffRole"]);
         if (resolvedRoleValue.length == 0) resolvedRoleValue = PPStaffSafeString(root[@"roleName"]);
-        if (resolvedRoleValue.length == 0) resolvedRoleValue = PPStaffSafeString(root[@"role"]);
 
-        NSString *statusValue = PPStaffLowercaseString(staffProfile[@"status"]);
-        if (statusValue.length == 0) statusValue = PPStaffLowercaseString(root[@"status"]);
+        // Firestore Rules only admit the exact literal `active`; do not make
+        // status case-insensitive here or grant client-only access.
+        NSString *statusValue = PPStaffSafeString(root[@"status"]);
 
         _uid = PPStaffSafeString(uid);
-        _accountType = PPStaffLowercaseString(root[@"accountType"]);
+        // Collection membership is the staff authority. Keep the normalized
+        // value for legacy consumers that still render UserModel.accountType.
+        _accountType = kPPStaffAuthAccountTypeStaff;
+        _roleIdentifier = resolvedRoleValue.length > 0 ? resolvedRoleValue : PPStaffRoleViewer;
+        NSString *storedRoleName = PPStaffSafeString(root[@"roleName"]);
+        _roleName = storedRoleName.length > 0 ? storedRoleName : nil;
         _role = PPStaffNormalizedRole(resolvedRoleValue);
-        _status = [statusValue isEqualToString:PPStaffStatusDisabled] ? PPStaffStatusDisabled : PPStaffStatusActive;
-        _permissions = PPStaffResolvedPermissions(root, staffProfile, _role);
-        _scope = PPStaffSafeDictionary(staffProfile[@"scope"]).count > 0 ? PPStaffSafeDictionary(staffProfile[@"scope"]) : PPStaffSafeDictionary(root[@"scope"]);
+        _status = [statusValue isEqualToString:PPStaffStatusActive] ? PPStaffStatusActive : PPStaffStatusDisabled;
+        // Infra resolves role defaults when the stored permissions array is
+        // absent or empty. Mirror that rule here so the client does not deny
+        // an otherwise valid canonical staff record before the backend does.
+        NSArray<NSString *> *explicitPermissions = PPStaffCanonicalPermissionKeys(root[@"permissions"]);
+        _permissions = explicitPermissions.count > 0
+            ? explicitPermissions
+            : [PPStaffAuth defaultPermissionsForStaffRole:_role];
+        _scope = PPStaffSafeDictionary(root[@"scope"]);
+        NSString *displayName = PPStaffSafeString(root[@"displayName"]);
+        if (displayName.length == 0) displayName = PPStaffSafeString(root[@"name"]);
+        if (displayName.length == 0) displayName = PPStaffSafeString(root[@"UserName"]);
+        _displayName = displayName.length > 0 ? displayName : nil;
+        NSString *email = PPStaffSafeString(root[@"email"]);
+        if (email.length == 0) email = PPStaffSafeString(root[@"UserEmail"]);
+        _email = email.length > 0 ? email : nil;
+        NSString *phone = PPStaffSafeString(root[@"phone"]);
+        if (phone.length == 0) phone = PPStaffSafeString(root[@"phoneNumber"]);
+        if (phone.length == 0) phone = PPStaffSafeString(root[@"MobileNo"]);
+        _phone = phone.length > 0 ? phone : nil;
+        NSString *photoURL = PPStaffSafeString(root[@"photoURL"]);
+        if (photoURL.length == 0) photoURL = PPStaffSafeString(root[@"photoUrl"]);
+        if (photoURL.length == 0) photoURL = PPStaffSafeString(root[@"UserImageUrl"]);
+        _photoURL = photoURL.length > 0 ? photoURL : nil;
+        _verified = PPStaffStrictBooleanTrue(root[@"emailVerified"] ?: root[@"verified"]);
 
-        NSNumber *claimsVersion = [staffProfile[@"claimsVersion"] isKindOfClass:NSNumber.class]
-            ? staffProfile[@"claimsVersion"]
-            : ([root[@"claimsVersion"] isKindOfClass:NSNumber.class] ? root[@"claimsVersion"] : nil);
+        NSNumber *claimsVersion = [root[@"claimsVersion"] isKindOfClass:NSNumber.class] ? root[@"claimsVersion"] : nil;
         _claimsVersion = claimsVersion.integerValue;
 
-        NSString *updatedBy = PPStaffSafeString(staffProfile[@"updatedBy"]);
-        if (updatedBy.length == 0) updatedBy = PPStaffSafeString(root[@"updatedBy"]);
+        NSString *updatedBy = PPStaffSafeString(root[@"updatedBy"]);
         _updatedBy = updatedBy.length > 0 ? updatedBy : nil;
     }
     return self;
 }
 
 - (BOOL)isActive {
-    return [self.accountType isEqualToString:kPPStaffAuthAccountTypeStaff] &&
-           ![self.status isEqualToString:PPStaffStatusDisabled];
+    return [self.status isEqualToString:PPStaffStatusActive];
 }
 
 - (BOOL)isAdmin {
@@ -338,15 +300,19 @@ static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
     return self.isActive && [self hasPermission:kStaffPermDashboardView];
 }
 
+- (BOOL)hasGlobalScope {
+    return PPStaffStrictBooleanTrue(self.scope[@"global"]);
+}
+
 - (BOOL)hasPermission:(NSString *)perm {
     if (!perm.length || !self.isActive) return NO;
-    if (self.isAdmin) return YES;
+    if (self.isAdmin || self.hasGlobalScope) return YES;
     return [self.permissions containsObject:perm];
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms {
     if (!self.isActive) return NO;
-    if (self.isAdmin) return YES;
+    if (self.isAdmin || self.hasGlobalScope) return YES;
     for (NSString *permission in perms) {
         if ([self.permissions containsObject:permission]) {
             return YES;
@@ -391,8 +357,7 @@ static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
         return nil;
     }
 
-    PPStaffDoc *doc = [[PPStaffDoc alloc] initWithDictionary:snapshot.data ?: @{} uid:snapshot.documentID ?: @""];
-    return doc.isActive || [doc.accountType isEqualToString:kPPStaffAuthAccountTypeStaff] ? doc : nil;
+    return [[PPStaffDoc alloc] initWithDictionary:snapshot.data ?: @{} uid:snapshot.documentID ?: @""];
 }
 
 - (void)fetchStaffDoc:(NSString *)uid completion:(PPStaffDocCompletion)completion {
@@ -431,13 +396,17 @@ static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
             if (block) block(nil, error);
             return;
         }
-        if (block) block([self pp_staffDocFromSnapshot:snapshot], nil);
+        PPStaffDoc *doc = [self pp_staffDocFromSnapshot:snapshot];
+        if ([[FIRAuth auth].currentUser.uid isEqualToString:uid]) {
+            self.cachedCurrentStaff = doc.canAccessStaffWorkspace ? doc : nil;
+        }
+        if (block) block(doc, nil);
     }];
 }
 
 - (void)fetchAllStaff:(PPStaffListCompletion)completion {
     FIRQuery *query = [[self.db collectionWithPath:kPPStaffAuthUsersCollection]
-        queryWhereField:@"accountType" isEqualTo:kPPStaffAuthAccountTypeStaff];
+        queryWhereField:@"status" isEqualTo:PPStaffStatusActive];
 
     [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -459,8 +428,7 @@ static NSArray<NSString *> *PPStaffResolvedPermissions(NSDictionary *root,
 }
 
 - (id<FIRListenerRegistration>)listenAllStaff:(PPStaffListCompletion)block {
-    FIRQuery *query = [[self.db collectionWithPath:kPPStaffAuthUsersCollection]
-        queryWhereField:@"accountType" isEqualTo:kPPStaffAuthAccountTypeStaff];
+    FIRQuery *query = [self.db collectionWithPath:kPPStaffAuthUsersCollection];
 
     return [query addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         if (error) {
