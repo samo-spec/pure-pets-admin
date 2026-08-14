@@ -16,28 +16,24 @@ struct CommandCenterView: View {
     }
 
     var body: some View {
-        NavigationView {
-            GeometryReader { geometry in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 28) {
-                        commandHeader
-                        phaseContent(availableWidth: geometry.size.width)
-                            .transition(.opacity)
-                            .animation(
-                                reduceMotion ? nil : .easeOut(duration: 0.25),
-                                value: phaseAnimationKey
-                            )
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 18)
-                    .padding(.bottom, 30)
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 24) {
+                    commandMetadata
+                    phaseContent(availableWidth: geometry.size.width)
+                        .transition(.opacity)
+                        .animation(
+                            reduceMotion ? nil : .easeOut(duration: 0.25),
+                            value: phaseAnimationKey
+                        )
                 }
-                .background(AdminSurface.background.ignoresSafeArea())
-                .refreshable { await waitForRefresh() }
+                .padding(.horizontal, geometry.size.width >= 760 ? 28 : 20)
+                .padding(.top, 18)
+                .padding(.bottom, 30)
             }
-            .navigationBarHidden(true)
+            .background(AdminSurface.background.ignoresSafeArea())
+            .refreshable { await waitForRefresh() }
         }
-        .navigationViewStyle(.stack)
         .onAppear {
             state.loadIfNeeded()
             router.consumePendingRoute(session: session)
@@ -65,64 +61,21 @@ struct CommandCenterView: View {
         }
     }
 
-    private var commandHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(Language.get("CommandCenter_Eyebrow", alter: nil))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primary)
-                        .textCase(.uppercase)
-                    Text(Language.get("CommandCenter_Title", alter: nil))
-                        .font(AdminType.title)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 12)
-
-                Button(action: state.refresh) {
-                    Group {
-                        if state.isRefreshing {
-                            ProgressView().tint(AdminSurface.primary)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                    .frame(width: 44, height: 44)
-                    .background(AdminSurface.control, in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(state.isRefreshing)
-                .accessibilityLabel(Language.get("CommandCenter_Refresh", alter: nil))
-            }
-
-            Text(session.displayName)
-                .font(AdminType.calloutBold)
-                .foregroundColor(AdminSurface.primaryText)
-
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 8) {
-                        roleMetadata
-                        snapshotMetadata
-                    }
-                } else {
-                    HStack(spacing: 10) {
-                        roleMetadata
-                        Spacer(minLength: 12)
-                        snapshotMetadata
-                    }
-                }
-            }
-            .font(AdminType.footnote)
-            .foregroundColor(AdminSurface.secondaryText)
-            .accessibilityElement(children: .combine)
+    private var commandMetadata: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            staffDisplayName
+            snapshotMetadata
         }
+        .font(AdminType.footnote)
+        .foregroundColor(AdminSurface.secondaryText)
+        .accessibilityElement(children: .combine)
     }
 
-    private var roleMetadata: some View {
-        Label(session.localizedRoleName, systemImage: "person.badge.shield.checkmark")
+    private var staffDisplayName: some View {
+        Text(session.displayName)
+            .font(AdminType.calloutBold)
+            .foregroundColor(AdminSurface.primaryText)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     @ViewBuilder
@@ -204,36 +157,113 @@ struct CommandCenterView: View {
 
     @ViewBuilder
     private func loadedContent(_ snapshot: AdminCommandSnapshot, availableWidth: CGFloat) -> some View {
-        let showsExpandedReadout = availableWidth >= 760 && !dynamicTypeSize.isAccessibilitySize
+        let usesRegularComposition = availableWidth >= 760 && !dynamicTypeSize.isAccessibilitySize
 
-        operationalBriefing(snapshot)
+        capabilityLens(snapshot, usesHorizontalLayout: usesRegularComposition)
 
-        if !snapshot.failedAreas.isEmpty {
-            partialFailure(snapshot.failedAreas)
+        if usesRegularComposition {
+            HStack(alignment: .top, spacing: 24) {
+                VStack(alignment: .leading, spacing: 24) {
+                    commandSpine(snapshot.attentionItems)
+                    if !snapshot.failedAreas.isEmpty {
+                        partialFailure(snapshot.failedAreas)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 24) {
+                    operationalBriefing(snapshot)
+                    metricSection(
+                        titleKey: "CommandCenter_Live_Operations",
+                        detailKey: "CommandCenter_Live_Operations_Detail",
+                        metrics: operationsMetrics(snapshot.operations),
+                        showsExpandedReadout: false
+                    )
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        } else {
+            if !snapshot.failedAreas.isEmpty {
+                partialFailure(snapshot.failedAreas)
+            }
+            commandSpine(snapshot.attentionItems)
+            operationalBriefing(snapshot)
+            metricSection(
+                titleKey: "CommandCenter_Live_Operations",
+                detailKey: "CommandCenter_Live_Operations_Detail",
+                metrics: operationsMetrics(snapshot.operations),
+                showsExpandedReadout: false
+            )
         }
 
-        if snapshot.attentionItems.count > 1 {
-            attentionSection(Array(snapshot.attentionItems.dropFirst()))
-        }
-
-        metricSection(
-            titleKey: "CommandCenter_Live_Operations",
-            detailKey: "CommandCenter_Live_Operations_Detail",
-            metrics: operationsMetrics(snapshot.operations),
-            showsExpandedReadout: showsExpandedReadout
-        )
         metricSection(
             titleKey: "CommandCenter_Business_Snapshot",
             detailKey: "CommandCenter_Business_Snapshot_Detail",
             metrics: businessMetrics(snapshot.business),
-            showsExpandedReadout: showsExpandedReadout
+            showsExpandedReadout: usesRegularComposition
         )
-
         contextualActions
     }
 
+    private func capabilityLens(_ snapshot: AdminCommandSnapshot, usesHorizontalLayout: Bool) -> some View {
+        Group {
+            if usesHorizontalLayout {
+                HStack(spacing: 16) {
+                    capabilityLensIdentity
+                    Spacer(minLength: 16)
+                    capabilityLensReadout(snapshot)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    capabilityLensIdentity
+                    capabilityLensReadout(snapshot)
+                }
+            }
+        }
+        .padding(18)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(AdminSurface.primary.opacity(0.22)))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var capabilityLensIdentity: some View {
+        HStack(spacing: 13) {
+            Image(systemName: "scope")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(AdminSurface.primary)
+                .frame(width: 48, height: 48)
+                .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Language.get("CommandCenter_Capability_Lens", alter: nil))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primary)
+                Text(session.localizedRoleName)
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func capabilityLensReadout(_ snapshot: AdminCommandSnapshot) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(String(
+                format: Language.get("CommandCenter_Authorized_Lanes_Format", alter: nil),
+                formattedCount(snapshot.requestedAreas.count)
+            ))
+            .font(AdminType.calloutBold)
+            .foregroundColor(AdminSurface.primaryText)
+            Text(Language.get("CommandCenter_Capability_Lens_Detail", alter: nil))
+                .font(AdminType.footnote)
+                .foregroundColor(AdminSurface.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func operationalBriefing(_ snapshot: AdminCommandSnapshot) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 9) {
                 HStack(alignment: .center, spacing: 10) {
                     Label(
@@ -263,19 +293,14 @@ struct CommandCenterView: View {
             }
             .accessibilityElement(children: .combine)
 
-            if let priorityItem = snapshot.attentionItems.first {
-                Divider().overlay(healthColor(snapshot.health).opacity(0.24))
-                priorityDispatch(priorityItem)
-            }
-
             Text(Language.get("CommandCenter_Operational_Signal", alter: nil))
                 .font(AdminType.footnote)
                 .foregroundColor(AdminSurface.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(20)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(healthColor(snapshot.health).opacity(0.34)))
+        .padding(18)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(healthColor(snapshot.health).opacity(0.34)))
         .overlay(alignment: .leading) {
             Capsule()
                 .fill(healthColor(snapshot.health))
@@ -285,49 +310,102 @@ struct CommandCenterView: View {
         }
     }
 
-    private func priorityDispatch(_ item: AttentionItem) -> some View {
-        Button { router.present(item.route, session: session) } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    Image(systemName: item.symbol)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(severityColor(item.severity))
-                        .frame(width: 34, height: 34)
-                        .background(
-                            severityColor(item.severity).opacity(0.11),
-                            in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        )
+    private func commandSpine(_ items: [AttentionItem]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            sectionHeader("CommandCenter_Command_Spine", detailKey: "CommandCenter_Command_Spine_Detail")
+
+            if items.isEmpty {
+                ContentUnavailableCompat(
+                    title: Language.get("CommandCenter_Attention_Clear_Title", alter: nil),
+                    message: Language.get("CommandCenter_Attention_Clear_Message", alter: nil),
+                    symbol: "checkmark.shield"
+                )
+            } else {
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(AdminSurface.primary.opacity(0.28))
+                        .frame(width: 3)
+                        .padding(.leading, 16)
+                        .padding(.vertical, 30)
                         .accessibilityHidden(true)
 
-                    Text(Language.get("CommandCenter_Next_Move", alter: nil))
+                    VStack(spacing: 14) {
+                        ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                            commandNode(item, rank: index + 1, isPrimary: index == 0)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func commandNode(_ item: AttentionItem, rank: Int, isPrimary: Bool) -> some View {
+        Button { router.present(item.route, session: session) } label: {
+            HStack(alignment: .top, spacing: 14) {
+                Text(formattedCount(rank))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(isPrimary ? Color.white : severityColor(item.severity))
+                    .monospacedDigit()
+                    .frame(width: 34, height: 34)
+                    .background(
+                        isPrimary ? severityColor(item.severity) : severityColor(item.severity).opacity(0.12),
+                        in: Circle()
+                    )
+                    .overlay(Circle().stroke(severityColor(item.severity).opacity(isPrimary ? 0 : 0.28)))
+                    .accessibilityHidden(true)
+                    .zIndex(1)
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Label(
+                            isPrimary
+                                ? Language.get("CommandCenter_Direct_Priority", alter: nil)
+                                : Language.get("CommandCenter_Also_In_Queue", alter: nil),
+                            systemImage: item.symbol
+                        )
                         .font(AdminType.captionBold)
                         .foregroundColor(severityColor(item.severity))
 
-                    Spacer(minLength: 8)
+                        Spacer(minLength: 8)
 
-                    Text(formattedCount(item.count))
-                        .font(AdminType.title2)
-                        .foregroundColor(severityColor(item.severity))
-                        .monospacedDigit()
-                }
+                        Text(formattedCount(item.count))
+                            .font(AdminType.title2)
+                            .foregroundColor(severityColor(item.severity))
+                            .monospacedDigit()
+                    }
 
-                Text(Language.get(item.titleKey, alter: nil))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get(item.titleKey, alter: nil))
+                        .font(isPrimary ? AdminType.title2 : AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
 
-                HStack(alignment: .lastTextBaseline, spacing: 10) {
                     Text(Language.get(item.detailKey, alter: nil))
                         .font(AdminType.footnote)
                         .foregroundColor(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    Spacer(minLength: 8)
-
-                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                        .foregroundColor(AdminSurface.primary)
-                        .accessibilityHidden(true)
+                    HStack(spacing: 8) {
+                        Text(Language.get(item.route.titleKey, alter: nil))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primary)
+                        Spacer(minLength: 8)
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .foregroundColor(AdminSurface.primary)
+                            .accessibilityHidden(true)
+                    }
+                    .frame(minHeight: 44)
                 }
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isPrimary ? AdminSurface.surface : AdminSurface.control,
+                in: RoundedRectangle(cornerRadius: isPrimary ? 24 : 20, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: isPrimary ? 24 : 20, style: .continuous)
+                    .stroke(isPrimary ? severityColor(item.severity).opacity(0.40) : AdminSurface.hairline)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -335,26 +413,6 @@ struct CommandCenterView: View {
         .accessibilityLabel(Text(Language.get(item.titleKey, alter: nil)))
         .accessibilityValue(Text(formattedCount(item.count)))
         .accessibilityHint(Language.get("CommandCenter_Open_Detail", alter: nil))
-    }
-
-    private func attentionSection(_ items: [AttentionItem]) -> some View {
-        VStack(alignment: .leading, spacing: 11) {
-            sectionHeader("CommandCenter_Also_In_Queue", detailKey: "CommandCenter_Also_In_Queue_Detail")
-            VStack(spacing: 0) {
-                ForEach(items) { item in
-                    Button { router.present(item.route, session: session) } label: {
-                        attentionRow(item)
-                    }
-                    .buttonStyle(.plain)
-                    if item.id != items.last?.id {
-                        Divider().overlay(AdminSurface.hairline)
-                    }
-                }
-            }
-            .padding(.horizontal, 15)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AdminSurface.hairline))
-        }
     }
 
     private func metricSection(
@@ -504,85 +562,6 @@ struct CommandCenterView: View {
     }
 
     @ViewBuilder
-    private func attentionRow(_ item: AttentionItem) -> some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    attentionSymbol(item)
-                    Text(Language.get(item.titleKey, alter: nil))
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Text(Language.get(item.detailKey, alter: nil))
-                    .font(AdminType.footnote)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 8) {
-                    Text(formattedCount(item.count))
-                        .font(AdminType.title2)
-                        .foregroundColor(severityColor(item.severity))
-                        .monospacedDigit()
-                    Spacer(minLength: 8)
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .accessibilityHidden(true)
-                }
-            }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-            .accessibilityElement(children: .combine)
-            .accessibilityHint(Language.get("CommandCenter_Open_Detail", alter: nil))
-        } else {
-            HStack(spacing: 13) {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(severityColor(item.severity))
-                    .frame(width: 4, height: 42)
-                    .accessibilityHidden(true)
-
-                attentionSymbol(item)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(Language.get(item.titleKey, alter: nil))
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-                    Text(Language.get(item.detailKey, alter: nil))
-                        .font(AdminType.footnote)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 8)
-                Text(formattedCount(item.count))
-                    .font(AdminType.title2)
-                    .foregroundColor(severityColor(item.severity))
-                    .monospacedDigit()
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .accessibilityHidden(true)
-            }
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
-            .accessibilityElement(children: .combine)
-            .accessibilityHint(Language.get("CommandCenter_Open_Detail", alter: nil))
-        }
-    }
-
-    private func attentionSymbol(_ item: AttentionItem) -> some View {
-        Image(systemName: item.symbol)
-            .font(.system(size: 17, weight: .semibold))
-            .foregroundColor(severityColor(item.severity))
-            .frame(width: 34, height: 34)
-            .background(
-                severityColor(item.severity).opacity(0.11),
-                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
-            )
-            .accessibilityHidden(true)
-    }
-
-    @ViewBuilder
     private func metricRow(_ metric: CommandMetric) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 10) {
@@ -696,7 +675,7 @@ struct CommandCenterView: View {
     }
 
     private var contextualRoutes: [AdminRoute] {
-        [.paymentSettings, .notifications, .homeControl, .audit]
+        [.notifications, .homeControl, .audit]
             .filter { $0.isAuthorized(for: session) }
     }
 

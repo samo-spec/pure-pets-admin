@@ -33,6 +33,7 @@
 		A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */; };
 		A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */; };
 		A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */; };
+		A6C0000D2FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */; };
 		A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */; };
 		A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */; };
 		A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */; };
@@ -347,6 +348,7 @@
 		A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterModels.swift; sourceTree = "<group>"; };
 		A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterState.swift; sourceTree = "<group>"; };
 		A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterView.swift; sourceTree = "<group>"; };
+		A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandOrbitDirect.swift; sourceTree = "<group>"; };
 		A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Routing/AdminRoute.swift; sourceTree = "<group>"; };
 		A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/Session/PPAdminSessionBridge.h; sourceTree = "<group>"; };
 		A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/Session/PPAdminSessionBridge.m; sourceTree = "<group>"; };
@@ -1138,6 +1140,7 @@
 				A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */,
 				A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */,
 				A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */,
+				A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */,
 				A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */,
 				A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */,
 				A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */,
@@ -2052,6 +2055,7 @@
 				A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */,
 				A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */,
 				A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */,
+				A6C0000D2FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift in Sources */,
 				A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */,
 				A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */,
 				A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */,

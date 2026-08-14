@@ -44,6 +44,7 @@ static NSString * const PPHomeControlFieldUltraCare = @"PPULTRA_CARE_IS_ACTIVATE
 static NSString * const PPHomeControlFieldLegacyBar = @"PPUSE_LEGACY_BAR";
 static NSString * const PPHomeControlFieldUniversalCells = @"BBUniversalCellUseSwiftUI";
 static NSString * const PPHomeControlFieldPremiumCareVisible = @"premiumCareVisible";
+static NSNotificationName const PPHomeControlNavigationItemsDidChangeNotification = @"PPHomeControlNavigationItemsDidChangeNotification";
 
 @class PPHomeSectionMeta;
 static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSString *type, NSString *en, NSString *ar, NSString *descEn, NSString *descAr, BOOL visible, BOOL critical, BOOL conditional);
@@ -53,7 +54,7 @@ static UIColor *PPHomeControlAccentColor(void) {
 }
 
 static UIColor *PPHomeControlCanvasColor(void) {
-    return [UIColor ppBackground];
+    return UIColor.clearColor;
 }
 
 static UIColor *PPHomeControlSurfaceColor(void) {
@@ -371,6 +372,12 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    self.view.backgroundColor = PPHomeControlCanvasColor();
+    self.tableView.backgroundColor = PPHomeControlCanvasColor();
+}
+
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
     [self.heroBackground stopAnimations];
@@ -393,7 +400,9 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 
 - (void)pp_configureTableView {
     self.view.backgroundColor = PPHomeControlCanvasColor();
+    self.view.opaque = NO;
     self.tableView.backgroundColor = PPHomeControlCanvasColor();
+    self.tableView.opaque = NO;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
@@ -408,8 +417,6 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     self.searchController.obscuresBackgroundDuringPresentation = NO;
     self.searchController.searchBar.placeholder = kLang(@"HomeControl_SearchPlaceholder");
     self.searchController.searchBar.accessibilityLabel = kLang(@"HomeControl_SearchSections");
-    self.navigationItem.searchController = self.searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = NO;
     self.definesPresentationContext = YES;
 }
 
@@ -448,6 +455,9 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     stack.spacing = 18.0;
     stack.alignment = UIStackViewAlignmentFill;
     [header addSubview:stack];
+
+    [stack addArrangedSubview:self.searchController.searchBar];
+    [self.searchController.searchBar.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
 
     UIView *heroCard = [UIView new];
     heroCard.translatesAutoresizingMaskIntoConstraints = NO;
@@ -717,6 +727,8 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }
     self.navigationItem.leftBarButtonItems = leftItems;
     [self pp_updateSaveButton];
+    [[NSNotificationCenter defaultCenter] postNotificationName:PPHomeControlNavigationItemsDidChangeNotification
+                                                        object:self];
 }
 
 - (void)pp_updateGlobalSettingsAppearance {

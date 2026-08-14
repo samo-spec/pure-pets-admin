@@ -90,14 +90,17 @@ static void PPChatsApplyContinuousCorners(UIView *view, CGFloat radius) {
     }
 }
 
-static void PPChatsApplySoftCardChrome(UIView *view, CGFloat radius) {
+static void PPChatsApplyLedgerChrome(UIView *view, CGFloat radius) {
     PPChatsApplyContinuousCorners(view, radius);
-    view.layer.shadowColor = UIColor.blackColor.CGColor;
-    view.layer.shadowOpacity = 0.055;
-    view.layer.shadowRadius = 18.0;
-    view.layer.shadowOffset = CGSizeMake(0.0, 10.0);
     view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    view.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:0.58].CGColor;
+    view.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+}
+
+static BOOL PPChatsUsesAccessibilityLayout(UITraitCollection *traitCollection) {
+    if (@available(iOS 11.0, *)) {
+        return UIContentSizeCategoryIsAccessibilityCategory(traitCollection.preferredContentSizeCategory);
+    }
+    return NO;
 }
 
 static NSDate *PPChatsDateFromValue(id value) {
@@ -228,6 +231,34 @@ static UIColor *PPChatsStatusColor(NSString *status) {
     return PPChatsAccentColor();
 }
 
+static NSString *PPChatsMessageDisplayText(NSDictionary *message) {
+    NSString *text = PPChatsSafeString(message[@"text"]);
+    if (text.length == 0) text = PPChatsSafeString(message[@"message"]);
+    if (text.length > 0) return text;
+
+    switch ([message[@"type"] integerValue]) {
+        case 1: return PPChatsL(@"SupportChats_MessageImage");
+        case 2: return PPChatsL(@"SupportChats_MessageAudio");
+        case 3: return PPChatsL(@"SupportChats_MessageVideo");
+        case 4: return PPChatsL(@"SupportChats_MessageFile");
+        case 5: return PPChatsL(@"SupportChats_MessageSystem");
+        default: return PPChatsL(@"SupportChats_MessageFallback");
+    }
+}
+
+static BOOL PPChatsCanTransitionStatus(NSString *fromStatus, NSString *toStatus) {
+    NSString *from = PPChatsSafeString(fromStatus).lowercaseString;
+    NSString *to = PPChatsSafeString(toStatus).lowercaseString;
+    if (from.length == 0) from = @"waiting_for_agent";
+    if ([from isEqualToString:to]) return YES;
+    if ([from isEqualToString:@"waiting_for_agent"] || [from isEqualToString:@"active"]) {
+        return [@[@"waiting_for_agent", @"active", @"resolved", @"closed"] containsObject:to];
+    }
+    if ([from isEqualToString:@"resolved"]) return [@[@"active", @"closed"] containsObject:to];
+    if ([from isEqualToString:@"closed"]) return [to isEqualToString:@"active"];
+    return NO;
+}
+
 static BOOL PPChatsThreadIsUnread(NSDictionary *thread, NSString *currentStaffUID) {
     NSString *lastMessage = PPChatsSafeString(thread[@"lastMessage"]);
     if (lastMessage.length == 0) return NO;
@@ -332,12 +363,15 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @property (nonatomic, strong) UILabel *timeLabel;
 @property (nonatomic, strong) UILabel *statusLabel;
 @property (nonatomic, strong) UIView *unreadDot;
+@property (nonatomic, strong) UIStackView *metaStack;
+@property (nonatomic, strong) UIView *metaSpacer;
 - (void)configureWithName:(NSString *)name
                   message:(NSString *)message
                      time:(NSString *)time
                    status:(NSString *)status
               statusColor:(UIColor *)statusColor
                    unread:(BOOL)unread;
+- (void)updateForPreferredContentSizeCategory;
 @end
 
 @implementation PPSupportChatCell
@@ -353,15 +387,13 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         _cardView = [UIView new];
         _cardView.translatesAutoresizingMaskIntoConstraints = NO;
         _cardView.backgroundColor = PPChatsSurfaceColor();
-        PPChatsApplySoftCardChrome(_cardView, 22.0);
+        PPChatsApplyLedgerChrome(_cardView, PPCorner16);
         [self.contentView addSubview:_cardView];
 
         _iconPlate = [UIView new];
         _iconPlate.translatesAutoresizingMaskIntoConstraints = NO;
         _iconPlate.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
-        PPChatsApplyContinuousCorners(_iconPlate, 18.0);
-        _iconPlate.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-        _iconPlate.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.25].CGColor;
+        PPChatsApplyContinuousCorners(_iconPlate, PPCornerSmall);
         [_cardView addSubview:_iconPlate];
 
         _iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
@@ -375,29 +407,24 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         _nameLabel.font = PPChatsFont([Styling fontBold:16.0], UIFontTextStyleHeadline);
         _nameLabel.adjustsFontForContentSizeCategory = YES;
         _nameLabel.textColor = PPChatsPrimaryTextColor();
-        _nameLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        _nameLabel.textAlignment = NSTextAlignmentNatural;
         _nameLabel.numberOfLines = 1;
-        [_cardView addSubview:_nameLabel];
 
         _messageLabel = [UILabel new];
-        _messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _messageLabel.font = PPChatsFont([Styling fontRegular:13.0], UIFontTextStyleSubheadline);
         _messageLabel.adjustsFontForContentSizeCategory = YES;
         _messageLabel.textColor = PPChatsSecondaryTextColor();
-        _messageLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        _messageLabel.numberOfLines = 2;
-        [_cardView addSubview:_messageLabel];
+        _messageLabel.textAlignment = NSTextAlignmentNatural;
+        _messageLabel.numberOfLines = 1;
 
         _timeLabel = [UILabel new];
-        _timeLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _timeLabel.font = PPChatsFont([Styling fontRegular:11.0], UIFontTextStyleCaption1);
         _timeLabel.adjustsFontForContentSizeCategory = YES;
         _timeLabel.textColor = PPChatsSecondaryTextColor();
         _timeLabel.textAlignment = NSTextAlignmentNatural;
-        [_cardView addSubview:_timeLabel];
+        [_timeLabel setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
         _statusLabel = [UILabel new];
-        _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
         _statusLabel.font = PPChatsFont([Styling fontBold:11.0], UIFontTextStyleCaption1);
         _statusLabel.adjustsFontForContentSizeCategory = YES;
         _statusLabel.textAlignment = NSTextAlignmentCenter;
@@ -405,54 +432,76 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         PPChatsApplyContinuousCorners(_statusLabel, 12.0);
         _statusLabel.layer.masksToBounds = YES;
         _statusLabel.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-        [_cardView addSubview:_statusLabel];
+        [_statusLabel setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+
+        _metaSpacer = [UIView new];
+        _metaStack = [[UIStackView alloc] initWithArrangedSubviews:@[_statusLabel, _metaSpacer, _timeLabel]];
+        _metaStack.axis = UILayoutConstraintAxisHorizontal;
+        _metaStack.alignment = UIStackViewAlignmentCenter;
+        _metaStack.spacing = PPSpaceSM;
+        _metaStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+        UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[_nameLabel, _messageLabel, _metaStack]];
+        contentStack.translatesAutoresizingMaskIntoConstraints = NO;
+        contentStack.axis = UILayoutConstraintAxisVertical;
+        contentStack.alignment = UIStackViewAlignmentFill;
+        contentStack.spacing = PPSpaceXXS;
+        contentStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        [contentStack setCustomSpacing:PPSpaceXS afterView:_messageLabel];
+        [_cardView addSubview:contentStack];
 
         _unreadDot = [UIView new];
         _unreadDot.translatesAutoresizingMaskIntoConstraints = NO;
         _unreadDot.backgroundColor = PPChatsAccentColor();
-        PPChatsApplyContinuousCorners(_unreadDot, 5.0);
+        PPChatsApplyContinuousCorners(_unreadDot, 1.5);
         [_cardView addSubview:_unreadDot];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
-            [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16.0],
-            [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-16.0],
-            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
+            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceXXS],
+            [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPSpaceBase],
+            [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-PPSpaceBase],
+            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceXXS],
 
-            [_iconPlate.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:14.0],
+            [_iconPlate.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:PPSpaceMD],
             [_iconPlate.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
-            [_iconPlate.widthAnchor constraintEqualToConstant:44.0],
-            [_iconPlate.heightAnchor constraintEqualToConstant:44.0],
+            [_iconPlate.widthAnchor constraintEqualToConstant:40.0],
+            [_iconPlate.heightAnchor constraintEqualToConstant:40.0],
 
             [_iconView.centerXAnchor constraintEqualToAnchor:_iconPlate.centerXAnchor],
             [_iconView.centerYAnchor constraintEqualToAnchor:_iconPlate.centerYAnchor],
-            [_iconView.widthAnchor constraintEqualToConstant:24.0],
-            [_iconView.heightAnchor constraintEqualToConstant:24.0],
+            [_iconView.widthAnchor constraintEqualToConstant:21.0],
+            [_iconView.heightAnchor constraintEqualToConstant:21.0],
 
-            [_timeLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14.0],
-            [_timeLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-16.0],
+            [contentStack.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceSM],
+            [contentStack.leadingAnchor constraintEqualToAnchor:_iconPlate.trailingAnchor constant:PPSpaceMD],
+            [contentStack.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceMD],
+            [contentStack.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceSM],
 
-            [_nameLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:14.0],
-            [_nameLabel.leadingAnchor constraintEqualToAnchor:_iconPlate.trailingAnchor constant:12.0],
-            [_nameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_timeLabel.leadingAnchor constant:-10.0],
-
-            [_statusLabel.topAnchor constraintEqualToAnchor:_timeLabel.bottomAnchor constant:8.0],
-            [_statusLabel.trailingAnchor constraintEqualToAnchor:_timeLabel.trailingAnchor],
-            [_statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:76.0],
+            [_statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:68.0],
             [_statusLabel.heightAnchor constraintGreaterThanOrEqualToConstant:24.0],
 
-            [_messageLabel.topAnchor constraintEqualToAnchor:_nameLabel.bottomAnchor constant:5.0],
-            [_messageLabel.leadingAnchor constraintEqualToAnchor:_nameLabel.leadingAnchor],
-            [_messageLabel.trailingAnchor constraintEqualToAnchor:_statusLabel.leadingAnchor constant:-12.0],
-            [_messageLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-15.0],
-
-            [_unreadDot.leadingAnchor constraintEqualToAnchor:_iconPlate.leadingAnchor constant:-1.0],
-            [_unreadDot.bottomAnchor constraintEqualToAnchor:_iconPlate.bottomAnchor constant:1.0],
-            [_unreadDot.widthAnchor constraintEqualToConstant:10.0],
-            [_unreadDot.heightAnchor constraintEqualToConstant:10.0],
+            [_unreadDot.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor],
+            [_unreadDot.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
+            [_unreadDot.widthAnchor constraintEqualToConstant:3.0],
+            [_unreadDot.heightAnchor constraintEqualToConstant:40.0],
         ]];
+        [self updateForPreferredContentSizeCategory];
     }
     return self;
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    [self updateForPreferredContentSizeCategory];
+}
+
+- (void)updateForPreferredContentSizeCategory {
+    BOOL usesAccessibilityLayout = PPChatsUsesAccessibilityLayout(self.traitCollection);
+    self.metaStack.axis = usesAccessibilityLayout ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    self.metaStack.alignment = usesAccessibilityLayout ? UIStackViewAlignmentLeading : UIStackViewAlignmentCenter;
+    self.metaSpacer.hidden = usesAccessibilityLayout;
+    self.nameLabel.numberOfLines = usesAccessibilityLayout ? 0 : 1;
+    self.messageLabel.numberOfLines = usesAccessibilityLayout ? 0 : 1;
 }
 
 - (void)prepareForReuse {
@@ -494,7 +543,11 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.iconView.image = [UIImage systemImageNamed:unread ? @"exclamationmark.bubble.fill" : @"person.crop.circle.fill"];
     self.iconView.tintColor = accent;
     self.iconPlate.backgroundColor = [accent colorWithAlphaComponent:0.11];
-    self.accessibilityLabel = [NSString stringWithFormat:@"%@, %@, %@, %@", name ?: @"", status ?: @"", message ?: @"", time ?: @""];
+    self.messageLabel.font = PPChatsFont(unread ? [Styling fontBold:13.0] : [Styling fontRegular:13.0], UIFontTextStyleSubheadline);
+    self.cardView.backgroundColor = unread ? [UIColor ppSurfaceRaised] : PPChatsSurfaceColor();
+    self.cardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    NSString *unreadText = unread ? PPChatsL(@"SupportChats_HeroMetricUnread") : @"";
+    self.accessibilityLabel = [NSString stringWithFormat:@"%@, %@, %@, %@, %@", name ?: @"", unreadText, status ?: @"", self.messageLabel.text ?: @"", time ?: @""];
     self.accessibilityTraits = UIAccessibilityTraitButton;
 }
 
@@ -561,6 +614,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.titleLabel.text = title;
     self.subtitleLabel.text = subtitle;
     self.accessibilityLabel = [NSString stringWithFormat:@"%@. %@", title ?: @"", subtitle ?: @""];
+    self.accessibilityHint = nil;
+    self.accessibilityTraits = UIAccessibilityTraitStaticText;
 }
 
 @end
@@ -654,10 +709,18 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @property (nonatomic, strong) UITextField *messageField;
 @property (nonatomic, strong) UIButton *sendButton;
 @property (nonatomic, strong) UISegmentedControl *statusControl;
+@property (nonatomic, strong) UIButton *statusMenuButton;
+@property (nonatomic, strong) NSLayoutConstraint *messageFieldHeightConstraint;
 @property (nonatomic, strong) NSArray<NSDictionary *> *messages;
 @property (nonatomic, strong) id<FIRListenerRegistration> messagesListener;
+@property (nonatomic, strong) id<FIRListenerRegistration> threadListener;
 @property (nonatomic, assign) BOOL isLoading;
+@property (nonatomic, assign) BOOL hasMessagesError;
 @property (nonatomic, assign) BOOL isSending;
+@property (nonatomic, assign) BOOL isUpdatingStatus;
+@property (nonatomic, assign) BOOL isMarkingRead;
+@property (nonatomic, copy) NSString *pendingMessageID;
+@property (nonatomic, copy) NSString *pendingMessageText;
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
 @property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
 - (instancetype)initWithThread:(NSDictionary *)thread currentUID:(NSString *)currentUID canManageSupport:(BOOL)canManageSupport;
@@ -678,6 +741,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)dealloc {
     [self.messagesListener remove];
+    [self.threadListener remove];
 }
 
 - (void)viewDidLoad {
@@ -687,13 +751,26 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     [self setupTableView];
     [self setupInputBar];
     [self setupThreadHeader];
+    [self listenThread];
     [self listenMessages];
     [self markThreadRead];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (previousTraitCollection.preferredContentSizeCategory != self.traitCollection.preferredContentSizeCategory) {
+        [self updateThreadLayoutForPreferredContentSizeCategory];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self pp_applyNoNavigationBarAnimated:animated];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    [self sizeThreadHeaderToFit];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
@@ -703,6 +780,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
     if (!self.navigationController) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     if (!self.didCaptureNavigationBarHiddenState) {
         self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
         self.didCaptureNavigationBarHiddenState = YES;
@@ -712,6 +790,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
     if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
     self.didCaptureNavigationBarHiddenState = NO;
 }
@@ -745,6 +824,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.messageField.enabled = self.canManageSupport;
     self.messageField.delegate = self;
     self.messageField.font = PPChatsFont([Styling fontRegular:15.0], UIFontTextStyleBody);
+    self.messageField.adjustsFontForContentSizeCategory = YES;
     self.messageField.textAlignment = [Language alignmentForCurrentLanguage];
     self.messageField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     if (@available(iOS 13.0, *)) {
@@ -770,6 +850,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     [self.sendButton addTarget:self action:@selector(sendTapped) forControlEvents:UIControlEventTouchUpInside];
     [self.inputContainer addSubview:self.sendButton];
 
+    self.messageFieldHeightConstraint = [self.messageField.heightAnchor constraintEqualToConstant:44.0];
     [NSLayoutConstraint activateConstraints:@[
         [self.inputContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.inputContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
@@ -779,7 +860,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [self.messageField.leadingAnchor constraintEqualToAnchor:self.inputContainer.leadingAnchor constant:16.0],
         [self.messageField.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:12.0],
         [self.messageField.trailingAnchor constraintEqualToAnchor:self.sendButton.leadingAnchor constant:-10.0],
-        [self.messageField.heightAnchor constraintEqualToConstant:44.0],
+        self.messageFieldHeightConstraint,
         [self.messageField.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12.0],
 
         [self.sendButton.trailingAnchor constraintEqualToAnchor:self.inputContainer.trailingAnchor constant:-16.0],
@@ -792,9 +873,17 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.inputContainer.topAnchor],
     ]];
+    [self updateThreadLayoutForPreferredContentSizeCategory];
+    [self.messageField addTarget:self action:@selector(messageFieldDidChange:) forControlEvents:UIControlEventEditingChanged];
+    [self refreshComposerAvailability];
+}
+
+- (void)messageFieldDidChange:(UITextField *)textField {
+    [self refreshComposerAvailability];
 }
 
 - (void)setupThreadHeader {
+    BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
     CGFloat width = MAX(CGRectGetWidth(self.view.bounds), UIScreen.mainScreen.bounds.size.width);
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 126.0)];
     header.backgroundColor = UIColor.clearColor;
@@ -812,28 +901,33 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     glassBG.accentColorOverride = [UIColor ppPrimary];
     [card addSubview:glassBG];
 
-    UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    backButton.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backSymbol = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightSemibold];
-    NSString *backSymbolName = Language.isRTL ? @"chevron.right" : @"chevron.left";
-    [backButton setImage:[UIImage systemImageNamed:backSymbolName withConfiguration:backSymbol] forState:UIControlStateNormal];
-    backButton.tintColor = [UIColor ppPrimary];
-    backButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
-    PPChatsApplyContinuousCorners(backButton, 22.0);
-    backButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    backButton.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.30].CGColor;
-    backButton.accessibilityLabel = PPChatsL(@"Back");
-    [backButton addTarget:self action:@selector(backTapped) forControlEvents:UIControlEventTouchUpInside];
-    [card addSubview:backButton];
+    UIButton *backButton = nil;
+    UILabel *name = nil;
+    if (!usesGlobalNavigation) {
+        backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        backButton.translatesAutoresizingMaskIntoConstraints = NO;
+        UIImageSymbolConfiguration *backSymbol = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightSemibold];
+        NSString *backSymbolName = Language.isRTL ? @"chevron.right" : @"chevron.left";
+        [backButton setImage:[UIImage systemImageNamed:backSymbolName withConfiguration:backSymbol] forState:UIControlStateNormal];
+        backButton.tintColor = [UIColor ppPrimary];
+        backButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
+        PPChatsApplyContinuousCorners(backButton, 22.0);
+        backButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+        backButton.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.30].CGColor;
+        backButton.accessibilityLabel = PPChatsL(@"Back");
+        [backButton addTarget:self action:@selector(backTapped) forControlEvents:UIControlEventTouchUpInside];
+        [card addSubview:backButton];
 
-    UILabel *name = [UILabel new];
-    name.translatesAutoresizingMaskIntoConstraints = NO;
-    name.font = PPChatsFont([Styling fontBold:19.0], UIFontTextStyleTitle3);
-    name.adjustsFontForContentSizeCategory = YES;
-    name.textColor = PPChatsPrimaryTextColor();
-    name.textAlignment = [Language alignmentForCurrentLanguage];
-    name.text = PPChatsCustomerDisplayName(self.thread, self.currentUID);
-    [card addSubview:name];
+        name = [UILabel new];
+        name.translatesAutoresizingMaskIntoConstraints = NO;
+        name.font = PPChatsFont([Styling fontBold:19.0], UIFontTextStyleTitle3);
+        name.adjustsFontForContentSizeCategory = YES;
+        name.textColor = PPChatsPrimaryTextColor();
+        name.textAlignment = [Language alignmentForCurrentLanguage];
+        name.numberOfLines = 0;
+        name.text = PPChatsCustomerDisplayName(self.thread, self.currentUID);
+        [card addSubview:name];
+    }
 
     UILabel *subtitle = [UILabel new];
     subtitle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -841,6 +935,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     subtitle.adjustsFontForContentSizeCategory = YES;
     subtitle.textColor = [UIColor ppPrimary];
     subtitle.textAlignment = [Language alignmentForCurrentLanguage];
+    subtitle.numberOfLines = 0;
     subtitle.text = self.canManageSupport ? PPChatsL(@"SupportChats_SupportReady") : PPChatsL(@"SupportChats_ReadOnly");
     [card addSubview:subtitle];
 
@@ -852,6 +947,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     ]];
     self.statusControl.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusControl.enabled = self.canManageSupport;
+    self.statusControl.apportionsSegmentWidthsByContent = YES;
     if (@available(iOS 13.0, *)) {
         self.statusControl.selectedSegmentTintColor = [UIColor ppPrimary];
         [self.statusControl setTitleTextAttributes:@{NSForegroundColorAttributeName: UIColor.whiteColor, NSFontAttributeName: [Styling fontBold:13.0]} forState:UIControlStateSelected];
@@ -859,9 +955,18 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     }
     [self.statusControl addTarget:self action:@selector(statusChanged:) forControlEvents:UIControlEventValueChanged];
     [card addSubview:self.statusControl];
+
+    self.statusMenuButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.statusMenuButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusMenuButton.showsMenuAsPrimaryAction = YES;
+    self.statusMenuButton.hidden = YES;
+    self.statusMenuButton.accessibilityLabel = PPChatsL(@"SupportChats_StatusSelector");
+    PPChatsApplyContinuousCorners(self.statusMenuButton, PPCornerSmall);
+    self.statusMenuButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    [card addSubview:self.statusMenuButton];
     [self refreshStatusControl];
 
-    [NSLayoutConstraint activateConstraints:@[
+    NSMutableArray<NSLayoutConstraint *> *constraints = [@[
         [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:12.0],
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
@@ -872,26 +977,77 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [glassBG.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
         [glassBG.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
 
-        [name.topAnchor constraintEqualToAnchor:card.topAnchor constant:16.0],
-        [name.leadingAnchor constraintEqualToAnchor:backButton.trailingAnchor constant:10.0],
-        [name.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0],
-
-        [subtitle.topAnchor constraintEqualToAnchor:name.bottomAnchor constant:4.0],
-        [subtitle.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
-        [subtitle.trailingAnchor constraintEqualToAnchor:name.trailingAnchor],
-
-        [backButton.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0],
-        [backButton.topAnchor constraintEqualToAnchor:card.topAnchor constant:14.0],
-        [backButton.widthAnchor constraintEqualToConstant:44.0],
-        [backButton.heightAnchor constraintEqualToConstant:44.0],
-
         [self.statusControl.topAnchor constraintEqualToAnchor:subtitle.bottomAnchor constant:12.0],
-        [self.statusControl.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
-        [self.statusControl.trailingAnchor constraintEqualToAnchor:name.trailingAnchor],
+        [self.statusControl.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
         [self.statusControl.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14.0],
-    ]];
+        [self.statusMenuButton.topAnchor constraintEqualToAnchor:self.statusControl.topAnchor],
+        [self.statusMenuButton.leadingAnchor constraintEqualToAnchor:self.statusControl.leadingAnchor],
+        [self.statusMenuButton.trailingAnchor constraintEqualToAnchor:self.statusControl.trailingAnchor],
+        [self.statusMenuButton.bottomAnchor constraintEqualToAnchor:self.statusControl.bottomAnchor],
+    ] mutableCopy];
+    if (usesGlobalNavigation) {
+        [constraints addObjectsFromArray:@[
+            [subtitle.topAnchor constraintEqualToAnchor:card.topAnchor constant:16.0],
+            [subtitle.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18.0],
+            [subtitle.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0],
+            [self.statusControl.leadingAnchor constraintEqualToAnchor:subtitle.leadingAnchor],
+            [self.statusControl.trailingAnchor constraintEqualToAnchor:subtitle.trailingAnchor],
+        ]];
+    } else {
+        [constraints addObjectsFromArray:@[
+            [name.topAnchor constraintEqualToAnchor:card.topAnchor constant:16.0],
+            [name.leadingAnchor constraintEqualToAnchor:backButton.trailingAnchor constant:10.0],
+            [name.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18.0],
+            [subtitle.topAnchor constraintEqualToAnchor:name.bottomAnchor constant:4.0],
+            [subtitle.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
+            [subtitle.trailingAnchor constraintEqualToAnchor:name.trailingAnchor],
+            [backButton.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:16.0],
+            [backButton.topAnchor constraintEqualToAnchor:card.topAnchor constant:14.0],
+            [backButton.widthAnchor constraintEqualToConstant:44.0],
+            [backButton.heightAnchor constraintEqualToConstant:44.0],
+            [self.statusControl.leadingAnchor constraintEqualToAnchor:name.leadingAnchor],
+            [self.statusControl.trailingAnchor constraintEqualToAnchor:name.trailingAnchor],
+        ]];
+    }
+    [NSLayoutConstraint activateConstraints:constraints];
 
     self.tableView.tableHeaderView = header;
+    [self updateThreadLayoutForPreferredContentSizeCategory];
+}
+
+- (void)sizeThreadHeaderToFit {
+    UIView *header = self.tableView.tableHeaderView;
+    if (!header) return;
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width <= 0.0) return;
+    CGRect frame = header.frame;
+    frame.size.width = width;
+    header.frame = frame;
+    [header setNeedsLayout];
+    [header layoutIfNeeded];
+    CGFloat height = [header systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                         withHorizontalFittingPriority:UILayoutPriorityRequired
+                               verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
+    height = ceil(MAX(1.0, height));
+    if (fabs(CGRectGetHeight(frame) - height) < 0.5) return;
+    frame.size.height = height;
+    header.frame = frame;
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)updateThreadLayoutForPreferredContentSizeCategory {
+    BOOL usesAccessibilityLayout = PPChatsUsesAccessibilityLayout(self.traitCollection);
+    self.statusControl.hidden = usesAccessibilityLayout;
+    self.statusMenuButton.hidden = !usesAccessibilityLayout;
+    self.statusControl.apportionsSegmentWidthsByContent = YES;
+    self.statusControl.accessibilityLabel = PPChatsL(@"SupportChats_StatusSelector");
+    self.statusControl.accessibilityHint = self.canManageSupport ? PPChatsL(@"SupportChats_StatusSelectorHint") : PPChatsL(@"SupportChats_ReadOnly");
+    self.messageField.font = PPChatsFont([Styling fontRegular:15.0], UIFontTextStyleBody);
+    self.messageFieldHeightConstraint.constant = MAX(44.0, ceil(self.messageField.font.lineHeight + 24.0));
+    [self refreshStatusControl];
+    [self sizeThreadHeaderToFit];
+    [self.tableView beginUpdates];
+    [self.tableView endUpdates];
 }
 
 - (void)backTapped {
@@ -904,6 +1060,58 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     else if ([status isEqualToString:@"resolved"]) self.statusControl.selectedSegmentIndex = 2;
     else if ([status isEqualToString:@"closed"]) self.statusControl.selectedSegmentIndex = 3;
     else self.statusControl.selectedSegmentIndex = 0;
+    self.statusControl.enabled = self.canManageSupport && !self.isUpdatingStatus && !self.isSending;
+    self.statusControl.accessibilityValue = PPChatsStatusText(status);
+
+    UIColor *statusColor = PPChatsStatusColor(status);
+    NSString *statusText = PPChatsStatusText(status);
+    NSString *buttonTitle = [NSString localizedStringWithFormat:PPChatsL(@"SupportChats_StatusFormat"), statusText];
+    [self.statusMenuButton setTitle:buttonTitle forState:UIControlStateNormal];
+    [self.statusMenuButton setTitleColor:statusColor forState:UIControlStateNormal];
+    self.statusMenuButton.titleLabel.font = PPChatsFont([Styling fontBold:13.0], UIFontTextStyleBody);
+    self.statusMenuButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.statusMenuButton.titleLabel.numberOfLines = 0;
+    self.statusMenuButton.backgroundColor = [statusColor colorWithAlphaComponent:0.10];
+    self.statusMenuButton.layer.borderColor = [statusColor colorWithAlphaComponent:0.32].CGColor;
+    self.statusMenuButton.enabled = self.canManageSupport && !self.isUpdatingStatus && !self.isSending;
+    self.statusMenuButton.accessibilityValue = statusText;
+    self.statusMenuButton.accessibilityHint = self.canManageSupport ? PPChatsL(@"SupportChats_StatusSelectorHint") : PPChatsL(@"SupportChats_ReadOnly");
+
+    NSArray<NSString *> *statuses = @[@"waiting_for_agent", @"active", @"resolved", @"closed"];
+    NSMutableArray<UIMenuElement *> *actions = [NSMutableArray arrayWithCapacity:statuses.count];
+    __weak typeof(self) weakSelf = self;
+    for (NSString *value in statuses) {
+        UIAction *action = [UIAction actionWithTitle:PPChatsStatusText(value)
+                                              image:nil
+                                         identifier:nil
+                                            handler:^(__kindof UIAction * _Nonnull action) {
+            [weakSelf transitionToStatus:value];
+        }];
+        action.state = [value isEqualToString:(status.length > 0 ? status : @"waiting_for_agent")] ? UIMenuElementStateOn : UIMenuElementStateOff;
+        if (!PPChatsCanTransitionStatus(status, value)) action.attributes = UIMenuElementAttributesDisabled;
+        [actions addObject:action];
+    }
+    self.statusMenuButton.menu = [UIMenu menuWithTitle:PPChatsL(@"SupportChats_StatusSelector") children:actions];
+}
+
+- (BOOL)threadAllowsReply {
+    NSString *status = PPChatsSafeString(self.thread[@"supportStatus"]).lowercaseString;
+    return ![status isEqualToString:@"resolved"] && ![status isEqualToString:@"closed"];
+}
+
+- (void)refreshComposerAvailability {
+    BOOL threadAllowsReply = [self threadAllowsReply];
+    BOOL enabled = self.canManageSupport && threadAllowsReply && !self.isSending && !self.isUpdatingStatus;
+    self.messageField.enabled = enabled;
+    self.sendButton.enabled = enabled && PPChatsSafeString(self.messageField.text).length > 0;
+    if (!self.canManageSupport) self.messageField.placeholder = PPChatsL(@"SupportChats_ManageDenied");
+    else if (!threadAllowsReply) self.messageField.placeholder = PPChatsL(@"SupportChats_ReopenToReply");
+    else if (self.isUpdatingStatus) self.messageField.placeholder = PPChatsL(@"SupportChats_StatusUpdating");
+    else if (self.isSending) self.messageField.placeholder = PPChatsL(@"SupportChats_Sending");
+    else self.messageField.placeholder = PPChatsL(@"SupportChats_MessagePlaceholder");
+    self.messageField.accessibilityLabel = self.messageField.placeholder;
+    self.messageField.alpha = enabled ? 1.0 : 0.68;
+    self.sendButton.alpha = self.sendButton.enabled ? 1.0 : 0.42;
 }
 
 - (NSString *)threadID {
@@ -914,14 +1122,43 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     return PPChatsResolveCustomerID(self.thread, self.currentUID);
 }
 
+- (void)listenThread {
+    NSString *threadID = [self threadID];
+    if (threadID.length == 0) return;
+    [self.threadListener remove];
+    self.threadListener = nil;
+
+    FIRDocumentReference *threadRef = [[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID];
+    __weak typeof(self) weakSelf = self;
+    self.threadListener = [threadRef addSnapshotListener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error || !snapshot.exists) return;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            NSMutableDictionary *updatedThread = [(snapshot.data ?: @{}) mutableCopy];
+            updatedThread[@"id"] = snapshot.documentID ?: threadID;
+            self.thread = updatedThread.copy;
+            self.title = PPChatsCustomerDisplayName(self.thread, self.currentUID);
+            [self refreshStatusControl];
+            [self refreshComposerAvailability];
+            if (self.canManageSupport && [self.thread[@"supportUnread"] boolValue]) {
+                [self markThreadRead];
+            }
+        });
+    }];
+}
+
 - (void)listenMessages {
     NSString *threadID = [self threadID];
     if (threadID.length == 0) return;
+    [self.messagesListener remove];
+    self.messagesListener = nil;
     self.isLoading = YES;
+    self.hasMessagesError = NO;
     [self.tableView reloadData];
 
     FIRCollectionReference *messagesRef = [[[[FIRFirestore firestore] collectionWithPath:@"Chats"] documentWithPath:threadID] collectionWithPath:@"Messages"];
-    FIRQuery *query = [[messagesRef queryOrderedByField:@"timestamp" descending:NO] queryLimitedTo:200];
+    FIRQuery *query = [[messagesRef queryOrderedByField:@"timestamp" descending:YES] queryLimitedTo:200];
     __weak typeof(self) weakSelf = self;
     self.messagesListener = [query addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -929,19 +1166,21 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
             if (!self) return;
             self.isLoading = NO;
             if (error) {
+                self.hasMessagesError = YES;
                 self.messages = @[];
                 [self.tableView reloadData];
                 return;
             }
+            self.hasMessagesError = NO;
             NSMutableArray<NSDictionary *> *items = [NSMutableArray array];
-            for (FIRDocumentSnapshot *document in snapshot.documents) {
+            for (FIRDocumentSnapshot *document in snapshot.documents.reverseObjectEnumerator) {
                 NSMutableDictionary *data = [(document.data ?: @{}) mutableCopy];
                 data[@"id"] = document.documentID ?: @"";
                 [items addObject:data.copy];
             }
             self.messages = items.copy;
             [self.tableView reloadData];
-            [self scrollToBottomAnimated:YES];
+            [self scrollToBottomAnimated:!UIAccessibilityIsReduceMotionEnabled()];
             [self markMessagesReadIfNeeded];
         });
     }];
@@ -949,14 +1188,20 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)markThreadRead {
     NSString *threadID = [self threadID];
-    if (threadID.length == 0 || self.currentUID.length == 0) return;
+    if (!self.canManageSupport || self.isMarkingRead || threadID.length == 0 || self.currentUID.length == 0) return;
+    self.isMarkingRead = YES;
+    __weak typeof(self) weakSelf = self;
     FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
     callable.timeoutInterval = 30.0;
     [callable callWithObject:@{
         @"action": @"mark_read",
         @"threadId": threadID,
         @"expectedLastMessageId": PPChatsSafeString(self.thread[@"lastMessageId"] ?: self.thread[@"lastProjectedMessageId"])
-    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {}];
+    } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            weakSelf.isMarkingRead = NO;
+        });
+    }];
 }
 
 - (void)markMessagesReadIfNeeded {
@@ -970,12 +1215,41 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 }
 
 - (void)statusChanged:(UISegmentedControl *)sender {
-    if (!self.canManageSupport) return;
+    if (!self.canManageSupport || self.isUpdatingStatus || self.isSending) {
+        [self refreshStatusControl];
+        return;
+    }
     NSArray<NSString *> *statuses = @[@"waiting_for_agent", @"active", @"resolved", @"closed"];
     if (sender.selectedSegmentIndex < 0 || sender.selectedSegmentIndex >= (NSInteger)statuses.count) return;
     NSString *nextStatus = statuses[sender.selectedSegmentIndex];
+    NSString *currentStatus = PPChatsSafeString(self.thread[@"supportStatus"]).lowercaseString;
+    if (currentStatus.length == 0) currentStatus = @"waiting_for_agent";
+    if ([currentStatus isEqualToString:nextStatus]) return;
+    if (!PPChatsCanTransitionStatus(currentStatus, nextStatus)) {
+        [self refreshStatusControl];
+        return;
+    }
+    [self transitionToStatus:nextStatus];
+}
+
+- (void)transitionToStatus:(NSString *)nextStatus {
+    if (!self.canManageSupport || self.isUpdatingStatus || self.isSending) {
+        [self refreshStatusControl];
+        return;
+    }
+    NSString *currentStatus = PPChatsSafeString(self.thread[@"supportStatus"]).lowercaseString;
+    if (currentStatus.length == 0) currentStatus = @"waiting_for_agent";
+    if ([currentStatus isEqualToString:nextStatus]) return;
+    if (!PPChatsCanTransitionStatus(currentStatus, nextStatus)) {
+        [self refreshStatusControl];
+        return;
+    }
     NSString *threadID = [self threadID];
     if (threadID.length == 0 || self.currentUID.length == 0) return;
+    self.isUpdatingStatus = YES;
+    [self refreshStatusControl];
+    [self refreshComposerAvailability];
+    __weak typeof(self) weakSelf = self;
     FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
     callable.timeoutInterval = 30.0;
     [callable callWithObject:@{
@@ -986,9 +1260,13 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         @"reason": @"admin_status_change"
     } completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+            self.isUpdatingStatus = NO;
             if (error) {
                 [self refreshStatusControl];
-                [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
+                [self refreshComposerAvailability];
+                [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_StatusError")];
                 return;
             }
             NSMutableDictionary *nextThread = [self.thread mutableCopy];
@@ -996,6 +1274,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
             NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
             nextThread[@"supportLifecycleVersion"] = response[@"supportLifecycleVersion"] ?: nextThread[@"supportLifecycleVersion"];
             self.thread = nextThread.copy;
+            [self refreshStatusControl];
+            [self refreshComposerAvailability];
         });
     }];
 }
@@ -1010,22 +1290,27 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 }
 
 - (void)sendCurrentMessage {
-    if (!self.canManageSupport || self.isSending) return;
+    if (!self.canManageSupport || ![self threadAllowsReply] || self.isSending || self.isUpdatingStatus) return;
     NSString *text = PPChatsSafeString(self.messageField.text);
     NSString *threadID = [self threadID];
     NSString *customerID = [self customerID];
     if (text.length == 0 || threadID.length == 0 || customerID.length == 0 || self.currentUID.length == 0) return;
 
     self.isSending = YES;
-    self.sendButton.enabled = NO;
+    BOOL retriesPendingMessage = self.pendingMessageID.length > 0 && [self.pendingMessageText isEqualToString:text];
+    if (!retriesPendingMessage) {
+        self.pendingMessageID = [NSUUID UUID].UUIDString;
+        self.pendingMessageText = text;
+    }
     self.messageField.text = @"";
+    [self refreshComposerAvailability];
     __weak typeof(self) weakSelf = self;
     FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
     callable.timeoutInterval = 30.0;
     [callable callWithObject:@{
         @"action": @"send_staff_reply",
         @"threadId": threadID,
-        @"messageId": [NSUUID UUID].UUIDString,
+        @"messageId": self.pendingMessageID,
         @"expectedVersion": self.thread[@"supportLifecycleVersion"] ?: @0,
         @"sourceApp": @"admin_ios",
         @"sourcePlatform": @"ios",
@@ -1036,18 +1321,21 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
             if (!self) return;
             if (error) {
                 self.isSending = NO;
-                self.sendButton.enabled = self.canManageSupport;
                 self.messageField.text = text;
+                [self refreshComposerAvailability];
                 [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
                 return;
             }
             self.isSending = NO;
-            self.sendButton.enabled = self.canManageSupport;
+            self.pendingMessageID = nil;
+            self.pendingMessageText = nil;
             NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
             NSMutableDictionary *nextThread = [self.thread mutableCopy];
             nextThread[@"supportStatus"] = response[@"supportStatus"] ?: @"active";
             nextThread[@"supportLifecycleVersion"] = response[@"supportLifecycleVersion"] ?: nextThread[@"supportLifecycleVersion"];
             self.thread = nextThread.copy;
+            [self refreshStatusControl];
+            [self refreshComposerAvailability];
         });
     }];
 }
@@ -1061,6 +1349,10 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         PPSupportStateCell *cell = [tableView dequeueReusableCellWithIdentifier:@"StateCell" forIndexPath:indexPath];
         if (self.isLoading) {
             [cell configureWithSymbol:@"ellipsis.message.fill" title:PPChatsL(@"SupportChats_MessagesLoading") subtitle:@""];
+        } else if (self.hasMessagesError) {
+            [cell configureWithSymbol:@"wifi.exclamationmark" title:PPChatsL(@"SupportChats_MessagesError") subtitle:PPChatsL(@"SupportChats_MessagesRetry")];
+            cell.accessibilityTraits = UIAccessibilityTraitButton;
+            cell.accessibilityHint = PPChatsL(@"SupportChats_MessagesRetry");
         } else {
             [cell configureWithSymbol:@"bubble.left.and.bubble.right.fill" title:PPChatsL(@"SupportChats_MessagesEmpty") subtitle:@""];
         }
@@ -1069,13 +1361,18 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
     NSDictionary *message = self.messages[indexPath.row];
     BOOL outgoing = PPChatsIsSupportOfficialSender(message);
-    NSString *text = PPChatsSafeString(message[@"text"]);
-    if (text.length == 0) text = PPChatsSafeString(message[@"message"]);
+    NSString *text = PPChatsMessageDisplayText(message);
     NSString *meta = PPChatsRelativeDateString(message[@"timestamp"]);
     if (meta.length == 0) meta = PPChatsRelativeDateString(message[@"createdAt"]);
     PPSupportMessageCell *cell = [tableView dequeueReusableCellWithIdentifier:@"MessageCell" forIndexPath:indexPath];
     [cell configureWithText:text meta:meta outgoing:outgoing];
     return cell;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    if (self.messages.count == 0 && self.hasMessagesError) {
+        [self listenMessages];
+    }
 }
 
 @end
@@ -1085,10 +1382,11 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @interface PPChatsViewController () <UITableViewDelegate, UITableViewDataSource, UISearchBarDelegate>
 
 @property (nonatomic, strong) UITableView *tableView;
-@property (nonatomic, strong) PPHero *heroGlassBG;
+@property (nonatomic, strong) UIView *heroCardView;
 @property (nonatomic, strong) UILabel *heroUnreadCountLabel;
 @property (nonatomic, strong) UILabel *heroActiveCountLabel;
 @property (nonatomic, strong) UILabel *heroSubtitleLabel;
+@property (nonatomic, strong) UIStackView *heroMetricsStack;
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) UIRefreshControl *refreshControl;
 @property (nonatomic, strong) NSArray<NSDictionary *> *allChats;
@@ -1106,6 +1404,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 @property (nonatomic, assign) BOOL didRunEntrance;
 @property (nonatomic, assign) BOOL didCaptureNavigationBarHiddenState;
 @property (nonatomic, assign) BOOL previousNavigationBarHiddenState;
+- (void)updateHeaderForPreferredContentSizeCategory;
 
 @end
 
@@ -1146,13 +1445,11 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
-    [self.heroGlassBG startAnimations];
     [self runEntranceIfNeeded];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.heroGlassBG stopAnimations];
     if (![self.navigationController.topViewController isKindOfClass:PPSupportThreadViewController.class]) {
         [self pp_restoreNavigationBarIfNeededAnimated:animated];
     }
@@ -1160,8 +1457,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
+    [self updateHeaderForPreferredContentSizeCategory];
     if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
-        [self.heroGlassBG reapplyPalette];
         [self.tableView reloadData];
     }
 }
@@ -1170,6 +1467,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
     if (!self.navigationController) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     if (!self.didCaptureNavigationBarHiddenState) {
         self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
         self.didCaptureNavigationBarHiddenState = YES;
@@ -1179,6 +1477,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
     if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
     self.didCaptureNavigationBarHiddenState = NO;
 }
@@ -1217,29 +1516,21 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
 
 - (void)setupHeaderUI {
     CGFloat width = MAX(CGRectGetWidth(self.view.bounds), UIScreen.mainScreen.bounds.size.width);
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 248.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 188.0)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     UIView *card = [UIView new];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = UIColor.clearColor;
+    card.backgroundColor = PPChatsSurfaceColor();
+    PPChatsApplyLedgerChrome(card, PPCornerCard);
     [header addSubview:card];
-
-    PPHero *glassBG = [PPHero new];
-    glassBG.translatesAutoresizingMaskIntoConstraints = NO;
-    glassBG.accentStyle = PPHeroGlassAccentStyleCornerGlow;
-    glassBG.cornerGlowOpacityMultiplier = 0.65;
-    glassBG.accentColorOverride = [UIColor ppPrimary];
-    [card addSubview:glassBG];
-    self.heroGlassBG = glassBG;
+    self.heroCardView = card;
 
     UIView *identityPlate = [UIView new];
     identityPlate.translatesAutoresizingMaskIntoConstraints = NO;
-    identityPlate.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.16];
-    PPChatsApplyContinuousCorners(identityPlate, 20.0);
-    identityPlate.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    identityPlate.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.35].CGColor;
+    identityPlate.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
+    PPChatsApplyContinuousCorners(identityPlate, PPCornerSmall);
     [card addSubview:identityPlate];
 
     UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.checkered"]];
@@ -1248,41 +1539,37 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     iconView.contentMode = UIViewContentModeScaleAspectFit;
     [identityPlate addSubview:iconView];
 
-    UILabel *kickerLabel = [UILabel new];
-    kickerLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    kickerLabel.font = PPChatsFont([Styling fontBold:12.0], UIFontTextStyleCaption1);
-    kickerLabel.adjustsFontForContentSizeCategory = YES;
-    kickerLabel.textColor = [UIColor ppPrimary];
-    kickerLabel.textAlignment = [Language alignmentForCurrentLanguage];
-    kickerLabel.text = PPChatsL(@"SupportChats_HeroKicker");
-    [card addSubview:kickerLabel];
-
     UILabel *titleLabel = [UILabel new];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.font = PPChatsFont([Styling fontBold:24.0], UIFontTextStyleTitle2);
+    titleLabel.font = PPChatsFont([Styling fontBold:16.0], UIFontTextStyleHeadline);
     titleLabel.adjustsFontForContentSizeCategory = YES;
     titleLabel.textColor = PPChatsPrimaryTextColor();
     titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
     titleLabel.text = PPChatsL(@"SupportChats_OfficialName");
-    titleLabel.numberOfLines = 1;
-    [card addSubview:titleLabel];
+    titleLabel.numberOfLines = 0;
 
     self.heroSubtitleLabel = [UILabel new];
-    self.heroSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroSubtitleLabel.font = PPChatsFont([Styling fontRegular:14.0], UIFontTextStyleSubheadline);
+    self.heroSubtitleLabel.font = PPChatsFont([Styling fontRegular:12.0], UIFontTextStyleCaption1);
     self.heroSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.heroSubtitleLabel.textColor = PPChatsSecondaryTextColor();
     self.heroSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
-    self.heroSubtitleLabel.numberOfLines = 2;
-    [card addSubview:self.heroSubtitleLabel];
+    self.heroSubtitleLabel.numberOfLines = 0;
 
-    UIStackView *stack = [UIStackView new];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    stack.axis = UILayoutConstraintAxisHorizontal;
-    stack.alignment = UIStackViewAlignmentFill;
-    stack.distribution = UIStackViewDistributionFillEqually;
-    stack.spacing = 10.0;
-    [card addSubview:stack];
+    UIStackView *identityStack = [[UIStackView alloc] initWithArrangedSubviews:@[titleLabel, self.heroSubtitleLabel]];
+    identityStack.translatesAutoresizingMaskIntoConstraints = NO;
+    identityStack.axis = UILayoutConstraintAxisVertical;
+    identityStack.alignment = UIStackViewAlignmentFill;
+    identityStack.spacing = PPSpaceXXS;
+    [card addSubview:identityStack];
+
+    UIStackView *metricsStack = [UIStackView new];
+    metricsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    metricsStack.axis = UILayoutConstraintAxisHorizontal;
+    metricsStack.alignment = UIStackViewAlignmentFill;
+    metricsStack.distribution = UIStackViewDistributionFillEqually;
+    metricsStack.spacing = PPSpaceSM;
+    metricsStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [card addSubview:metricsStack];
+    self.heroMetricsStack = metricsStack;
 
     UILabel *unreadCountLabel = nil;
     UIView *unreadMetric = [self metricViewWithTitle:PPChatsL(@"SupportChats_HeroMetricUnread") valueLabel:&unreadCountLabel];
@@ -1291,8 +1578,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     UILabel *activeCountLabel = nil;
     UIView *activeMetric = [self metricViewWithTitle:PPChatsL(@"SupportChats_HeroMetricActive") valueLabel:&activeCountLabel];
     _heroActiveCountLabel = activeCountLabel;
-    [stack addArrangedSubview:unreadMetric];
-    [stack addArrangedSubview:activeMetric];
+    [metricsStack addArrangedSubview:unreadMetric];
+    [metricsStack addArrangedSubview:activeMetric];
 
     self.searchBar = [[UISearchBar alloc] initWithFrame:CGRectZero];
     self.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1300,90 +1587,96 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     self.searchBar.searchBarStyle = UISearchBarStyleMinimal;
     self.searchBar.placeholder = PPChatsL(@"SupportChats_SearchPlaceholder");
     self.searchBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    if (@available(iOS 13.0, *)) {
+        self.searchBar.searchTextField.backgroundColor = [UIColor ppSurfaceOverlay];
+        PPChatsApplyContinuousCorners(self.searchBar.searchTextField, PPCornerSmall);
+    }
     [card addSubview:self.searchBar];
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:12.0],
-        [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16.0],
-        [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16.0],
-        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-12.0],
+        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceSM],
+        [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM],
 
-        [glassBG.topAnchor constraintEqualToAnchor:card.topAnchor],
-        [glassBG.leadingAnchor constraintEqualToAnchor:card.leadingAnchor],
-        [glassBG.trailingAnchor constraintEqualToAnchor:card.trailingAnchor],
-        [glassBG.bottomAnchor constraintEqualToAnchor:card.bottomAnchor],
+        [identityStack.topAnchor constraintEqualToAnchor:card.topAnchor constant:PPSpaceMD],
+        [identityStack.leadingAnchor constraintEqualToAnchor:identityPlate.trailingAnchor constant:PPSpaceMD],
+        [identityStack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-PPSpaceBase],
 
-        [identityPlate.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0],
-        [identityPlate.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0],
-        [identityPlate.widthAnchor constraintEqualToConstant:52.0],
-        [identityPlate.heightAnchor constraintEqualToConstant:52.0],
+        [identityPlate.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceBase],
+        [identityPlate.centerYAnchor constraintEqualToAnchor:identityStack.centerYAnchor],
+        [identityPlate.widthAnchor constraintEqualToConstant:40.0],
+        [identityPlate.heightAnchor constraintEqualToConstant:40.0],
 
         [iconView.centerXAnchor constraintEqualToAnchor:identityPlate.centerXAnchor],
         [iconView.centerYAnchor constraintEqualToAnchor:identityPlate.centerYAnchor],
-        [iconView.widthAnchor constraintEqualToConstant:27.0],
-        [iconView.heightAnchor constraintEqualToConstant:27.0],
+        [iconView.widthAnchor constraintEqualToConstant:21.0],
+        [iconView.heightAnchor constraintEqualToConstant:21.0],
 
-        [kickerLabel.topAnchor constraintEqualToAnchor:identityPlate.topAnchor constant:1.0],
-        [kickerLabel.leadingAnchor constraintEqualToAnchor:identityPlate.trailingAnchor constant:14.0],
-        [kickerLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0],
+        [metricsStack.topAnchor constraintEqualToAnchor:identityStack.bottomAnchor constant:PPSpaceSM],
+        [metricsStack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceBase],
+        [metricsStack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-PPSpaceBase],
 
-        [titleLabel.topAnchor constraintEqualToAnchor:kickerLabel.bottomAnchor constant:3.0],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:kickerLabel.leadingAnchor],
-        [titleLabel.trailingAnchor constraintEqualToAnchor:kickerLabel.trailingAnchor],
-
-        [self.heroSubtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:5.0],
-        [self.heroSubtitleLabel.leadingAnchor constraintEqualToAnchor:titleLabel.leadingAnchor],
-        [self.heroSubtitleLabel.trailingAnchor constraintEqualToAnchor:titleLabel.trailingAnchor],
-
-        [stack.topAnchor constraintEqualToAnchor:identityPlate.bottomAnchor constant:22.0],
-        [stack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:20.0],
-        [stack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-20.0],
-        [stack.heightAnchor constraintEqualToConstant:54.0],
-
-        [self.searchBar.topAnchor constraintEqualToAnchor:stack.bottomAnchor constant:14.0],
-        [self.searchBar.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:12.0],
-        [self.searchBar.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-12.0],
-        [self.searchBar.heightAnchor constraintEqualToConstant:48.0],
-        [self.searchBar.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14.0],
+        [self.searchBar.topAnchor constraintEqualToAnchor:metricsStack.bottomAnchor constant:PPSpaceXS],
+        [self.searchBar.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceSM],
+        [self.searchBar.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-PPSpaceSM],
+        [self.searchBar.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightMD],
+        [self.searchBar.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-PPSpaceSM],
     ]];
 
     self.tableView.tableHeaderView = header;
+    [self updateHeaderForPreferredContentSizeCategory];
     [self updateHeroMetrics];
+    [self sizeHeaderToFit];
+}
+
+- (void)updateHeaderForPreferredContentSizeCategory {
+    BOOL usesAccessibilityLayout = PPChatsUsesAccessibilityLayout(self.traitCollection);
+    self.heroMetricsStack.axis = usesAccessibilityLayout ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    self.heroMetricsStack.distribution = usesAccessibilityLayout ? UIStackViewDistributionFill : UIStackViewDistributionFillEqually;
+    self.heroCardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     [self sizeHeaderToFit];
 }
 
 - (UIView *)metricViewWithTitle:(NSString *)title valueLabel:(UILabel * __strong *)valueLabel {
     UIView *view = [UIView new];
-    view.backgroundColor = [UIColor.whiteColor colorWithAlphaComponent:0.42];
-    PPChatsApplyContinuousCorners(view, 17.0);
-    view.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    view.layer.borderColor = [UIColor.whiteColor colorWithAlphaComponent:0.70].CGColor;
+    view.backgroundColor = [UIColor ppSurfaceOverlay];
+    view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    PPChatsApplyContinuousCorners(view, PPCornerSmall);
 
     UILabel *value = [UILabel new];
     value.translatesAutoresizingMaskIntoConstraints = NO;
-    value.font = [UIFont monospacedDigitSystemFontOfSize:20.0 weight:UIFontWeightBold];
+    value.font = PPChatsFont([UIFont monospacedDigitSystemFontOfSize:16.0 weight:UIFontWeightBold], UIFontTextStyleHeadline);
     value.adjustsFontForContentSizeCategory = YES;
     value.textColor = PPChatsPrimaryTextColor();
-    value.textAlignment = NSTextAlignmentCenter;
+    value.textAlignment = NSTextAlignmentNatural;
     [view addSubview:value];
 
     UILabel *caption = [UILabel new];
     caption.translatesAutoresizingMaskIntoConstraints = NO;
-    caption.font = PPChatsFont([Styling fontRegular:11.0], UIFontTextStyleCaption1);
+    caption.font = PPChatsFont([Styling fontBold:11.0], UIFontTextStyleCaption1);
     caption.adjustsFontForContentSizeCategory = YES;
     caption.textColor = PPChatsSecondaryTextColor();
-    caption.textAlignment = NSTextAlignmentCenter;
+    caption.textAlignment = NSTextAlignmentNatural;
     caption.text = title;
+    caption.numberOfLines = 0;
     [view addSubview:caption];
+    value.isAccessibilityElement = NO;
+    caption.isAccessibilityElement = NO;
+    view.isAccessibilityElement = YES;
+    view.accessibilityTraits = UIAccessibilityTraitStaticText;
+    view.accessibilityLabel = title;
 
     [NSLayoutConstraint activateConstraints:@[
-        [value.topAnchor constraintEqualToAnchor:view.topAnchor constant:8.0],
-        [value.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:8.0],
-        [value.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-8.0],
-        [caption.topAnchor constraintEqualToAnchor:value.bottomAnchor constant:1.0],
-        [caption.leadingAnchor constraintEqualToAnchor:value.leadingAnchor],
-        [caption.trailingAnchor constraintEqualToAnchor:value.trailingAnchor],
-        [caption.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-7.0],
+        [value.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:PPSpaceMD],
+        [value.centerYAnchor constraintEqualToAnchor:view.centerYAnchor],
+        [value.topAnchor constraintGreaterThanOrEqualToAnchor:view.topAnchor constant:PPSpaceSM],
+        [value.bottomAnchor constraintLessThanOrEqualToAnchor:view.bottomAnchor constant:-PPSpaceSM],
+        [caption.leadingAnchor constraintEqualToAnchor:value.trailingAnchor constant:PPSpaceMDHalf],
+        [caption.trailingAnchor constraintLessThanOrEqualToAnchor:view.trailingAnchor constant:-PPSpaceMD],
+        [caption.centerYAnchor constraintEqualToAnchor:value.centerYAnchor],
+        [caption.topAnchor constraintGreaterThanOrEqualToAnchor:view.topAnchor constant:PPSpaceSM],
+        [caption.bottomAnchor constraintLessThanOrEqualToAnchor:view.bottomAnchor constant:-PPSpaceSM],
     ]];
     if (valueLabel) {
         *valueLabel = value;
@@ -1404,7 +1697,9 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     CGFloat height = [header systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                          withHorizontalFittingPriority:UILayoutPriorityRequired
                                verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
-    frame.size.height = ceil(MAX(1.0, height));
+    height = ceil(MAX(1.0, height));
+    if (fabs(CGRectGetHeight(frame) - height) < 0.5) return;
+    frame.size.height = height;
     header.frame = frame;
     self.tableView.tableHeaderView = header;
 }
@@ -1575,12 +1870,14 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     }
     self.heroUnreadCountLabel.text = [NSString stringWithFormat:@"%ld", (long)unread];
     self.heroActiveCountLabel.text = [NSString stringWithFormat:@"%ld", (long)active];
+    self.heroUnreadCountLabel.superview.accessibilityValue = self.heroUnreadCountLabel.text;
+    self.heroActiveCountLabel.superview.accessibilityValue = self.heroActiveCountLabel.text;
     self.heroSubtitleLabel.text = self.hasManagePermission ? PPChatsL(@"SupportChats_HeroSubtitleManage") : PPChatsL(@"SupportChats_HeroSubtitleView");
 }
 
 - (void)markThreadRead:(NSDictionary *)thread {
     NSString *threadID = PPChatsSafeString(thread[@"id"]);
-    if (threadID.length == 0 || self.currentUID.length == 0) return;
+    if (!self.hasManagePermission || threadID.length == 0 || self.currentUID.length == 0) return;
     FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"supportChatCommand"];
     callable.timeoutInterval = 30.0;
     [callable callWithObject:@{
@@ -1611,6 +1908,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     if (self.filteredChats.count == 0) {
         PPSupportStateCell *cell = [tableView dequeueReusableCellWithIdentifier:@"StateCell" forIndexPath:indexPath];
         [cell configureWithSymbol:self.stateSymbol ?: @"lifepreserver.fill" title:self.stateTitle ?: @"" subtitle:self.stateSubtitle ?: @""];
+        cell.accessibilityHint = nil;
+        cell.accessibilityTraits = UIAccessibilityTraitStaticText;
         return cell;
     }
 

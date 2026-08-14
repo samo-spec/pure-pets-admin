@@ -35,7 +35,7 @@ static NSString *const PPAddUserModeAssignValue = @"assign";
 
 static CGFloat const PPAddUserHorizontalInset = 18.0;
 static CGFloat const PPAddUserWideHorizontalInset = 28.0;
-static CGFloat const PPAddUserHeaderCornerRadius = PPCornerHero;
+static CGFloat const PPAddUserHeaderCornerRadius = PPCornerCard;
 
 static UIFont *PPAddUserScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
     if (@available(iOS 11.0, *)) {
@@ -45,7 +45,7 @@ static UIFont *PPAddUserScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) 
 }
 
 static UIColor *PPAddUserSurfaceColor(void) {
-    return [UIColor ppElevatedSurface];
+    return [UIColor ppSurface];
 }
 
 static UIColor *PPAddUserBackgroundColor(void) {
@@ -65,7 +65,7 @@ static UIColor *PPAddUserSecondaryTextColor(void) {
 }
 
 static UIColor *PPAddUserBorderColor(void) {
-    return [PPAddUserPrimaryColor() colorWithAlphaComponent:0.08];
+    return [UIColor ppSurfaceBorder];
 }
 
 static NSString *PPAddUserSafeString(id value) {
@@ -108,25 +108,18 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
         self.translatesAutoresizingMaskIntoConstraints = NO;
         self.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
         self.textAlignment = NSTextAlignmentCenter;
-        self.numberOfLines = 2;
+        self.numberOfLines = 0;
         self.lineBreakMode = NSLineBreakByWordWrapping;
-        self.preferredMaxLayoutWidth = 180.0;
         self.adjustsFontForContentSizeCategory = YES;
-        self.layer.cornerRadius = 13.0;
-        self.layer.masksToBounds = YES;
-        [NSLayoutConstraint activateConstraints:@[
-            [self.heightAnchor constraintGreaterThanOrEqualToConstant:26.0],
-            [self.widthAnchor constraintGreaterThanOrEqualToConstant:76.0],
-            [self.widthAnchor constraintLessThanOrEqualToConstant:180.0]
-        ]];
     }
     return self;
 }
 
 - (void)applyWithText:(NSString *)text tintColor:(UIColor *)tintColor fillAlpha:(CGFloat)fillAlpha {
+    (void)fillAlpha;
     self.text = text;
     self.textColor = tintColor;
-    self.backgroundColor = [tintColor colorWithAlphaComponent:fillAlpha];
+    self.backgroundColor = UIColor.clearColor;
 }
 
 @end
@@ -143,6 +136,8 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 @property (nonatomic, strong) UILabel *headerEyebrowLabel;
 @property (nonatomic, strong) UILabel *headerTitleLabel;
 @property (nonatomic, strong) UILabel *headerSubtitleLabel;
+@property (nonatomic, strong) UILabel *headerIdentityLabel;
+@property (nonatomic, strong) UILabel *headerOutcomeLabel;
 @property (nonatomic, strong) UIImageView *headerIconView;
 @property (nonatomic, strong) PPAddUserTagLabel *modeTagLabel;
 @property (nonatomic, strong) PPAddUserTagLabel *roleTagLabel;
@@ -242,6 +237,22 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
         [self pp_installHeaderViewForWidth:width];
     } else {
         [self pp_updateHeaderShadowPath];
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (!self.isViewLoaded || !self.contentStack) return;
+
+    BOOL contentSizeChanged = previousTraitCollection &&
+        ![previousTraitCollection.preferredContentSizeCategory isEqualToString:self.traitCollection.preferredContentSizeCategory];
+    BOOL appearanceChanged = NO;
+    if (@available(iOS 13.0, *)) {
+        appearanceChanged = previousTraitCollection &&
+            [self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection];
+    }
+    if (contentSizeChanged || appearanceChanged) {
+        [self pp_installHeaderViewForWidth:CGRectGetWidth(self.view.bounds)];
     }
 }
 
@@ -359,39 +370,36 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     header.translatesAutoresizingMaskIntoConstraints = NO;
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    CGFloat headerHeight = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory) ? 420.0 : 272.0;
-    [header.heightAnchor constraintEqualToConstant:headerHeight].active = YES;
 
     UIView *card = [[UIView alloc] init];
     card.translatesAutoresizingMaskIntoConstraints = NO;
-    card.backgroundColor = [[UIColor ppSoftRose] colorWithAlphaComponent:0.32];
+    card.backgroundColor = PPAddUserSurfaceColor();
     card.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     card.layer.cornerRadius = PPAddUserHeaderCornerRadius;
     if (@available(iOS 13.0, *)) card.layer.cornerCurve = kCACornerCurveContinuous;
     card.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    card.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.68].CGColor;
+    card.layer.borderColor = PPAddUserBorderColor().CGColor;
     card.layer.shadowColor = [UIColor ppShadow].CGColor;
-    card.layer.shadowOpacity = PPShadowElevatedOpacity;
-    card.layer.shadowRadius = PPShadowElevatedRadius;
-    card.layer.shadowOffset = CGSizeMake(0, PPShadowElevatedOffsetY);
+    card.layer.shadowOpacity = 0.0;
     [header addSubview:card];
     self.heroCard = card;
 
     UIView *avatarShell = [[UIView alloc] init];
     avatarShell.translatesAutoresizingMaskIntoConstraints = NO;
-    avatarShell.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
-    avatarShell.layer.cornerRadius = 30.0;
+    avatarShell.backgroundColor = [UIColor ppSurfaceOverlay];
+    avatarShell.layer.cornerRadius = PPCorner16;
     if (@available(iOS 13.0, *)) avatarShell.layer.cornerCurve = kCACornerCurveContinuous;
-    [card addSubview:avatarShell];
+    avatarShell.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    avatarShell.layer.borderColor = PPAddUserBorderColor().CGColor;
 
     UIImage *avatarImage = self.pendingAvatarImage ?: [UIImage systemImageNamed:@"person.crop.circle.fill"];
     self.avatarIMV = [[UIImageView alloc] initWithImage:avatarImage];
     self.avatarIMV.translatesAutoresizingMaskIntoConstraints = NO;
     self.avatarIMV.contentMode = UIViewContentModeScaleAspectFill;
     self.avatarIMV.tintColor = PPAddUserPrimaryColor();
-    self.avatarIMV.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.08];
+    self.avatarIMV.backgroundColor = UIColor.clearColor;
     self.avatarIMV.isAccessibilityElement = NO;
-    self.avatarIMV.layer.cornerRadius = 26.0;
+    self.avatarIMV.layer.cornerRadius = PPCornerSmall;
     self.avatarIMV.layer.masksToBounds = YES;
     [avatarShell addSubview:self.avatarIMV];
 
@@ -399,32 +407,30 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     self.addPhotoBtn.translatesAutoresizingMaskIntoConstraints = NO;
     self.addPhotoBtn.accessibilityLabel = kLang(@"Staff_Access_Preview_Photo");
     self.addPhotoBtn.accessibilityHint = kLang(@"Staff_Access_Preview_Photo_Hint");
-    [self.addPhotoBtn setTitle:kLang(@"Staff_Access_Preview_Photo") forState:UIControlStateNormal];
     UIImageSymbolConfiguration *cameraConfig = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightSemibold];
     [self.addPhotoBtn setImage:[UIImage systemImageNamed:@"camera.fill" withConfiguration:cameraConfig] forState:UIControlStateNormal];
-    self.addPhotoBtn.titleLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
-    self.addPhotoBtn.titleLabel.adjustsFontForContentSizeCategory = YES;
     self.addPhotoBtn.tintColor = PPAddUserPrimaryColor();
-    self.addPhotoBtn.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
-    self.addPhotoBtn.contentEdgeInsets = UIEdgeInsetsMake(7.0, 12.0, 7.0, 12.0);
-    self.addPhotoBtn.imageEdgeInsets = [Language isRTL] ? UIEdgeInsetsMake(0, 6.0, 0, -6.0) : UIEdgeInsetsMake(0, -6.0, 0, 6.0);
-    self.addPhotoBtn.layer.cornerRadius = 17.0;
-    if (@available(iOS 13.0, *)) self.addPhotoBtn.layer.cornerCurve = kCACornerCurveContinuous;
+    self.addPhotoBtn.backgroundColor = UIColor.clearColor;
+    self.addPhotoBtn.contentHorizontalAlignment = UIControlContentHorizontalAlignmentTrailing;
+    self.addPhotoBtn.contentVerticalAlignment = UIControlContentVerticalAlignmentBottom;
+    self.addPhotoBtn.imageEdgeInsets = [Language isRTL]
+        ? UIEdgeInsetsMake(0.0, PPSpaceSM, PPSpaceSM, 0.0)
+        : UIEdgeInsetsMake(0.0, 0.0, PPSpaceSM, PPSpaceSM);
     [self.addPhotoBtn addTarget:self action:@selector(didTapAddPhoto) forControlEvents:UIControlEventTouchUpInside];
-    [card addSubview:self.addPhotoBtn];
+    [avatarShell addSubview:self.addPhotoBtn];
 
     UIView *iconShell = [[UIView alloc] init];
     iconShell.translatesAutoresizingMaskIntoConstraints = NO;
-    iconShell.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
-    iconShell.layer.cornerRadius = 18.0;
+    iconShell.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.08];
+    iconShell.layer.cornerRadius = PPCornerSmall;
     if (@available(iOS 13.0, *)) iconShell.layer.cornerCurve = kCACornerCurveContinuous;
-    [card addSubview:iconShell];
 
     self.headerIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:[self pp_headerIconName]
-                                                                     withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:21 weight:UIImageSymbolWeightSemibold]]];
+                                                                     withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:PPFontTitle3 weight:UIImageSymbolWeightSemibold]]];
     self.headerIconView.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerIconView.tintColor = PPAddUserPrimaryColor();
     self.headerIconView.contentMode = UIViewContentModeScaleAspectFit;
+    self.headerIconView.isAccessibilityElement = NO;
     [iconShell addSubview:self.headerIconView];
 
     self.headerEyebrowLabel = [[UILabel alloc] init];
@@ -435,90 +441,180 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     self.headerEyebrowLabel.numberOfLines = 1;
     self.headerEyebrowLabel.adjustsFontForContentSizeCategory = YES;
     self.headerEyebrowLabel.text = kLang(@"Staff_Access_Eyebrow");
-    [card addSubview:self.headerEyebrowLabel];
+
+    UIStackView *eyebrowRow = [[UIStackView alloc] initWithArrangedSubviews:@[iconShell, self.headerEyebrowLabel]];
+    eyebrowRow.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowRow.axis = UILayoutConstraintAxisHorizontal;
+    eyebrowRow.alignment = UIStackViewAlignmentCenter;
+    eyebrowRow.spacing = PPSpaceSM;
+    eyebrowRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.headerTitleLabel = [[UILabel alloc] init];
     self.headerTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerTitleLabel.font = PPAddUserScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
     self.headerTitleLabel.textColor = PPAddUserPrimaryTextColor();
     self.headerTitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-    self.headerTitleLabel.numberOfLines = 2;
+    self.headerTitleLabel.numberOfLines = 0;
     self.headerTitleLabel.adjustsFontForContentSizeCategory = YES;
     self.headerTitleLabel.text = [self pp_headerTitleText];
-    [card addSubview:self.headerTitleLabel];
 
     self.headerSubtitleLabel = [[UILabel alloc] init];
     self.headerSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerSubtitleLabel.font = PPAddUserScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
     self.headerSubtitleLabel.textColor = [PPAddUserSecondaryTextColor() colorWithAlphaComponent:0.9];
     self.headerSubtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
-    self.headerSubtitleLabel.numberOfLines = 2;
+    self.headerSubtitleLabel.numberOfLines = 0;
     self.headerSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.headerSubtitleLabel.text = [self pp_headerSubtitleText];
-    [card addSubview:self.headerSubtitleLabel];
+
+    UILabel *identityLabel = [[UILabel alloc] init];
+    identityLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    identityLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
+    identityLabel.textColor = PPAddUserSecondaryTextColor();
+    identityLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    identityLabel.numberOfLines = 0;
+    identityLabel.adjustsFontForContentSizeCategory = YES;
+    identityLabel.hidden = YES;
+    self.headerIdentityLabel = identityLabel;
+
+    UIImageView *outcomeIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"
+                                                                             withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold]]];
+    outcomeIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    outcomeIcon.tintColor = PPAddUserPrimaryColor();
+    outcomeIcon.contentMode = UIViewContentModeScaleAspectFit;
+    outcomeIcon.isAccessibilityElement = NO;
+
+    self.headerOutcomeLabel = [[UILabel alloc] init];
+    self.headerOutcomeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.headerOutcomeLabel.font = PPAddUserScaledFont([Styling fontMedium:PPFontFootnote], UIFontTextStyleFootnote);
+    self.headerOutcomeLabel.textColor = PPAddUserPrimaryColor();
+    self.headerOutcomeLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    self.headerOutcomeLabel.numberOfLines = 0;
+    self.headerOutcomeLabel.adjustsFontForContentSizeCategory = YES;
+    self.headerOutcomeLabel.text = [self pp_saveActionTitle];
+
+    UIStackView *outcomeRow = [[UIStackView alloc] initWithArrangedSubviews:@[outcomeIcon, self.headerOutcomeLabel]];
+    outcomeRow.translatesAutoresizingMaskIntoConstraints = NO;
+    outcomeRow.axis = UILayoutConstraintAxisHorizontal;
+    outcomeRow.alignment = UIStackViewAlignmentCenter;
+    outcomeRow.spacing = PPSpaceMDHalf;
+    outcomeRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *copyStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        eyebrowRow, self.headerTitleLabel, self.headerSubtitleLabel, identityLabel, outcomeRow
+    ]];
+    copyStack.translatesAutoresizingMaskIntoConstraints = NO;
+    copyStack.axis = UILayoutConstraintAxisVertical;
+    copyStack.alignment = UIStackViewAlignmentFill;
+    copyStack.spacing = PPSpaceXS;
+    [copyStack setCustomSpacing:PPSpaceSM afterView:self.headerSubtitleLabel];
+
+    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    UIStackView *dossierRow = [[UIStackView alloc] initWithArrangedSubviews:@[copyStack, avatarShell]];
+    dossierRow.translatesAutoresizingMaskIntoConstraints = NO;
+    dossierRow.axis = accessibilityCategory ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    dossierRow.alignment = accessibilityCategory ? UIStackViewAlignmentLeading : UIStackViewAlignmentTop;
+    dossierRow.spacing = PPSpaceBase;
+    dossierRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [card addSubview:dossierRow];
 
     self.modeTagLabel = [[PPAddUserTagLabel alloc] init];
     self.roleTagLabel = [[PPAddUserTagLabel alloc] init];
     self.permissionTagLabel = [[PPAddUserTagLabel alloc] init];
 
-    UIStackView *tagStack = [[UIStackView alloc] initWithArrangedSubviews:@[self.modeTagLabel, self.roleTagLabel, self.permissionTagLabel]];
-    tagStack.translatesAutoresizingMaskIntoConstraints = NO;
-    tagStack.axis = UILayoutConstraintAxisVertical;
-    tagStack.alignment = UIStackViewAlignmentLeading;
-    tagStack.spacing = 7.0;
-    [card addSubview:tagStack];
+    UIView *modeDivider = [[UIView alloc] init];
+    modeDivider.translatesAutoresizingMaskIntoConstraints = NO;
+    modeDivider.backgroundColor = PPAddUserBorderColor();
+    UIView *roleDivider = [[UIView alloc] init];
+    roleDivider.translatesAutoresizingMaskIntoConstraints = NO;
+    roleDivider.backgroundColor = PPAddUserBorderColor();
+
+    UIStackView *evidenceStack = [[UIStackView alloc] initWithArrangedSubviews:@[
+        self.modeTagLabel, modeDivider, self.roleTagLabel, roleDivider, self.permissionTagLabel
+    ]];
+    evidenceStack.translatesAutoresizingMaskIntoConstraints = NO;
+    evidenceStack.axis = accessibilityCategory ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    evidenceStack.alignment = accessibilityCategory ? UIStackViewAlignmentFill : UIStackViewAlignmentCenter;
+    evidenceStack.spacing = accessibilityCategory ? PPSpaceXS : PPSpaceSM;
+    evidenceStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIView *evidenceSurface = [[UIView alloc] init];
+    evidenceSurface.translatesAutoresizingMaskIntoConstraints = NO;
+    evidenceSurface.backgroundColor = [UIColor ppSurfaceOverlay];
+    evidenceSurface.layer.cornerRadius = PPCorner16;
+    if (@available(iOS 13.0, *)) evidenceSurface.layer.cornerCurve = kCACornerCurveContinuous;
+    evidenceSurface.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    evidenceSurface.layer.borderColor = PPAddUserBorderColor().CGColor;
+    [evidenceSurface addSubview:evidenceStack];
+    [card addSubview:evidenceSurface];
+
+    if (accessibilityCategory) {
+        self.modeTagLabel.textAlignment = Language.alignmentForCurrentLanguage;
+        self.roleTagLabel.textAlignment = Language.alignmentForCurrentLanguage;
+        self.permissionTagLabel.textAlignment = Language.alignmentForCurrentLanguage;
+        [copyStack.widthAnchor constraintEqualToAnchor:dossierRow.widthAnchor].active = YES;
+        [modeDivider.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+        [roleDivider.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+    } else {
+        [self.modeTagLabel.widthAnchor constraintEqualToAnchor:self.roleTagLabel.widthAnchor].active = YES;
+        [self.roleTagLabel.widthAnchor constraintEqualToAnchor:self.permissionTagLabel.widthAnchor].active = YES;
+        [modeDivider.widthAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+        [modeDivider.heightAnchor constraintEqualToConstant:PPSpaceXL].active = YES;
+        [roleDivider.widthAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+        [roleDivider.heightAnchor constraintEqualToConstant:PPSpaceXL].active = YES;
+    }
 
     [NSLayoutConstraint activateConstraints:@[
-        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:8.0],
+        [card.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXS],
         [card.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:horizontalInset],
         [card.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-horizontalInset],
-        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-14.0],
+        [card.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceXS],
 
-        [avatarShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0],
-        [avatarShell.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-22.0],
-        [avatarShell.widthAnchor constraintEqualToConstant:78.0],
-        [avatarShell.heightAnchor constraintEqualToConstant:78.0],
+        [dossierRow.topAnchor constraintEqualToAnchor:card.topAnchor constant:PPSpaceBase],
+        [dossierRow.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceBase],
+        [dossierRow.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-PPSpaceBase],
+
+        [avatarShell.widthAnchor constraintEqualToConstant:PPButtonHeightLG + PPSpaceBase],
+        [avatarShell.heightAnchor constraintEqualToConstant:PPButtonHeightLG + PPSpaceBase],
 
         [self.avatarIMV.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
         [self.avatarIMV.centerYAnchor constraintEqualToAnchor:avatarShell.centerYAnchor],
-        [self.avatarIMV.widthAnchor constraintEqualToConstant:64.0],
-        [self.avatarIMV.heightAnchor constraintEqualToConstant:64.0],
+        [self.avatarIMV.widthAnchor constraintEqualToConstant:PPButtonHeightMD + PPSpaceMD],
+        [self.avatarIMV.heightAnchor constraintEqualToConstant:PPButtonHeightMD + PPSpaceMD],
 
-        [self.addPhotoBtn.centerXAnchor constraintEqualToAnchor:avatarShell.centerXAnchor],
-        [self.addPhotoBtn.topAnchor constraintEqualToAnchor:avatarShell.bottomAnchor constant:10.0],
-        [self.addPhotoBtn.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
-        [self.addPhotoBtn.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
+        [self.addPhotoBtn.topAnchor constraintEqualToAnchor:avatarShell.topAnchor],
+        [self.addPhotoBtn.leadingAnchor constraintEqualToAnchor:avatarShell.leadingAnchor],
+        [self.addPhotoBtn.trailingAnchor constraintEqualToAnchor:avatarShell.trailingAnchor],
+        [self.addPhotoBtn.bottomAnchor constraintEqualToAnchor:avatarShell.bottomAnchor],
 
-        [iconShell.topAnchor constraintEqualToAnchor:card.topAnchor constant:22.0],
-        [iconShell.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:22.0],
-        [iconShell.widthAnchor constraintEqualToConstant:48.0],
-        [iconShell.heightAnchor constraintEqualToConstant:48.0],
+        [iconShell.widthAnchor constraintEqualToConstant:PPButtonHeightXS],
+        [iconShell.heightAnchor constraintEqualToConstant:PPButtonHeightXS],
 
         [self.headerIconView.centerXAnchor constraintEqualToAnchor:iconShell.centerXAnchor],
         [self.headerIconView.centerYAnchor constraintEqualToAnchor:iconShell.centerYAnchor],
-        [self.headerIconView.widthAnchor constraintEqualToConstant:23.0],
-        [self.headerIconView.heightAnchor constraintEqualToConstant:23.0],
+        [self.headerIconView.widthAnchor constraintEqualToConstant:PPSpaceLG],
+        [self.headerIconView.heightAnchor constraintEqualToConstant:PPSpaceLG],
 
-        [self.headerEyebrowLabel.topAnchor constraintEqualToAnchor:card.topAnchor constant:23.0],
-        [self.headerEyebrowLabel.leadingAnchor constraintEqualToAnchor:iconShell.trailingAnchor constant:14.0],
-        [self.headerEyebrowLabel.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
+        [outcomeIcon.widthAnchor constraintEqualToConstant:PPSpaceBase],
+        [outcomeIcon.heightAnchor constraintEqualToConstant:PPSpaceBase],
 
-        [self.headerTitleLabel.topAnchor constraintEqualToAnchor:self.headerEyebrowLabel.bottomAnchor constant:3.0],
-        [self.headerTitleLabel.leadingAnchor constraintEqualToAnchor:iconShell.trailingAnchor constant:14.0],
-        [self.headerTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
+        [evidenceSurface.topAnchor constraintEqualToAnchor:dossierRow.bottomAnchor constant:PPSpaceMD],
+        [evidenceSurface.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:PPSpaceBase],
+        [evidenceSurface.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-PPSpaceBase],
+        [evidenceSurface.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-PPSpaceBase],
 
-        [self.headerSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.headerTitleLabel.leadingAnchor],
-        [self.headerSubtitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
-        [self.headerSubtitleLabel.topAnchor constraintEqualToAnchor:self.headerTitleLabel.bottomAnchor constant:8.0],
-
-        [tagStack.leadingAnchor constraintEqualToAnchor:self.headerTitleLabel.leadingAnchor],
-        [tagStack.trailingAnchor constraintLessThanOrEqualToAnchor:avatarShell.leadingAnchor constant:-14.0],
-        [tagStack.topAnchor constraintEqualToAnchor:self.headerSubtitleLabel.bottomAnchor constant:12.0],
-        [tagStack.bottomAnchor constraintLessThanOrEqualToAnchor:card.bottomAnchor constant:-18.0]
+        [evidenceStack.topAnchor constraintEqualToAnchor:evidenceSurface.topAnchor constant:PPSpaceSM],
+        [evidenceStack.leadingAnchor constraintEqualToAnchor:evidenceSurface.leadingAnchor constant:PPSpaceMD],
+        [evidenceStack.trailingAnchor constraintEqualToAnchor:evidenceSurface.trailingAnchor constant:-PPSpaceMD],
+        [evidenceStack.bottomAnchor constraintEqualToAnchor:evidenceSurface.bottomAnchor constant:-PPSpaceSM]
     ]];
 
     self.headerRoot = header;
     [self.contentStack insertArrangedSubview:header atIndex:0];
+    if (self.didPrepareEntrance && !self.didPlayEntrance) {
+        card.alpha = 0.0;
+        card.transform = CGAffineTransformMakeTranslation(0.0, 18.0);
+    }
     [self pp_updateHeaderShadowPath];
     [self pp_refreshHeroStateAnimated:NO];
 }
@@ -581,14 +677,12 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.backgroundColor = PPAddUserPrimaryColor();
     button.tintColor = UIColor.whiteColor;
-    button.layer.cornerRadius = 24.0;
+    button.layer.cornerRadius = PPCorner16;
     if (@available(iOS 13.0, *)) button.layer.cornerCurve = kCACornerCurveContinuous;
-    button.layer.shadowColor = PPAddUserPrimaryColor().CGColor;
-    button.layer.shadowOpacity = 0.18;
-    button.layer.shadowRadius = 18.0;
-    button.layer.shadowOffset = CGSizeMake(0, 10.0);
     button.titleLabel.font = PPAddUserScaledFont([Styling fontBold:PPFontCallout], UIFontTextStyleCallout);
     button.titleLabel.adjustsFontForContentSizeCategory = YES;
+    button.titleLabel.numberOfLines = 0;
+    button.titleLabel.textAlignment = NSTextAlignmentCenter;
     button.contentEdgeInsets = UIEdgeInsetsMake(0, 18.0, 0, 18.0);
     UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightBold];
     [button setImage:[UIImage systemImageNamed:@"checkmark" withConfiguration:config] forState:UIControlStateNormal];
@@ -627,6 +721,8 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     NSString *title = [self pp_saveActionTitle];
     BOOL enabled = !self.isSaving;
 
+    self.headerOutcomeLabel.text = title;
+
     [self.embeddedSaveButton setTitle:title forState:UIControlStateNormal];
     self.embeddedSaveButton.accessibilityLabel = title;
     self.embeddedSaveButton.enabled = enabled;
@@ -646,16 +742,16 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 - (PPFormStyle *)pp_formStyle {
     PPFormStyle *style = [PPFormStyle defaultStyle];
     style.accentColor = PPAddUserPrimaryColor();
-    style.cardBackgroundColor = PPAddUserSurfaceColor();
-     style.primaryTextColor = PPAddUserPrimaryTextColor();
+    style.cardBackgroundColor = UIColor.clearColor;
+    style.primaryTextColor = PPAddUserPrimaryTextColor();
     style.secondaryTextColor = PPAddUserSecondaryTextColor();
-    style.cardBorderColor = PPAddUserBorderColor();
-    style.fieldBorderColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.10];
-    style.shadowOpacity = 0.03;
-    style.shadowRadius = 16.0;
-    style.shadowOffset = CGSizeMake(0, 8.0);
-    style.cardCornerRadius = 24.0;
-    style.fieldCornerRadius = 20.0;
+    style.cardBorderColor = UIColor.clearColor;
+    style.fieldBackgroundColor = [UIColor ppSurfaceOverlay];
+    style.fieldBorderColor = PPAddUserBorderColor();
+    style.cardBorderWidth = 0.0;
+    style.shadowOpacity = 0.0;
+    style.cardCornerRadius = PPCorner16;
+    style.fieldCornerRadius = PPCornerSmall;
     style.titleFont = PPAddUserScaledFont([Styling fontBold:PPFontFootnote], UIFontTextStyleFootnote);
     style.inputFont = PPAddUserScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
     style.placeholderFont = PPAddUserScaledFont([Styling fontRegular:PPFontCallout], UIFontTextStyleCallout);
@@ -702,7 +798,7 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
         label.textColor = PPAddUserPrimaryTextColor();
         label.textAlignment = Language.alignmentForCurrentLanguage;
         label.text = title;
-        label.numberOfLines = 2;
+        label.numberOfLines = 0;
         label.adjustsFontForContentSizeCategory = YES;
         [copyStack addArrangedSubview:label];
 
@@ -718,22 +814,11 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
             [copyStack addArrangedSubview:detailLabel];
         }
 
-        UIView *line = [[UIView alloc] init];
-        line.translatesAutoresizingMaskIntoConstraints = NO;
-        line.backgroundColor = [PPAddUserPrimaryColor() colorWithAlphaComponent:0.12];
-        line.layer.cornerRadius = 0.5;
-        [header addSubview:line];
-
         [NSLayoutConstraint activateConstraints:@[
-            [copyStack.topAnchor constraintEqualToAnchor:header.topAnchor constant:6.0],
-            [copyStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:2.0],
-            [copyStack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-8.0],
-
-            [line.leadingAnchor constraintGreaterThanOrEqualToAnchor:copyStack.trailingAnchor constant:12.0],
-            [line.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
-            [line.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-2.0],
-            [line.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
-            [line.widthAnchor constraintGreaterThanOrEqualToConstant:24.0]
+            [copyStack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXS],
+            [copyStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceXXS],
+            [copyStack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceXXS],
+            [copyStack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceXS]
         ]];
 
         [stack addArrangedSubview:header];
@@ -991,7 +1076,7 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
 - (void)pp_updateHeaderShadowPath {
     if (!self.heroCard) return;
-    self.heroCard.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.heroCard.bounds cornerRadius:self.heroCard.layer.cornerRadius].CGPath;
+    self.heroCard.layer.shadowPath = nil;
 }
 
 - (void)pp_refreshHeroStateAnimated:(BOOL)animated {
@@ -1006,17 +1091,19 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     UIColor *statusColor = isActive
         ? [UIColor ppSuccess]
         : [UIColor ppWarning];
-    BOOL presentsEmailIdentity = self.editExistingStaff && [self pp_trimmedStringValue:PPAddUserSafeString(self.selectedUser.UserEmail)].length > 0;
-
     void (^updates)(void) = ^{
         self.headerTitleLabel.text = [self pp_headerTitleText];
         self.headerSubtitleLabel.text = [self pp_headerSubtitleText];
-        self.headerSubtitleLabel.semanticContentAttribute = presentsEmailIdentity
-            ? UISemanticContentAttributeForceLeftToRight
-            : [Language semanticAttributeForCurrentLanguage];
-        self.headerSubtitleLabel.textAlignment = presentsEmailIdentity ? NSTextAlignmentNatural : Language.alignmentForCurrentLanguage;
+        self.headerSubtitleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        self.headerSubtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+        NSString *identityText = [self pp_displayNameForUser:self.selectedUser];
+        self.headerIdentityLabel.text = identityText;
+        self.headerIdentityLabel.hidden = identityText.length == 0;
+        self.headerIdentityLabel.semanticContentAttribute = UISemanticContentAttributeUnspecified;
+        self.headerIdentityLabel.textAlignment = NSTextAlignmentNatural;
+        self.headerOutcomeLabel.text = [self pp_saveActionTitle];
         self.headerIconView.image = [UIImage systemImageNamed:[self pp_headerIconName]
-                                             withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:21 weight:UIImageSymbolWeightSemibold]];
+                                             withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:PPFontTitle3 weight:UIImageSymbolWeightSemibold]];
         [self.modeTagLabel applyWithText:modeText tintColor:statusColor fillAlpha:0.12];
         [self.roleTagLabel applyWithText:roleText tintColor:PPAddUserPrimaryTextColor() fillAlpha:0.08];
         [self.permissionTagLabel applyWithText:permissionText tintColor:PPAddUserSecondaryTextColor() fillAlpha:0.09];

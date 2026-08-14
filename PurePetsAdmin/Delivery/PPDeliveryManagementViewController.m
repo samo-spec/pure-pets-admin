@@ -215,7 +215,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
         _cardView = [UIView new];
         _cardView.translatesAutoresizingMaskIntoConstraints = NO;
         _cardView.backgroundColor = PPDeliverySurfaceColor();
-        PPDeliveryApplyCardChrome(_cardView, PPCornerCard);
+        PPDeliveryApplyCardChrome(_cardView, PPCornerMedium);
         [self.contentView addSubview:_cardView];
 
         _statusRail = [UIView new];
@@ -267,25 +267,25 @@ static NSString *PPDeliveryErrorText(NSError *error) {
         [_cardView addSubview:_chevronView];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceXS],
+            [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceSM],
             [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPScreenMargin],
             [_cardView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-PPScreenMargin],
-            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceXS],
+            [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceSM],
 
             [_statusRail.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor],
-            [_statusRail.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceLG],
-            [_statusRail.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceLG],
-            [_statusRail.widthAnchor constraintEqualToConstant:4.0],
+            [_statusRail.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
+            [_statusRail.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD],
+            [_statusRail.widthAnchor constraintEqualToConstant:PPSpaceXS],
 
             [_symbolView.leadingAnchor constraintEqualToAnchor:_statusRail.trailingAnchor constant:PPSpaceMD],
-            [_symbolView.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
+            [_symbolView.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceBase],
             [_symbolView.widthAnchor constraintEqualToConstant:PPButtonHeightSM],
             [_symbolView.heightAnchor constraintEqualToConstant:PPButtonHeightSM],
 
             [_chevronView.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceMD],
             [_chevronView.centerYAnchor constraintEqualToAnchor:_cardView.centerYAnchor],
-            [_chevronView.widthAnchor constraintEqualToConstant:22.0],
-            [_chevronView.heightAnchor constraintEqualToConstant:22.0],
+            [_chevronView.widthAnchor constraintEqualToConstant:PPSpaceLG],
+            [_chevronView.heightAnchor constraintEqualToConstant:PPSpaceLG],
 
             [_statusLabel.trailingAnchor constraintEqualToAnchor:_chevronView.leadingAnchor constant:-PPSpaceSM],
             [_statusLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
@@ -338,7 +338,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     NSString *customer = record.customerName.length ? record.customerName : kLang(@"Delivery_UnknownCustomer");
     NSString *fee = record.deliveryFee ? [NSString stringWithFormat:@"%.2f %@", record.deliveryFee.doubleValue, kLang(@"Accounting_QAR")] : @"-";
     NSString *driver = record.assignedDriverName.length ? record.assignedDriverName : kLang(@"Delivery_DriverUnassigned");
-    self.detailLabel.text = [NSString stringWithFormat:@"%@ - %@ - %@\n%@", customer, fee, driver, PPDeliveryDateString(record.createdAt)];
+    self.detailLabel.text = [NSString stringWithFormat:@"%@ · %@\n%@ · %@", customer, fee, driver, PPDeliveryDateString(record.createdAt)];
 
     UIColor *statusColor = PPDeliveryStatusColor(record.status);
     self.statusLabel.text = PPDeliveryStatusText(record.status);
@@ -705,8 +705,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
 @property (nonatomic, strong) UISegmentedControl *filterSegment;
 @property (nonatomic, copy) NSString *statusFilter;
 @property (nonatomic, strong) UIView *headerContainer;
-@property (nonatomic, strong) UILabel *heroCountLabel;
-@property (nonatomic, strong) UIButton *headerRefreshButton;
+@property (nonatomic, strong) UIBarButtonItem *globalRefreshItem;
 @property (nonatomic, strong) UIView *headerStatusView;
 @property (nonatomic, strong) UIActivityIndicatorView *headerStatusIndicator;
 @property (nonatomic, strong) UILabel *headerStatusLabel;
@@ -733,6 +732,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     self.records = @[];
     self.animatedRequestIDs = [NSMutableSet set];
     [self pp_configureTableView];
+    [self pp_configureGlobalNavigationRefresh];
     [self pp_buildHeader];
     [self pp_updatePermissionState];
     if (!self.permissionDenied) {
@@ -764,6 +764,21 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     [self pp_sizeHeaderToFit];
 }
 
+- (void)pp_configureGlobalNavigationRefresh {
+    UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:PPFontHeadline
+                                                                                                weight:UIImageSymbolWeightMedium];
+    UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"arrow.clockwise"
+                                                                       withConfiguration:configuration]
+                                                               style:UIBarButtonItemStylePlain
+                                                              target:self
+                                                              action:@selector(loadData)];
+    item.accessibilityIdentifier = @"admin-delivery-refresh";
+    item.accessibilityLabel = kLang(@"CommandCenter_Refresh");
+    item.accessibilityHint = kLang(@"Delivery_Retry_Hint");
+    self.globalRefreshItem = item;
+    self.navigationItem.rightBarButtonItem = item;
+}
+
 - (void)pp_configureTableView {
     self.view.backgroundColor = PPDeliveryCanvasColor();
     self.tableView.backgroundColor = PPDeliveryCanvasColor();
@@ -788,137 +803,15 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     UIStackView *stack = [UIStackView new];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = PPSpaceLG;
+    stack.spacing = PPSpaceSM;
     stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:stack];
-
-    UIView *titleRow = [UIView new];
-    titleRow.translatesAutoresizingMaskIntoConstraints = NO;
-    titleRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [stack addArrangedSubview:titleRow];
-    [titleRow.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightLG].active = YES;
-
-    UILabel *sectionTitle = [UILabel new];
-    sectionTitle.translatesAutoresizingMaskIntoConstraints = NO;
-    sectionTitle.text = kLang(@"Delivery_Title");
-    sectionTitle.font = PPDeliveryScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
-    sectionTitle.textColor = PPDeliveryInkColor();
-    sectionTitle.textAlignment = NSTextAlignmentCenter;
-    sectionTitle.adjustsFontForContentSizeCategory = YES;
-    sectionTitle.numberOfLines = 0;
-    sectionTitle.accessibilityTraits = UIAccessibilityTraitHeader;
-    [titleRow addSubview:sectionTitle];
-
-    self.headerRefreshButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.headerRefreshButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.headerRefreshButton.backgroundColor = PPDeliverySurfaceColor();
-    self.headerRefreshButton.tintColor = PPDeliveryInkColor();
-    self.headerRefreshButton.layer.cornerRadius = PPCornerPill;
-    if (@available(iOS 13.0, *)) self.headerRefreshButton.layer.cornerCurve = kCACornerCurveContinuous;
-    PPApplyButtonShadow(self.headerRefreshButton);
-    UIImageSymbolConfiguration *refreshConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:24.0 weight:UIImageSymbolWeightMedium];
-    [self.headerRefreshButton setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfiguration] forState:UIControlStateNormal];
-    self.headerRefreshButton.accessibilityLabel = kLang(@"Retry");
-    self.headerRefreshButton.accessibilityHint = kLang(@"Delivery_Retry_Hint");
-    [self.headerRefreshButton addTarget:self action:@selector(loadData) forControlEvents:UIControlEventTouchUpInside];
-    [titleRow addSubview:self.headerRefreshButton];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [sectionTitle.centerXAnchor constraintEqualToAnchor:titleRow.centerXAnchor],
-        [sectionTitle.leadingAnchor constraintGreaterThanOrEqualToAnchor:titleRow.leadingAnchor constant:PPTouchTargetMin],
-        [sectionTitle.trailingAnchor constraintLessThanOrEqualToAnchor:titleRow.trailingAnchor constant:-PPTouchTargetMin],
-        [sectionTitle.centerYAnchor constraintEqualToAnchor:titleRow.centerYAnchor],
-        [self.headerRefreshButton.trailingAnchor constraintEqualToAnchor:titleRow.trailingAnchor],
-        [self.headerRefreshButton.centerYAnchor constraintEqualToAnchor:titleRow.centerYAnchor],
-        [self.headerRefreshButton.widthAnchor constraintEqualToConstant:PPButtonHeightLG],
-        [self.headerRefreshButton.heightAnchor constraintEqualToConstant:PPButtonHeightLG]
-    ]];
-
-    UIView *missionRail = [UIView new];
-    missionRail.translatesAutoresizingMaskIntoConstraints = NO;
-    missionRail.backgroundColor = PPDeliverySurfaceColor();
-    missionRail.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    PPDeliveryApplyCardChrome(missionRail, PPCornerHero);
-    [stack addArrangedSubview:missionRail];
-    [missionRail.heightAnchor constraintGreaterThanOrEqualToConstant:156.0].active = YES;
-
-    UIView *railMarker = [UIView new];
-    railMarker.translatesAutoresizingMaskIntoConstraints = NO;
-    railMarker.backgroundColor = PPDeliveryAccentColor();
-    railMarker.accessibilityElementsHidden = YES;
-    [missionRail addSubview:railMarker];
-
-     UIImageView *missionIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shippingbox.fill"]];
-    missionIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    missionIcon.contentMode = UIViewContentModeCenter;
-    missionIcon.tintColor = PPDeliveryAccentColor();
-    missionIcon.backgroundColor = [PPDeliveryAccentColor() colorWithAlphaComponent:0.12];
-    missionIcon.layer.cornerRadius = PPCornerMedium;
-    missionIcon.layer.masksToBounds = YES;
-    if (@available(iOS 13.0, *)) missionIcon.layer.cornerCurve = kCACornerCurveContinuous;
-    missionIcon.accessibilityElementsHidden = YES;
-    [missionRail addSubview:missionIcon];
-
-    UILabel *title = [UILabel new];
-    title.translatesAutoresizingMaskIntoConstraints = NO;
-    title.text = kLang(@"Delivery_Title");
-    title.font = PPDeliveryScaledFont([Styling fontBold:PPFontTitle1], UIFontTextStyleTitle1);
-    title.textColor = PPDeliveryInkColor();
-    title.textAlignment = [Language alignmentForCurrentLanguage];
-    title.numberOfLines = 0;
-    title.adjustsFontForContentSizeCategory = YES;
-    [missionRail addSubview:title];
-
-    UILabel *subtitle = [UILabel new];
-    subtitle.translatesAutoresizingMaskIntoConstraints = NO;
-    subtitle.text = kLang(@"Delivery_Subtitle");
-    subtitle.font = PPDeliveryScaledFont([Styling fontRegular:PPFontSubheadline], UIFontTextStyleSubheadline);
-    subtitle.textColor = PPDeliverySubInkColor();
-    subtitle.textAlignment = [Language alignmentForCurrentLanguage];
-    subtitle.numberOfLines = 0;
-    subtitle.adjustsFontForContentSizeCategory = YES;
-    [missionRail addSubview:subtitle];
-
-    self.heroCountLabel = [PPDeliveryBadgeLabel new];
-    self.heroCountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCountLabel.font = PPDeliveryScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
-    self.heroCountLabel.textColor = PPDeliveryAccentColor();
-    self.heroCountLabel.backgroundColor = [PPDeliveryAccentColor() colorWithAlphaComponent:0.12];
-    self.heroCountLabel.textAlignment = NSTextAlignmentCenter;
-    self.heroCountLabel.numberOfLines = 0;
-    self.heroCountLabel.adjustsFontForContentSizeCategory = YES;
-    self.heroCountLabel.accessibilityTraits = UIAccessibilityTraitStaticText;
-    [missionRail addSubview:self.heroCountLabel];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [railMarker.leadingAnchor constraintEqualToAnchor:missionRail.leadingAnchor],
-        [railMarker.topAnchor constraintEqualToAnchor:missionRail.topAnchor],
-        [railMarker.bottomAnchor constraintEqualToAnchor:missionRail.bottomAnchor],
-        [railMarker.widthAnchor constraintEqualToConstant:5.0],
-
-        [missionIcon.leadingAnchor constraintEqualToAnchor:railMarker.trailingAnchor constant:PPSpaceLG],
-        [missionIcon.topAnchor constraintEqualToAnchor:missionRail.topAnchor constant:PPSpaceXL],
-        [missionIcon.widthAnchor constraintEqualToConstant:PPButtonHeightSM],
-        [missionIcon.heightAnchor constraintEqualToConstant:PPButtonHeightSM],
-
-        [self.heroCountLabel.trailingAnchor constraintEqualToAnchor:missionRail.trailingAnchor constant:-PPSpaceXL],
-        [self.heroCountLabel.topAnchor constraintEqualToAnchor:missionRail.topAnchor constant:PPSpaceXL],
-        [self.heroCountLabel.widthAnchor constraintGreaterThanOrEqualToConstant:88.0],
-
-        [title.leadingAnchor constraintEqualToAnchor:missionIcon.trailingAnchor constant:PPSpaceMD],
-        [title.trailingAnchor constraintLessThanOrEqualToAnchor:self.heroCountLabel.leadingAnchor constant:-PPSpaceMD],
-        [title.topAnchor constraintEqualToAnchor:missionIcon.topAnchor],
-
-        [subtitle.leadingAnchor constraintEqualToAnchor:title.leadingAnchor],
-        [subtitle.trailingAnchor constraintEqualToAnchor:missionRail.trailingAnchor constant:-PPSpaceXL],
-        [subtitle.topAnchor constraintEqualToAnchor:title.bottomAnchor constant:PPSpaceXS],
-        [subtitle.bottomAnchor constraintLessThanOrEqualToAnchor:missionRail.bottomAnchor constant:-PPSpaceXL]
-    ]];
 
     self.headerStatusView = [UIView new];
     self.headerStatusView.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerStatusView.backgroundColor = [UIColor ppSecondarySurface];
     self.headerStatusView.layer.cornerRadius = PPCornerSmall;
+    if (@available(iOS 13.0, *)) self.headerStatusView.layer.cornerCurve = kCACornerCurveContinuous;
     self.headerStatusView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     self.headerStatusView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.68].CGColor;
     self.headerStatusView.hidden = YES;
@@ -943,8 +836,8 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     [NSLayoutConstraint activateConstraints:@[
         [self.headerStatusIndicator.leadingAnchor constraintEqualToAnchor:self.headerStatusView.leadingAnchor constant:PPSpaceMD],
         [self.headerStatusIndicator.centerYAnchor constraintEqualToAnchor:self.headerStatusView.centerYAnchor],
-        [self.headerStatusIndicator.widthAnchor constraintEqualToConstant:20.0],
-        [self.headerStatusIndicator.heightAnchor constraintEqualToConstant:20.0],
+        [self.headerStatusIndicator.widthAnchor constraintEqualToConstant:PPSpaceLG],
+        [self.headerStatusIndicator.heightAnchor constraintEqualToConstant:PPSpaceLG],
         [self.headerStatusLabel.leadingAnchor constraintEqualToAnchor:self.headerStatusIndicator.trailingAnchor constant:PPSpaceSM],
         [self.headerStatusLabel.trailingAnchor constraintEqualToAnchor:self.headerStatusView.trailingAnchor constant:-PPSpaceMD],
         [self.headerStatusLabel.topAnchor constraintEqualToAnchor:self.headerStatusView.topAnchor constant:PPSpaceSM],
@@ -960,8 +853,8 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     self.filterSegment.translatesAutoresizingMaskIntoConstraints = NO;
     self.filterSegment.selectedSegmentIndex = 0;
     self.filterSegment.selectedSegmentTintColor = PPDeliveryAccentColor();
-    self.filterSegment.backgroundColor = [PPDeliverySurfaceColor() colorWithAlphaComponent:0.92];
-    self.filterSegment.layer.cornerRadius = PPCornerMedium;
+    self.filterSegment.backgroundColor = [UIColor ppSecondarySurface];
+    self.filterSegment.layer.cornerRadius = PPCornerCard;
     if (@available(iOS 13.0, *)) self.filterSegment.layer.cornerCurve = kCACornerCurveContinuous;
     self.filterSegment.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     self.filterSegment.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.82].CGColor;
@@ -982,7 +875,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
 
     self.headerContainer = header;
     self.tableView.tableHeaderView = header;
-    [self pp_updateHeroCount];
     [self pp_updateHeaderState];
 }
 
@@ -1056,9 +948,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
         self.isSubmitting = NO;
         self.tableView.userInteractionEnabled = YES;
         [self.refreshControl endRefreshing];
-        self.headerRefreshButton.enabled = NO;
     }
-    [self pp_updateHeroCount];
     [self pp_updateHeaderState];
     if (wasDenied && !self.permissionDenied && !self.isLoading && self.records.count == 0) {
         [self loadData];
@@ -1072,7 +962,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     NSInteger index = sender.selectedSegmentIndex;
     if (index < 0 || index >= (NSInteger)statuses.count) index = 0;
     self.statusFilter = statuses[(NSUInteger)index];
-    [self pp_updateHeroCount];
     [self.tableView reloadData];
     UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification, self.filterSegment);
 }
@@ -1090,12 +979,9 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     self.isLoading = YES;
     self.errorMessage = nil;
     self.successMessage = nil;
-    self.headerRefreshButton.enabled = NO;
-    self.headerRefreshButton.alpha = 0.52;
     BOOL shouldShowSuccessAfterLoad = self.showSuccessAfterLoad;
     self.showSuccessAfterLoad = NO;
     NSUInteger generation = ++self.loadGeneration;
-    [self pp_updateHeroCount];
     [self pp_updateHeaderState];
     [self.tableView reloadData];
 
@@ -1106,8 +992,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
             if (!self || generation != self.loadGeneration) return;
 
             self.isLoading = NO;
-            self.headerRefreshButton.enabled = !self.permissionDenied && !self.isSubmitting;
-            self.headerRefreshButton.alpha = self.headerRefreshButton.enabled ? 1.0 : 0.52;
             [self.refreshControl endRefreshing];
 
             if (error) {
@@ -1132,7 +1016,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
                     });
                 }
             }
-            [self pp_updateHeroCount];
             [self pp_updateHeaderState];
             [self.tableView reloadData];
         });
@@ -1148,12 +1031,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
         return [PPDeliveryCanonicalStatus(record.status) isEqualToString:@"cancelled"];
     }];
     return [self.records filteredArrayUsingPredicate:predicate];
-}
-
-- (void)pp_updateHeroCount {
-    NSString *format = kLang(@"Delivery_Count_Format");
-    self.heroCountLabel.text = [NSString stringWithFormat:(format.length ? format : @"%@"), @([self filteredRecords].count)];
-    self.heroCountLabel.accessibilityLabel = self.heroCountLabel.text;
 }
 
 - (void)pp_updateHeaderState {
@@ -1177,9 +1054,9 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     else [self.headerStatusIndicator stopAnimating];
 
     BOOL refreshEnabled = !self.permissionDenied && !self.isLoading && !self.isSubmitting;
-    self.headerRefreshButton.enabled = refreshEnabled;
-    self.headerRefreshButton.alpha = refreshEnabled ? 1.0 : 0.52;
-    self.headerRefreshButton.accessibilityValue = self.isLoading ? kLang(@"Loading") : nil;
+    self.globalRefreshItem.enabled = refreshEnabled;
+    self.globalRefreshItem.accessibilityValue = self.isLoading ? kLang(@"Loading") : nil;
+    if (self.globalNavigationStateDidChange) self.globalNavigationStateDidChange();
     [self.headerContainer setNeedsLayout];
     [self.headerContainer layoutIfNeeded];
     [self pp_sizeHeaderToFit];
@@ -1392,8 +1269,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
             self.errorMessage = kLang(@"StatusNoAccess");
         }
         self.showSuccessAfterLoad = NO;
-        [self pp_updateHeroCount];
-        [self pp_updateHeaderState];
+            [self pp_updateHeaderState];
         [self.tableView reloadData];
         NSString *message = self.permissionDenied ? kLang(@"StatusNoAccess") : PPDeliveryErrorText(error);
         [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:message];

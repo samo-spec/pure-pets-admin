@@ -136,8 +136,6 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     _searchController.searchResultsUpdater = self;
     _searchController.obscuresBackgroundDuringPresentation = NO;
     _searchController.searchBar.placeholder = kLang(@"SearchHere");
-    self.navigationItem.searchController = _searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
     self.definesPresentationContext = YES;
 }
 
@@ -146,6 +144,11 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = PPSpace4XL;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    _searchController.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    UIView *searchHeader = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, CGRectGetWidth(self.tableView.bounds), 56.0)];
+    [searchHeader addSubview:_searchController.searchBar];
+    _searchController.searchBar.frame = searchHeader.bounds;
+    self.tableView.tableHeaderView = searchHeader;
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(refreshData) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refresh;

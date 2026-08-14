@@ -9,6 +9,7 @@ struct AdminAppShell: View {
     @State private var selectedTab: AdminTab = .command
     @State private var showsLogoutConfirmation = false
     @StateObject private var commandState: CommandCenterState
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(session: AdminSession, sessionStore: AdminSessionStore, router: AdminRouter) {
         self.session = session
@@ -19,14 +20,13 @@ struct AdminAppShell: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            CommandCenterView(session: session, router: router, state: commandState)
+            AdminCommandOrbitDashboard(session: session, languageCode: sessionStore.languageCode)
                 .tabItem { tabLabel(.command) }
                 .tag(AdminTab.command)
 
             AdminModuleListView(
-                titleKey: "CommandCenter_Work_Title",
-                detailKey: "CommandCenter_Work_Detail",
-                routes: available([.payments, .fulfillment, .pointOfSale, .pointOfSaleHistory, .accessories, .food, .livePets]),
+                tab: .work,
+                routes: available([.payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory, .accessories, .food, .livePets]),
                 session: session,
                 router: router,
                 commandState: commandState,
@@ -36,8 +36,7 @@ struct AdminAppShell: View {
             .tag(AdminTab.work)
 
             AdminModuleListView(
-                titleKey: "CommandCenter_Operations_Title",
-                detailKey: "CommandCenter_Operations_Detail",
+                tab: .operations,
                 routes: available([.delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting, .branches, .agents, .homeControl, .services, .veterinarians, .moderation]),
                 session: session,
                 router: router,
@@ -48,8 +47,7 @@ struct AdminAppShell: View {
             .tag(AdminTab.operations)
 
             AdminModuleListView(
-                titleKey: "CommandCenter_People_Title",
-                detailKey: "CommandCenter_People_Detail",
+                tab: .customers,
                 routes: available([.users, .staff, .chats]),
                 session: session,
                 router: router,
@@ -74,7 +72,12 @@ struct AdminAppShell: View {
         .tint(AdminSurface.primary)
         .fullScreenCover(item: $router.presentedRoute) { route in
             AdminLegacyRouteView(route: route) { router.presentedRoute = nil }
-                .ignoresSafeArea()
+                // Keep the route background edge-to-edge above the status bar,
+                // while allowing the UIKit route container to own the bottom
+                // safe-area boundary.  Applying ignoresSafeArea to the whole
+                // route previously let scrollable legacy content finish under
+                // the home-indicator / dock clearance.
+                .ignoresSafeArea(edges: .top)
         }
         .alert(Language.get("CommandCenter_Permission_Denied_Title", alter: nil), isPresented: $router.permissionDenied) {
             Button(Language.get("OK", alter: nil), role: .cancel) {}
@@ -88,8 +91,12 @@ struct AdminAppShell: View {
             Text(Language.get("Logout_Confirm_Message", alter: nil))
         }
         .onAppear {
-            commandState.loadIfNeeded()
             router.consumePendingRoute(session: session)
+        }
+        .onChange(of: selectedTab) { tab in
+            if tab != .command {
+                commandState.loadIfNeeded()
+            }
         }
         .onChange(of: session) { updatedSession in
             commandState.updateSession(updatedSession)
@@ -111,38 +118,452 @@ struct AdminAppShell: View {
 }
 
 @MainActor
+private struct AdminCommandOrbitDashboard: UIViewControllerRepresentable {
+    let session: AdminSession
+    let languageCode: String
+
+    func makeUIViewController(context: Context) -> AdminCommandOrbitContainerController {
+        AdminCommandOrbitContainerController()
+    }
+
+    func updateUIViewController(_ controller: AdminCommandOrbitContainerController, context: Context) {
+        controller.refresh(session: session, languageCode: languageCode)
+    }
+}
+
+private final class AdminCommandOrbitContainerController: UIViewController, UINavigationControllerDelegate {
+    private let dashboard = PPAdminCreateCommandSpineDashboardController()
+    private var workflowNavigationController: AdminCommandOrbitNavigationController?
+    private var globalNavigationController: PPGlobalNavigationHostingController?
+    private var globalNavigationHeightConstraint: NSLayoutConstraint?
+    private var actionItemsByIdentifier: [String: UIBarButtonItem] = [:]
+    private var overflowActionItems: [UIBarButtonItem] = []
+    private var appliedLanguageCode: String?
+    private var appliedSession: AdminSession?
+    private var authorizationRefreshGeneration = 0
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
+
+        let navigationController = AdminCommandOrbitNavigationController(rootViewController: dashboard)
+        workflowNavigationController = navigationController
+        PPSetCommandCenterNavigationManaged(navigationController, true)
+        navigationController.delegate = self
+        applyGlobalNavigationPresentation(to: dashboard, in: navigationController)
+
+        let globalNavigation = PPGlobalNavigationHostingController(
+            configuration: navigationConfiguration(for: dashboard)
+        ) { [weak self] action in
+            self?.handleGlobalNavigationAction(action)
+        }
+        globalNavigation.onPreferredBarHeightChange = { [weak self] height in
+            guard let self,
+                  abs((self.globalNavigationHeightConstraint?.constant ?? height) - height) > 0.5 else {
+                return
+            }
+            self.globalNavigationHeightConstraint?.constant = height
+            self.view.setNeedsLayout()
+        }
+        globalNavigationController = globalNavigation
+        addChild(globalNavigation)
+        view.addSubview(globalNavigation.view)
+        globalNavigation.view.translatesAutoresizingMaskIntoConstraints = false
+        globalNavigation.view.semanticContentAttribute = view.semanticContentAttribute
+        let heightConstraint = globalNavigation.view.heightAnchor.constraint(
+            equalToConstant: globalNavigation.preferredBarHeight
+        )
+        globalNavigationHeightConstraint = heightConstraint
+        NSLayoutConstraint.activate([
+            globalNavigation.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            globalNavigation.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            globalNavigation.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            heightConstraint,
+        ])
+        heightConstraint.constant = globalNavigation.preferredBarHeight
+        globalNavigation.didMove(toParent: self)
+
+        addChild(navigationController)
+        view.addSubview(navigationController.view)
+        navigationController.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            navigationController.view.topAnchor.constraint(equalTo: globalNavigation.view.bottomAnchor),
+            navigationController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            navigationController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            navigationController.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+        ])
+        navigationController.didMove(toParent: self)
+        view.bringSubviewToFront(globalNavigation.view)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        refreshBottomDockLanguage()
+        applyBottomDockPolish()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        applyBottomDockPolish()
+        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else {
+            return
+        }
+        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
+        refreshGlobalNavigation()
+    }
+
+    /// Refines only the system-owned TabView appearance. The five stable tab
+    /// identifiers, selection state, symbols, labels, and routing stay owned by
+    /// `AdminAppShell` and `AdminTab`.
+    private func applyBottomDockPolish() {
+        guard let tabBarController else { return }
+        let tabBar = tabBarController.tabBar
+
+        tabBarController.view.backgroundColor = .ppBackground
+        tabBar.backgroundColor = .ppBackground
+        tabBar.isTranslucent = false
+        tabBar.tintColor = .ppPrimary
+        tabBar.unselectedItemTintColor = .ppTextSecondary
+
+        let appearance = (tabBar.standardAppearance.copy() as? UITabBarAppearance)
+            ?? UITabBarAppearance()
+        appearance.configureWithOpaqueBackground()
+        appearance.backgroundColor = .ppBackground
+        appearance.backgroundEffect = nil
+        appearance.shadowColor = UIColor.ppSurfaceBorder.withAlphaComponent(0.72)
+
+        let normalBaseFont = UIFont(name: "Beiruti-Medium", size: 11)
+            ?? UIFont.systemFont(ofSize: 11, weight: .medium)
+        let selectedBaseFont = UIFont(name: "Beiruti-Bold", size: 11)
+            ?? UIFont.systemFont(ofSize: 11, weight: .semibold)
+        let fontMetrics = UIFontMetrics(forTextStyle: .caption2)
+        let normalFont = fontMetrics.scaledFont(for: normalBaseFont, maximumPointSize: 13)
+        let selectedFont = fontMetrics.scaledFont(for: selectedBaseFont, maximumPointSize: 13)
+
+        for itemAppearance in [
+            appearance.stackedLayoutAppearance,
+            appearance.inlineLayoutAppearance,
+            appearance.compactInlineLayoutAppearance,
+        ] {
+            itemAppearance.normal.iconColor = .ppTextSecondary
+            itemAppearance.normal.titleTextAttributes = [
+                .font: normalFont,
+                .foregroundColor: UIColor.ppTextSecondary,
+            ]
+            itemAppearance.selected.iconColor = .ppPrimary
+            itemAppearance.selected.titleTextAttributes = [
+                .font: selectedFont,
+                .foregroundColor: UIColor.ppPrimary,
+            ]
+        }
+
+        tabBar.standardAppearance = appearance
+        tabBar.scrollEdgeAppearance = appearance
+    }
+
+    /// Updates presentation metadata in place so a language switch never
+    /// rebuilds the tab controller or its stateful child workflows.
+    private func refreshBottomDockLanguage() {
+        guard let tabBarController, let items = tabBarController.tabBar.items else { return }
+
+        let direction = Language.semanticAttributeForCurrentLanguage()
+        tabBarController.view.semanticContentAttribute = direction
+        tabBarController.tabBar.semanticContentAttribute = direction
+
+        for (item, tab) in zip(items, AdminTab.allCases) {
+            let title = Language.get(tab.titleKey, alter: nil)
+            item.title = title
+            item.accessibilityLabel = title
+        }
+
+        tabBarController.tabBar.setNeedsLayout()
+        tabBarController.tabBar.layoutIfNeeded()
+    }
+
+    func refresh(session: AdminSession, languageCode: String) {
+        let authorizationChanged = appliedSession != session
+        appliedSession = session
+        let languageChanged = appliedLanguageCode != languageCode
+        appliedLanguageCode = languageCode
+
+        let direction = Language.semanticAttributeForCurrentLanguage()
+        view.semanticContentAttribute = direction
+        view.backgroundColor = .ppBackground
+        globalNavigationController?.view.semanticContentAttribute = direction
+        globalNavigationController?.view.backgroundColor = .ppBackground
+        workflowNavigationController?.view.semanticContentAttribute = direction
+        workflowNavigationController?.view.backgroundColor = .ppBackground
+        workflowNavigationController?.topViewController?.view.semanticContentAttribute = direction
+        workflowNavigationController?.topViewController?.view.backgroundColor = .ppBackground
+        refreshBottomDockLanguage()
+        applyBottomDockPolish()
+        refreshGlobalNavigation()
+
+        if authorizationChanged, dashboard.isViewLoaded {
+            authorizationRefreshGeneration &+= 1
+            let generation = authorizationRefreshGeneration
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      self.authorizationRefreshGeneration == generation,
+                      self.appliedSession == session else {
+                    return
+                }
+                NotificationCenter.default.post(
+                    name: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"),
+                    object: self.dashboard
+                )
+            }
+        }
+
+        guard languageChanged else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.appliedLanguageCode == languageCode else { return }
+            self.refreshBottomDockLanguage()
+            self.applyBottomDockPolish()
+        }
+    }
+
+    private func navigationConfiguration(for viewController: UIViewController) -> PPGlobalNavigationConfiguration {
+        let isRoot = workflowNavigationController?.viewControllers.first === viewController
+        return PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: isRoot ? Language.get("AdminCommand_Title", alter: nil) : resolvedTitle(for: viewController),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
+            subtitle: isRoot ? Language.get("AdminCommand_Subtitle", alter: nil) : nil,
+            leadingAction: isRoot ? nil : backAction,
+            trailingActions: trailingActions(for: viewController),
+            showsContextFilament: true
+        )
+    }
+
+    private var backAction: PPGlobalNavigationAction {
+        PPGlobalNavigationAction(
+            id: "admin-command-spine-back",
+            kind: .back,
+            accessibilityLabel: Language.get("Back", alter: nil)
+        )
+    }
+
+    private func resolvedTitle(for viewController: UIViewController) -> String {
+        let titles = [viewController.navigationItem.title, viewController.title]
+        if let title = titles
+            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            return title
+        }
+        return Language.get("AdminCommand_Title", alter: nil)
+    }
+
+    private func trailingActions(for viewController: UIViewController) -> [PPGlobalNavigationAction] {
+        actionItemsByIdentifier.removeAll()
+        overflowActionItems.removeAll()
+
+        let items = (viewController.navigationItem.rightBarButtonItems ?? []) +
+            (viewController.navigationItem.leftBarButtonItems ?? [])
+        var actions: [PPGlobalNavigationAction] = []
+
+        for item in items {
+            let fallbackIdentifier = "admin-command-spine-action-\(actions.count + overflowActionItems.count)"
+            if actions.count >= 2 {
+                overflowActionItems.append(item)
+                continue
+            }
+
+            let identifier = item.accessibilityIdentifier ?? fallbackIdentifier
+            actionItemsByIdentifier[identifier] = item
+            actions.append(PPGlobalNavigationAction(
+                id: identifier,
+                kind: identifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
+                accessibilityLabel: title(for: item),
+                accessibilityHint: item.accessibilityHint,
+                prominence: .standard,
+                isEnabled: item.isEnabled
+            ))
+        }
+
+        if !overflowActionItems.isEmpty {
+            actions.append(PPGlobalNavigationAction(
+                id: "admin-command-spine-overflow",
+                kind: .more,
+                accessibilityLabel: Language.get("CommandCenter_Tab_More", alter: nil)
+            ))
+        }
+        return actions
+    }
+
+    private func title(for item: UIBarButtonItem) -> String {
+        let customViewLabel = item.customView?.accessibilityLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [item.accessibilityLabel, item.title, customViewLabel]
+        if let title = candidates
+            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            return title
+        }
+        return Language.get("CommandCenter_Tab_More", alter: nil)
+    }
+
+    private func handleGlobalNavigationAction(_ action: PPGlobalNavigationAction) {
+        switch action.id {
+        case "admin-command-spine-back":
+            workflowNavigationController?.popViewController(animated: true)
+        case "admin-command-spine-overflow":
+            presentOverflowActions()
+        default:
+            guard let item = actionItemsByIdentifier[action.id] else { return }
+            perform(item)
+        }
+    }
+
+    private func presentOverflowActions() {
+        guard !overflowActionItems.isEmpty else { return }
+        let controller = UIAlertController(
+            title: Language.get("CommandCenter_Tab_More", alter: nil),
+            message: nil,
+            preferredStyle: .actionSheet
+        )
+        for item in overflowActionItems where item.isEnabled {
+            controller.addAction(UIAlertAction(title: title(for: item), style: .default) { [weak self] _ in
+                self?.perform(item)
+            })
+        }
+        controller.addAction(UIAlertAction(
+            title: Language.get("Cancel", alter: nil),
+            style: .cancel
+        ))
+        if let popover = controller.popoverPresentationController,
+           let sourceView = globalNavigationController?.view {
+            popover.sourceView = sourceView
+            popover.sourceRect = sourceView.bounds
+        }
+        present(controller, animated: true)
+    }
+
+    private func perform(_ item: UIBarButtonItem) {
+        guard item.isEnabled else { return }
+        if let control = item.customView as? UIControl {
+            control.sendActions(for: .touchUpInside)
+            return
+        }
+        guard let action = item.action else { return }
+        UIApplication.shared.sendAction(action, to: item.target, from: item, for: nil)
+    }
+
+    private func applyGlobalNavigationPresentation(to viewController: UIViewController,
+                                                   in navigationController: UINavigationController) {
+        let direction = Language.semanticAttributeForCurrentLanguage()
+        viewController.view.semanticContentAttribute = direction
+        viewController.view.backgroundColor = .ppBackground
+        navigationController.view.semanticContentAttribute = direction
+        navigationController.view.backgroundColor = .ppBackground
+        navigationController.setNavigationBarHidden(true, animated: false)
+    }
+
+    private func refreshGlobalNavigation() {
+        guard let visibleController = workflowNavigationController?.topViewController else { return }
+        globalNavigationController?.update(
+            configuration: navigationConfiguration(for: visibleController)
+        ) { [weak self] action in
+            self?.handleGlobalNavigationAction(action)
+        }
+        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
+    }
+
+    /// Delivery owns request loading; the shell observes only its navigation
+    /// action state so the shared global trailing refresh remains current.
+    private func connectGlobalNavigationStateBridge(to viewController: UIViewController) {
+        guard let deliveryController = viewController as? PPDeliveryManagementViewController else { return }
+        deliveryController.globalNavigationStateDidChange = { [weak self, weak deliveryController] in
+            guard let self,
+                  self.workflowNavigationController?.topViewController === deliveryController else {
+                return
+            }
+            self.refreshGlobalNavigation()
+        }
+    }
+
+    func navigationController(_ navigationController: UINavigationController,
+                              willShow viewController: UIViewController,
+                              animated: Bool) {
+        applyGlobalNavigationPresentation(to: viewController, in: navigationController)
+        connectGlobalNavigationStateBridge(to: viewController)
+        refreshGlobalNavigation()
+        DispatchQueue.main.async { [weak self, weak navigationController, weak viewController] in
+            guard let self,
+                  let navigationController,
+                  let viewController,
+                  navigationController.topViewController === viewController else {
+                return
+            }
+            self.refreshGlobalNavigation()
+        }
+    }
+
+    func navigationController(_ navigationController: UINavigationController,
+                              didShow viewController: UIViewController,
+                              animated: Bool) {
+        refreshGlobalNavigation()
+    }
+}
+
+private final class AdminCommandOrbitNavigationController: UINavigationController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        super.setNavigationBarHidden(true, animated: false)
+    }
+
+    override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
+        super.setNavigationBarHidden(true, animated: false)
+    }
+}
+
+@MainActor
 private struct AdminModuleListView: View {
-    let titleKey: String
-    let detailKey: String
+    let tab: AdminTab
     let routes: [AdminRoute]
     let session: AdminSession
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
     let onOpenCommand: () -> Void
 
+    private var navigationConfiguration: PPGlobalNavigationConfiguration {
+        PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: Language.get(tab.titleKey, alter: nil),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
+            subtitle: detailText,
+            showsContextFilament: false
+        )
+    }
+
+    private var detailText: String? {
+        let key: String?
+        switch tab {
+        case .work: key = "CommandCenter_Work_Detail"
+        case .operations: key = "CommandCenter_Operations_Detail"
+        case .customers: key = "CommandCenter_People_Detail"
+        default: key = nil
+        }
+        return key.map { Language.get($0, alter: nil) }
+    }
+
     var body: some View {
-        NavigationView {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 14) {
-                    AdminConnectedSectionHeader(titleKey: titleKey, detailKey: detailKey)
-                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-                    if routes.isEmpty {
-                        AdminEmptyRoutesView()
-                    } else {
-                        ForEach(routes) { route in
-                            Button { router.present(route, session: session) } label: {
-                                AdminRouteRow(route: route)
-                            }
-                            .buttonStyle(.plain)
+        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+            LazyVStack(alignment: .leading, spacing: 14) {
+                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                if routes.isEmpty {
+                    AdminEmptyRoutesView()
+                } else {
+                    ForEach(routes) { route in
+                        Button { router.present(route, session: session) } label: {
+                            AdminRouteRow(route: route)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(20)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .padding(.horizontal, 20)
         }
-        .navigationViewStyle(.stack)
     }
 }
 
@@ -156,94 +577,71 @@ private struct AdminMoreView: View {
     let onLogout: () -> Void
     let onOpenCommand: () -> Void
 
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    AdminConnectedSectionHeader(
-                        titleKey: "CommandCenter_Tab_More",
-                        detailKey: "CommandCenter_Contextual_Actions_Detail"
-                    )
-                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text(session.displayName)
-                            .font(AdminType.title2)
-                            .foregroundColor(AdminSurface.primaryText)
-                        Text(session.localizedRoleName)
-                            .font(AdminType.callout)
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(session.email)
-                            .font(AdminType.footnote)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .environment(\.layoutDirection, .leftToRight)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(20)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(AdminSurface.hairline))
-                    .accessibilityElement(children: .combine)
-
-                    ForEach(routes) { route in
-                        Button { router.present(route, session: session) } label: { AdminRouteRow(route: route) }
-                            .buttonStyle(.plain)
-                    }
-
-                    Button {
-                        let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
-                        Language.userSelectedLanguage(next)
-                    } label: {
-                        Label(Language.get("Confirm_LanguageChange_Title", alter: nil), systemImage: "globe")
-                            .font(AdminType.calloutBold)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                            .background(AdminSurface.control, in: Capsule())
-                            .overlay(Capsule().stroke(AdminSurface.hairline))
-                    }
-
-                    Button(role: .destructive, action: onLogout) {
-                        HStack(spacing: 10) {
-                            if isSigningOut { ProgressView().tint(Color(uiColor: .ppError)) }
-                            Label(Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(Color(uiColor: .ppError))
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(Color(uiColor: .ppError).opacity(0.09), in: Capsule())
-                        .overlay(Capsule().stroke(Color(uiColor: .ppError).opacity(0.20)))
-                    }
-                    .disabled(isSigningOut)
-                }
-                .padding(20)
-            }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationBarHidden(true)
-        }
-        .navigationViewStyle(.stack)
+    private var navigationConfiguration: PPGlobalNavigationConfiguration {
+        PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: Language.get(AdminTab.more.titleKey, alter: nil),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
+            subtitle: Language.get("CommandCenter_Contextual_Actions_Detail", alter: nil),
+            showsContextFilament: false
+        )
     }
-}
-
-private struct AdminConnectedSectionHeader: View {
-    let titleKey: String
-    let detailKey: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(Language.get("CommandCenter_Eyebrow", alter: nil))
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.primary)
-                .textCase(.uppercase)
-            Text(Language.get(titleKey, alter: nil))
-                .font(AdminType.title)
-                .foregroundColor(AdminSurface.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(Language.get(detailKey, alter: nil))
-                .font(AdminType.callout)
-                .foregroundColor(AdminSurface.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+            LazyVStack(alignment: .leading, spacing: 16) {
+                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(session.displayName)
+                        .font(AdminType.title2)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(session.localizedRoleName)
+                        .font(AdminType.callout)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(session.email)
+                        .font(AdminType.footnote)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(AdminSurface.hairline))
+                .accessibilityElement(children: .combine)
+
+                ForEach(routes) { route in
+                    Button { router.present(route, session: session) } label: { AdminRouteRow(route: route) }
+                        .buttonStyle(.plain)
+                }
+
+                Button {
+                    let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
+                    Language.userSelectedLanguage(next)
+                } label: {
+                    Label(Language.get("Confirm_LanguageChange_Title", alter: nil), systemImage: "globe")
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(AdminSurface.control, in: Capsule())
+                        .overlay(Capsule().stroke(AdminSurface.hairline))
+                }
+
+                Button(role: .destructive, action: onLogout) {
+                    HStack(spacing: 10) {
+                        if isSigningOut { ProgressView().tint(Color(uiColor: .ppError)) }
+                        Label(Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(Color(uiColor: .ppError))
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Color(uiColor: .ppError).opacity(0.09), in: Capsule())
+                    .overlay(Capsule().stroke(Color(uiColor: .ppError).opacity(0.20)))
+                }
+                .disabled(isSigningOut)
+            }
+            .padding(.horizontal, 20)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 }
 

@@ -193,6 +193,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
 
 - (void)pp_applyNoNavigationBarAnimated:(BOOL)animated {
     if (!self.navigationController) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     if (!self.didCaptureNavigationBarHiddenState) {
         self.previousNavigationBarHiddenState = self.navigationController.navigationBarHidden;
         self.didCaptureNavigationBarHiddenState = YES;
@@ -202,6 +203,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
 
 - (void)pp_restoreNavigationBarIfNeededAnimated:(BOOL)animated {
     if (!self.navigationController || !self.didCaptureNavigationBarHiddenState) return;
+    if (PPCommandCenterNavigationIsManaged(self.navigationController)) return;
     [self.navigationController setNavigationBarHidden:self.previousNavigationBarHiddenState animated:animated];
     self.didCaptureNavigationBarHiddenState = NO;
 }
@@ -234,6 +236,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
 }
 
 - (void)setupHeaderUI {
+    BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
     CGFloat width = CGRectGetWidth(self.view.bounds);
     if (width <= 0.0) width = UIScreen.mainScreen.bounds.size.width;
     
@@ -242,15 +245,17 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     header.layoutMargins = UIEdgeInsetsMake(0.0, PPScreenMargin, 0.0, PPScreenMargin);
     
-    self.settingsTitleLabel = [UILabel new];
-    self.settingsTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.settingsTitleLabel.text = kLang(@"Settings");
-    self.settingsTitleLabel.textColor = [UIColor ppTextPrimary];
-    self.settingsTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:PPFontTitle1]];
-    self.settingsTitleLabel.adjustsFontForContentSizeCategory = YES;
-    self.settingsTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
-    self.settingsTitleLabel.numberOfLines = 2;
-    [header addSubview:self.settingsTitleLabel];
+    if (!usesGlobalNavigation) {
+        self.settingsTitleLabel = [UILabel new];
+        self.settingsTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.settingsTitleLabel.text = kLang(@"Settings");
+        self.settingsTitleLabel.textColor = [UIColor ppTextPrimary];
+        self.settingsTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:PPFontTitle1]];
+        self.settingsTitleLabel.adjustsFontForContentSizeCategory = YES;
+        self.settingsTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+        self.settingsTitleLabel.numberOfLines = 2;
+        [header addSubview:self.settingsTitleLabel];
+    }
 
     self.settingsSubtitleLabel = [UILabel new];
     self.settingsSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -370,13 +375,12 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
     self.profileActivityIndicator.accessibilityElementsHidden = YES;
     [card addSubview:self.profileActivityIndicator];
 
-    [NSLayoutConstraint activateConstraints:@[
-        [self.settingsTitleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceMD],
-        [self.settingsTitleLabel.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
-        [self.settingsTitleLabel.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
-        [self.settingsSubtitleLabel.topAnchor constraintEqualToAnchor:self.settingsTitleLabel.bottomAnchor constant:PPSpaceXXS],
-        [self.settingsSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.settingsTitleLabel.leadingAnchor],
-        [self.settingsSubtitleLabel.trailingAnchor constraintEqualToAnchor:self.settingsTitleLabel.trailingAnchor],
+    NSLayoutConstraint *subtitleTop = self.settingsTitleLabel
+        ? [self.settingsSubtitleLabel.topAnchor constraintEqualToAnchor:self.settingsTitleLabel.bottomAnchor constant:PPSpaceXXS]
+        : [self.settingsSubtitleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceMD];
+    NSMutableArray<NSLayoutConstraint *> *constraints = [@[
+        [self.settingsSubtitleLabel.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
+        [self.settingsSubtitleLabel.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
 
         [card.topAnchor constraintEqualToAnchor:self.settingsSubtitleLabel.bottomAnchor constant:PPSpaceMD],
         [card.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
@@ -431,7 +435,16 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
         [self.statusLabel.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
         [self.statusLabel.heightAnchor constraintGreaterThanOrEqualToConstant:32.0],
         [self.statusLabel.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-PPSpaceLG],
-    ]];
+    ] mutableCopy];
+    [constraints addObject:subtitleTop];
+    if (self.settingsTitleLabel) {
+        [constraints addObjectsFromArray:@[
+            [self.settingsTitleLabel.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceMD],
+            [self.settingsTitleLabel.leadingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.leadingAnchor],
+            [self.settingsTitleLabel.trailingAnchor constraintEqualToAnchor:header.layoutMarginsGuide.trailingAnchor],
+        ]];
+    }
+    [NSLayoutConstraint activateConstraints:constraints];
 
     card.isAccessibilityElement = YES;
     card.accessibilityTraits = UIAccessibilityTraitButton;

@@ -2117,6 +2117,13 @@
 "Fulfillment_OverrideSuccessNotified" = "تم تحديث الحالة وإرسال إشعار العميل.";
 "Fulfillment_OverrideSuccessNotificationFailed" = "تم تحديث الحالة، لكن تعذر تسليم إشعار العميل.";
 "Fulfillment_OverrideSuccessNotificationNotSent" = "تم تحديث الحالة. لم يرسل هذا الإجراء إشعارًا منفصلًا للعميل.";
+"Fulfillment_OverrideSuccessNotificationPending" = "تم تحديث الحالة. لا يزال إشعار العميل قيد التسليم.";
+"Fulfillment_ConfirmationPending_Title" = "بانتظار التأكيد المباشر";
+"Fulfillment_ConfirmationPending" = "تم قبول الأمر. ستؤكد هذه الشاشة الحالة بعد وصول سجل التنفيذ المباشر.";
+"Fulfillment_OverrideReconciliationPending" = "لم تُؤكَّد نتيجة الأمر بعد. أبقِ هذه الشاشة مفتوحة أثناء إعادة اتصال سجل التنفيذ المباشر.";
+"Fulfillment_OverrideConflict" = "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.";
+"Fulfillment_OverrideInvalid" = "لم يعد أمر التنفيذ صالحًا. راجع الحالة المختارة والمعلومات المطلوبة.";
+"Fulfillment_OverrideFailed" = "تعذر إكمال أمر التنفيذ. أبقِ هذا السجل مفتوحًا وتحقق من الحالة المباشرة قبل المحاولة مرة أخرى.";
 "Fulfillment_Actor_Admin" = "مشرف المنصة";
 "Fulfillment_Actor_Provider" = "المزود";
 "Fulfillment_Actor_Delivery" = "جهة التوصيل";
@@ -2162,6 +2169,15 @@
 "Categories" = "الفئات";
 "Orders" = "الطلبات";
 "Warnings" = "التحذيرات";
+"NotificationSettings_Eyebrow" = "تنبيهات الإدارة";
+"NotificationSettings_HeroTitle" = "اختر الإشارات المهمة";
+"NotificationSettings_HeroSubtitle" = "أبقِ كل فئة من إشعارات الإدارة متاحة، أو أوقف الفئات غير المهمة للجلسة الحالية.";
+"NotificationSettings_CategoryGeneralSubtitle" = "تحديثات إدارية عامة لا تنتمي إلى فئة أكثر تحديداً.";
+"NotificationSettings_CategoryOrdersSubtitle" = "نشاط الطلبات وتحديثات حالاتها.";
+"NotificationSettings_CategoryReviewSubtitle" = "العناصر التي تحتاج إلى مراجعة الإعلان.";
+"NotificationSettings_CategoryWarningSubtitle" = "تحذيرات قد تحتاج إلى انتباه المسؤول.";
+"NotificationSettings_EnabledCount_Format" = "%ld من %ld فئات مفعلة";
+"NotificationSettings_SessionNote" = "تحتفظ عناصر التحكم بقيمها الحالية ما دامت شاشة الإعدادات هذه مفتوحة.";
 
 "AddStaffMember" = "إنشاء عضو فريق";
 "AddStaffMemberSubtitle" = "أنشئ حساب فريق بوصول مضبوط.";
@@ -2720,6 +2736,27 @@
 "SupportChats_MessagesLoading" = "جارٍ تحميل الرسائل…";
 "SupportChats_MessagesEmpty" = "لا توجد رسائل بعد.";
 "SupportChats_ReplyError" = "تعذر إرسال رد الدعم.";
+"SupportChats_ChannelDetail" = "قناة دعم العملاء الرسمية";
+"SupportChats_StatusSelector" = "حالة المحادثة";
+"SupportChats_StatusSelectorHint" = "اختر الحالة التالية لمسار الدعم.";
+"SupportChats_StatusFormat" = "الحالة: %@";
+"SupportChats_StatusError" = "تعذر تحديث حالة المحادثة.";
+"SupportChats_StatusUpdating" = "جارٍ تحديث حالة المحادثة…";
+"SupportChats_MessageCountFormat" = "%ld رسالة في هذا التسلسل";
+"SupportChats_TimelineLoading" = "جارٍ الاتصال بالتسلسل المباشر للرسائل…";
+"SupportChats_TimelineUnavailable" = "التسلسل المباشر للرسائل غير متاح مؤقتًا.";
+"SupportChats_MessagesError" = "تعذر تحميل هذه المحادثة.";
+"SupportChats_MessagesRetry" = "اضغط لإعادة تحميل التسلسل المباشر للرسائل.";
+"SupportChats_ReopenToReply" = "غيّر الحالة إلى نشطة قبل الرد.";
+"SupportChats_Sending" = "جارٍ إرسال الرد…";
+"SupportChats_SendHint" = "يرسل هذا الرد باسم دعم بيور بتس الرسمي.";
+"SupportChats_MessageOfficial" = "دعم بيور بتس الرسمي";
+"SupportChats_MessageCustomer" = "العميل";
+"SupportChats_MessageImage" = "رسالة صورة";
+"SupportChats_MessageAudio" = "رسالة صوتية";
+"SupportChats_MessageVideo" = "رسالة فيديو";
+"SupportChats_MessageFile" = "رسالة ملف";
+"SupportChats_MessageSystem" = "رسالة نظام";
 
 /* ===================== قسم الإشراف ===================== */
 "Moderation_Title" = "الإشراف";
@@ -2884,6 +2921,12 @@
 "CommandCenter_No_Actions_Title" = "لا توجد إجراءات سياقية";
 "CommandCenter_No_Actions_Message" = "تظهر الاختصارات الإضافية عندما تتيحها صلاحيات فريقك الحالية.";
 "CommandCenter_Close_Workflow_Hint" = "إغلاق مسار العمل المتصل هذا.";
+"CommandCenter_Capability_Lens" = "عدسة الصلاحيات";
+"CommandCenter_Capability_Lens_Detail" = "تظهر فقط المسارات التشغيلية المصرح بها لهذا الدور الوظيفي.";
+"CommandCenter_Authorized_Lanes_Format" = "%@ مسارات بيانات مصرّح بها";
+"CommandCenter_Command_Spine" = "مسار الأولويات";
+"CommandCenter_Command_Spine_Detail" = "أولوياتك المصرح بها مرتبة تشغيلياً، مع فتح مسار العمل الحالي مباشرة.";
+"CommandCenter_Direct_Priority" = "الأولوية المباشرة";
 
 /* Mission Control provider application case file */
 "Providers_ApplicationDetail_CostType_Price" = "سعر ثابت";
@@ -3044,3 +3087,63 @@
 "MissionControl_Staff_SourceEmpty_Subtitle" = "لا توجد سجلات موظفين في مساحة العمل حتى الآن.";
 "MissionControl_Staff_FilteredEmpty_Title" = "لا يوجد موظفون مطابقون";
 "MissionControl_Staff_FilteredEmpty_Subtitle" = "جرّب اسمًا أو بريدًا إلكترونيًا أو رقم هاتف أو معرّف موظف.";
+
+/* PP_ADMIN_COMMAND_SPINE_LOCALIZATION_BEGIN */
+/* ===================== مركز أولويات الإدارة ===================== */
+"AdminCommand_Title" = "مدار القيادة";
+"AdminCommand_Subtitle" = "العمل الحيّ ينجذب نحو أولويته.";
+"AdminCommand_Pulse" = "مؤشر التشغيل";
+"AdminCommand_StaffActive" = "موظف · نشط";
+"AdminCommand_AllCapabilities" = "كل الصلاحيات";
+"AdminCommand_ModuleCount_Format" = "%ld وحدة";
+"AdminCommand_LiveSignals" = "أولويات حيّة";
+"AdminCommand_Urgent" = "عاجلة";
+"AdminCommand_Modules" = "الوحدات";
+"AdminCommand_PriorityNow" = "الأولوية الآن";
+"AdminCommand_DirectRoute" = "نقرة واحدة ← شاشة الإدارة";
+"AdminCommand_Open_Format" = "فتح %@";
+"AdminCommand_Accessibility_OpenHint" = "يفتح شاشة الإدارة الحالية مباشرة.";
+"AdminCommand_Ready" = "جاهز للإدارة";
+"AdminCommand_NeedsReview" = "يحتاج مراجعتك الآن";
+"AdminCommand_NeedsAdminReview" = "يحتاج متابعة إدارية";
+"AdminCommand_InProgress" = "قيد المتابعة";
+"AdminCommand_CheckQuantity" = "راجع الكمية المتاحة";
+"AdminCommand_Fulfillment_One" = "طلب جديد يحتاج مراجعتك";
+"AdminCommand_Fulfillment_Many" = "%ld طلبات جديدة تحتاج مراجعتك";
+"AdminCommand_Fulfillment_Active_One" = "طلب تنفيذ واحد قيد المتابعة";
+"AdminCommand_Fulfillment_Active_Many" = "%ld طلبات تنفيذ قيد المتابعة";
+"AdminCommand_Delivery_One" = "طلب توصيل جديد يحتاج مراجعتك";
+"AdminCommand_Delivery_Many" = "%ld طلبات توصيل تحتاج مراجعتك";
+"AdminCommand_Delivery_Active_One" = "طلب توصيل واحد قيد المتابعة";
+"AdminCommand_Delivery_Active_Many" = "%ld طلبات توصيل قيد المتابعة";
+"AdminCommand_Payment_One" = "عملية دفع تحتاج مراجعتك";
+"AdminCommand_Payment_Many" = "%ld عمليات دفع تحتاج مراجعتك";
+"AdminCommand_Stock_One" = "منتج واحد مخزونه منخفض";
+"AdminCommand_Stock_Many" = "%ld منتجات مخزونها منخفض";
+/* PP_ADMIN_COMMAND_SPINE_LOCALIZATION_END */
+
+/* ===================== مدار قيادة الإدارة ===================== */
+"AdminCommandOrbit_Eyebrow" = "إدارة Pure Pets";
+"AdminCommandOrbit_Title" = "مدار القيادة";
+"AdminCommandOrbit_Role" = "مساحة العمل النشطة";
+"AdminCommandOrbit_Staff" = "الموظفون";
+"AdminCommandOrbit_Live" = "مباشر";
+"AdminCommandOrbit_Active" = "توجد أعمال ذات أولوية";
+"AdminCommandOrbit_Stable" = "جاهز للإدارة";
+"AdminCommandOrbit_Core_Attention" = "يتطلب إجراءً";
+"AdminCommandOrbit_Core_Clear" = "لا توجد تنبيهات";
+"AdminCommandOrbit_Core_Accessibility_Format" = "%1$@، %2$@";
+"AdminCommandOrbit_Critical_Format" = "%ld حرجة";
+"AdminCommandOrbit_Rail_Priorities" = "أولويات حيّة";
+"AdminCommandOrbit_Rail_Urgent" = "عاجلة";
+"AdminCommandOrbit_Rail_Authorized" = "وحدات مصرّح بها";
+"AdminCommandOrbit_Route_Hint" = "يفتح شاشة الإدارة الحالية مباشرةً.";
+"AdminCommandOrbit_Sonar_Hint" = "يفحص المدار ويحدد الوحدات التي تتطلب إجراءً.";
+"AdminCommandOrbit_AttentionRequired" = "يتطلب الانتباه";
+"AdminCommandOrbit_Priority_Critical" = "أولوية حرجة";
+"AdminCommandOrbit_Priority_Elevated" = "أولوية مرتفعة";
+"AdminCommandOrbit_Priority_Normal" = "أولوية عادية";
+"AdminCommandOrbit_Empty_Title" = "لا توجد وجهات مصرّح بها";
+"AdminCommandOrbit_Empty_Detail" = "لا تتوفر مناطق إدارة لدور الموظف الحالي.";
+"AdminCommandOrbit_Primary_Signal" = "الأولوية الآن";
+"AdminCommandOrbit_Remaining_Signals" = "الأولويات التالية";

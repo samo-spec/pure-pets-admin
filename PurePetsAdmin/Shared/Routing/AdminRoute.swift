@@ -181,7 +181,7 @@ enum AdminRoute: Hashable, Identifiable {
     var requiredPermissions: [String] {
         switch self {
         case .paymentOrder, .payments: return ["payments.view", "payments.manage", "payments.refund", "accounting.manage", "stock.manage", "stock.create", "stock.delete", "categories.manage"]
-        case .paymentSettings: return ["payments.manage", "payments.refund", "accounting.manage", "settings.manage", "stock.manage", "stock.create", "stock.delete", "categories.manage"]
+        case .paymentSettings: return ["payments.manage"]
         case .fulfillment: return ["payments.view", "payments.manage"]
         case .delivery: return ["payments.manage"]
         case .providerApplications, .providerPlans, .providerFeatures, .providerAccounting: return ["providers.view", "providers.manage"]
@@ -313,6 +313,13 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
     private let route: AdminRoute
     private let dismissTarget: AnyObject
     private let dismissAction: Selector
+    private var workflowNavigationController: AdminGlobalNavigationStackController?
+    private var globalNavigationController: PPGlobalNavigationHostingController?
+    private var globalNavigationHeightConstraint: NSLayoutConstraint?
+    private var actionItemsByIdentifier: [String: UIBarButtonItem] = [:]
+    private var overflowActionItems: [UIBarButtonItem] = []
+    private nonisolated(unsafe) var navigationItemsObserver: (any NSObjectProtocol)?
+    private var usesCompactNavigationLayout: Bool?
 
     init(rootViewController: UIViewController,
          route: AdminRoute,
@@ -330,126 +337,295 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .ppBackground
+        let usesClearCanvas = route == .homeControl
+        view.backgroundColor = usesClearCanvas ? .clear : .ppBackground
+        view.isOpaque = !usesClearCanvas
+        view.semanticContentAttribute = Language.isRTL() ? .forceRightToLeft : .forceLeftToRight
 
-        let contextBar = makeContextBar()
-        view.addSubview(contextBar)
-        NSLayoutConstraint.activate([
-            contextBar.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            contextBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            contextBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            contextBar.heightAnchor.constraint(greaterThanOrEqualToConstant: 42),
-        ])
-
-        let navigationController = UINavigationController(rootViewController: rootViewController)
+        let navigationController = AdminGlobalNavigationStackController(rootViewController: rootViewController)
+        workflowNavigationController = navigationController
         PPSetCommandCenterNavigationManaged(navigationController, true)
         navigationController.delegate = self
+        navigationItemsObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPHomeControlNavigationItemsDidChangeNotification"),
+            object: rootViewController,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshGlobalNavigation()
+            }
+        }
         AdminConnectedRouteChrome.apply(to: rootViewController, in: navigationController, route: route)
+        if let deliveryController = rootViewController as? PPDeliveryManagementViewController {
+            deliveryController.globalNavigationStateDidChange = { [weak self] in
+                self?.refreshGlobalNavigation()
+            }
+        }
+
+        let globalNavigation = PPGlobalNavigationHostingController(
+            configuration: navigationConfiguration(for: rootViewController)
+        ) { [weak self] action in
+            self?.handleGlobalNavigationAction(action)
+        }
+        globalNavigation.onPreferredBarHeightChange = { [weak self] height in
+            guard let self,
+                  abs((self.globalNavigationHeightConstraint?.constant ?? height) - height) > 0.5 else {
+                return
+            }
+            self.globalNavigationHeightConstraint?.constant = height
+            self.view.setNeedsLayout()
+        }
+        globalNavigationController = globalNavigation
+        addChild(globalNavigation)
+        view.addSubview(globalNavigation.view)
+        globalNavigation.view.translatesAutoresizingMaskIntoConstraints = false
+        globalNavigation.view.semanticContentAttribute = view.semanticContentAttribute
+        let heightConstraint = globalNavigation.view.heightAnchor.constraint(
+            equalToConstant: globalNavigation.preferredBarHeight
+        )
+        globalNavigationHeightConstraint = heightConstraint
+        NSLayoutConstraint.activate([
+            globalNavigation.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            globalNavigation.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            globalNavigation.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            heightConstraint,
+        ])
+        heightConstraint.constant = globalNavigation.preferredBarHeight
+        globalNavigation.didMove(toParent: self)
+
         addChild(navigationController)
         view.addSubview(navigationController.view)
         navigationController.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            navigationController.view.topAnchor.constraint(equalTo: contextBar.bottomAnchor),
+            navigationController.view.topAnchor.constraint(equalTo: globalNavigation.view.bottomAnchor),
             navigationController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navigationController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            navigationController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            navigationController.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
         ])
         navigationController.didMove(toParent: self)
-        view.bringSubviewToFront(contextBar)
+        view.bringSubviewToFront(globalNavigation.view)
     }
 
-    private func makeContextBar() -> UIView {
-        let bar = UIView()
-        bar.translatesAutoresizingMaskIntoConstraints = false
-        bar.backgroundColor = .ppSurface
-        bar.semanticContentAttribute = Language.isRTL() ? .forceRightToLeft : .forceLeftToRight
+    deinit {
+        if let navigationItemsObserver {
+            NotificationCenter.default.removeObserver(navigationItemsObserver)
+        }
+    }
 
-        let symbol = UIImageView(image: UIImage(systemName: route.symbol))
-        symbol.translatesAutoresizingMaskIntoConstraints = false
-        symbol.tintColor = .ppPrimary
-        symbol.contentMode = .scaleAspectFit
-        //symbol.accessibilityHidden = true
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let compact = shouldUseCompactNavigationLayout
+        guard usesCompactNavigationLayout != compact else { return }
+        usesCompactNavigationLayout = compact
+        refreshGlobalNavigation()
+    }
 
-        let contextLabel = UILabel()
-        contextLabel.translatesAutoresizingMaskIntoConstraints = false
-        contextLabel.text = Language.get("CommandCenter_Title", alter: nil)
-        contextLabel.font = UIFontMetrics(forTextStyle: .caption1).scaledFont(
-            for: UIFont(name: "Beiruti-Medium", size: 11.0) ?? UIFont.systemFont(ofSize: 11.0)
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else {
+            return
+        }
+        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
+        refreshGlobalNavigation()
+    }
+
+    private func navigationConfiguration(for viewController: UIViewController) -> PPGlobalNavigationConfiguration {
+        let isRoot = workflowNavigationController?.viewControllers.first === viewController
+        let title = resolvedTitle(for: viewController)
+        let leadingAction = isRoot ? closeAction : backAction
+
+        return PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: title,
+            // Route screens must use the same brand/context line as the Home
+            // shell.  Using the Operations Center title here created a second
+            // navigation hierarchy and made pushed legacy screens visibly drift
+            // from the shared Home global bar.
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
+            subtitle: isRoot ? Language.get(route.contextTitleKey, alter: nil) : nil,
+            context: Language.get(route.contextTitleKey, alter: nil),
+            leadingAction: leadingAction,
+            trailingActions: trailingActions(for: viewController),
+            showsContextFilament: true
         )
-        contextLabel.textColor = .ppTextSecondary
-        contextLabel.adjustsFontForContentSizeCategory = true
-        contextLabel.textAlignment = .natural
+    }
 
-        let routeLabel = UILabel()
-        routeLabel.translatesAutoresizingMaskIntoConstraints = false
-        routeLabel.text = Language.get(route.contextTitleKey, alter: nil)
-        routeLabel.font = UIFontMetrics(forTextStyle: .subheadline).scaledFont(
-            for: UIFont(name: "Beiruti-Bold", size: 15.0) ?? UIFont.boldSystemFont(ofSize: 15.0)
+    private var closeAction: PPGlobalNavigationAction {
+        PPGlobalNavigationAction(
+            id: "admin-route-close",
+            kind: .close,
+            accessibilityLabel: Language.get("Close", alter: nil),
+            accessibilityHint: Language.get("CommandCenter_Close_Workflow_Hint", alter: nil)
         )
-        routeLabel.textColor = .ppTextPrimary
-        routeLabel.adjustsFontForContentSizeCategory = true
-        routeLabel.numberOfLines = 2
-        routeLabel.lineBreakMode = .byTruncatingTail
-        routeLabel.textAlignment = .natural
+    }
 
-        let copy = UIStackView(arrangedSubviews: [contextLabel, routeLabel])
-        copy.translatesAutoresizingMaskIntoConstraints = false
-        copy.axis = .vertical
-        copy.alignment = .leading
-        copy.spacing = 0
+    private var backAction: PPGlobalNavigationAction {
+        PPGlobalNavigationAction(
+            id: "admin-route-back",
+            kind: .back,
+            accessibilityLabel: Language.get("Back", alter: nil)
+        )
+    }
 
-        let closeButton = UIButton(type: .system)
-        closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-        closeButton.tintColor = .ppTextSecondary
-        closeButton.accessibilityLabel = Language.get("Close", alter: nil)
-        closeButton.accessibilityHint = Language.get("CommandCenter_Close_Workflow_Hint", alter: nil)
-        closeButton.addTarget(dismissTarget, action: dismissAction, for: .touchUpInside)
+    private func resolvedTitle(for viewController: UIViewController) -> String {
+        let titles = [viewController.navigationItem.title, viewController.title]
+        if let title = titles
+            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            return title
+        }
+        return Language.get(route.titleKey, alter: nil)
+    }
 
-        let content = UIStackView(arrangedSubviews: [symbol, copy])
-        content.translatesAutoresizingMaskIntoConstraints = false
-        content.axis = .horizontal
-        content.alignment = .center
-        content.spacing = 10
-        content.semanticContentAttribute = bar.semanticContentAttribute
-        bar.addSubview(content)
-        bar.addSubview(closeButton)
+    private func trailingActions(for viewController: UIViewController) -> [PPGlobalNavigationAction] {
+        actionItemsByIdentifier.removeAll()
+        overflowActionItems.removeAll()
 
-        let divider = UIView()
-        divider.translatesAutoresizingMaskIntoConstraints = false
-        divider.backgroundColor = .ppSurfaceBorder
-        bar.addSubview(divider)
+        let items = (viewController.navigationItem.rightBarButtonItems ?? []) +
+            (viewController.navigationItem.leftBarButtonItems ?? [])
+        var actions: [PPGlobalNavigationAction] = []
 
-        NSLayoutConstraint.activate([
-            content.leadingAnchor.constraint(equalTo: bar.layoutMarginsGuide.leadingAnchor),
-            content.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -12),
-            content.topAnchor.constraint(equalTo: bar.topAnchor, constant: 5),
-            content.bottomAnchor.constraint(equalTo: bar.bottomAnchor, constant: -5),
-            symbol.widthAnchor.constraint(equalToConstant: 22),
-            symbol.heightAnchor.constraint(equalToConstant: 22),
-            closeButton.trailingAnchor.constraint(equalTo: bar.layoutMarginsGuide.trailingAnchor),
-            closeButton.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            closeButton.widthAnchor.constraint(equalToConstant: 36),
-            closeButton.heightAnchor.constraint(equalToConstant: 36),
-            divider.leadingAnchor.constraint(equalTo: bar.leadingAnchor),
-            divider.trailingAnchor.constraint(equalTo: bar.trailingAnchor),
-            divider.bottomAnchor.constraint(equalTo: bar.bottomAnchor),
-            divider.heightAnchor.constraint(equalToConstant: 1.0 / UIScreen.main.scale),
-        ])
+        for item in items {
+            let identifier = "admin-route-action-\(actions.count + overflowActionItems.count)"
+            if actions.count >= maximumDirectActions {
+                overflowActionItems.append(item)
+                continue
+            }
 
-        bar.isAccessibilityElement = false
-        bar.accessibilityElements = [content, closeButton]
-        content.isAccessibilityElement = true
-        content.accessibilityTraits = .staticText
-        content.accessibilityLabel = "\(Language.get("CommandCenter_Title", alter: nil)), \(Language.get(route.titleKey, alter: nil))"
+            let mappedIdentifier = item.accessibilityIdentifier ?? identifier
+            actionItemsByIdentifier[mappedIdentifier] = item
+            actions.append(PPGlobalNavigationAction(
+                id: mappedIdentifier,
+                kind: mappedIdentifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
+                accessibilityLabel: title(for: item),
+                accessibilityHint: item.accessibilityHint,
+                prominence: .standard,
+                isEnabled: item.isEnabled
+            ))
+        }
 
-        return bar
+        if !overflowActionItems.isEmpty {
+            actions.append(PPGlobalNavigationAction(
+                id: "admin-route-overflow",
+                kind: .more,
+                accessibilityLabel: Language.get("CommandCenter_Tab_More", alter: nil)
+            ))
+        }
+
+        return actions
+    }
+
+    private var maximumDirectActions: Int {
+        shouldUseCompactNavigationLayout ? 1 : 2
+    }
+
+    private var shouldUseCompactNavigationLayout: Bool {
+        traitCollection.preferredContentSizeCategory.isAccessibilityCategory ||
+            (view.bounds.width > 0 && view.bounds.width < 350)
+    }
+
+    private func title(for item: UIBarButtonItem) -> String {
+        let customViewLabel = item.customView?.accessibilityLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [item.accessibilityLabel, item.title, customViewLabel]
+        if let title = candidates
+            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty }) {
+            return title
+        }
+        return Language.get("CommandCenter_Tab_More", alter: nil)
+    }
+
+    private func handleGlobalNavigationAction(_ action: PPGlobalNavigationAction) {
+        switch action.id {
+        case "admin-route-close":
+            if let target = dismissTarget as? NSObject {
+                _ = target.perform(dismissAction)
+            }
+        case "admin-route-back":
+            workflowNavigationController?.popViewController(animated: true)
+        case "admin-route-overflow":
+            presentOverflowActions()
+        default:
+            guard let item = actionItemsByIdentifier[action.id] else { return }
+            perform(item)
+        }
+    }
+
+    private func presentOverflowActions() {
+        guard !overflowActionItems.isEmpty else { return }
+        let controller = UIAlertController(
+            title: Language.get("CommandCenter_Tab_More", alter: nil),
+            message: nil,
+            preferredStyle: .actionSheet
+        )
+        for item in overflowActionItems where item.isEnabled {
+            controller.addAction(UIAlertAction(title: title(for: item), style: .default) { [weak self] _ in
+                self?.perform(item)
+            })
+        }
+        controller.addAction(UIAlertAction(
+            title: Language.get("Cancel", alter: nil),
+            style: .cancel
+        ))
+        if let popover = controller.popoverPresentationController,
+           let sourceView = globalNavigationController?.view {
+            popover.sourceView = sourceView
+            popover.sourceRect = sourceView.bounds
+        }
+        present(controller, animated: true)
+    }
+
+    private func perform(_ item: UIBarButtonItem) {
+        guard item.isEnabled else { return }
+        if let control = item.customView as? UIControl {
+            control.sendActions(for: .touchUpInside)
+            return
+        }
+        guard let action = item.action else { return }
+        UIApplication.shared.sendAction(action, to: item.target, from: item, for: nil)
+    }
+
+    private func refreshGlobalNavigation() {
+        guard let visibleController = workflowNavigationController?.topViewController else { return }
+        globalNavigationController?.update(
+            configuration: navigationConfiguration(for: visibleController)
+        ) { [weak self] action in
+            self?.handleGlobalNavigationAction(action)
+        }
+        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
     }
 
     func navigationController(_ navigationController: UINavigationController,
                               willShow viewController: UIViewController,
                               animated: Bool) {
         AdminConnectedRouteChrome.apply(to: viewController, in: navigationController, route: route)
+        refreshGlobalNavigation()
+        DispatchQueue.main.async { [weak self, weak navigationController, weak viewController] in
+            guard let self,
+                  let navigationController,
+                  let viewController,
+                  navigationController.topViewController === viewController else {
+                return
+            }
+            self.refreshGlobalNavigation()
+        }
+    }
+
+    func navigationController(_ navigationController: UINavigationController,
+                              didShow viewController: UIViewController,
+                              animated: Bool) {
+        refreshGlobalNavigation()
+    }
+}
+
+private final class AdminGlobalNavigationStackController: UINavigationController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        super.setNavigationBarHidden(true, animated: false)
+    }
+
+    override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
+        super.setNavigationBarHidden(true, animated: false)
     }
 }
 
@@ -460,6 +636,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
 /// navigation, typography, and direction treatment as the SwiftUI reference
 /// shell. Keeping it at the route container boundary prevents unrelated Admin
 /// entry points from inheriting the connected-workflow treatment.
+@MainActor
 private enum AdminConnectedRouteChrome {
     static func apply(to viewController: UIViewController,
                       in navigationController: UINavigationController,
@@ -469,48 +646,28 @@ private enum AdminConnectedRouteChrome {
             : .forceLeftToRight
 
         viewController.view.semanticContentAttribute = direction
-        viewController.view.backgroundColor = .ppBackground
+        let usesClearCanvas = route == .homeControl
+        let canvasColor: UIColor = usesClearCanvas ? .clear : .ppBackground
+        viewController.view.backgroundColor = canvasColor
+        viewController.view.isOpaque = !usesClearCanvas
         if viewController.navigationItem.title?.isEmpty != false {
             viewController.navigationItem.title = Language.get(route.titleKey, alter: nil)
         }
         viewController.navigationItem.largeTitleDisplayMode = .never
         navigationController.view.semanticContentAttribute = direction
-        navigationController.view.backgroundColor = .ppBackground
-        configureNavigationBar(navigationController.navigationBar)
-        applyPresentation(to: viewController.view, direction: direction)
-    }
-
-    private static func configureNavigationBar(_ navigationBar: UINavigationBar) {
-        let titleBaseFont = UIFont(name: "Beiruti-Bold", size: 18.0)
-            ?? UIFont.boldSystemFont(ofSize: 18.0)
-        let titleFont = UIFontMetrics(forTextStyle: .headline).scaledFont(for: titleBaseFont)
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = .ppSurface
-        appearance.shadowColor = .ppSurfaceBorder
-        appearance.titleTextAttributes = [
-            .foregroundColor: UIColor.ppTextPrimary,
-            .font: titleFont,
-        ]
-        appearance.largeTitleTextAttributes = [
-            .foregroundColor: UIColor.ppTextPrimary,
-            .font: UIFontMetrics(forTextStyle: .largeTitle).scaledFont(
-                for: UIFont(name: "Beiruti-Bold", size: 32.0)
-                    ?? UIFont.boldSystemFont(ofSize: 32.0)
-            ),
-        ]
-
-        navigationBar.standardAppearance = appearance
-        navigationBar.scrollEdgeAppearance = appearance
-        navigationBar.compactAppearance = appearance
-        navigationBar.tintColor = .ppPrimary
-        navigationBar.barStyle = .default
-        navigationBar.isTranslucent = false
-        navigationBar.prefersLargeTitles = false
+        navigationController.view.backgroundColor = canvasColor
+        navigationController.view.isOpaque = !usesClearCanvas
+        navigationController.setNavigationBarHidden(true, animated: false)
+        applyPresentation(to: viewController.view,
+                          direction: direction,
+                          canvasColor: canvasColor,
+                          usesClearCanvas: usesClearCanvas)
     }
 
     private static func applyPresentation(to view: UIView,
-                                          direction: UISemanticContentAttribute) {
+                                          direction: UISemanticContentAttribute,
+                                          canvasColor: UIColor,
+                                          usesClearCanvas: Bool) {
         let preservesExplicitDirection = view.semanticContentAttribute == .forceLeftToRight ||
             view.semanticContentAttribute == .forceRightToLeft
         if !preservesExplicitDirection {
@@ -518,11 +675,13 @@ private enum AdminConnectedRouteChrome {
         }
 
         if let tableView = view as? UITableView {
-            tableView.backgroundColor = .ppBackground
+            tableView.backgroundColor = canvasColor
+            tableView.isOpaque = !usesClearCanvas
             tableView.separatorColor = .clear
             tableView.separatorStyle = .none
         } else if let collectionView = view as? UICollectionView {
-            collectionView.backgroundColor = .ppBackground
+            collectionView.backgroundColor = canvasColor
+            collectionView.isOpaque = !usesClearCanvas
         } else if let textField = view as? UITextField {
             textField.tintColor = .ppPrimary
             textField.textColor = .ppTextPrimary
@@ -541,7 +700,10 @@ private enum AdminConnectedRouteChrome {
         }
 
         for child in view.subviews {
-            applyPresentation(to: child, direction: direction)
+            applyPresentation(to: child,
+                              direction: direction,
+                              canvasColor: canvasColor,
+                              usesClearCanvas: usesClearCanvas)
         }
     }
 }

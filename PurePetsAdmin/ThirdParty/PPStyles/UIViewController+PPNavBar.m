@@ -41,12 +41,16 @@ void PPSetCommandCenterNavigationManaged(UINavigationController *navigationContr
     objc_setAssociatedObject(navigationController,
                              kPPCommandCenterNavigationManagedKey,
                              @(managed),
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                              OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+BOOL PPCommandCenterNavigationIsManaged(UINavigationController *navigationController) {
+    if (!navigationController) return NO;
+    return [objc_getAssociatedObject(navigationController, kPPCommandCenterNavigationManagedKey) boolValue];
 }
 
 static BOOL PPUsesCommandCenterSystemNavigation(UIViewController *vc) {
-    if (!vc.navigationController) return NO;
-    return [objc_getAssociatedObject(vc.navigationController, kPPCommandCenterNavigationManagedKey) boolValue];
+    return PPCommandCenterNavigationIsManaged(vc.navigationController);
 }
 
 static void PPRemoveOverlayNavigationBar(UIViewController *vc) {
@@ -558,9 +562,19 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Default back
 
 - (void)onBack {
-    if (self.navigationController) {
-        [self.navigationController popViewControllerAnimated:YES];
-    } else {
+    UINavigationController *navigationController = self.navigationController;
+    BOOL canPop = navigationController.topViewController == self &&
+        navigationController.viewControllers.count > 1;
+    if (canPop) {
+        [navigationController popViewControllerAnimated:YES];
+        return;
+    }
+
+    // A full-screen editor can be the root of its own presented navigation
+    // controller. It has a navigationController but no stack entry to pop.
+    if (navigationController.presentingViewController) {
+        [navigationController dismissViewControllerAnimated:YES completion:nil];
+    } else if (self.presentingViewController) {
         [self dismissViewControllerAnimated:YES completion:nil];
     }
 }
@@ -587,7 +601,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         
         // ✅ Set background color through configuration
         cfg.background.backgroundColor = PPNavWarmRaised();
-        cfg.background.cornerRadius = 22;
+        cfg.background.cornerRadius = 18;
         cfg.background.strokeColor = PPNavGoldHairline();
         cfg.background.strokeWidth = 1.0;
         
@@ -596,7 +610,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
         btn.backgroundColor = PPNavWarmRaised();
-        btn.layer.cornerRadius = 22;
+        btn.layer.cornerRadius = 18;
         btn.layer.borderWidth = 1.0;
         btn.layer.borderColor = PPNavGoldHairline().CGColor;
     }
@@ -605,7 +619,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
     UIImage *icon = [UIImage systemImageNamed:imageName];
     if (!icon) {
         icon = [UIImage imageNamed:imageName];
-        icon = [UIImage pp_resizedImage:icon toPointSize:18];
+        icon = [UIImage pp_resizedImage:icon toPointSize:16];
     }
 
     if (!icon) {
@@ -614,7 +628,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
     }
     
     if([imageName isEqualToString:@"headset"]) {
-        icon = [[UIImage pp_resizedImage:icon toPointSize:18] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        icon = [[UIImage pp_resizedImage:icon toPointSize:16] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
     }
 
     [btn setImage:icon forState:UIControlStateNormal];
@@ -627,7 +641,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         // Background is already set in configuration
     } else {
         btn.backgroundColor = PPNavWarmRaised();
-        btn.layer.cornerRadius = 22;
+        btn.layer.cornerRadius = 18;
         btn.layer.masksToBounds = YES;
     }
 
@@ -645,7 +659,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
     // 🔹 If it's SF Symbol, apply config
     if ([UIImage systemImageNamed:imageName]) {
         UIImageSymbolConfiguration *config =
-        [UIImageSymbolConfiguration configurationWithPointSize:20
+        [UIImageSymbolConfiguration configurationWithPointSize:16
                                                         weight:UIImageSymbolWeightRegular
                                                          scale:UIImageSymbolScaleMedium];
         [btn setImage:[icon imageByApplyingSymbolConfiguration:config]
@@ -667,7 +681,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
         cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
         cfg.background.backgroundColor = PPNavGold();
-        cfg.background.cornerRadius = 22;
+        cfg.background.cornerRadius = 18;
         cfg.background.strokeColor = [PPNavBackInk() colorWithAlphaComponent:0.10];
         cfg.background.strokeWidth = 1.0;
         btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
@@ -675,7 +689,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
         btn.backgroundColor = PPNavGold();
-        btn.layer.cornerRadius = 22;
+        btn.layer.cornerRadius = 18;
     }
 
     UIImage *icon = [UIImage systemImageNamed:imageName] ?: [UIImage new];
@@ -694,7 +708,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
     btn.layer.masksToBounds = NO;
 
     UIImageSymbolConfiguration *config =
-    [UIImageSymbolConfiguration configurationWithPointSize:20
+    [UIImageSymbolConfiguration configurationWithPointSize:16
                                                     weight:UIImageSymbolWeightSemibold
                                                      scale:UIImageSymbolScaleMedium];
     [btn setImage:[icon imageByApplyingSymbolConfiguration:config] forState:UIControlStateNormal];

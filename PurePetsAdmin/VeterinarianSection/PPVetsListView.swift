@@ -99,32 +99,33 @@ struct PPVetsListView: View {
     @StateObject private var viewModel = PPVetsListViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    private let onPushViewController: (UIViewController) -> Void
 
     @State private var showAddVet = false
     @State private var vetToDelete: PPVetModel?
     @State private var vetToToggle: PPVetModel?
     @State private var showEntranceAnimation = false
 
+    init(onPushViewController: @escaping (UIViewController) -> Void = { _ in }) {
+        self.onPushViewController = onPushViewController
+    }
+
     var body: some View {
-        NavigationView {
-            GeometryReader { geometry in
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        statsHeader
-                        filterSegment
-                        searchField
-                        vetList
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 32)
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    statsHeader
+                    filterSegment
+                    searchField
+                    vetList
                 }
-                .background(AdminSurface.background.ignoresSafeArea())
-                .refreshable { await viewModel.refresh() }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
             }
-            .navigationBarHidden(true)
+            .background(AdminSurface.background.ignoresSafeArea())
+            .refreshable { await viewModel.refresh() }
         }
-        .navigationViewStyle(.stack)
         .onAppear {
             viewModel.startListening()
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.4).delay(0.1)) {
@@ -558,24 +559,15 @@ struct PPVetsListView: View {
     }
 
     private func navigateToDetail(_ vet: PPVetModel) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else { return }
-        let detailVC = PPVetDetailViewController(vet: vet)
-        findNavigationController(from: rootVC)?.pushViewController(detailVC, animated: true)
+        onPushViewController(PPVetDetailViewController(vet: vet))
     }
 
     private func navigateToEdit(_ vet: PPVetModel) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else { return }
-        let editVC = PPAddEditVetViewController(vet: vet)
-        findNavigationController(from: rootVC)?.pushViewController(editVC, animated: true)
+        onPushViewController(PPAddEditVetViewController(vet: vet))
     }
 
     private func navigateToSubscription(_ vet: PPVetModel) {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootVC = windowScene.windows.first?.rootViewController else { return }
-        let subVC = PPVetSubscriptionViewController(vet: vet)
-        findNavigationController(from: rootVC)?.pushViewController(subVC, animated: true)
+        onPushViewController(PPVetSubscriptionViewController(vet: vet))
     }
 
     private func callVet(_ vet: PPVetModel) {
@@ -585,13 +577,6 @@ struct PPVetsListView: View {
         UIApplication.shared.open(url)
     }
 
-    private func findNavigationController(from vc: UIViewController) -> UINavigationController? {
-        if let nav = vc as? UINavigationController { return nav }
-        for child in vc.children {
-            if let nav = findNavigationController(from: child) { return nav }
-        }
-        return nil
-    }
 }
 
 // MARK: - Button Style (press feedback)
@@ -610,7 +595,9 @@ private struct VetCardButtonStyle: ButtonStyle {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
-        let swiftUIView = PPVetsListView()
+        let swiftUIView = PPVetsListView { [weak self] viewController in
+            self?.navigationController?.pushViewController(viewController, animated: true)
+        }
         let hostingController = UIHostingController(rootView: swiftUIView)
         addChild(hostingController)
         view.addSubview(hostingController.view)

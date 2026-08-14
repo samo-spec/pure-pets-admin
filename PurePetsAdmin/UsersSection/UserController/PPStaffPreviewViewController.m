@@ -512,7 +512,7 @@ static UIColor *PPStaffPreviewBorderColor(void) {
     returnButton.backgroundColor = [PPStaffPreviewSurfaceColor() colorWithAlphaComponent:0.78];
     returnButton.layer.cornerRadius = 18.0;
     returnButton.tintColor = PPStaffPreviewPrimaryTextColor();
-    NSString *returnSymbol = isRTL ? @"chevron.right" : @"chevron.left";
+    NSString *returnSymbol = isRTL ? @"arrow.right" : @"arrow.left";
     [returnButton setImage:[UIImage systemImageNamed:returnSymbol withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightBold]]
                   forState:UIControlStateNormal];
     [returnButton addTarget:self action:@selector(pp_returnToPreviewList) forControlEvents:UIControlEventTouchUpInside];

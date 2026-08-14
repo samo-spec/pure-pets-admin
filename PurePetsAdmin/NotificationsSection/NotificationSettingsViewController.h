@@ -8,5 +8,6 @@
 
 // NotificationSettingsViewController.h
 #import "XLForm.h"
-@interface NotificationSettingsViewController : XLFormViewController<XLFormRowDescriptorViewController>
+
+@interface NotificationSettingsViewController : XLFormViewController <XLFormRowDescriptorViewController>
 @end

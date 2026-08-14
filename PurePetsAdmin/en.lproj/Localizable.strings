@@ -2164,6 +2164,13 @@
 "Fulfillment_OverrideSuccessNotified" = "Status updated and the customer notification was sent.";
 "Fulfillment_OverrideSuccessNotificationFailed" = "Status updated, but the customer notification could not be delivered.";
 "Fulfillment_OverrideSuccessNotificationNotSent" = "Status updated. This action did not send a separate customer notification.";
+"Fulfillment_OverrideSuccessNotificationPending" = "Status updated. The customer notification is still being delivered.";
+"Fulfillment_ConfirmationPending_Title" = "Waiting for live confirmation";
+"Fulfillment_ConfirmationPending" = "The command was accepted. This screen will confirm the status after the live fulfillment record catches up.";
+"Fulfillment_OverrideReconciliationPending" = "The command outcome is not confirmed yet. Keep this screen open while the live fulfillment record reconnects.";
+"Fulfillment_OverrideConflict" = "The fulfillment changed before this command could be applied. Review the live status before trying again.";
+"Fulfillment_OverrideInvalid" = "The fulfillment command is no longer valid. Review the selected status and required information.";
+"Fulfillment_OverrideFailed" = "The fulfillment command could not be completed. Keep this record open and verify the live status before trying again.";
 "Fulfillment_Actor_Admin" = "Platform admin";
 "Fulfillment_Actor_Provider" = "Provider";
 "Fulfillment_Actor_Delivery" = "Delivery operator";
@@ -2409,6 +2416,15 @@
 "Categories" = "Categories";
 "Orders" = "Orders";
 "Warnings" = "Warnings";
+"NotificationSettings_Eyebrow" = "ADMIN ALERTS";
+"NotificationSettings_HeroTitle" = "Choose the signals that matter";
+"NotificationSettings_HeroSubtitle" = "Keep each admin notification category available, or turn off categories that are not relevant to the current session.";
+"NotificationSettings_CategoryGeneralSubtitle" = "General admin updates that do not belong to a more specific category.";
+"NotificationSettings_CategoryOrdersSubtitle" = "Order activity and status updates.";
+"NotificationSettings_CategoryReviewSubtitle" = "Items that need advertisement review.";
+"NotificationSettings_CategoryWarningSubtitle" = "Warnings that may need administrator attention.";
+"NotificationSettings_EnabledCount_Format" = "%ld of %ld categories enabled";
+"NotificationSettings_SessionNote" = "These controls keep their current values while this settings screen remains open.";
 
 "AddStaffMember" = "Create Team Member";
 "AddStaffMemberSubtitle" = "Create a team account with controlled access.";
@@ -2669,6 +2685,27 @@
 "SupportChats_MessagesLoading" = "Loading messages…";
 "SupportChats_MessagesEmpty" = "No messages yet.";
 "SupportChats_ReplyError" = "Could not send the support reply.";
+"SupportChats_ChannelDetail" = "Official customer support channel";
+"SupportChats_StatusSelector" = "Conversation status";
+"SupportChats_StatusSelectorHint" = "Choose the next support lifecycle status.";
+"SupportChats_StatusFormat" = "Status: %@";
+"SupportChats_StatusError" = "Could not update the conversation status.";
+"SupportChats_StatusUpdating" = "Updating conversation status…";
+"SupportChats_MessageCountFormat" = "%ld messages in this timeline";
+"SupportChats_TimelineLoading" = "Connecting to the live message timeline…";
+"SupportChats_TimelineUnavailable" = "The live message timeline is temporarily unavailable.";
+"SupportChats_MessagesError" = "Could not load this conversation.";
+"SupportChats_MessagesRetry" = "Tap to retry the live message timeline.";
+"SupportChats_ReopenToReply" = "Set status to Active before replying.";
+"SupportChats_Sending" = "Sending reply…";
+"SupportChats_SendHint" = "Sends this reply as Pure Pets Official.";
+"SupportChats_MessageOfficial" = "Pure Pets Official";
+"SupportChats_MessageCustomer" = "Customer";
+"SupportChats_MessageImage" = "Image message";
+"SupportChats_MessageAudio" = "Audio message";
+"SupportChats_MessageVideo" = "Video message";
+"SupportChats_MessageFile" = "File message";
+"SupportChats_MessageSystem" = "System message";
 
 /* ===================== Moderation Section ===================== */
 "Moderation_Title" = "Moderation";
@@ -2833,6 +2870,12 @@
 "CommandCenter_No_Actions_Title" = "No contextual actions";
 "CommandCenter_No_Actions_Message" = "Additional shortcuts appear here when your current staff permissions expose them.";
 "CommandCenter_Close_Workflow_Hint" = "Dismiss this connected workflow.";
+"CommandCenter_Capability_Lens" = "Capability lens";
+"CommandCenter_Capability_Lens_Detail" = "Only operational lanes authorized for this staff role are visible.";
+"CommandCenter_Authorized_Lanes_Format" = "%@ authorized data lanes";
+"CommandCenter_Command_Spine" = "Command spine";
+"CommandCenter_Command_Spine_Detail" = "Authorized priorities in operational order. Open the existing workflow directly.";
+"CommandCenter_Direct_Priority" = "Direct priority";
 
 /* Mission Control provider application case file */
 "Providers_ApplicationDetail_CostType_Price" = "Fixed price";
@@ -2993,3 +3036,63 @@
 "MissionControl_Staff_SourceEmpty_Subtitle" = "No staff records are available in this workspace yet.";
 "MissionControl_Staff_FilteredEmpty_Title" = "No matching staff";
 "MissionControl_Staff_FilteredEmpty_Subtitle" = "Try a name, email, phone number, or staff ID.";
+
+/* PP_ADMIN_COMMAND_SPINE_LOCALIZATION_BEGIN */
+/* ===================== Admin Command Spine ===================== */
+"AdminCommand_Title" = "Command Orbit";
+"AdminCommand_Subtitle" = "Live work, pulled into priority.";
+"AdminCommand_Pulse" = "Operational pulse";
+"AdminCommand_StaffActive" = "Staff · Active";
+"AdminCommand_AllCapabilities" = "All capabilities";
+"AdminCommand_ModuleCount_Format" = "%ld modules";
+"AdminCommand_LiveSignals" = "Live priorities";
+"AdminCommand_Urgent" = "Urgent";
+"AdminCommand_Modules" = "Modules";
+"AdminCommand_PriorityNow" = "Priority now";
+"AdminCommand_DirectRoute" = "One tap → management";
+"AdminCommand_Open_Format" = "Open %@";
+"AdminCommand_Accessibility_OpenHint" = "Opens the existing management screen directly.";
+"AdminCommand_Ready" = "Ready to manage";
+"AdminCommand_NeedsReview" = "Needs review now";
+"AdminCommand_NeedsAdminReview" = "Needs admin review";
+"AdminCommand_InProgress" = "In progress";
+"AdminCommand_CheckQuantity" = "Check available quantity";
+"AdminCommand_Fulfillment_One" = "A new order needs review";
+"AdminCommand_Fulfillment_Many" = "%ld new orders need review";
+"AdminCommand_Fulfillment_Active_One" = "1 fulfillment order is active";
+"AdminCommand_Fulfillment_Active_Many" = "%ld fulfillment orders are active";
+"AdminCommand_Delivery_One" = "A new delivery request needs review";
+"AdminCommand_Delivery_Many" = "%ld delivery requests need review";
+"AdminCommand_Delivery_Active_One" = "1 delivery request is active";
+"AdminCommand_Delivery_Active_Many" = "%ld delivery requests are active";
+"AdminCommand_Payment_One" = "A payment needs review";
+"AdminCommand_Payment_Many" = "%ld payments need review";
+"AdminCommand_Stock_One" = "1 product has low stock";
+"AdminCommand_Stock_Many" = "%ld products have low stock";
+/* PP_ADMIN_COMMAND_SPINE_LOCALIZATION_END */
+
+/* ===================== Admin Command Orbit ===================== */
+"AdminCommandOrbit_Eyebrow" = "Pure Pets Admin";
+"AdminCommandOrbit_Title" = "Command orbit";
+"AdminCommandOrbit_Role" = "Active workspace";
+"AdminCommandOrbit_Staff" = "Staff";
+"AdminCommandOrbit_Live" = "LIVE";
+"AdminCommandOrbit_Active" = "Priority work is live";
+"AdminCommandOrbit_Stable" = "Ready to manage";
+"AdminCommandOrbit_Core_Attention" = "needs action";
+"AdminCommandOrbit_Core_Clear" = "all clear";
+"AdminCommandOrbit_Core_Accessibility_Format" = "%1$@, %2$@";
+"AdminCommandOrbit_Critical_Format" = "%ld critical";
+"AdminCommandOrbit_Rail_Priorities" = "live priorities";
+"AdminCommandOrbit_Rail_Urgent" = "urgent";
+"AdminCommandOrbit_Rail_Authorized" = "authorized";
+"AdminCommandOrbit_Route_Hint" = "Opens the existing management screen directly.";
+"AdminCommandOrbit_Sonar_Hint" = "Scans the orbit and marks modules that need action.";
+"AdminCommandOrbit_AttentionRequired" = "Attention required";
+"AdminCommandOrbit_Priority_Critical" = "Critical priority";
+"AdminCommandOrbit_Priority_Elevated" = "Elevated priority";
+"AdminCommandOrbit_Priority_Normal" = "Normal priority";
+"AdminCommandOrbit_Empty_Title" = "No authorized destinations";
+"AdminCommandOrbit_Empty_Detail" = "There are no management areas available for this staff role.";
+"AdminCommandOrbit_Primary_Signal" = "Priority now";
+"AdminCommandOrbit_Remaining_Signals" = "Next priorities";

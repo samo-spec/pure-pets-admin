@@ -22,6 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSDate *adminOverrideAt;
 @property (nonatomic, copy, nullable) NSString *adminOverrideBy;
 @property (nonatomic, copy, nullable) NSString *adminOverrideReason;
+@property (nonatomic, copy, nullable) NSString *adminOverrideCommandID;
 
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
 @end
@@ -36,8 +37,13 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(observeFulfillments(completion:));
 
 - (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID
-                                       completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSError * _Nullable error))completion
+                                       completion:(void(^)(PPFulfillmentRecord * _Nullable record, BOOL isFromCache, BOOL hasPendingWrites, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillment(_:completion:));
+
+- (id<FIRListenerRegistration>)observeAdminOverrideCommand:(NSString *)fulfillmentID
+                                      commandDocumentID:(NSString *)commandDocumentID
+                                             completion:(void(^)(NSDictionary * _Nullable command, BOOL isFromCache, BOOL hasPendingWrites, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(observeAdminOverrideCommand(_:commandDocumentID:completion:));
 
 - (void)fetchFulfillmentDetail:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSArray *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillmentDetail(_:completion:));
@@ -49,12 +55,14 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(resolveUserProfiles(forIDs:completion:));
 
 - (void)adminOverrideFulfillment:(NSString *)fulfillmentID
+                   expectedStatus:(NSString *)expectedStatus
                     targetStatus:(NSString *)status
                           reason:(NSString *)reason
-                            note:(nullable NSString *)note
-                          notify:(BOOL)notify
-                       completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
-    NS_SWIFT_NAME(adminOverride(_:targetStatus:reason:note:notify:completion:));
+                             note:(nullable NSString *)note
+                           notify:(BOOL)notify
+                        commandID:(NSString *)commandID
+                        completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(adminOverride(_:expectedStatus:targetStatus:reason:note:notify:commandID:completion:));
 
 /// Mirrors the callable's canonical `payments.manage` authorization gate.
 - (BOOL)canAdminOverride NS_SWIFT_NAME(canAdminOverride());

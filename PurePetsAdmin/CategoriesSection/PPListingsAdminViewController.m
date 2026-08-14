@@ -945,8 +945,6 @@ static NSString *const kListingCellID = @"PPListingCell";
         self.searchController.searchBar.searchTextField.adjustsFontForContentSizeCategory = YES;
     }
     self.searchController.searchBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.navigationItem.searchController = self.searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
     self.definesPresentationContext = YES;
 }
 
@@ -954,6 +952,9 @@ static NSString *const kListingCellID = @"PPListingCell";
     // Container that becomes tableView.tableHeaderView
     _headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.bounds.size.width, 1)];
     _headerContainer.backgroundColor = UIColor.clearColor;
+
+    self.searchController.searchBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [_headerContainer addSubview:self.searchController.searchBar];
 
     _summaryBar = [[PPListingsSummaryBar alloc] initWithFrame:CGRectZero];
     _summaryBar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -971,7 +972,12 @@ static NSString *const kListingCellID = @"PPListingCell";
     [_headerContainer addSubview:_railView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_summaryBar.topAnchor constraintEqualToAnchor:_headerContainer.topAnchor constant:PPSpaceSM],
+        [self.searchController.searchBar.topAnchor constraintEqualToAnchor:_headerContainer.topAnchor constant:PPSpaceXS],
+        [self.searchController.searchBar.leadingAnchor constraintEqualToAnchor:_headerContainer.leadingAnchor constant:PPSpaceBase],
+        [self.searchController.searchBar.trailingAnchor constraintEqualToAnchor:_headerContainer.trailingAnchor constant:-PPSpaceBase],
+        [self.searchController.searchBar.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
+
+        [_summaryBar.topAnchor constraintEqualToAnchor:self.searchController.searchBar.bottomAnchor constant:PPSpaceSM],
         [_summaryBar.leadingAnchor constraintEqualToAnchor:_headerContainer.leadingAnchor constant:PPSpaceBase],
         [_summaryBar.trailingAnchor constraintEqualToAnchor:_headerContainer.trailingAnchor constant:-PPSpaceBase],
 
@@ -1014,10 +1020,10 @@ static NSString *const kListingCellID = @"PPListingCell";
 
 - (void)setupStateOverlay {
     _stateOverlay = [[UIView alloc] initWithFrame:self.view.bounds];
-    _stateOverlay.autoresizingMask = UIViewAutoresizingNone;
+    _stateOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _stateOverlay.hidden = YES;
     _stateOverlay.backgroundColor = [UIColor ppBackground];
-    [self.view addSubview:_stateOverlay];
+    self.tableView.backgroundView = _stateOverlay;
 
     [self buildLoadingView];
     [self buildEmptyView];
@@ -1462,8 +1468,10 @@ static NSString *const kListingCellID = @"PPListingCell";
 
     BOOL ready = (self.state == PPListingsStateReady);
     self.stateOverlay.hidden = ready;
-    self.tableView.scrollEnabled = ready;
-    if (!ready) [self repositionStateOverlay];
+    self.tableView.scrollEnabled = (self.state != PPListingsStateNoResults);
+    if (!ready) {
+        self.tableView.contentOffset = CGPointMake(0.0, -self.tableView.adjustedContentInset.top);
+    }
     self.loadingView.hidden = (self.state != PPListingsStateLoading);
     self.emptyView.hidden = (self.state != PPListingsStateEmpty);
     self.noResultsView.hidden = (self.state != PPListingsStateNoResults);
@@ -1728,25 +1736,10 @@ static NSString *const kListingCellID = @"PPListingCell";
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     [self layoutTableHeader];
-    [self repositionStateOverlay];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    [self repositionStateOverlay];
-}
-
-- (void)repositionStateOverlay {
-    if (!_stateOverlay || _stateOverlay.hidden) return;
-    // Pin overlay to the visible portion of the table view
-    CGRect visibleFrame = self.tableView.bounds;
-    UIEdgeInsets safeInsets = UIEdgeInsetsZero;
-    if (@available(iOS 11.0, *)) {
-        safeInsets = self.tableView.safeAreaInsets;
-    }
-    _stateOverlay.frame = CGRectMake(0,
-                                     self.tableView.contentOffset.y + safeInsets.top,
-                                     visibleFrame.size.width,
-                                     visibleFrame.size.height - safeInsets.top);
+    (void)scrollView;
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {

@@ -43,6 +43,7 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.title = kLang(@"Staff_Management");
     self.view.backgroundColor = [UIColor ppBackground];
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.selectedIndex = 0;
@@ -57,14 +58,18 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    if (!PPCommandCenterNavigationIsManaged(self.navigationController)) {
+        [self.navigationController setNavigationBarHidden:YES animated:animated];
+    }
     [self pp_refreshAccessState];
     [self pp_updateBackButtonVisibility];
 }
 
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
-    [self.navigationController setNavigationBarHidden:NO animated:animated];
+    if (!PPCommandCenterNavigationIsManaged(self.navigationController)) {
+        [self.navigationController setNavigationBarHidden:NO animated:animated];
+    }
 }
 
 - (void)viewDidLayoutSubviews {
@@ -75,11 +80,21 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
 #pragma mark - Build
 
 - (void)pp_buildTopBar {
+    BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
     self.topBarView = [UIView new];
     self.topBarView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.topBarView.backgroundColor = [UIColor ppSurface];
+    self.topBarView.backgroundColor = usesGlobalNavigation ? [UIColor ppBackground] : [UIColor ppSurface];
     self.topBarView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self.view addSubview:self.topBarView];
+
+    if (usesGlobalNavigation) {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.topBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+            [self.topBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+            [self.topBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        ]];
+        return;
+    }
 
     UIView *separator = [UIView new];
     separator.backgroundColor = [UIColor ppSurfaceBorder];
@@ -97,8 +112,8 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.backButton.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    NSString *backImageName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    NSString *backImageName = [Language isRTL] ? @"arrow.right" : @"arrow.left";
     [self.backButton setImage:[UIImage systemImageNamed:backImageName withConfiguration:backConfig] forState:UIControlStateNormal];
     [self.backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
     self.backButton.accessibilityLabel = kLang(@"Back");
@@ -180,8 +195,11 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
     self.segmentButtons = buttons.copy;
 
     self.segmentHeightConstraint = [self.segmentContainerView.heightAnchor constraintEqualToConstant:[self pp_segmentHeightForCurrentContentSize]];
+    NSLayoutConstraint *segmentTop = self.titleLabel
+        ? [self.segmentContainerView.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:PPSpaceXS]
+        : [self.segmentContainerView.topAnchor constraintEqualToAnchor:self.topBarView.topAnchor constant:PPSpaceXS];
     [NSLayoutConstraint activateConstraints:@[
-        [self.segmentContainerView.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:PPSpaceXS],
+        segmentTop,
         [self.segmentContainerView.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor constant:PPSpaceBase],
         [self.segmentContainerView.trailingAnchor constraintEqualToAnchor:self.topBarView.trailingAnchor constant:-PPSpaceBase],
         [self.segmentContainerView.bottomAnchor constraintEqualToAnchor:self.topBarView.bottomAnchor constant:-PPSpaceXS],
@@ -209,7 +227,9 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
     UIColor *accentColor = [UIColor ppPrimary];
     UIColor *textColor = [UIColor ppTextPrimary];
 
-    self.topBarView.backgroundColor = [UIColor ppSurface];
+    self.topBarView.backgroundColor = PPCommandCenterNavigationIsManaged(self.navigationController)
+        ? [UIColor ppBackground]
+        : [UIColor ppSurface];
     self.titleLabel.textColor = textColor;
     self.backButton.backgroundColor = UIColor.clearColor;
     self.backButton.layer.cornerRadius = 0.0;

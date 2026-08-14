@@ -23,7 +23,8 @@ typedef NS_ENUM(NSInteger, PPNavBarBaseLayout) {
 /// on that stack keep their actions but render through native UINavigationItem
 /// APIs, preventing their overlay bar from colliding with the workflow chrome.
 FOUNDATION_EXPORT void PPSetCommandCenterNavigationManaged(UINavigationController * _Nullable navigationController,
-                                                           BOOL managed);
+                                                            BOOL managed);
+FOUNDATION_EXPORT BOOL PPCommandCenterNavigationIsManaged(UINavigationController * _Nullable navigationController);
 
 // ===== Associated keys =====
 static const void *kPPNavBarViewKey  = &kPPNavBarViewKey;
@@ -98,4 +99,3 @@ static NSString * const kPPKeyBaseButton = @"__base_button";
 @end
 
 NS_ASSUME_NONNULL_END
-

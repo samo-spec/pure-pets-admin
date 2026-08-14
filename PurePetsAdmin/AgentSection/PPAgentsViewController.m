@@ -58,8 +58,12 @@ static NSString *const kAgentCellID = @"AgentCell";
     self.searchController.obscuresBackgroundDuringPresentation = NO;
     self.searchController.searchResultsUpdater = self;
     self.searchController.searchBar.placeholder = kLang(@"Agents_Search");
-    self.navigationItem.searchController = self.searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
+    self.searchController.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    UIView *searchHeader = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, CGRectGetWidth(self.tableView.bounds), 56.0)];
+    [searchHeader addSubview:self.searchController.searchBar];
+    self.searchController.searchBar.frame = searchHeader.bounds;
+    self.tableView.tableHeaderView = searchHeader;
+    self.definesPresentationContext = YES;
 }
 
 - (void)evaluatePermissions {

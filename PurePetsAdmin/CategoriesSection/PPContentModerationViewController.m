@@ -89,7 +89,6 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     ]];
     self.segmentedControl.selectedSegmentIndex = 0;
     [self.segmentedControl addTarget:self action:@selector(segmentDidChange:) forControlEvents:UIControlEventValueChanged];
-    self.navigationItem.titleView = self.segmentedControl;
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
     self.title = kLang(@"Moderation_Title");
 }
@@ -100,6 +99,12 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     self.tableView.rowHeight = UITableViewAutomaticDimension;
     self.tableView.estimatedRowHeight = PPSpace4XL;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+
+    UIView *segmentHeader = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, CGRectGetWidth(self.tableView.bounds), 52.0)];
+    self.segmentedControl.frame = CGRectInset(segmentHeader.bounds, PPSpaceBase, PPSpaceXS);
+    self.segmentedControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [segmentHeader addSubview:self.segmentedControl];
+    self.tableView.tableHeaderView = segmentHeader;
 
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(refreshData) forControlEvents:UIControlEventValueChanged];

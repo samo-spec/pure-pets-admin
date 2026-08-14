@@ -375,6 +375,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 @property (nonatomic, strong) NSDictionary<NSString *, NSNumber *> *agentCounts;
 
 @property (nonatomic, strong) PPBranchHeroView *heroView;
+@property (nonatomic, strong) UIView *headerContainer;
 @property (nonatomic, strong) UIView *stateView;
 @property (nonatomic, strong) UIView *loadingView;
 @property (nonatomic, strong) UIView *emptyView;
@@ -430,8 +431,8 @@ static NSString *const kBranchCellID = @"PPBranchCell";
     self.searchController.searchResultsUpdater = self;
     self.searchController.searchBar.placeholder = kLang(@"Branches_Search");
     self.searchController.searchBar.tintColor = AppPrimaryClr;
-    self.navigationItem.searchController = self.searchController;
-    self.navigationItem.hidesSearchBarWhenScrolling = YES;
+    self.searchController.searchBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    self.definesPresentationContext = YES;
     self.tableView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 24.0, 0.0);
 }
 
@@ -439,22 +440,21 @@ static NSString *const kBranchCellID = @"PPBranchCell";
     self.heroView = [[PPBranchHeroView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 184)];
     self.heroView.titleLabel.text = kLang(@"Branches_Title");
     self.heroView.subtitleLabel.text = kLang(@"Branches_Subtitle");
-    self.tableView.tableHeaderView = self.heroView;
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    self.headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 240.0)];
+    self.searchController.searchBar.frame = CGRectMake(0, 0, width, 56.0);
+    self.heroView.frame = CGRectMake(0, 56.0, width, 184.0);
+    [self.headerContainer addSubview:self.searchController.searchBar];
+    [self.headerContainer addSubview:self.heroView];
+    self.tableView.tableHeaderView = self.headerContainer;
     [self updateHero];
 }
 
 - (void)setupStateViews {
     self.stateView = [[UIView alloc] init];
-    self.stateView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.stateView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     self.stateView.hidden = YES;
-    [self.view addSubview:self.stateView];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [self.stateView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
-        [self.stateView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.stateView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.stateView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-    ]];
+    self.tableView.backgroundView = self.stateView;
 
     [self buildLoadingView];
     [self buildEmptyView];
@@ -812,7 +812,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
 - (void)refreshStateVisibility {
     BOOL ready = (self.state == PPBranchesStateReady);
-    self.tableView.hidden = !ready;
+    self.tableView.hidden = NO;
     self.stateView.hidden = ready;
     self.loadingView.hidden = (self.state != PPBranchesStateLoading);
     self.emptyView.hidden = (self.state != PPBranchesStateEmpty);
@@ -967,14 +967,18 @@ static NSString *const kBranchCellID = @"PPBranchCell";
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    if (self.heroView) {
+    if (self.heroView && self.headerContainer) {
         CGFloat width = self.tableView.bounds.size.width;
         CGSize size = [self.heroView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                     withHorizontalFittingPriority:UILayoutPriorityRequired
                                           verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
-        if (fabs(self.heroView.frame.size.height - size.height) > 0.5) {
-            self.heroView.frame = CGRectMake(0, 0, width, size.height);
-            self.tableView.tableHeaderView = self.heroView;
+        CGFloat headerHeight = 56.0 + size.height;
+        if (fabs(self.headerContainer.frame.size.height - headerHeight) > 0.5 ||
+            fabs(self.headerContainer.frame.size.width - width) > 0.5) {
+            self.headerContainer.frame = CGRectMake(0, 0, width, headerHeight);
+            self.searchController.searchBar.frame = CGRectMake(0, 0, width, 56.0);
+            self.heroView.frame = CGRectMake(0, 56.0, width, size.height);
+            self.tableView.tableHeaderView = self.headerContainer;
         }
     }
 }

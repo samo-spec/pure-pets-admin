@@ -10,6 +10,7 @@
 import SwiftUI
 import UIKit
 import FirebaseFirestore
+import FirebaseFunctions
 
 // MARK: - Design system
 
@@ -360,6 +361,7 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
     let adminOverrideAt: Date?
     let adminOverrideBy: String
     let adminOverrideReason: String
+    let adminOverrideCommandID: String
 
     init(record: PPFulfillmentRecord) {
         id = record.fulfillmentID
@@ -384,6 +386,7 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
         adminOverrideAt = record.adminOverrideAt
         adminOverrideBy = record.adminOverrideBy ?? ""
         adminOverrideReason = record.adminOverrideReason ?? ""
+        adminOverrideCommandID = record.adminOverrideCommandID ?? ""
     }
 
     static func == (lhs: PPFulfillmentSnapshot, rhs: PPFulfillmentSnapshot) -> Bool {
@@ -395,6 +398,7 @@ private struct PPFulfillmentSnapshot: Identifiable, Equatable, Sendable {
             && lhs.items.count == rhs.items.count
             && lhs.providerNet == rhs.providerNet
             && lhs.adminOverrideAt == rhs.adminOverrideAt
+            && lhs.adminOverrideCommandID == rhs.adminOverrideCommandID
     }
 
     var isPlatformOwned: Bool {
@@ -536,6 +540,29 @@ private struct PPFulfillmentAlert: Identifiable {
     let id = UUID()
     let title: String
     let message: String
+}
+
+private enum PPFulfillmentOverridePhase: String {
+    case pending
+    case acceptedWaitingSync
+    case confirmed
+    case alreadyCurrent
+    case denied
+    case conflict
+    case invalid
+    case error
+    case stale
+}
+
+private struct PPFulfillmentPendingOverride {
+    let targetStatus: String
+    let commandID: String
+    let commandDocumentID: String
+    let notificationRequested: Bool
+    let notificationAttempted: Bool
+    let notificationSucceeded: Bool
+    let notificationStatus: String?
+    let notificationOutcomeKnown: Bool
 }
 
 /// Firestore documents ListenerRegistration.remove() as idempotent. The SDK's
@@ -781,7 +808,6 @@ private struct PPFulfillmentOrdersScreen: View {
             .refreshable { await viewModel.refresh() }
         }
         .environment(\.layoutDirection, PPFulfillmentL10n.layoutDirection)
-        .navigationTitle(PPFulfillmentL10n.text("Fulfillment_Title"))
         .sheet(isPresented: $showsFilters) {
             PPFulfillmentFiltersSheet(viewModel: viewModel)
                 .environment(\.layoutDirection, PPFulfillmentL10n.layoutDirection)
@@ -1795,18 +1821,24 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
     @Published var overrideTarget = ""
     @Published var overrideReason = ""
     @Published var overrideNote = ""
-    @Published var notifyCustomer = true
+    @Published var notifyCustomer = false
     @Published var showsOverride = false
     @Published var alert: PPFulfillmentAlert?
     @Published var overrideAlert: PPFulfillmentAlert?
-    @Published var successfulStatus: String?
+    @Published private(set) var overridePhase: PPFulfillmentOverridePhase?
 
     private let service: PPFulfillmentService
     private var recordListener: PPFulfillmentListenerToken?
     private var eventsListener: PPFulfillmentListenerToken?
+    private var commandListener: PPFulfillmentListenerToken?
     private var recordLoadError: String?
     private var eventsLoadError: String?
     private var pendingPostDismissAlert: PPFulfillmentAlert?
+    private var pendingOverride: PPFulfillmentPendingOverride?
+    private var notificationTracking: PPFulfillmentPendingOverride?
+    private var overrideCommandID = ""
+    private var overrideExpectedStatus = ""
+    private var overrideConfirmationTask: Task<Void, Never>?
     private var listenerGeneration = 0
 
     init(seed: PPFulfillmentSnapshot, service: PPFulfillmentService) {
@@ -1815,8 +1847,10 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
     }
 
     deinit {
+        overrideConfirmationTask?.cancel()
         recordListener?.remove()
         eventsListener?.remove()
+        commandListener?.remove()
     }
 
     var customerName: String {
@@ -1839,9 +1873,13 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
     var canSubmitOverride: Bool {
         canAdminOverride
             && !isSubmitting
+            && pendingOverride == nil
+            && !overrideExpectedStatus.isEmpty
             && !overrideTarget.isEmpty
             && !overrideReason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    var isAwaitingOverrideConfirmation: Bool { pendingOverride != nil }
 
     func load() {
         isLoading = true
@@ -1853,7 +1891,7 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
         listenerGeneration += 1
         let generation = listenerGeneration
 
-        let recordRegistration = service.observeFulfillment(record.id) { [weak self] record, error in
+        let recordRegistration = service.observeFulfillment(record.id) { [weak self] record, isFromCache, hasPendingWrites, error in
             let snapshot = record.map(PPFulfillmentSnapshot.init(record:))
             DispatchQueue.main.async {
                 guard let self, generation == self.listenerGeneration else { return }
@@ -1864,8 +1902,8 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
                     self.recordLoadError = nil
                     if let snapshot {
                         self.record = snapshot
-                        self.successfulStatus = nil
                         self.resolveNames()
+                        self.confirmPendingOverrideIfObserved(snapshot, isFromCache: isFromCache, hasPendingWrites: hasPendingWrites)
                     }
                 }
                 self.updateLoadError()
@@ -1891,13 +1929,17 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
 
     func stop() {
         listenerGeneration += 1
+        clearPendingOverride()
         recordListener?.remove()
         recordListener = nil
         eventsListener?.remove()
         eventsListener = nil
+        commandListener?.remove()
+        commandListener = nil
     }
 
     func prepareOverride() {
+        guard !isAwaitingOverrideConfirmation else { return }
         guard canAdminOverride else {
             alert = PPFulfillmentAlert(
                 title: PPFulfillmentL10n.text("Fulfillment_AdminOverride"),
@@ -1915,12 +1957,41 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
         overrideTarget = ""
         overrideReason = ""
         overrideNote = ""
-        notifyCustomer = true
+        notifyCustomer = false
+        overrideCommandID = UUID().uuidString
+        overrideExpectedStatus = record.status
+        overridePhase = nil
         showsOverride = true
+    }
+
+    func selectOverrideTarget(_ status: String) {
+        guard canEditOverrideDraft, overrideTarget != status else { return }
+        overrideTarget = status
+        regenerateOverrideCommandID()
+    }
+
+    func updateOverrideReason(_ value: String) {
+        guard canEditOverrideDraft, overrideReason != value else { return }
+        overrideReason = value
+        regenerateOverrideCommandID()
+    }
+
+    func updateOverrideNote(_ value: String) {
+        guard canEditOverrideDraft, overrideNote != value else { return }
+        overrideNote = value
+        regenerateOverrideCommandID()
+    }
+
+    func updateNotifyCustomer(_ value: Bool) {
+        guard canEditOverrideDraft, notifyCustomer != value else { return }
+        notifyCustomer = value
+        regenerateOverrideCommandID()
     }
 
     func submitOverride() {
         let target = overrideTarget
+        let retryingCommand = overridePhase == .stale || overridePhase == .conflict
+        let expectedStatus = retryingCommand ? record.status : overrideExpectedStatus
         let reason = overrideReason.trimmingCharacters(in: .whitespacesAndNewlines)
         let note = overrideNote.trimmingCharacters(in: .whitespacesAndNewlines)
         let shouldNotify = notifyCustomer
@@ -1932,38 +2003,105 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             return
         }
+        let commandID = retryingCommand ? UUID().uuidString : (overrideCommandID.isEmpty ? UUID().uuidString : overrideCommandID)
+        if retryingCommand {
+            overrideExpectedStatus = expectedStatus
+            overrideCommandID = commandID
+        }
+        overrideCommandID = commandID
+        pendingOverride = PPFulfillmentPendingOverride(
+            targetStatus: target,
+            commandID: commandID,
+            commandDocumentID: "",
+            notificationRequested: shouldNotify,
+            notificationAttempted: false,
+            notificationSucceeded: false,
+            notificationStatus: nil,
+            notificationOutcomeKnown: false
+        )
         isSubmitting = true
+        overridePhase = .pending
+        scheduleOverrideConfirmationTimeout(for: commandID)
         service.adminOverride(
             record.id,
+            expectedStatus: expectedStatus,
             targetStatus: target,
             reason: reason,
             note: note,
-            notify: shouldNotify
+            notify: shouldNotify,
+            commandID: commandID
         ) { [weak self] result, error in
             let skipped = (result?["skipped"] as? NSNumber)?.boolValue == true
+            let accepted = (result?["ok"] as? NSNumber)?.boolValue == true
+            let returnedTarget = result?["toStatus"] as? String ?? ""
+            let responseCommandID = result?["commandId"] as? String ?? ""
+            let eventID = result?["eventId"] as? String ?? ""
+            let commandDocumentID = result?["commandDocID"] as? String ?? ""
             let notificationAttempted = (result?["notificationAttempted"] as? NSNumber)?.boolValue == true
             let notificationSucceeded = (result?["notificationSucceeded"] as? NSNumber)?.boolValue == true
-            let message = error?.localizedDescription
+            let notificationStatus = result?["notificationStatus"] as? String
+            let notificationOutcomeKnown = Self.notificationOutcomeIsKnown(notificationStatus)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSubmitting = false
-                if let message {
-                    self.overrideAlert = PPFulfillmentAlert(title: PPFulfillmentL10n.text("Error_Title"), message: message)
-                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                guard self.pendingOverride?.commandID == commandID else { return }
+                if let error {
+                    let phase = Self.phase(for: error)
+                    if phase == .error {
+                        // A transport failure may happen after Firestore commits.
+                        // Keep the caller's stable command alive for listener
+                        // reconciliation or an idempotent retry.
+                        self.overridePhase = .pending
+                        self.scheduleOverrideConfirmationTimeout(for: commandID)
+                    } else {
+                        self.clearPendingOverride()
+                        self.overridePhase = phase
+                        self.overrideAlert = PPFulfillmentAlert(title: PPFulfillmentL10n.text("Error_Title"), message: Self.localizedOverrideMessage(for: error))
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    }
                     return
                 }
-                self.successfulStatus = target
-                self.pendingPostDismissAlert = PPFulfillmentAlert(
-                    title: PPFulfillmentL10n.text("Success"),
-                    message: Self.successMessage(
-                        skipped: skipped,
-                        notificationRequested: shouldNotify,
-                        notificationAttempted: notificationAttempted,
-                        notificationSucceeded: notificationSucceeded
+                guard accepted, returnedTarget == target, responseCommandID == commandID else {
+                    self.overridePhase = .pending
+                    self.scheduleOverrideConfirmationTimeout(for: commandID)
+                    return
+                }
+                if skipped {
+                    self.clearPendingOverride()
+                    self.overrideCommandID = ""
+                    self.overridePhase = .alreadyCurrent
+                    self.pendingPostDismissAlert = PPFulfillmentAlert(
+                        title: PPFulfillmentL10n.text("Success"),
+                        message: Self.successMessage(
+                            skipped: true,
+                            notificationRequested: shouldNotify,
+                            notificationAttempted: notificationAttempted,
+                            notificationSucceeded: notificationSucceeded,
+                            notificationStatus: notificationStatus
+                        )
                     )
+                    self.showsOverride = false
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    return
+                }
+                guard !eventID.isEmpty else {
+                    self.overridePhase = .pending
+                    self.scheduleOverrideConfirmationTimeout(for: commandID)
+                    return
+                }
+                self.pendingOverride = PPFulfillmentPendingOverride(
+                    targetStatus: returnedTarget,
+                    commandID: commandID,
+                    commandDocumentID: commandDocumentID,
+                    notificationRequested: shouldNotify,
+                    notificationAttempted: notificationAttempted,
+                    notificationSucceeded: notificationSucceeded,
+                    notificationStatus: notificationStatus,
+                    notificationOutcomeKnown: notificationOutcomeKnown
                 )
-                self.showsOverride = false
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                self.observeNotificationOutcome(commandDocumentID: commandDocumentID, commandID: commandID)
+                self.overridePhase = .acceptedWaitingSync
+                self.scheduleOverrideConfirmationTimeout(for: commandID)
             }
         }
     }
@@ -1993,6 +2131,121 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
         loadError = recordLoadError ?? eventsLoadError
     }
 
+    private func observeNotificationOutcome(commandDocumentID: String, commandID: String) {
+        guard !commandDocumentID.isEmpty else { return }
+        commandListener?.remove()
+        commandListener = PPFulfillmentListenerToken(
+            service.observeAdminOverrideCommand(record.id, commandDocumentID: commandDocumentID) { [weak self] command, isFromCache, hasPendingWrites, _ in
+                guard let command, !isFromCache, !hasPendingWrites else { return }
+                let notification = command["notification"] as? [AnyHashable: Any] ?? [:]
+                let status = notification["status"] as? String
+                let attempted = (notification["attempted"] as? NSNumber)?.boolValue ?? (notification["attempted"] as? Bool ?? false)
+                let succeeded = (notification["succeeded"] as? NSNumber)?.boolValue ?? (notification["succeeded"] as? Bool ?? false)
+                DispatchQueue.main.async {
+                    guard let self, let current = self.pendingOverride ?? self.notificationTracking, current.commandID == commandID else { return }
+                    let known = Self.notificationOutcomeIsKnown(status)
+                    let updated = PPFulfillmentPendingOverride(
+                        targetStatus: current.targetStatus,
+                        commandID: current.commandID,
+                        commandDocumentID: current.commandDocumentID,
+                        notificationRequested: current.notificationRequested,
+                        notificationAttempted: attempted,
+                        notificationSucceeded: succeeded,
+                        notificationStatus: status,
+                        notificationOutcomeKnown: known
+                    )
+                    let isTracking = self.pendingOverride == nil
+                    if isTracking {
+                        self.notificationTracking = known ? nil : updated
+                        if known {
+                            self.pendingPostDismissAlert = PPFulfillmentAlert(
+                                title: PPFulfillmentL10n.text("Success"),
+                                message: Self.successMessage(
+                                    skipped: false,
+                                    notificationRequested: updated.notificationRequested,
+                                    notificationAttempted: updated.notificationAttempted,
+                                    notificationSucceeded: updated.notificationSucceeded,
+                                    notificationStatus: updated.notificationStatus
+                                )
+                            )
+                        }
+                    } else {
+                        self.pendingOverride = updated
+                    }
+                    if known {
+                        self.commandListener?.remove()
+                        self.commandListener = nil
+                    }
+                }
+            }
+        )
+    }
+
+    private func confirmPendingOverrideIfObserved(_ snapshot: PPFulfillmentSnapshot, isFromCache: Bool, hasPendingWrites: Bool) {
+        guard let pendingOverride, !isFromCache, !hasPendingWrites else { return }
+        guard snapshot.status == pendingOverride.targetStatus else { return }
+        guard snapshot.adminOverrideCommandID == pendingOverride.commandID else { return }
+        overrideConfirmationTask?.cancel()
+        overrideConfirmationTask = nil
+        isSubmitting = false
+        let trackNotificationOutcome = !pendingOverride.notificationOutcomeKnown && !pendingOverride.commandDocumentID.isEmpty
+        if trackNotificationOutcome {
+            notificationTracking = pendingOverride
+        } else {
+            commandListener?.remove()
+            commandListener = nil
+        }
+        self.pendingOverride = nil
+        overrideCommandID = ""
+        overridePhase = .confirmed
+        pendingPostDismissAlert = PPFulfillmentAlert(
+            title: PPFulfillmentL10n.text("Success"),
+            message: Self.successMessage(
+                skipped: false,
+                notificationRequested: pendingOverride.notificationRequested,
+                notificationAttempted: pendingOverride.notificationAttempted,
+                notificationSucceeded: pendingOverride.notificationSucceeded,
+                notificationStatus: pendingOverride.notificationOutcomeKnown
+                    ? pendingOverride.notificationStatus
+                    : "retry_pending"
+            )
+        )
+        showsOverride = false
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    private var canEditOverrideDraft: Bool {
+        !isSubmitting && pendingOverride == nil
+    }
+
+    private func regenerateOverrideCommandID() {
+        if overridePhase == .stale || overridePhase == .conflict {
+            overrideExpectedStatus = record.status
+        }
+        overrideCommandID = UUID().uuidString
+    }
+
+    private func clearPendingOverride() {
+        overrideConfirmationTask?.cancel()
+        overrideConfirmationTask = nil
+        commandListener?.remove()
+        commandListener = nil
+        isSubmitting = false
+        pendingOverride = nil
+        notificationTracking = nil
+    }
+
+    private func scheduleOverrideConfirmationTimeout(for commandID: String) {
+        overrideConfirmationTask?.cancel()
+        overrideConfirmationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 15_000_000_000)
+            guard let self, self.pendingOverride?.commandID == commandID else { return }
+            self.isSubmitting = false
+            self.clearPendingOverride()
+            self.overridePhase = .stale
+        }
+    }
+
     private static func localizedMessage(for error: Error) -> String {
         let error = error as NSError
         if error.domain == NSCocoaErrorDomain, error.code == NSFileNoSuchFileError {
@@ -2001,13 +2254,53 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
         return error.localizedDescription
     }
 
+    private static func phase(for error: Error) -> PPFulfillmentOverridePhase {
+        let error = error as NSError
+        if error.domain == "com.firebase.functions" {
+            switch error.code {
+            case FunctionsErrorCode.permissionDenied.rawValue, FunctionsErrorCode.unauthenticated.rawValue, 7, 16:
+                return .denied
+            case FunctionsErrorCode.failedPrecondition.rawValue, FunctionsErrorCode.aborted.rawValue, FunctionsErrorCode.alreadyExists.rawValue, 9, 10, 6:
+                return .conflict
+            case FunctionsErrorCode.invalidArgument.rawValue, FunctionsErrorCode.notFound.rawValue, 3, 5:
+                return .invalid
+            default:
+                break
+            }
+        }
+        return .error
+    }
+
+    private static func localizedOverrideMessage(for error: Error) -> String {
+        switch phase(for: error) {
+        case .denied:
+            return PPFulfillmentL10n.text("Fulfillment_OverridePermissionDenied")
+        case .conflict:
+            return PPFulfillmentL10n.text("Fulfillment_OverrideConflict")
+        case .invalid:
+            return PPFulfillmentL10n.text("Fulfillment_OverrideInvalid")
+        default:
+            return PPFulfillmentL10n.text("Fulfillment_OverrideFailed")
+        }
+    }
+
+    private static func notificationOutcomeIsKnown(_ status: String?) -> Bool {
+        guard let status else { return false }
+        return !["pending", "retry_pending", "dispatching", "failed", "error"].contains(status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
     private static func successMessage(
         skipped: Bool,
         notificationRequested: Bool,
         notificationAttempted: Bool,
-        notificationSucceeded: Bool
+        notificationSucceeded: Bool,
+        notificationStatus: String?
     ) -> String {
         if skipped { return PPFulfillmentL10n.text("Fulfillment_OverrideSkipped") }
+        let normalizedNotificationStatus = notificationStatus?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if notificationRequested, ["pending", "retry_pending", "dispatching", "failed", "error"].contains(normalizedNotificationStatus) {
+            return PPFulfillmentL10n.text("Fulfillment_OverrideSuccessNotificationPending")
+        }
         if notificationRequested, notificationSucceeded {
             return PPFulfillmentL10n.text("Fulfillment_OverrideSuccessNotified")
         }
@@ -2107,7 +2400,7 @@ private struct PPFulfillmentDetailScreen: View {
                 .padding(.vertical, PPFulfillmentTokens.spaceLG)
         }
         .overlay(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerHero, style: .continuous).stroke(effectiveTone.color.opacity(0.30), lineWidth: 1))
-        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.5, dampingFraction: 0.82), value: viewModel.successfulStatus)
+        .animation(reduceMotion ? nil : .interactiveSpring(response: 0.5, dampingFraction: 0.82), value: viewModel.overridePhase)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("fulfillment.detail.command")
     }
@@ -2248,6 +2541,7 @@ private struct PPFulfillmentDetailScreen: View {
                 .background(PPFulfillmentTokens.danger, in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous))
             }
             .buttonStyle(.plain)
+            .disabled(viewModel.isAwaitingOverrideConfirmation)
             .accessibilityHint(PPFulfillmentL10n.text("Fulfillment_Override_AuditNotice"))
             .accessibilityIdentifier("fulfillment.override.dock")
         }
@@ -2259,7 +2553,7 @@ private struct PPFulfillmentDetailScreen: View {
     }
 
     private var effectiveStatus: String {
-        viewModel.successfulStatus ?? viewModel.record.status
+        viewModel.record.status
     }
 
     private var effectiveTone: PPFulfillmentTone {
@@ -2701,6 +2995,7 @@ private struct PPFulfillmentOverrideSheet: View {
                             symbol: "checkmark.shield.fill"
                         )
                         transitionPanel
+                        confirmationNotice
                         rationalePanel
                         communicationPanel
                         auditNotice
@@ -2708,7 +3003,7 @@ private struct PPFulfillmentOverrideSheet: View {
                     .padding(.horizontal, PPFulfillmentTokens.screenMargin)
                     .padding(.top, PPFulfillmentTokens.spaceBase)
                     .padding(.bottom, PPFulfillmentTokens.spaceBase)
-                    .disabled(viewModel.isSubmitting)
+                    .disabled(viewModel.isSubmitting || viewModel.isAwaitingOverrideConfirmation)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { submitDock }
@@ -2717,7 +3012,7 @@ private struct PPFulfillmentOverrideSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(PPFulfillmentL10n.text("Cancel")) { dismiss() }
-                        .disabled(viewModel.isSubmitting)
+                        .disabled(viewModel.isSubmitting || viewModel.isAwaitingOverrideConfirmation)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -2726,7 +3021,7 @@ private struct PPFulfillmentOverrideSheet: View {
             }
         }
         .navigationViewStyle(.stack)
-        .interactiveDismissDisabled(viewModel.isSubmitting)
+        .interactiveDismissDisabled(viewModel.isSubmitting || viewModel.isAwaitingOverrideConfirmation)
         .alert(item: $viewModel.overrideAlert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -2764,6 +3059,37 @@ private struct PPFulfillmentOverrideSheet: View {
     }
 
     @ViewBuilder
+    private var confirmationNotice: some View {
+        if let phase = viewModel.overridePhase,
+           phase == .pending || phase == .acceptedWaitingSync || phase == .stale {
+            let isStale = phase == .stale
+            HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
+                Image(systemName: isStale ? "exclamationmark.triangle.fill" : "dot.radiowaves.left.and.right")
+                    .foregroundStyle(isStale ? PPFulfillmentTokens.warning : PPFulfillmentTokens.primary)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(PPFulfillmentL10n.text("Fulfillment_ConfirmationPending_Title"))
+                        .font(PPFulfillmentTokens.beiruti(.bold, size: 15, relativeTo: .subheadline))
+                        .foregroundStyle(PPFulfillmentTokens.ink)
+                    Text(PPFulfillmentL10n.text(
+                        phase == .acceptedWaitingSync
+                            ? "Fulfillment_ConfirmationPending"
+                            : "Fulfillment_OverrideReconciliationPending"
+                    ))
+                    .font(PPFulfillmentTokens.beiruti(.regular, size: 14, relativeTo: .subheadline))
+                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(PPFulfillmentTokens.spaceBase)
+            .background((isStale ? PPFulfillmentTokens.warning : PPFulfillmentTokens.primary).opacity(0.09), in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous).stroke((isStale ? PPFulfillmentTokens.warning : PPFulfillmentTokens.primary).opacity(0.30)))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("fulfillment.override.confirmation")
+        }
+    }
+
+    @ViewBuilder
     private var statusBridge: some View {
         statusReadout(titleKey: "Fulfillment_CurrentStatus", status: viewModel.record.status)
         Image(systemName: dynamicTypeSize.isAccessibilitySize ? "arrow.down" : "arrow.forward")
@@ -2798,7 +3124,7 @@ private struct PPFulfillmentOverrideSheet: View {
         let selected = viewModel.overrideTarget == status
         let tone = PPFulfillmentSnapshot.tone(for: status)
         return Button {
-            viewModel.overrideTarget = status
+            viewModel.selectOverrideTarget(status)
             UISelectionFeedbackGenerator().selectionChanged()
         } label: {
             HStack(spacing: PPFulfillmentTokens.spaceMD) {
@@ -2834,12 +3160,12 @@ private struct PPFulfillmentOverrideSheet: View {
                     .font(PPFulfillmentTokens.beiruti(.bold, size: 14, relativeTo: .subheadline))
                     .foregroundStyle(PPFulfillmentTokens.ink)
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $viewModel.overrideReason)
+                    TextEditor(text: overrideReasonBinding)
                         .font(PPFulfillmentTokens.beiruti(.regular, size: 16, relativeTo: .body))
                         .focused($focusedField, equals: .reason)
                         .onChange(of: viewModel.overrideReason) { value in
                             let limited = limitUTF16(value, to: 256)
-                            if limited != value { viewModel.overrideReason = limited }
+                            if limited != value { viewModel.updateOverrideReason(limited) }
                         }
                         .padding(7)
                         .frame(minHeight: 88)
@@ -2867,12 +3193,12 @@ private struct PPFulfillmentOverrideSheet: View {
                     .font(PPFulfillmentTokens.beiruti(.bold, size: 14, relativeTo: .subheadline))
                     .foregroundStyle(PPFulfillmentTokens.ink)
                 ZStack(alignment: .topLeading) {
-                    TextEditor(text: $viewModel.overrideNote)
+                    TextEditor(text: overrideNoteBinding)
                         .font(PPFulfillmentTokens.beiruti(.regular, size: 16, relativeTo: .body))
                         .focused($focusedField, equals: .note)
                         .onChange(of: viewModel.overrideNote) { value in
                             let limited = limitUTF16(value, to: 512)
-                            if limited != value { viewModel.overrideNote = limited }
+                            if limited != value { viewModel.updateOverrideNote(limited) }
                         }
                         .padding(7)
                         .frame(minHeight: 108)
@@ -2900,7 +3226,7 @@ private struct PPFulfillmentOverrideSheet: View {
     private var communicationPanel: some View {
         VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
             sectionLabel("Fulfillment_Intervention_Communication")
-            Toggle(isOn: $viewModel.notifyCustomer) {
+            Toggle(isOn: notifyCustomerBinding) {
                 VStack(alignment: .leading, spacing: 3) {
                     Label(PPFulfillmentL10n.text("Fulfillment_NotifyCustomer"), systemImage: "bell.badge.fill")
                         .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .body))
@@ -2967,6 +3293,18 @@ private struct PPFulfillmentOverrideSheet: View {
         .overlay(alignment: .top) { Divider().overlay(PPFulfillmentTokens.border) }
         .accessibilityHint(PPFulfillmentL10n.text("Fulfillment_Override_AuditNotice"))
         .accessibilityIdentifier("fulfillment.override.confirm")
+    }
+
+    private var overrideReasonBinding: Binding<String> {
+        Binding(get: { viewModel.overrideReason }, set: { viewModel.updateOverrideReason($0) })
+    }
+
+    private var overrideNoteBinding: Binding<String> {
+        Binding(get: { viewModel.overrideNote }, set: { viewModel.updateOverrideNote($0) })
+    }
+
+    private var notifyCustomerBinding: Binding<Bool> {
+        Binding(get: { viewModel.notifyCustomer }, set: { viewModel.updateNotifyCustomer($0) })
     }
 
     private func sectionLabel(_ key: String) -> some View {

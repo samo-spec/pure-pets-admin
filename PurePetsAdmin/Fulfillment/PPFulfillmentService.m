@@ -29,6 +29,7 @@
         
         _adminOverrideBy = PPSafeString(dict[@"adminOverrideBy"]);
         _adminOverrideReason = PPSafeString(dict[@"adminOverrideReason"]);
+        _adminOverrideCommandID = PPSafeString(dict[@"adminOverrideCommandId"]);
 
         id ca = dict[@"createdAt"];
         if ([ca isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)ca dateValue];
@@ -103,20 +104,37 @@
     }];
 }
 
-- (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, NSError *))completion {
+- (id<FIRListenerRegistration>)observeFulfillment:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, BOOL, BOOL, NSError *))completion {
     FIRDocumentReference *ref = [[[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID];
-    return [ref addSnapshotListener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+    return [ref addSnapshotListenerWithIncludeMetadataChanges:YES listener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
         if (error) {
-            if (completion) completion(nil, error);
+            if (completion) completion(nil, NO, NO, error);
             return;
         }
         if (!snapshot.exists) {
             NSError *notFound = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:nil];
-            if (completion) completion(nil, notFound);
+            if (completion) completion(nil, snapshot.metadata.isFromCache, snapshot.metadata.hasPendingWrites, notFound);
             return;
         }
         PPFulfillmentRecord *record = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
-        if (completion) completion(record, nil);
+        if (completion) completion(record, snapshot.metadata.isFromCache, snapshot.metadata.hasPendingWrites, nil);
+    }];
+}
+
+- (id<FIRListenerRegistration>)observeAdminOverrideCommand:(NSString *)fulfillmentID commandDocumentID:(NSString *)commandDocumentID completion:(void(^)(NSDictionary *, BOOL, BOOL, NSError *))completion {
+    FIRCollectionReference *commands = [[[[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID] collectionWithPath:@"adminOverrideCommands"];
+    FIRDocumentReference *ref = [commands documentWithPath:commandDocumentID];
+    return [ref addSnapshotListenerWithIncludeMetadataChanges:YES listener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(nil, NO, NO, error);
+            return;
+        }
+        if (!snapshot.exists) {
+            NSError *notFound = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:nil];
+            if (completion) completion(nil, snapshot.metadata.isFromCache, snapshot.metadata.hasPendingWrites, notFound);
+            return;
+        }
+        if (completion) completion(snapshot.data, snapshot.metadata.isFromCache, snapshot.metadata.hasPendingWrites, nil);
     }];
 }
 
@@ -144,7 +162,7 @@
 
 - (id<FIRListenerRegistration>)observeFulfillmentEvents:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *, NSError *))completion {
     FIRFirestore *db = [FIRFirestore firestore];
-    FIRQuery *query = [[[[db collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID] collectionWithPath:@"events"] queryOrderedByField:@"createdAt" descending:YES];
+    FIRQuery *query = [[[[[db collectionWithPath:@"FulfillmentOrders"] documentWithPath:fulfillmentID] collectionWithPath:@"events"] queryOrderedByField:@"createdAt" descending:YES] queryLimitedTo:50];
     return [query addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         if (error) {
             if (completion) completion(@[], error);
@@ -251,15 +269,17 @@
     });
 }
 
-- (void)adminOverrideFulfillment:(NSString *)fulfillmentID targetStatus:(NSString *)status reason:(NSString *)reason note:(nullable NSString *)note notify:(BOOL)notify completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+- (void)adminOverrideFulfillment:(NSString *)fulfillmentID expectedStatus:(NSString *)expectedStatus targetStatus:(NSString *)status reason:(NSString *)reason note:(nullable NSString *)note notify:(BOOL)notify commandID:(NSString *)commandID completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     FIRFunctions *functions = [FIRFunctions functions];
     FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"adminOverrideFulfillment"];
     [callable callWithObject:@{
         @"fulfillmentID": fulfillmentID ?: @"",
+        @"expectedStatus": expectedStatus ?: @"",
         @"targetStatus": status ?: @"",
         @"reason": reason ?: @"",
         @"note": note ?: @"",
-        @"notifyCustomer": @(notify)
+        @"notifyCustomer": @(notify),
+        @"commandId": commandID ?: @""
     } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
         NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
         if (completion) completion(dict, error);

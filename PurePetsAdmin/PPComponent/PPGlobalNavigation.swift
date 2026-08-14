@@ -1,24 +1,81 @@
 //
 //  PPGlobalNavigation.swift
-//  PurePetsPro
+//  PurePetsAdmin
 //
-//  Reusable global SwiftUI navigation system.
-//  Minimum deployment target: iOS 15.
-//  Native Liquid Glass path: iOS 26+ / Swift 6.2+.
-//  Earlier systems: semantic Material fallback.
+//  ONE global navigation owner for every screen, including Work / main / root.
 //
-//  Public styles:
-//  1) commandCrown  — large-title stage + edge-mounted command crown.
-//  2) edgeLoom      — vertical semantic seam + woven navigation nodes.
-//  3) contextDeck   — layered context planes that consolidate on scroll.
+//  ─────────────────────────────────────────────────────────────────────────────
+//  VISUAL SPECIFICATION
+//  ─────────────────────────────────────────────────────────────────────────────
+//  This file is a measured reconstruction of the supplied Pure Pets Pro
+//  navigation reference renders:
 //
-//  Design intent:
-//  - One navigation owner.
-//  - Large title on every screen, including root/main.
-//  - One semantic action contract across all styles.
-//  - RTL, Dynamic Type, VoiceOver, Reduce Motion.
-//  - No business logic and no permission mutation.
-//  - Pure Pets Pro colors + Beiruti typography with safe fallbacks.
+//    01_large_title_expanded_navbar_3x.png   5940 x 786   → PPNavigationDisplayMode.expanded
+//    02_compact_scrolled_navbar_3x.png       5934 x 363   → PPNavigationDisplayMode.compact
+//    03_modal_create_navbar_3x.png           5934 x 426   → .compact + emphasized action
+//
+//  The references are drawn on a wide (~970pt) artboard, so horizontal *slack*
+//  is not transferable to a phone. Two independent anchors fix the reference
+//  scale at 6.1 reference-px per point:
+//
+//    • compact bar height 318px → 52.1pt  (the iOS compact navigation height)
+//    • circular action        267px → 43.8pt  (the 44pt HIG touch target)
+//
+//  Every constant in `PPNavSpec` below is that measurement divided by 6.1.
+//  Measured reference values are kept inline next to each constant so the
+//  geometry stays auditable.
+//
+//  Reference px → pt (scale 6.1)
+//  ┌────────────────────────────────┬──────────┬─────────┐
+//  │ element                        │ ref px   │ pt      │
+//  ├────────────────────────────────┼──────────┼─────────┤
+//  │ surface corner radius          │ 183      │ 30      │
+//  │ navigation pearl (expanded)    │ 351 sq   │ 57.5    │
+//  │ pearl corner radius            │ 160      │ 26.2    │
+//  │ navigation pearl (compact)     │ 255 sq   │ 41.8    │
+//  │ command crown height (exp.)    │ 391      │ 64.1    │
+//  │ command crown height (comp.)   │ 204      │ 33.4    │
+//  │ circular action                │ 267      │ 43.8    │
+//  │ action gap (expanded)          │ 53       │ 8.7     │
+//  │ action gap (compact)           │ 103      │ 16.9    │
+//  │ status chip height             │ 265      │ 43.4    │
+//  │ status live dot                │ 42       │ 6.9     │
+//  │ rail dot / pitch               │ 17 / 50  │ 2.8/8.2 │
+//  │ eyebrow cap height             │ 46       │ 7.5     │
+//  │ large title ascender           │ 203      │ 33.3    │
+//  │ compact title ascender         │ 79       │ 13.0    │
+//  │ filament thickness             │ 14       │ 2.3     │
+//  └────────────────────────────────┴──────────┴─────────┘
+//
+//  Documented, deliberate deviations from the artboards (width-forced, platform
+//  required, or requested after the first on-device review):
+//
+//  1. The bar surface is CLEAR. The artboard's floating white card, brand wash,
+//     hairline and drop shadow are not drawn; the host's page background shows
+//     through and only the floating controls carry material.
+//  2. The artboard's 3x3 dot rail beside Back / Close is not drawn.
+//  3. The artboard places pearl · title · crown on one row across ~970pt.
+//     A 375-440pt phone cannot host that row, so the control row sits above the
+//     title stage — which is also what "Large Title Expanded" means natively.
+//  4. Type scale is reduced from the artboard ramp for phone legibility:
+//     expanded title 30pt (artboard 46pt), subtitle 13pt, compact title 17pt.
+//     Expanded bar height is 146pt, single-line title with tightening, so the
+//     reservation never changes with content.
+//  5. Reference eyebrow ink is #D9003C and reference body ink is neutral. Brand
+//     source of truth (PPDesignTokens) wins: ppPrimary / ppTextPrimary /
+//     ppTextSecondary / ppSuccess.
+//
+//  ─────────────────────────────────────────────────────────────────────────────
+//  CONTRACT
+//  ─────────────────────────────────────────────────────────────────────────────
+//  • One navigation owner, one safe-area owner. Hosts keep routing + semantics.
+//  • No business logic, no permission mutation, no routing decisions here.
+//  • `PPGlobalNavigationStyle` is retained for source compatibility; all cases
+//    now resolve to the single canonical composition. There are no per-screen
+//    navigation designs.
+//  • RTL mirrors through leading/trailing only. Dynamic Type, Reduce Motion,
+//    VoiceOver and 44pt hit areas are honoured in both display modes.
+//  • iOS 26 Liquid Glass when available, semantic Material fallback otherwise.
 //
 
 import SwiftUI
@@ -26,12 +83,22 @@ import UIKit
 
 // MARK: - Public API
 
+/// Retained for source compatibility with existing hosts.
+///
+/// The three historical styles now resolve to the single canonical Pure Pets Pro
+/// navigation composition. `displayName` is preserved for debug pickers.
 public enum PPGlobalNavigationStyle: String, CaseIterable, Identifiable, Hashable, Sendable {
     case commandCrown
     case edgeLoom
     case contextDeck
 
     public var id: String { rawValue }
+
+    /// Host-reserved height for `PPNavigationDisplayMode.expanded`.
+    public var expandedBarHeight: CGFloat { PPNavSpec.expandedHeight }
+
+    /// Host-reserved height for the rendered compact composition.
+    public var compactBarHeight: CGFloat { PPNavSpec.compactHeight }
 
     public var displayName: String {
         switch self {
@@ -40,22 +107,18 @@ public enum PPGlobalNavigationStyle: String, CaseIterable, Identifiable, Hashabl
         case .contextDeck: return "Context Deck"
         }
     }
+}
 
-    fileprivate var expandedHeight: CGFloat {
-        switch self {
-        case .commandCrown: return 186
-        case .edgeLoom: return 206
-        case .contextDeck: return 178
-        }
-    }
+/// The two navigation compositions.
+///
+/// `expanded` is the standard iPhone / default presentation.
+/// `compact` is selected automatically for narrow widths, accessibility text
+/// sizes, or once the host has scrolled past the large-title threshold.
+public enum PPNavigationDisplayMode: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case expanded
+    case compact
 
-    fileprivate var compactHeight: CGFloat {
-        switch self {
-        case .commandCrown: return 72
-        case .edgeLoom: return 78
-        case .contextDeck: return 74
-        }
-    }
+    public var id: String { rawValue }
 }
 
 public enum PPGlobalNavigationActionKind: Hashable, Sendable {
@@ -67,6 +130,7 @@ public enum PPGlobalNavigationActionKind: Hashable, Sendable {
     case capabilityLens
     case command
     case notifications
+    case confirm
     case custom(symbol: String)
 }
 
@@ -83,6 +147,12 @@ public struct PPGlobalNavigationAction: Identifiable, Hashable, Sendable {
     public let accessibilityHint: String?
     public let prominence: PPGlobalNavigationActionProminence
     public let badge: String?
+    public let isEnabled: Bool
+    /// Visible label. Rendered only for `.emphasized` actions, as in
+    /// `03_modal_create_navbar_3x.png`. `nil` keeps the action icon-only.
+    public let title: String?
+    /// Initials rendered inside a `.profile` action, as in the reference crown.
+    public let monogram: String?
 
     public init(
         id: String,
@@ -90,7 +160,10 @@ public struct PPGlobalNavigationAction: Identifiable, Hashable, Sendable {
         accessibilityLabel: String,
         accessibilityHint: String? = nil,
         prominence: PPGlobalNavigationActionProminence = .standard,
-        badge: String? = nil
+        badge: String? = nil,
+        isEnabled: Bool = true,
+        title: String? = nil,
+        monogram: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -98,34 +171,34 @@ public struct PPGlobalNavigationAction: Identifiable, Hashable, Sendable {
         self.accessibilityHint = accessibilityHint
         self.prominence = prominence
         self.badge = badge
+        self.isEnabled = isEnabled
+        self.title = title
+        self.monogram = monogram
     }
 
     public static let back = PPGlobalNavigationAction(
         id: "back",
         kind: .back,
-        accessibilityLabel: "Back",
-        accessibilityHint: "Returns to the previous screen."
+        accessibilityLabel: Language.get("Back", alter: nil)
     )
 
     public static let close = PPGlobalNavigationAction(
         id: "close",
         kind: .close,
-        accessibilityLabel: "Close",
-        accessibilityHint: "Closes this screen."
+        accessibilityLabel: Language.get("Close", alter: nil)
     )
 
     public static let refresh = PPGlobalNavigationAction(
         id: "refresh",
         kind: .refresh,
-        accessibilityLabel: "Refresh",
-        accessibilityHint: "Reloads the current content.",
+        accessibilityLabel: Language.get("CommandCenter_Refresh", alter: nil),
         prominence: .emphasized
     )
 
     public static let more = PPGlobalNavigationAction(
         id: "more",
         kind: .more,
-        accessibilityLabel: "More actions"
+        accessibilityLabel: Language.get("CommandCenter_Tab_More", alter: nil)
     )
 }
 
@@ -153,7 +226,7 @@ public struct PPGlobalNavigationConfiguration: Hashable, Sendable {
     public var showsContextFilament: Bool
 
     public init(
-        style: PPGlobalNavigationStyle = .commandCrown,
+        style: PPGlobalNavigationStyle = .contextDeck,
         title: String,
         eyebrow: String? = nil,
         subtitle: String? = nil,
@@ -173,6 +246,20 @@ public struct PPGlobalNavigationConfiguration: Hashable, Sendable {
         self.trailingActions = Array(trailingActions.prefix(3))
         self.showsContextFilament = showsContextFilament
     }
+
+    /// The eyebrow line actually rendered. `context` is the documented fallback
+    /// so hosts that only supply a context string keep their supporting line.
+    fileprivate var resolvedEyebrow: String? {
+        let candidate = eyebrow ?? context
+        guard let candidate, !candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return candidate
+    }
+
+    fileprivate var hasChrome: Bool {
+        leadingAction != nil || !trailingActions.isEmpty || status != nil
+    }
 }
 
 public typealias PPGlobalNavigationActionHandler = (PPGlobalNavigationAction) -> Void
@@ -180,74 +267,197 @@ public typealias PPGlobalNavigationActionHandler = (PPGlobalNavigationAction) ->
 // MARK: - Brand contract
 
 private enum PPNavPalette {
-    static var brand: Color {
-        Color(uiColor: UIColor(named: "AppPrimaryClr") ?? UIColor(red: 0.698, green: 0.106, blue: 0.282, alpha: 1))
-    }
+    static var brand: Color { Color(uiColor: .ppPrimary) }
+    static var brandPressed: Color { Color(uiColor: .ppPressedAction) }
+    static var brandShiner: Color { Color(uiColor: .ppPrimaryShiner) }
+    static var primaryText: Color { Color(uiColor: .ppTextPrimary) }
+    static var secondaryText: Color { Color(uiColor: .ppTextSecondary) }
+    static var surface: Color { Color(uiColor: .ppSurface) }
+    static var elevated: Color { Color(uiColor: .ppElevatedSurface) }
+    static var recessed: Color { Color(uiColor: .ppSecondarySurface) }
+    static var hairline: Color { Color(uiColor: .ppSurfaceBorder) }
+    static var canvas: Color { Color(uiColor: .ppBackground) }
+    static var live: Color { Color(uiColor: .ppSuccess) }
+    static var shadow: Color { Color(uiColor: .ppShadow) }
+}
 
-    static var brandDarker: Color {
-        Color(uiColor: UIColor(named: "AppPrimaryClrDarker") ?? UIColor(red: 0.604, green: 0.090, blue: 0.247, alpha: 1))
-    }
+// MARK: - Reference-derived metrics
 
-    static var brandShiner: Color {
-        Color(uiColor: UIColor(named: "AppPrimaryClrShiner") ?? UIColor(red: 0.839, green: 0.129, blue: 0.341, alpha: 1))
-    }
+private enum PPNavSpec {
+    /// Reference pixels per point. Both independent anchors agree on 6.1.
+    static let referenceScale: CGFloat = 6.1
 
-    static var primaryText: Color {
-        Color(uiColor: UIColor(named: "PrimaryTextClr") ?? .label)
-    }
+    // Host reservations -------------------------------------------------------
+    /// 56pt control row + eyebrow / title / subtitle stage.
+    static let expandedHeight: CGFloat = 146
+    /// Reference compact card 318px / 6.1.
+    static let compactHeight: CGFloat = 52
 
-    static var secondaryText: Color {
-        Color(uiColor: UIColor(named: "SeconderyTextClr") ?? .secondaryLabel)
-    }
+    // Navigation pearl --------------------------------------------------------
+    static let expandedLeadingMargin: CGFloat = 20
+    static let compactLeadingMargin: CGFloat = 16    // 95px
+    static let expandedPearl: CGFloat = 66
+    static let compactPearl: CGFloat = 40
+    static let pearlRadiusRatio: CGFloat = 0.456     // 160 / 351
+    static let pearlGlyphRatio: CGFloat = 0.32
+    static let expandedPearlGlyphRatio: CGFloat = 0.24
+    static let expandedPearlTitleGap: CGFloat = 18
+    static let chevronAspect: CGFloat = 0.57         // 56 / 98
 
-    static var surface: Color {
-        Color(uiColor: UIColor(named: "AppSurfColor") ?? .secondarySystemBackground)
-    }
+    // Leading control craft ---------------------------------------------------
+    /// HIG minimum touch target for the leading control, enforced through hit
+    /// testing so the rendered 40pt compact pearl stays reference-true.
+    static let pearlMinimumTarget: CGFloat = 44
+    /// A chevron's base carries two round caps while its apex is a single
+    /// point, so the ink reads off-centre at geometric centre. The ink is
+    /// nudged toward the apex by this fraction of the control diameter.
+    static let pearlGlyphOpticalShift: CGFloat = 0.022
+    /// Directional press affordance: the chevron travels further toward the
+    /// leading edge while the finger is down.
+    static let pearlPressGlyphTravel: CGFloat = 1.5
+    static let pearlPressScale: CGFloat = 0.93
+    static let pearlRingWidth: CGFloat = 1.25
+    static let pearlPressWellOpacity: Double = 0.14
+    static let pearlDisabledOpacity: Double = 0.34
+    static let pearlRestElevation: Double = 0.07
+    static let pearlHoverElevation: Double = 0.10
+    static let pearlPressElevation: Double = 0.02
 
-    static var page: Color {
-        Color(uiColor: UIColor(named: "PageColor") ?? .systemBackground)
-    }
+    // Back capsule ------------------------------------------------------------
+    /// A normal 44pt navigation button. Its surface is intentionally simple:
+    /// semantic glass, a quiet hairline, and the standard mirrored chevron.
+    static let backControlDiameter: CGFloat = 44
+    static let backCapsuleGlyphRatio: CGFloat = 0.34
+    static let backCapsuleRingWidth: CGFloat = 0.75
+    static let backCapsulePressWellOpacity: Double = 0.12
+    static let backCapsuleRestElevation: Double = 0.04
+    static let backCapsuleHoverElevation: Double = 0.07
+    static let backCapsulePressElevation: Double = 0.01
+    static let backCapsulePressScale: CGFloat = 0.96
+    static let backCapsulePressGlyphTravel: CGFloat = 1.0
 
-    static var canvas: Color {
-        Color(
-            uiColor: UIColor { traits in
-                if traits.userInterfaceStyle == .dark {
-                    return UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1)
-                }
-                return UIColor(red: 0.969, green: 0.961, blue: 0.949, alpha: 1)
-            }
-        )
+    // Command crown -----------------------------------------------------------
+    static let expandedCrownHeight: CGFloat = 56
+    static let compactCrownHeight: CGFloat = 33.5    // 204px
+    static let crownRadiusRatio: CGFloat = 0.27
+    static let expandedCrownPadding: CGFloat = 6
+    static let expandedAction: CGFloat = 44          // 267px
+    static let compactAction: CGFloat = 33           // 200px
+    static let expandedActionGap: CGFloat = 6
+    static let compactActionGap: CGFloat = 14
+    static let compactCrownPadding: CGFloat = 4
+    static let expandedTrailingMargin: CGFloat = 16  // 99px
+    static let compactTrailingMargin: CGFloat = 15   // 89px
+    static let dividerLeadGap: CGFloat = 10
+    static let dividerTrailGap: CGFloat = 10
+    static let compactDividerLeadGap: CGFloat = 10
+    static let compactDividerTrailGap: CGFloat = 12
+
+    // Status chip -------------------------------------------------------------
+    static let chipRadiusRatio: CGFloat = 0.245      // 65 / 265
+    static let statusDot: CGFloat = 7                // 42px
+    static let compactStatusDot: CGFloat = 6.9       // 42px
+    static let chipLeadingPad: CGFloat = 12          // 72px
+    static let chipTrailingPad: CGFloat = 14         // 97px
+    static let chipDotGap: CGFloat = 9.5             // 58px
+
+    // Title stage -------------------------------------------------------------
+    static let stageTopGap: CGFloat = 2
+    static let eyebrowToTitle: CGFloat = 2
+    static let titleToSubtitle: CGFloat = 1
+    static let stageBottomInset: CGFloat = 10
+    static let filamentThickness: CGFloat = 2.5      // 14px
+    static let filamentFraction: CGFloat = 0.13      // 284 / ~2200 visible track
+    static let filamentMinimum: CGFloat = 40
+
+    // Emphasized capsule (03_modal_create) ------------------------------------
+    static let emphasizedHeight: CGFloat = 40        // 248px
+    static let emphasizedPad: CGFloat = 16           // 98px
+    static let emphasizedGlyphGap: CGFloat = 8       // 50px
+
+    // Responsive thresholds ---------------------------------------------------
+    /// Below this width the expanded title stage cannot hold a dominant title.
+    static let compactWidthThreshold: CGFloat = 350
+    /// Minimum readable width for the compact centred title cluster.
+    static let compactTitleMinimum: CGFloat = 96
+    /// Minimum leftover width before the status readout is dropped.
+    static let statusDropMinimum: CGFloat = 84
+
+    static func hostHeight(for mode: PPNavigationDisplayMode) -> CGFloat {
+        mode == .expanded ? expandedHeight : compactHeight
     }
 }
 
+private enum PPNavGeometryID {
+    static let pearl = "pp.nav.pearl"
+    /// The expanded leading control is a distinct glass identity: both pearls
+    /// can co-exist for one frame while the bar morphs between display modes,
+    /// and two live effects may not share an ID inside one namespace.
+    static let expandedPearl = "pp.nav.pearl.expanded"
+    static let backCapsule = "pp.nav.back-capsule"
+    static let expandedBackCapsule = "pp.nav.back-capsule.expanded"
+    static let title = "pp.nav.title"
+    static let crown = "pp.nav.crown"
+    static let statusChip = "pp.nav.status"
+    static func action(_ id: String) -> String { "pp.nav.action.\(id)" }
+}
+
+// MARK: - Typography
 
 private enum PPNavTypography {
-    static func largeTitle(compact: Bool) -> Font {
-        let size: CGFloat = compact ? 22 : 38
-        if UIFont(name: "Beiruti-Bold", size: size) != nil {
-            return .custom("Beiruti-Bold", size: size, relativeTo: compact ? .title2 : .largeTitle)
+    private static func beiruti(
+        _ face: String,
+        size: CGFloat,
+        relativeTo style: Font.TextStyle,
+        fallbackWeight: Font.Weight
+    ) -> Font {
+        if UIFont(name: face, size: size) != nil {
+            return .custom(face, size: size, relativeTo: style)
         }
-        return compact
-            ? .system(.title2, design: .rounded, weight: .bold)
-            : .system(.largeTitle, design: .rounded, weight: .bold)
+        return .system(size: size, weight: fallbackWeight, design: .rounded)
     }
 
-    static func eyebrow() -> Font {
-        if UIFont(name: "Beiruti-Medium", size: 12) != nil {
-            return .custom("Beiruti-Medium", size: 12, relativeTo: .caption)
-        }
-        return .system(.caption, design: .rounded, weight: .semibold)
+    /// Expanded large title, compact inline title.
+    static func title(_ mode: PPNavigationDisplayMode) -> Font {
+        beiruti(
+            "Beiruti-Bold",
+            size: mode == .expanded ? 30 : 17,
+            relativeTo: mode == .expanded ? .title : .headline,
+            fallbackWeight: .bold
+        )
     }
 
-    static func secondary() -> Font {
-        if UIFont(name: "Beiruti-Regular", size: 14) != nil {
-            return .custom("Beiruti-Regular", size: 14, relativeTo: .subheadline)
-        }
-        return .system(.subheadline, design: .rounded, weight: .regular)
+    /// Reference eyebrow cap height 46px → 10.5pt at cap ratio 0.72.
+    static var eyebrow: Font {
+        beiruti("Beiruti-Medium", size: 10.5, relativeTo: .caption2, fallbackWeight: .semibold)
     }
 
-    static func action() -> Font {
-        .system(size: 16, weight: .semibold, design: .rounded)
+    static func subtitle(_ mode: PPNavigationDisplayMode) -> Font {
+        beiruti(
+            "Beiruti-Regular",
+            size: mode == .expanded ? 13 : 11,
+            relativeTo: .caption2,
+            fallbackWeight: .regular
+        )
+    }
+
+    /// Reference "Live" cap height 51px → 11.5pt.
+    static var statusLabel: Font {
+        beiruti("Beiruti-Bold", size: 11.5, relativeTo: .caption2, fallbackWeight: .bold)
+    }
+
+    /// Reference "Unified" → 10pt.
+    static var statusDetail: Font {
+        beiruti("Beiruti-Regular", size: 10, relativeTo: .caption2, fallbackWeight: .regular)
+    }
+
+    /// Reference "Save" cap height 55px → 12.5pt, rounded to 13pt.
+    static var emphasizedLabel: Font {
+        beiruti("Beiruti-Bold", size: 13, relativeTo: .footnote, fallbackWeight: .bold)
+    }
+
+    static func monogram(_ diameter: CGFloat) -> Font {
+        beiruti("Beiruti-Bold", size: max(9, diameter * 0.42), relativeTo: .caption2, fallbackWeight: .bold)
     }
 }
 
@@ -257,82 +467,1771 @@ public struct PPGlobalNavigationBar: View {
     public let configuration: PPGlobalNavigationConfiguration
     public let collapseProgress: CGFloat
     public let safeAreaTop: CGFloat
+    public let displayModeOverride: PPNavigationDisplayMode?
     public let onAction: PPGlobalNavigationActionHandler
+    public let onDisplayModeChange: ((PPNavigationDisplayMode) -> Void)?
 
     @Environment(\.layoutDirection) private var layoutDirection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Namespace private var glassNamespace
+    @State private var latchedMode: PPNavigationDisplayMode?
 
     public init(
         configuration: PPGlobalNavigationConfiguration,
         collapseProgress: CGFloat = 0,
         safeAreaTop: CGFloat = 0,
-        onAction: @escaping PPGlobalNavigationActionHandler
+        displayMode: PPNavigationDisplayMode? = nil,
+        onAction: @escaping PPGlobalNavigationActionHandler,
+        onDisplayModeChange: ((PPNavigationDisplayMode) -> Void)? = nil
     ) {
         self.configuration = configuration
-        self.collapseProgress = collapseProgress.clamped(to: 0...1)
+        self.collapseProgress = collapseProgress.ppClamped()
         self.safeAreaTop = max(0, safeAreaTop)
+        self.displayModeOverride = displayMode
         self.onAction = onAction
+        self.onDisplayModeChange = onDisplayModeChange
     }
 
     public var body: some View {
-        let progress = effectiveProgress
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let mode = resolvedMode(width: width)
 
-        Group {
-            switch configuration.style {
-            case .commandCrown:
-                PPCommandCrownNavigation(
+            ZStack(alignment: .top) {
+                // The bar surface is intentionally clear: the host's page
+                // background shows through and only the floating controls
+                // (pearl, crown, status well) carry material.
+                Color.clear
+
+                PPNavStage(
                     configuration: configuration,
-                    progress: progress,
-                    safeAreaTop: safeAreaTop,
-                    layoutDirection: layoutDirection,
-                    namespace: glassNamespace,
-                    onAction: onAction
-                )
-            case .edgeLoom:
-                PPEdgeLoomNavigation(
-                    configuration: configuration,
-                    progress: progress,
-                    safeAreaTop: safeAreaTop,
-                    layoutDirection: layoutDirection,
-                    namespace: glassNamespace,
-                    onAction: onAction
-                )
-            case .contextDeck:
-                PPContextDeckNavigation(
-                    configuration: configuration,
-                    progress: progress,
+                    mode: mode,
+                    width: width,
                     safeAreaTop: safeAreaTop,
                     layoutDirection: layoutDirection,
                     namespace: glassNamespace,
                     onAction: onAction
                 )
             }
+            .frame(width: width, alignment: .top)
+            .animation(motion, value: mode)
+            .onChange(of: mode) { newValue in
+                latchedMode = newValue
+                onDisplayModeChange?(newValue)
+            }
+            .onAppear { onDisplayModeChange?(mode) }
         }
-        .frame(height: barHeight(for: progress), alignment: .top)
-        .animation(
-            reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.86, blendDuration: 0.08),
-            value: configuration.style
-        )
-        .animation(
-            reduceMotion ? nil : .interactiveSpring(response: 0.42, dampingFraction: 0.9, blendDuration: 0.05),
-            value: progress
-        )
+        .frame(minHeight: intrinsicHeight, alignment: .top)
+        .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         .accessibilityElement(children: .contain)
     }
 
-    private var effectiveProgress: CGFloat {
-        if dynamicTypeSize.isAccessibilitySize {
-            return 1
-        }
-        return collapseProgress
+    private var motion: Animation? {
+        reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.88, blendDuration: 0.1)
     }
 
-    private func barHeight(for progress: CGFloat) -> CGFloat {
-        let expanded = configuration.style.expandedHeight + safeAreaTop
-        let compact = configuration.style.compactHeight + safeAreaTop
-        return expanded.interpolated(to: compact, progress: progress)
+    /// Selection order: explicit override → accessibility text → scroll
+    /// threshold (with hysteresis so the morph cannot flap) → available width.
+    private func resolvedMode(width: CGFloat) -> PPNavigationDisplayMode {
+        if let displayModeOverride { return displayModeOverride }
+        if dynamicTypeSize.isAccessibilitySize { return .compact }
+        if width > 0, width < PPNavSpec.compactWidthThreshold { return .compact }
+
+        let entering: CGFloat = 0.5
+        let leaving: CGFloat = 0.34
+        switch latchedMode {
+        case .compact:
+            return collapseProgress <= leaving ? .expanded : .compact
+        default:
+            return collapseProgress >= entering ? .compact : .expanded
+        }
+    }
+
+    private var intrinsicHeight: CGFloat {
+        let mode = latchedMode
+            ?? displayModeOverride
+            ?? (dynamicTypeSize.isAccessibilitySize ? .compact : .expanded)
+        return PPNavSpec.hostHeight(for: mode) + safeAreaTop
+    }
+}
+
+// MARK: - Stage
+
+private struct PPNavStage: View {
+    let configuration: PPGlobalNavigationConfiguration
+    let mode: PPNavigationDisplayMode
+    let width: CGFloat
+    let safeAreaTop: CGFloat
+    let layoutDirection: LayoutDirection
+    let namespace: Namespace.ID
+    let onAction: PPGlobalNavigationActionHandler
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var reservesExpandedLeadingSlot = false
+    @State private var revealedLeadingAction: PPGlobalNavigationAction?
+    @State private var expandedTitleOffset: CGFloat = 0
+
+    var body: some View {
+        let plan = PPNavPlan(configuration: configuration, mode: mode, width: width)
+
+        VStack(spacing: 0) {
+            controlRow(plan: plan)
+
+            if mode == .expanded {
+                titleStage(plan: plan)
+            }
+        }
+        .padding(.top, safeAreaTop)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .task(id: leadingSequenceKey) {
+            await synchronizeExpandedLeadingAction()
+        }
+    }
+
+    // MARK: Control row
+
+    @ViewBuilder
+    private func controlRow(plan: PPNavPlan) -> some View {
+        HStack(spacing: 0) {
+            leadingCluster(plan: plan)
+
+            if mode == .compact {
+                Spacer(minLength: 8)
+            } else {
+                Spacer(minLength: 12)
+            }
+
+            trailingCluster(plan: plan)
+        }
+        .padding(.leading, plan.leadingMargin)
+        .padding(.trailing, plan.trailingMargin)
+        .frame(height: plan.controlRowHeight)
+        .overlay {
+            // 02_compact_scrolled: the title cluster is centred on the bar,
+            // not on the free space between the clusters.
+            if mode == .compact {
+                titleCluster(plan: plan)
+                    .padding(.horizontal, plan.compactTitleSideInset)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func leadingCluster(plan: PPNavPlan) -> some View {
+        // Expanded mode places the pearl beside the large-title stack. Compact
+        // mode keeps the conventional inline navigation arrangement.
+        if mode == .compact {
+            pearl(plan: plan, outlined: false)
+        }
+    }
+
+    @ViewBuilder
+    private func pearl(plan: PPNavPlan, outlined: Bool) -> some View {
+        if let leading = configuration.leadingAction {
+            PPNavPearl(
+                action: leading,
+                diameter: leadingDiameter(for: leading, plan: plan),
+                outlined: outlined,
+                namespace: namespace,
+                onAction: onAction
+            )
+        }
+    }
+
+    private func leadingDiameter(for action: PPGlobalNavigationAction, plan: PPNavPlan) -> CGFloat {
+        action.kind == .back ? PPNavSpec.backControlDiameter : plan.pearlDiameter
+    }
+
+    private func expandedLeadingSlotWidth(plan: PPNavPlan) -> CGFloat {
+        guard let action = configuration.leadingAction else { return 0 }
+        return leadingDiameter(for: action, plan: plan) + PPNavSpec.expandedPearlTitleGap
+    }
+
+    @ViewBuilder
+    private func trailingCluster(plan: PPNavPlan) -> some View {
+        PPNavCommandCrown(
+            configuration: configuration,
+            plan: plan,
+            namespace: namespace,
+            onAction: onAction
+        )
+    }
+
+    // MARK: Title
+
+    @ViewBuilder
+    private func titleStage(plan: PPNavPlan) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 0) {
+                ZStack(alignment: .leading) {
+                    if let leading = revealedLeadingAction {
+                        PPNavPearl(
+                            action: leading,
+                            diameter: leadingDiameter(for: leading, plan: plan),
+                            outlined: true,
+                            namespace: namespace,
+                            onAction: onAction
+                        )
+                        .transition(
+                            .scale(scale: 0.82, anchor: .center)
+                                .combined(with: .opacity)
+                        )
+                        .allowsHitTesting(configuration.leadingAction?.id == leading.id)
+                    }
+                }
+                .frame(
+                    width: reservesExpandedLeadingSlot
+                        ? expandedLeadingSlotWidth(plan: plan)
+                        : 0,
+                    height: plan.pearlDiameter,
+                    alignment: .leading
+                )
+
+                titleCluster(plan: plan)
+                    .layoutPriority(1)
+                    .offset(x: expandedTitleOffset)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Spacer(minLength: 0)
+
+            if configuration.showsContextFilament {
+                PPNavContextFilament(width: plan.filamentWidth)
+            }
+        }
+        .padding(.top, PPNavSpec.stageTopGap)
+        .padding(.bottom, PPNavSpec.stageBottomInset)
+        .padding(.horizontal, plan.leadingMargin)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var leadingSequenceKey: PPNavLeadingSequenceKey {
+        PPNavLeadingSequenceKey(
+            action: configuration.leadingAction,
+            mode: mode,
+            reduceMotion: reduceMotion,
+            isRightToLeft: layoutDirection == .rightToLeft
+        )
+    }
+
+    @MainActor
+    private func synchronizeExpandedLeadingAction() async {
+        let requestedID = configuration.leadingAction?.id
+        let shouldAnimate = mode == .expanded &&
+            !reduceMotion &&
+            !UIAccessibility.isVoiceOverRunning &&
+            !UIAccessibility.isSwitchControlRunning
+
+        guard mode == .expanded else {
+            updateLeadingStateWithoutAnimation(
+                reservesSlot: false,
+                titleOffset: 0,
+                action: nil
+            )
+            return
+        }
+
+        guard shouldAnimate else {
+            updateLeadingStateWithoutAnimation(
+                reservesSlot: requestedID != nil,
+                titleOffset: 0,
+                action: configuration.leadingAction
+            )
+            return
+        }
+
+        guard let requestedID else {
+            if revealedLeadingAction != nil {
+                withAnimation(PPNavMotion.leadingExit) {
+                    revealedLeadingAction = nil
+                }
+                guard await waitForLeadingSequence(PPNavMotion.leadingExitDuration) else {
+                    return
+                }
+            }
+
+            if reservesExpandedLeadingSlot {
+                updateLeadingStateWithoutAnimation(
+                    reservesSlot: false,
+                    titleOffset: expandedLeadingTravel,
+                    action: nil
+                )
+            }
+            withAnimation(PPNavMotion.leadingLayout) {
+                expandedTitleOffset = 0
+            }
+            return
+        }
+
+        if let revealedLeadingAction,
+           revealedLeadingAction.id != requestedID {
+            withAnimation(PPNavMotion.leadingExit) {
+                self.revealedLeadingAction = nil
+            }
+            guard await waitForLeadingSequence(PPNavMotion.leadingExitDuration) else {
+                return
+            }
+        }
+
+        if !reservesExpandedLeadingSlot {
+            withAnimation(PPNavMotion.leadingLayout) {
+                expandedTitleOffset = expandedLeadingTravel
+            }
+            guard await waitForLeadingSequence(PPNavMotion.leadingLayoutDuration) else {
+                return
+            }
+            updateLeadingStateWithoutAnimation(
+                reservesSlot: true,
+                titleOffset: 0,
+                action: nil
+            )
+        }
+
+        guard !Task.isCancelled else { return }
+        withAnimation(PPNavMotion.leadingReveal) {
+            revealedLeadingAction = configuration.leadingAction
+        }
+    }
+
+    @MainActor
+    private func updateLeadingStateWithoutAnimation(
+        reservesSlot: Bool,
+        titleOffset: CGFloat,
+        action: PPGlobalNavigationAction?
+    ) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            reservesExpandedLeadingSlot = reservesSlot
+            expandedTitleOffset = titleOffset
+            revealedLeadingAction = action
+        }
+    }
+
+    private var expandedLeadingTravel: CGFloat {
+        let distance = PPNavSpec.expandedPearl +
+            PPNavSpec.expandedPearlTitleGap
+        return layoutDirection == .rightToLeft ? -distance : distance
+    }
+
+    private func waitForLeadingSequence(_ duration: TimeInterval) async -> Bool {
+        do {
+            try await Task<Never, Never>.sleep(
+                nanoseconds: UInt64(duration * 1_000_000_000)
+            )
+            return !Task.isCancelled
+        } catch {
+            return false
+        }
+    }
+
+    @ViewBuilder
+    private func titleCluster(plan: PPNavPlan) -> some View {
+        PPNavTitleCluster(
+            configuration: configuration,
+            mode: mode,
+            showsSubtitle: plan.showsSubtitle
+        )
+        .matchedGeometryEffect(id: PPNavGeometryID.title, in: namespace)
+    }
+}
+
+private struct PPNavLeadingSequenceKey: Hashable {
+    let action: PPGlobalNavigationAction?
+    let mode: PPNavigationDisplayMode
+    let reduceMotion: Bool
+    let isRightToLeft: Bool
+}
+
+private enum PPNavMotion {
+    static let leadingLayoutDuration: TimeInterval = 0.28
+    static let leadingExitDuration: TimeInterval = 0.12
+    static let leadingLayout = Animation.timingCurve(
+        0.2,
+        0,
+        0,
+        1,
+        duration: leadingLayoutDuration
+    )
+    static let leadingReveal = Animation.easeOut(duration: 0.20)
+    static let leadingExit = Animation.easeOut(duration: leadingExitDuration)
+}
+
+// MARK: - Responsive plan
+
+/// Resolves every width-dependent decision once, so the compact and expanded
+/// compositions never disagree and nothing collides on a 375pt phone.
+private struct PPNavPlan {
+    let mode: PPNavigationDisplayMode
+    let width: CGFloat
+
+    let leadingMargin: CGFloat
+    let trailingMargin: CGFloat
+    let controlRowHeight: CGFloat
+    let pearlDiameter: CGFloat
+    let actionDiameter: CGFloat
+    let actionGap: CGFloat
+    let crownHeight: CGFloat
+    let crownPadding: CGFloat
+    let dividerLeadGap: CGFloat
+    let dividerTrailGap: CGFloat
+
+    let showsStatus: Bool
+    let showsStatusDetail: Bool
+    let showsSubtitle: Bool
+    let compactTitleSideInset: CGFloat
+    let filamentWidth: CGFloat
+
+    init(configuration: PPGlobalNavigationConfiguration, mode: PPNavigationDisplayMode, width: CGFloat) {
+        self.mode = mode
+        self.width = width
+
+        let compact = mode == .compact
+        leadingMargin = compact ? PPNavSpec.compactLeadingMargin : PPNavSpec.expandedLeadingMargin
+        trailingMargin = compact ? PPNavSpec.compactTrailingMargin : PPNavSpec.expandedTrailingMargin
+        pearlDiameter = compact ? PPNavSpec.compactPearl : PPNavSpec.expandedPearl
+        actionDiameter = compact ? PPNavSpec.compactAction : PPNavSpec.expandedAction
+        actionGap = compact ? PPNavSpec.compactActionGap : PPNavSpec.expandedActionGap
+        crownHeight = compact ? PPNavSpec.compactCrownHeight : PPNavSpec.expandedCrownHeight
+        crownPadding = compact ? PPNavSpec.compactCrownPadding : PPNavSpec.expandedCrownPadding
+        dividerLeadGap = compact ? PPNavSpec.compactDividerLeadGap : PPNavSpec.dividerLeadGap
+        dividerTrailGap = compact ? PPNavSpec.compactDividerTrailGap : PPNavSpec.dividerTrailGap
+
+        // Root / main screens carry no pearl and no crown. Collapsing the
+        // control row keeps the title stage from floating in dead space while
+        // every screen still uses this one component.
+        if compact {
+            controlRowHeight = PPNavSpec.compactHeight
+        } else {
+            let hasExpandedControlRow = configuration.status != nil ||
+                !configuration.trailingActions.isEmpty
+            controlRowHeight = hasExpandedControlRow
+                ? PPNavSpec.expandedCrownHeight
+                : 24
+        }
+
+        let actionCount = CGFloat(configuration.trailingActions.count)
+        let actionsWidth = actionCount > 0
+            ? actionCount * actionDiameter + max(0, actionCount - 1) * actionGap + 2 * crownPadding
+            : 0
+
+        // 01/02 reference status readout: dot + label (+ detail when expanded).
+        let statusWidth: CGFloat = compact ? 61 : 79
+        let dividerWidth = dividerLeadGap + dividerTrailGap + 1
+
+        let leadingWidth: CGFloat = leadingMargin
+            + (compact && configuration.leadingAction != nil ? pearlDiameter : 0)
+
+        let fixedTrailing = actionsWidth + trailingMargin
+        let centreBudget = width > 0 ? width - leadingWidth - fixedTrailing : .greatestFiniteMagnitude
+
+        if configuration.status == nil {
+            showsStatus = false
+        } else if compact {
+            showsStatus = centreBudget - statusWidth - dividerWidth >= PPNavSpec.compactTitleMinimum
+        } else {
+            showsStatus = centreBudget - statusWidth - dividerWidth >= PPNavSpec.statusDropMinimum
+        }
+
+        showsStatusDetail = !compact && showsStatus
+
+        let statusCost = showsStatus ? statusWidth + dividerWidth : 0
+        let remaining = centreBudget - statusCost
+
+        showsSubtitle = compact ? remaining >= 128 : true
+
+        compactTitleSideInset = compact
+            ? max(leadingWidth, fixedTrailing + statusCost) + 8
+            : 0
+
+        let filamentTrack = max(0, width - 2 * PPNavSpec.expandedLeadingMargin)
+        filamentWidth = width > 0
+            ? max(PPNavSpec.filamentMinimum, filamentTrack * PPNavSpec.filamentFraction)
+            : PPNavSpec.filamentMinimum
+    }
+}
+
+// MARK: - Title cluster
+
+private struct PPNavTitleCluster: View {
+    let configuration: PPGlobalNavigationConfiguration
+    let mode: PPNavigationDisplayMode
+    let showsSubtitle: Bool
+
+    var body: some View {
+        VStack(alignment: alignment, spacing: 0) {
+            if mode == .expanded, let eyebrow = configuration.resolvedEyebrow {
+                Text(eyebrow.uppercased())
+                    .font(PPNavTypography.eyebrow)
+                    .tracking(0.9)
+                    .foregroundStyle(PPNavPalette.brand)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                    .padding(.bottom, PPNavSpec.eyebrowToTitle)
+                    .accessibilityHidden(true)
+            }
+
+            Text(configuration.title)
+                .font(PPNavTypography.title(mode))
+                .foregroundStyle(PPNavPalette.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(mode == .expanded ? 0.6 : 0.82)
+                .allowsTightening(true)
+                .multilineTextAlignment(textAlignment)
+                .accessibilityAddTraits(.isHeader)
+
+            if showsSubtitle, let subtitle = configuration.subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(PPNavTypography.subtitle(mode))
+                    .foregroundStyle(PPNavPalette.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.top, PPNavSpec.titleToSubtitle)
+                    .multilineTextAlignment(textAlignment)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var alignment: HorizontalAlignment { mode == .expanded ? .leading : .center }
+    private var textAlignment: TextAlignment { mode == .expanded ? .leading : .center }
+
+    private var accessibilityLabel: Text {
+        var parts: [String] = []
+        if let eyebrow = configuration.resolvedEyebrow { parts.append(eyebrow) }
+        parts.append(configuration.title)
+        if let subtitle = configuration.subtitle, !subtitle.isEmpty { parts.append(subtitle) }
+        return Text(parts.joined(separator: ", "))
+    }
+}
+
+// MARK: - Navigation pearl
+
+/// Leading Back / Close control.
+///
+/// This is the most-touched control in the entire product, so it is specified
+/// to a higher standard than the rest of the bar:
+///
+///  • **One shape language.** Both display modes render the measured
+///    45.6%-radius continuous squircle. Expanded and compact differ only in
+///    scale, ring treatment and elevation — which is what lets the glass morph
+///    read as one object moving instead of two objects swapping.
+///  • **Optical centring.** A chevron's base carries two round caps while its
+///    apex is a single point, so geometric centre reads off-centre. The ink is
+///    nudged toward the apex (`pearlGlyphOpticalShift`). Symmetric glyphs such
+///    as Close are left untouched.
+///  • **Directional press.** Pressing does not grey the control out. The
+///    surface sinks, a brand well fills it, the ink turns brand and travels
+///    toward the leading edge — the direction the tap will take you.
+///  • **Haptic on press-down**, not on action, so the control feels mechanical
+///    rather than delayed. Haptics are not motion, so Reduce Motion does not
+///    silence them; it only removes travel and scale.
+///  • **44pt target in both modes**, enforced through hit testing so the
+///    reference 40pt compact pearl stays reference-true.
+///  • **Full mirroring.** Ink direction, optical shift, press travel and the
+///    specular light source all derive from `layoutDirection`.
+private struct PPNavPearl: View {
+    let action: PPGlobalNavigationAction
+    let diameter: CGFloat
+    let outlined: Bool
+    let namespace: Namespace.ID
+    let onAction: PPGlobalNavigationActionHandler
+
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        Button {
+            onAction(action)
+        } label: {
+            PPNavGlyph(kind: action.kind, layoutDirection: layoutDirection)
+                .frame(width: glyphSide, height: glyphSide)
+        }
+        .buttonStyle(
+            PPNavPearlStyle(
+                diameter: diameter,
+                emphasized: outlined,
+                isDirectional: action.kind == .back,
+                isBack: action.kind == .back,
+                namespace: namespace
+            )
+        )
+        .disabled(!action.isEnabled)
+        .accessibilityLabel(Text(action.accessibilityLabel))
+        .ppAccessibilityHint(action.accessibilityHint)
+        .accessibilityShowsLargeContentViewer {
+            Text(action.accessibilityLabel)
+        }
+        .accessibilityIdentifier("pp.nav.leading.\(action.id)")
+    }
+
+    private var glyphSide: CGFloat {
+        action.kind == .back
+            ? diameter * PPNavSpec.backCapsuleGlyphRatio
+            : diameter * (outlined ? PPNavSpec.expandedPearlGlyphRatio : PPNavSpec.pearlGlyphRatio)
+    }
+}
+
+/// A back action uses the Return Beacon rather than the generic pearl: its
+/// logical-leading rail and hooked mark create a single, unambiguous promise
+/// that this control returns to the previous operational context.
+private struct PPNavPearlStyle: ButtonStyle {
+    let diameter: CGFloat
+    let emphasized: Bool
+    let isDirectional: Bool
+    let isBack: Bool
+    let namespace: Namespace.ID
+
+    @ViewBuilder
+    func makeBody(configuration: Configuration) -> some View {
+        if isBack {
+            PPNavBackCapsuleSurface(
+                diameter: diameter,
+                emphasized: emphasized,
+                namespace: namespace,
+                isPressed: configuration.isPressed,
+                label: configuration.label
+            )
+        } else {
+            PPNavPearlSurface(
+                diameter: diameter,
+                emphasized: emphasized,
+                isDirectional: isDirectional,
+                namespace: namespace,
+                isPressed: configuration.isPressed,
+                label: configuration.label
+            )
+        }
+    }
+}
+
+private struct PPNavPearlSurface: View {
+    let diameter: CGFloat
+    let emphasized: Bool
+    let isDirectional: Bool
+    let namespace: Namespace.ID
+    let isPressed: Bool
+    let label: ButtonStyleConfiguration.Label
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var isHovering = false
+
+    var body: some View {
+        let pressed = isPressed && isEnabled
+        let shape = PPNavSquircle(cornerRadius: diameter * PPNavSpec.pearlRadiusRatio)
+
+        ZStack {
+            Color.clear
+                .frame(width: diameter, height: diameter)
+                .ppGlass(
+                    shape: shape,
+                    interactive: true,
+                    tint: nil,
+                    elevation: elevation(pressed: pressed),
+                    namespace: namespace,
+                    id: emphasized ? PPNavGeometryID.expandedPearl : PPNavGeometryID.pearl
+                )
+
+            shape
+                .fill(PPNavPalette.brand.opacity(pressed ? PPNavSpec.pearlPressWellOpacity : 0))
+
+            shape
+                .strokeBorder(ring(pressed: pressed), lineWidth: PPNavSpec.pearlRingWidth)
+
+            label
+                .foregroundStyle(pressed ? PPNavPalette.brandPressed : PPNavPalette.primaryText)
+                .offset(x: inkOffset(pressed: pressed))
+        }
+        .frame(width: diameter, height: diameter)
+        .scaleEffect(pressed && !reduceMotion ? PPNavSpec.pearlPressScale : 1, anchor: .center)
+        .opacity(isEnabled ? 1 : PPNavSpec.pearlDisabledOpacity)
+        .contentShape(PPNavHitArea(minimum: PPNavSpec.pearlMinimumTarget))
+        .animation(pressMotion, value: pressed)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isHovering)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onChange(of: pressed) { isDown in
+            if isDown { PPNavHaptics.leadingEngage() }
+        }
+    }
+
+    /// Reduce Motion keeps the state change — it only drops travel and scale,
+    /// so the control still confirms the touch.
+    private var pressMotion: Animation? {
+        reduceMotion
+            ? .easeOut(duration: 0.12)
+            : .spring(response: 0.26, dampingFraction: 0.78, blendDuration: 0.08)
+    }
+
+    private func elevation(pressed: Bool) -> Double {
+        if pressed { return PPNavSpec.pearlPressElevation }
+        if isHovering { return PPNavSpec.pearlHoverElevation }
+        return emphasized ? PPNavSpec.pearlRestElevation - 0.015 : PPNavSpec.pearlRestElevation
+    }
+
+    /// Optical shift plus press travel, mirrored. In LTR the back apex points
+    /// leading (negative x); in RTL it points trailing (positive x).
+    private func inkOffset(pressed: Bool) -> CGFloat {
+        guard isDirectional else { return 0 }
+        let optical = diameter * PPNavSpec.pearlGlyphOpticalShift
+        let travel = (pressed && !reduceMotion) ? PPNavSpec.pearlPressGlyphTravel : 0
+        let magnitude = optical + travel
+        return layoutDirection == .rightToLeft ? magnitude : -magnitude
+    }
+
+    /// Specular ring. The light source always enters from the top outer edge,
+    /// so the highlight mirrors with the layout instead of being pinned to a
+    /// fixed corner.
+    private func ring(pressed: Bool) -> LinearGradient {
+        let lift = pressed ? 0.18 : (isHovering ? 0.10 : 0)
+        let colors: [Color] = emphasized
+            ? [
+                PPNavPalette.brand.opacity(min(1, 0.92 + lift)),
+                PPNavPalette.brandShiner.opacity(min(1, 0.52 + lift)),
+                PPNavPalette.brand.opacity(min(1, 0.26 + lift)),
+              ]
+            : [
+                PPNavPalette.hairline.opacity(min(1, 0.85 + lift)),
+                PPNavPalette.hairline.opacity(min(1, 0.32 + lift)),
+              ]
+
+        return LinearGradient(
+            colors: colors,
+            startPoint: layoutDirection == .rightToLeft ? .topTrailing : .topLeading,
+            endPoint: layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing
+        )
+    }
+}
+
+/// Normal back treatment: a fixed 44pt capsule that uses the same semantic
+/// glass configuration as the rest of the global navigation.
+private struct PPNavBackCapsuleSurface: View {
+    let diameter: CGFloat
+    let emphasized: Bool
+    let namespace: Namespace.ID
+    let isPressed: Bool
+    let label: ButtonStyleConfiguration.Label
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.layoutDirection) private var layoutDirection
+    @State private var isHovering = false
+
+    var body: some View {
+        let pressed = isPressed && isEnabled
+        let shape = Capsule()
+
+        ZStack {
+            Color.clear
+                .frame(width: diameter, height: diameter)
+                .ppGlass(
+                    shape: shape,
+                    interactive: true,
+                    tint: nil,
+                    elevation: elevation(pressed: pressed),
+                    namespace: namespace,
+                    id: emphasized ? PPNavGeometryID.expandedBackCapsule : PPNavGeometryID.backCapsule
+                )
+
+            shape
+                .fill(PPNavPalette.brand.opacity(pressed ? PPNavSpec.backCapsulePressWellOpacity : 0))
+
+            shape
+                .strokeBorder(ring(pressed: pressed), lineWidth: PPNavSpec.backCapsuleRingWidth)
+
+            label
+                .foregroundStyle(pressed ? PPNavPalette.brandPressed : PPNavPalette.primaryText)
+                .offset(x: glyphOffset(pressed: pressed))
+        }
+        .frame(width: diameter, height: diameter)
+        .scaleEffect(pressed && !reduceMotion ? PPNavSpec.backCapsulePressScale : 1, anchor: .center)
+        .opacity(isEnabled ? 1 : PPNavSpec.pearlDisabledOpacity)
+        .contentShape(PPNavHitArea(minimum: PPNavSpec.backControlDiameter))
+        .animation(pressMotion, value: pressed)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: isHovering)
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .onChange(of: pressed) { isDown in
+            if isDown { PPNavHaptics.leadingEngage() }
+        }
+    }
+
+    private var leadingSign: CGFloat {
+        layoutDirection == .rightToLeft ? 1 : -1
+    }
+
+    private var pressMotion: Animation? {
+        reduceMotion
+            ? .easeOut(duration: 0.12)
+            : .spring(response: 0.24, dampingFraction: 0.8, blendDuration: 0.08)
+    }
+
+    private func elevation(pressed: Bool) -> Double {
+        if pressed { return PPNavSpec.backCapsulePressElevation }
+        if isHovering { return PPNavSpec.backCapsuleHoverElevation }
+        return emphasized ? PPNavSpec.backCapsuleRestElevation + 0.01 : PPNavSpec.backCapsuleRestElevation
+    }
+
+    private func glyphOffset(pressed: Bool) -> CGFloat {
+        let travel = pressed && !reduceMotion ? PPNavSpec.backCapsulePressGlyphTravel : 0
+        return leadingSign * travel
+    }
+
+    private func ring(pressed: Bool) -> LinearGradient {
+        let lift = pressed ? 0.12 : (isHovering ? 0.06 : 0)
+        return LinearGradient(
+            colors: [
+                PPNavPalette.hairline.opacity(min(1, 0.72 + lift)),
+                PPNavPalette.brand.opacity(min(1, 0.20 + lift)),
+            ],
+            startPoint: layoutDirection == .rightToLeft ? .topTrailing : .topLeading,
+            endPoint: layoutDirection == .rightToLeft ? .bottomLeading : .bottomTrailing
+        )
+    }
+}
+
+// MARK: - Command crown
+
+/// Trailing contextual cluster: status readout · seam · actions.
+///
+/// Expanded (01): one faint panel groups a recessed status well, the seam and
+/// individually surfaced circular actions.
+/// Compact (02): the panel dissolves, the status well and the action group
+/// become the two raised surfaces, and the actions lose their own chrome.
+private struct PPNavCommandCrown: View {
+    let configuration: PPGlobalNavigationConfiguration
+    let plan: PPNavPlan
+    let namespace: Namespace.ID
+    let onAction: PPGlobalNavigationActionHandler
+
+    var body: some View {
+        let isExpanded = plan.mode == .expanded
+
+        PPNavGlassContainer(spacing: plan.actionGap) {
+            HStack(spacing: 0) {
+                if plan.showsStatus, let status = configuration.status {
+                    PPNavStatusWell(
+                        status: status,
+                        height: plan.actionDiameter,
+                        showsDetail: plan.showsStatusDetail,
+                        raised: !isExpanded,
+                        namespace: namespace
+                    )
+
+                    Color.clear.frame(width: plan.dividerLeadGap, height: 1)
+                    PPNavSeam(height: plan.actionDiameter * 0.95)
+                    Color.clear.frame(width: plan.dividerTrailGap, height: 1)
+                }
+
+                if !configuration.trailingActions.isEmpty {
+                    PPGlobalNavigationTrailingActionContainer(
+                        actions: configuration.trailingActions,
+                        mode: plan.mode,
+                        onAction: onAction
+                    )
+                }
+            }
+            .padding(isExpanded ? PPNavSpec.expandedCrownPadding : 0)
+            .background {
+                if isExpanded, configuration.hasChrome, !configuration.trailingActions.isEmpty {
+                    PPNavSquircle(cornerRadius: plan.crownHeight * PPNavSpec.crownRadiusRatio)
+                        .fill(PPNavPalette.surface.opacity(0.72))
+                        .overlay(
+                            PPNavSquircle(cornerRadius: plan.crownHeight * PPNavSpec.crownRadiusRatio)
+                                .strokeBorder(PPNavPalette.hairline.opacity(0.42), lineWidth: 0.5)
+                        )
+                        .shadow(color: PPNavPalette.shadow.opacity(0.04), radius: 12, x: 0, y: 4)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Reusable logical-trailing action surface for the shared global navigation.
+///
+/// Screens pass their semantic icon/action pairs through
+/// `PPGlobalNavigationConfiguration.trailingActions`; this container supplies
+/// the common material, 44pt hit area, RTL ordering, and accessibility contract.
+public struct PPGlobalNavigationTrailingActionContainer: View {
+    private let actions: [PPGlobalNavigationAction]
+    private let mode: PPNavigationDisplayMode
+    private let identifier: String
+    private let onAction: PPGlobalNavigationActionHandler
+    @Namespace private var glassNamespace
+
+    public init(
+        actions: [PPGlobalNavigationAction],
+        mode: PPNavigationDisplayMode,
+        id: String = "pp.nav.trailing-actions",
+        onAction: @escaping PPGlobalNavigationActionHandler
+    ) {
+        self.actions = Array(actions.prefix(3))
+        self.mode = mode
+        self.identifier = id
+        self.onAction = onAction
+    }
+
+    public var body: some View {
+        Group {
+            if !actions.isEmpty {
+                HStack(spacing: actionGap) {
+                    ForEach(actions) { action in
+                        PPNavActionButton(
+                            action: action,
+                            diameter: actionDiameter,
+                            surfacedIndividually: isExpanded,
+                            namespace: glassNamespace,
+                            onAction: onAction
+                        )
+                    }
+                }
+                .padding(.horizontal, isExpanded ? 0 : PPNavSpec.compactCrownPadding)
+                .ppGlass(
+                    shape: PPNavSquircle(cornerRadius: crownHeight * PPNavSpec.crownRadiusRatio),
+                    interactive: false,
+                    tint: nil,
+                    elevation: isExpanded ? 0 : 0.05,
+                    namespace: glassNamespace,
+                    id: identifier,
+                    enabled: !isExpanded
+                )
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var isExpanded: Bool { mode == .expanded }
+    private var actionDiameter: CGFloat {
+        isExpanded ? PPNavSpec.expandedAction : PPNavSpec.compactAction
+    }
+    private var actionGap: CGFloat {
+        isExpanded ? PPNavSpec.expandedActionGap : PPNavSpec.compactActionGap
+    }
+    private var crownHeight: CGFloat {
+        isExpanded ? PPNavSpec.expandedCrownHeight : PPNavSpec.compactCrownHeight
+    }
+}
+
+/// Recessed status readout. Measured 265px tall with a 0.245 radius ratio.
+private struct PPNavStatusWell: View {
+    let status: PPGlobalNavigationStatus
+    let height: CGFloat
+    let showsDetail: Bool
+    let raised: Bool
+    let namespace: Namespace.ID
+
+    var body: some View {
+        let shape = PPNavSquircle(cornerRadius: height * PPNavSpec.chipRadiusRatio)
+
+        HStack(spacing: PPNavSpec.chipDotGap) {
+            if status.isLive {
+                Circle()
+                    .fill(PPNavPalette.live)
+                    .frame(width: PPNavSpec.statusDot, height: PPNavSpec.statusDot)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(status.label)
+                    .font(PPNavTypography.statusLabel)
+                    .foregroundStyle(PPNavPalette.primaryText)
+                    .lineLimit(1)
+
+                if showsDetail, let detail = status.detail, !detail.isEmpty {
+                    Text(detail)
+                        .font(PPNavTypography.statusDetail)
+                        .foregroundStyle(PPNavPalette.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.leading, PPNavSpec.chipLeadingPad)
+        .padding(.trailing, PPNavSpec.chipTrailingPad)
+        .frame(height: height)
+        .background {
+            if raised {
+                shape
+                    .fill(PPNavPalette.surface)
+                    .shadow(color: PPNavPalette.shadow.opacity(0.05), radius: 8, x: 0, y: 3)
+            } else {
+                shape.fill(PPNavPalette.recessed.opacity(0.55))
+            }
+        }
+        .overlay(shape.strokeBorder(PPNavPalette.hairline.opacity(0.45), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            Text([status.label, showsDetail ? status.detail : nil]
+                .compactMap { $0 }
+                .joined(separator: ", "))
+        )
+    }
+}
+
+/// Vertical seam between the status readout and the action group.
+private struct PPNavSeam: View {
+    let height: CGFloat
+
+    var body: some View {
+        Rectangle()
+            .fill(PPNavPalette.primaryText.opacity(0.08))
+            .frame(width: 1, height: height)
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Actions
+
+private struct PPNavActionButton: View {
+    let action: PPGlobalNavigationAction
+    let diameter: CGFloat
+    let surfacedIndividually: Bool
+    let namespace: Namespace.ID
+    let onAction: PPGlobalNavigationActionHandler
+
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            PPNavHaptics.select(reduceMotion: reduceMotion)
+            onAction(action)
+        } label: {
+            content
+                .contentShape(PPNavHitArea(minimum: 44))
+        }
+        .buttonStyle(PPNavPressStyle())
+        .disabled(!action.isEnabled)
+        .accessibilityLabel(Text(action.accessibilityLabel))
+        .accessibilityHint(action.accessibilityHint.map(Text.init) ?? Text(""))
+        .accessibilityValue(badgeAccessibilityValue)
+        .accessibilityAddTraits(.isButton)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch action.prominence {
+        case .emphasized:
+            emphasized
+        case .standard, .quiet:
+            standard
+        }
+    }
+
+    // 03_modal_create: crimson capsule, checkmark + label, 248px tall.
+    @ViewBuilder
+    private var emphasized: some View {
+        HStack(spacing: PPNavSpec.emphasizedGlyphGap) {
+            PPNavGlyph(kind: action.kind, layoutDirection: layoutDirection)
+                .frame(width: glyphSide, height: glyphSide)
+
+            if let title = action.title, !title.isEmpty {
+                Text(title)
+                    .font(PPNavTypography.emphasizedLabel)
+                    .lineLimit(1)
+            }
+        }
+        .foregroundStyle(Color.white)
+        .padding(.horizontal, action.title == nil ? 0 : PPNavSpec.emphasizedPad)
+        .frame(
+            minWidth: diameter,
+            minHeight: min(diameter, PPNavSpec.emphasizedHeight),
+            maxHeight: min(diameter, PPNavSpec.emphasizedHeight)
+        )
+        .ppGlass(
+            shape: PPNavSquircle(cornerRadius: min(diameter, PPNavSpec.emphasizedHeight) / 2),
+            interactive: true,
+            tint: PPNavPalette.brand,
+            elevation: 0.09,
+            namespace: namespace,
+            id: PPNavGeometryID.action(action.id)
+        )
+    }
+
+    @ViewBuilder
+    private var standard: some View {
+        glyphStack
+            .frame(width: diameter, height: diameter)
+            .ppGlass(
+                shape: PPNavSquircle(cornerRadius: diameter / 2),
+                interactive: true,
+                tint: nil,
+                elevation: 0.06,
+                namespace: namespace,
+                id: PPNavGeometryID.action(action.id),
+                enabled: surfacedIndividually
+            )
+    }
+
+    @ViewBuilder
+    private var glyphStack: some View {
+        ZStack(alignment: .topTrailing) {
+            if action.kind == .profile {
+                PPNavMonogram(
+                    diameter: diameter * (surfacedIndividually ? 0.69 : 0.67),
+                    monogram: action.monogram
+                )
+            } else {
+                PPNavGlyph(kind: action.kind, layoutDirection: layoutDirection)
+                    .frame(width: glyphSide, height: glyphSide)
+                    .foregroundStyle(foreground)
+            }
+
+            badge
+        }
+        .frame(width: diameter, height: diameter)
+    }
+
+    /// Reference bell ink 121px in a 267px button → 0.45 of the button.
+    private var glyphSide: CGFloat { diameter * 0.45 }
+
+    @ViewBuilder
+    private var badge: some View {
+        if let badge = action.badge {
+            if badge.isEmpty {
+                Circle()
+                    .fill(PPNavPalette.brand)
+                    .frame(width: diameter * 0.157, height: diameter * 0.157)
+                    .offset(x: -diameter * 0.09, y: diameter * 0.13)
+                    .accessibilityHidden(true)
+            } else {
+                Text(badge)
+                    .font(.system(size: max(8, diameter * 0.2), weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: diameter * 0.34, minHeight: diameter * 0.34)
+                    .background(PPNavPalette.brandPressed, in: Capsule())
+                    .offset(x: diameter * 0.02, y: -diameter * 0.02)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var foreground: Color {
+        switch action.prominence {
+        case .emphasized: return .white
+        case .standard: return PPNavPalette.primaryText
+        case .quiet: return PPNavPalette.secondaryText
+        }
+    }
+
+    private var badgeAccessibilityValue: Text {
+        guard let badge = action.badge, !badge.isEmpty else { return Text("") }
+        return Text(badge)
+    }
+}
+
+/// Crimson profile disc, 185px inside a 267px button in the reference crown.
+private struct PPNavMonogram: View {
+    let diameter: CGFloat
+    let monogram: String?
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [PPNavPalette.brand, PPNavPalette.brandPressed],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            if let monogram, !monogram.isEmpty {
+                Text(monogram.uppercased())
+                    .font(PPNavTypography.monogram(diameter))
+                    .foregroundStyle(Color.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .padding(.horizontal, 2)
+            } else {
+                PPNavProfileGlyph()
+                    .stroke(style: StrokeStyle(lineWidth: max(1.2, diameter * 0.075), lineCap: .round, lineJoin: .round))
+                    .foregroundStyle(Color.white)
+                    .frame(width: diameter * 0.56, height: diameter * 0.56)
+            }
+        }
+        .frame(width: diameter, height: diameter)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Context filament
+
+/// Progress filament at the foot of the expanded stage: 14px track, brand cap.
+private struct PPNavContextFilament: View {
+    let width: CGFloat
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            Capsule()
+                .fill(PPNavPalette.primaryText.opacity(0.06))
+                .frame(height: PPNavSpec.filamentThickness)
+                .frame(maxWidth: .infinity)
+
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [PPNavPalette.brand, PPNavPalette.brand.opacity(0.55)],
+                        startPoint: layoutDirection == .leftToRight ? .leading : .trailing,
+                        endPoint: layoutDirection == .leftToRight ? .trailing : .leading
+                    )
+                )
+                .frame(width: width, height: PPNavSpec.filamentThickness)
+        }
+        .frame(height: PPNavSpec.filamentThickness)
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Shapes
+
+/// Continuous-corner squircle. `PPNavSpec.pearlRadiusRatio` reproduces the
+/// measured reference outline of the pearl and the standalone action surfaces.
+private struct PPNavSquircle: InsettableShape {
+    let cornerRadius: CGFloat
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let inset = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        let radius = min(max(0, cornerRadius - insetAmount), min(inset.width, inset.height) / 2)
+        return RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: inset)
+    }
+
+    func inset(by amount: CGFloat) -> PPNavSquircle {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
+}
+
+/// Expands a control's hit region to the 44pt HIG minimum without changing its
+/// layout size. The compact crown is 33.5pt tall in the reference, so the touch
+/// target has to grow through hit testing rather than through layout.
+private struct PPNavHitArea: Shape {
+    let minimum: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let width = max(rect.width, minimum)
+        let height = max(rect.height, minimum)
+        return Path(
+            CGRect(
+                x: rect.midX - width / 2,
+                y: rect.midY - height / 2,
+                width: width,
+                height: height
+            )
+        )
+    }
+}
+
+// MARK: - Glyph layer
+
+private struct PPNavGlyph: View {
+    let kind: PPGlobalNavigationActionKind
+    let layoutDirection: LayoutDirection
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            let stroke = StrokeStyle(
+                lineWidth: max(1.4, side * 0.145),
+                lineCap: .round,
+                lineJoin: .round
+            )
+
+            switch kind {
+            case .back:
+                PPNavChevronGlyph(pointsTrailing: layoutDirection == .rightToLeft)
+                    .stroke(style: stroke)
+            case .close:
+                PPNavCloseGlyph().stroke(style: stroke)
+            case .confirm:
+                PPNavCheckGlyph().stroke(style: stroke)
+            case .refresh:
+                PPNavRefreshGlyph().stroke(style: stroke)
+            case .more:
+                PPNavMoreGlyph()
+            case .profile:
+                PPNavProfileGlyph().stroke(style: stroke)
+            case .capabilityLens:
+                PPNavCapabilityLensGlyph(lineWidth: max(1.4, side * 0.115))
+            case .command:
+                PPNavCommandGlyph().stroke(style: StrokeStyle(lineWidth: max(1.2, side * 0.1), lineCap: .round, lineJoin: .round))
+            case .notifications:
+                PPNavBellGlyph(lineWidth: max(1.4, side * 0.13))
+            case .custom(let symbol):
+                Image(systemName: symbol)
+                    .font(.system(size: side * 0.92, weight: .semibold))
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+/// Reference chevron: ink 56 x 98px → width 0.57 of height, round caps.
+private struct PPNavChevronGlyph: Shape {
+    let pointsTrailing: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let inkHeight = rect.height
+        let inkWidth = inkHeight * PPNavSpec.chevronAspect
+        let midY = rect.midY
+        let x0 = rect.midX - inkWidth / 2
+        let x1 = rect.midX + inkWidth / 2
+        let apexX = pointsTrailing ? x1 : x0
+        let baseX = pointsTrailing ? x0 : x1
+
+        var path = Path()
+        path.move(to: CGPoint(x: baseX, y: midY - inkHeight / 2))
+        path.addLine(to: CGPoint(x: apexX, y: midY))
+        path.addLine(to: CGPoint(x: baseX, y: midY + inkHeight / 2))
+        return path
+    }
+}
+
+private struct PPNavCloseGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: rect.width * 0.14, dy: rect.height * 0.14)
+        var path = Path()
+        path.move(to: CGPoint(x: r.minX, y: r.minY))
+        path.addLine(to: CGPoint(x: r.maxX, y: r.maxY))
+        path.move(to: CGPoint(x: r.maxX, y: r.minY))
+        path.addLine(to: CGPoint(x: r.minX, y: r.maxY))
+        return path
+    }
+}
+
+/// Reference "Save" checkmark: 85px wide, shallow left arm, round joins.
+private struct PPNavCheckGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + rect.width * 0.08, y: rect.midY + rect.height * 0.04))
+        path.addLine(to: CGPoint(x: rect.minX + rect.width * 0.36, y: rect.maxY - rect.height * 0.18))
+        path.addLine(to: CGPoint(x: rect.maxX - rect.width * 0.06, y: rect.minY + rect.height * 0.18))
+        return path
+    }
+}
+
+private struct PPNavRefreshGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let r = min(rect.width, rect.height) * 0.42
+        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        var path = Path()
+        path.addArc(
+            center: centre,
+            radius: r,
+            startAngle: .degrees(-64),
+            endAngle: .degrees(214),
+            clockwise: false
+        )
+        let tail = CGPoint(x: centre.x - r, y: centre.y)
+        path.move(to: CGPoint(x: tail.x, y: tail.y - r * 0.05))
+        path.addLine(to: CGPoint(x: tail.x, y: tail.y - r * 0.62))
+        path.addLine(to: CGPoint(x: tail.x + r * 0.56, y: tail.y - r * 0.42))
+        return path
+    }
+}
+
+private struct PPNavMoreGlyph: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            // Reference: three 28px dots on a 44px pitch inside a 260px button.
+            let dot = side * 0.215
+            HStack(spacing: dot * 0.58) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle().frame(width: dot, height: dot)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+}
+
+private struct PPNavProfileGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        var path = Path()
+        path.addEllipse(in: CGRect(x: rect.minX + w * 0.32, y: rect.minY + h * 0.06, width: w * 0.36, height: w * 0.36))
+        path.move(to: CGPoint(x: rect.minX + w * 0.14, y: rect.maxY - h * 0.02))
+        path.addCurve(
+            to: CGPoint(x: rect.minX + w * 0.86, y: rect.maxY - h * 0.02),
+            control1: CGPoint(x: rect.minX + w * 0.18, y: rect.minY + h * 0.58),
+            control2: CGPoint(x: rect.minX + w * 0.82, y: rect.minY + h * 0.58)
+        )
+        return path
+    }
+}
+
+/// Reference capability lens: two open concentric rings, a filled core and a
+/// satellite node at the upper trailing edge.
+private struct PPNavCapabilityLensGlyph: View {
+    let lineWidth: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            let side = min(proxy.size.width, proxy.size.height)
+            ZStack {
+                Circle()
+                    .trim(from: 0.10, to: 0.86)
+                    .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-58))
+                    .frame(width: side * 0.94, height: side * 0.94)
+
+                Circle()
+                    .trim(from: 0.10, to: 0.84)
+                    .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-52))
+                    .frame(width: side * 0.56, height: side * 0.56)
+
+                Circle()
+                    .frame(width: side * 0.17, height: side * 0.17)
+
+                Circle()
+                    .frame(width: side * 0.2, height: side * 0.2)
+                    .offset(x: side * 0.3, y: -side * 0.28)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+        }
+    }
+}
+
+/// Reference bell: rounded shoulder outline with a detached clapper arc.
+private struct PPNavBellGlyph: View {
+    let lineWidth: CGFloat
+
+    var body: some View {
+        GeometryReader { proxy in
+            let w = proxy.size.width
+            let h = proxy.size.height
+            ZStack {
+                Path { path in
+                    path.move(to: CGPoint(x: w * 0.08, y: h * 0.74))
+                    path.addCurve(
+                        to: CGPoint(x: w * 0.22, y: h * 0.46),
+                        control1: CGPoint(x: w * 0.2, y: h * 0.7),
+                        control2: CGPoint(x: w * 0.22, y: h * 0.6)
+                    )
+                    path.addCurve(
+                        to: CGPoint(x: w * 0.5, y: h * 0.08),
+                        control1: CGPoint(x: w * 0.22, y: h * 0.22),
+                        control2: CGPoint(x: w * 0.33, y: h * 0.08)
+                    )
+                    path.addCurve(
+                        to: CGPoint(x: w * 0.78, y: h * 0.46),
+                        control1: CGPoint(x: w * 0.67, y: h * 0.08),
+                        control2: CGPoint(x: w * 0.78, y: h * 0.22)
+                    )
+                    path.addCurve(
+                        to: CGPoint(x: w * 0.92, y: h * 0.74),
+                        control1: CGPoint(x: w * 0.78, y: h * 0.6),
+                        control2: CGPoint(x: w * 0.8, y: h * 0.7)
+                    )
+                    path.closeSubpath()
+                }
+                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round))
+
+                Path { path in
+                    path.addArc(
+                        center: CGPoint(x: w * 0.5, y: h * 0.78),
+                        radius: w * 0.12,
+                        startAngle: .degrees(10),
+                        endAngle: .degrees(170),
+                        clockwise: false
+                    )
+                }
+                .stroke(style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
+            }
+            .frame(width: w, height: h)
+        }
+    }
+}
+
+private struct PPNavCommandGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let w = rect.width
+        let h = rect.height
+        let r = min(w, h) * 0.18
+        let left = rect.minX + w * 0.31
+        let right = rect.minX + w * 0.69
+        let top = rect.minY + h * 0.31
+        let bottom = rect.minY + h * 0.69
+
+        var path = Path()
+        path.addArc(center: CGPoint(x: left, y: top), radius: r, startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
+        path.addLine(to: CGPoint(x: right, y: top - r))
+        path.addArc(center: CGPoint(x: right, y: top), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: right + r, y: bottom))
+        path.addArc(center: CGPoint(x: right, y: bottom), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: left, y: bottom + r))
+        path.addArc(center: CGPoint(x: left, y: bottom), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: left - r, y: top))
+        path.closeSubpath()
+        return path
+    }
+}
+
+// MARK: - Interaction
+
+private struct PPNavPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1)
+            .scaleEffect(reduceMotion || !configuration.isPressed ? 1 : 0.96)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+private enum PPNavHaptics {
+    @MainActor
+    static func select(reduceMotion: Bool) {
+        guard !reduceMotion else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    /// Leading Back / Close press-down. Deliberately not gated on Reduce
+    /// Motion: haptics are not motion, and this is the one control users
+    /// operate without looking.
+    @MainActor
+    static func leadingEngage() {
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred(intensity: 0.85)
+    }
+}
+
+// MARK: - Material system
+
+private struct PPNavGlassContainer<Content: View>: View {
+    let spacing: CGFloat
+    let content: Content
+
+    init(spacing: CGFloat, @ViewBuilder content: () -> Content) {
+        self.spacing = spacing
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: spacing) { content }
+        } else {
+            content
+        }
+#else
+        content
+#endif
+    }
+}
+
+private extension View {
+    /// Applies a hint only when one exists. An empty hint string is still a
+    /// hint to VoiceOver, so it must not be synthesised.
+    @ViewBuilder
+    func ppAccessibilityHint(_ hint: String?) -> some View {
+        if let hint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            accessibilityHint(Text(hint))
+        } else {
+            self
+        }
+    }
+
+    /// iOS 26 Liquid Glass when available; semantic Pure Pets material
+    /// otherwise. `elevation` drives the fallback shadow that stands in for the
+    /// glass specular edge.
+    @ViewBuilder
+    func ppGlass<S: InsettableShape>(
+        shape: S,
+        interactive: Bool,
+        tint: Color?,
+        elevation: Double,
+        namespace: Namespace.ID,
+        id: String,
+        enabled: Bool = true
+    ) -> some View {
+        if enabled {
+#if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                Group {
+                    if let tint {
+                        self.glassEffect(
+                            interactive ? .regular.tint(tint).interactive() : .regular.tint(tint),
+                            in: shape
+                        )
+                    } else {
+                        self.glassEffect(
+                            interactive ? .regular.interactive() : .regular,
+                            in: shape
+                        )
+                    }
+                }
+                .glassEffectID(id, in: namespace)
+            } else {
+                ppMaterialSurface(shape: shape, tint: tint, elevation: elevation)
+            }
+#else
+            ppMaterialSurface(shape: shape, tint: tint, elevation: elevation)
+#endif
+        } else {
+            self
+        }
+    }
+
+    func ppMaterialSurface<S: InsettableShape>(
+        shape: S,
+        tint: Color?,
+        elevation: Double
+    ) -> some View {
+        self
+            .background {
+                if let tint {
+                    shape
+                        .fill(
+                            LinearGradient(
+                                colors: [tint, tint.opacity(0.92)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                } else {
+                    shape
+                        .fill(PPNavPalette.surface)
+                        .background(shape.fill(.ultraThinMaterial))
+                }
+            }
+            .overlay(
+                shape.strokeBorder(
+                    tint == nil
+                        ? PPNavPalette.hairline.opacity(0.5)
+                        : Color.white.opacity(0.16),
+                    lineWidth: 0.5
+                )
+            )
+            .shadow(color: PPNavPalette.shadow.opacity(elevation), radius: elevation > 0 ? 8 : 0, x: 0, y: elevation > 0 ? 3 : 0)
+    }
+}
+
+// MARK: - UIKit host
+
+/// Hosts the Global bar in UIKit without introducing a second navigation stack.
+/// The owning container remains responsible for routing and action semantics.
+@MainActor
+public final class PPGlobalNavigationHostingController: UIViewController {
+    private let hostedController: UIHostingController<PPGlobalNavigationBar>
+    public private(set) var configuration: PPGlobalNavigationConfiguration
+    private var actionHandler: PPGlobalNavigationActionHandler
+    private var appliedDisplayMode: PPNavigationDisplayMode?
+    private var lastReportedBarHeight: CGFloat = 0
+    public var onPreferredBarHeightChange: ((CGFloat) -> Void)?
+
+    public init(
+        configuration: PPGlobalNavigationConfiguration,
+        onAction: @escaping PPGlobalNavigationActionHandler
+    ) {
+        self.configuration = configuration
+        self.actionHandler = onAction
+        self.hostedController = UIHostingController(
+            rootView: PPGlobalNavigationBar(
+                configuration: configuration,
+                onAction: onAction
+            )
+        )
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
+
+    /// Height the host must reserve so arbitrary child content stays below the
+    /// single visible navigation owner.
+    public var preferredBarHeight: CGFloat {
+        PPNavSpec.hostHeight(for: preferredDisplayMode)
+    }
+
+    public var preferredDisplayMode: PPNavigationDisplayMode {
+        if traitCollection.preferredContentSizeCategory.isAccessibilityCategory ||
+            (view.bounds.width > 0 && view.bounds.width < PPNavSpec.compactWidthThreshold) {
+            return .compact
+        }
+        return .expanded
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.isOpaque = false
+
+        hostedController.view.backgroundColor = .clear
+        hostedController.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(hostedController)
+        view.addSubview(hostedController.view)
+        NSLayoutConstraint.activate([
+            hostedController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            hostedController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            hostedController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            hostedController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        hostedController.didMove(toParent: self)
+        refreshHostedBar()
+    }
+
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if appliedDisplayMode != preferredDisplayMode {
+            refreshHostedBar()
+        }
+    }
+
+    public func update(
+        configuration: PPGlobalNavigationConfiguration,
+        onAction: @escaping PPGlobalNavigationActionHandler
+    ) {
+        self.configuration = configuration
+        actionHandler = onAction
+        guard isViewLoaded else { return }
+        refreshHostedBar()
+    }
+
+    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else {
+            return
+        }
+        refreshHostedBar()
+    }
+
+    private func refreshHostedBar() {
+        let displayMode = preferredDisplayMode
+        appliedDisplayMode = displayMode
+        hostedController.rootView = PPGlobalNavigationBar(
+            configuration: configuration,
+            collapseProgress: displayMode == .compact ? 1 : 0,
+            displayMode: displayMode,
+            onAction: actionHandler
+        )
+        reportPreferredBarHeightIfNeeded()
+    }
+
+    private func reportPreferredBarHeightIfNeeded() {
+        let height = preferredBarHeight
+        guard abs(lastReportedBarHeight - height) > 0.5 else { return }
+        lastReportedBarHeight = height
+        preferredContentSize = CGSize(width: view.bounds.width, height: height)
+        onPreferredBarHeightChange?(height)
     }
 }
 
@@ -345,6 +2244,7 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
     private let content: Content
 
     @State private var scrollOffset: CGFloat = 0
+    @State private var displayMode: PPNavigationDisplayMode?
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     public init(
@@ -362,11 +2262,13 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
     public var body: some View {
         GeometryReader { geometry in
             let safeTop = geometry.safeAreaInsets.top
-            let progress = min(max(-scrollOffset / collapseDistance, 0), 1)
-            let reserveBase = dynamicTypeSize.isAccessibilitySize
-                ? configuration.style.compactHeight
-                : configuration.style.expandedHeight
-            let reserve = reserveBase + safeTop
+            let progress = (-scrollOffset / collapseDistance).ppClamped()
+            let fallbackMode: PPNavigationDisplayMode = dynamicTypeSize.isAccessibilitySize ||
+                geometry.size.width < PPNavSpec.compactWidthThreshold ||
+                progress >= 0.5 ? .compact : .expanded
+            let reserveBase = (displayMode ?? fallbackMode) == .compact
+                ? PPNavSpec.compactHeight
+                : PPNavSpec.expandedHeight
 
             ZStack(alignment: .top) {
                 PPNavPalette.canvas
@@ -375,8 +2277,18 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
                 ScrollView {
                     PPNavScrollOffsetProbe()
                     content
-                        .padding(.top, reserve)
-                        .padding(.bottom, 24)
+                        .padding(.top, reserveBase + safeTop)
+                }
+                // Make the shared shell the single owner of trailing content
+                // clearance.  A plain bottom padding ends at the scroll view's
+                // frame and can leave the final row beneath the TabView dock or
+                // the home indicator; safeAreaInset participates in scrolling
+                // and adapts to both containers without a hard-coded tab-bar
+                // height.
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    Color.clear
+                        .frame(height: 24)
+                        .accessibilityHidden(true)
                 }
                 .coordinateSpace(name: PPNavScrollCoordinateSpace.name)
                 .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { value in
@@ -387,1049 +2299,17 @@ public struct PPGlobalNavigationScrollShell<Content: View>: View {
                     configuration: configuration,
                     collapseProgress: progress,
                     safeAreaTop: safeTop,
-                    onAction: onAction
+                    onAction: onAction,
+                    onDisplayModeChange: { newMode in
+                        guard displayMode != newMode else { return }
+                        displayMode = newMode
+                    }
                 )
                 .zIndex(10)
             }
             .ignoresSafeArea(edges: .top)
         }
         .navigationBarHidden(true)
-    }
-}
-
-// MARK: - Style 1: Command Crown
-
-private struct PPCommandCrownNavigation: View {
-    let configuration: PPGlobalNavigationConfiguration
-    let progress: CGFloat
-    let safeAreaTop: CGFloat
-    let layoutDirection: LayoutDirection
-    let namespace: Namespace.ID
-    let onAction: PPGlobalNavigationActionHandler
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            PPAmbientField(progress: progress)
-
-            PPTitleCluster(
-                configuration: configuration,
-                progress: progress,
-                alignment: .leading,
-                style: .commandCrown
-            )
-            .padding(.top, safeAreaTop + titleTop)
-            .padding(.leading, titleLeading)
-            .padding(.trailing, 92)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let leading = configuration.leadingAction {
-                PPCommandPearl(
-                    action: leading,
-                    progress: progress,
-                    layoutDirection: layoutDirection,
-                    namespace: namespace,
-                    onAction: onAction
-                )
-                .padding(.top, safeAreaTop + pearlTop)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .offset(x: pearlOffsetX)
-            }
-
-            PPCommandCrown(
-                configuration: configuration,
-                progress: progress,
-                layoutDirection: layoutDirection,
-                namespace: namespace,
-                onAction: onAction
-            )
-            .padding(.top, safeAreaTop + crownTop)
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .offset(x: crownEdgeOffset)
-
-            if configuration.showsContextFilament {
-                PPContextFilament(progress: progress)
-                    .padding(.horizontal, progress > 0.75 ? 0 : 22)
-                    .padding(.top, safeAreaTop + filamentTop)
-            }
-        }
-        .background(
-            progress > 0.72
-                ? PPNavPalette.canvas.opacity(0.88)
-                : Color.clear
-        )
-    }
-
-    private var titleTop: CGFloat { 48.interpolated(to: 24, progress: progress) }
-    private var titleLeading: CGFloat { 22.interpolated(to: configuration.leadingAction == nil ? 18 : 70, progress: progress) }
-    private var crownTop: CGFloat { 24.interpolated(to: 18, progress: progress) }
-    private var pearlTop: CGFloat { 132.interpolated(to: 18, progress: progress) }
-    private var filamentTop: CGFloat { 170.interpolated(to: 68, progress: progress) }
-    private var crownEdgeOffset: CGFloat { layoutDirection == .leftToRight ? 9 : -9 }
-    private var pearlOffsetX: CGFloat { layoutDirection == .leftToRight ? -8 : 8 }
-}
-
-private struct PPCommandCrown: View {
-    let configuration: PPGlobalNavigationConfiguration
-    let progress: CGFloat
-    let layoutDirection: LayoutDirection
-    let namespace: Namespace.ID
-    let onAction: PPGlobalNavigationActionHandler
-
-    var body: some View {
-        PPGlassContainer(spacing: 7) {
-            HStack(spacing: 7) {
-                if let status = configuration.status, progress < 0.78 {
-                    PPStatusReadout(status: status)
-                        .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                }
-
-                ForEach(configuration.trailingActions) { action in
-                    PPNavActionButton(
-                        action: action,
-                        diameter: 44.interpolated(to: 40, progress: progress),
-                        shape: .softSquare,
-                        namespace: namespace,
-                        glassID: "crown.\(action.id)",
-                        onAction: onAction
-                    )
-                }
-            }
-            .padding(.leading, progress < 0.78 ? 12 : 7)
-            .padding(.trailing, 13)
-            .padding(.vertical, 8)
-            .ppGlassSurface(
-                shape: PPCrownShape(flatEdge: layoutDirection == .leftToRight ? .right : .left),
-                interactive: false,
-                tint: nil,
-                namespace: namespace,
-                id: "command-crown"
-            )
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
-
-private struct PPCommandPearl: View {
-    let action: PPGlobalNavigationAction
-    let progress: CGFloat
-    let layoutDirection: LayoutDirection
-    let namespace: Namespace.ID
-    let onAction: PPGlobalNavigationActionHandler
-
-    var body: some View {
-        PPNavActionButton(
-            action: action,
-            diameter: 54.interpolated(to: 46, progress: progress),
-            shape: .circle,
-            namespace: namespace,
-            glassID: "navigation-pearl",
-            onAction: onAction
-        )
-    }
-}
-
-// MARK: - Style 2: Edge Loom
-
-private struct PPEdgeLoomNavigation: View {
-    let configuration: PPGlobalNavigationConfiguration
-    let progress: CGFloat
-    let safeAreaTop: CGFloat
-    let layoutDirection: LayoutDirection
-    let namespace: Namespace.ID
-    let onAction: PPGlobalNavigationActionHandler
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            PPAmbientField(progress: progress * 0.6)
-
-            PPEdgeLoomThread(
-                progress: progress,
-                safeAreaTop: safeAreaTop,
-                layoutDirection: layoutDirection
-            )
-
-            VStack(alignment: .leading, spacing: 0) {
-                if let leading = configuration.leadingAction {
-                    PPNavActionButton(
-                        action: leading,
-                        diameter: 46,
-                        shape: .circle,
-                        namespace: namespace,
-                        glassID: "loom.navigation",
-                        onAction: onAction
-                    )
-                    .offset(x: layoutDirection == .leftToRight ? -16 : 16)
-                    .padding(.bottom, 10)
-                }
-
-                if progress < 0.76 {
-                    PPLoomContextKnot(status: configuration.status)
-                        .transition(.opacity.combined(with: .offset(y: -6)))
-                }
-
-                if progress < 0.62 {
-                    VStack(spacing: 9) {
-                        ForEach(configuration.trailingActions) { action in
-                            PPNavActionButton(
-                                action: action,
-                                diameter: 39,
-                                shape: .softSquare,
-                                namespace: namespace,
-                                glassID: "loom.\(action.id)",
-                                onAction: onAction
-                            )
-                        }
-                    }
-                    .padding(.top, 18)
-                    .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
-                }
-            }
-            .padding(.top, safeAreaTop + 22.interpolated(to: 13, progress: progress))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 7)
-
-            PPTitleCluster(
-                configuration: configuration,
-                progress: progress,
-                alignment: .leading,
-                style: .edgeLoom
-            )
-            .padding(.top, safeAreaTop + 28.interpolated(to: 20, progress: progress))
-            .padding(.leading, 58.interpolated(to: 66, progress: progress))
-            .padding(.trailing, 18)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if progress > 0.48 {
-                HStack(spacing: 7) {
-                    ForEach(configuration.trailingActions) { action in
-                        PPNavActionButton(
-                            action: action,
-                            diameter: 39,
-                            shape: .softSquare,
-                            namespace: namespace,
-                            glassID: "loom.compact.\(action.id)",
-                            onAction: onAction
-                        )
-                    }
-                }
-                .padding(.top, safeAreaTop + 17)
-                .padding(.trailing, 13)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-                .opacity((progress - 0.48) / 0.52)
-            }
-        }
-        .background(progress > 0.78 ? PPNavPalette.canvas.opacity(0.9) : Color.clear)
-    }
-}
-
-private struct PPEdgeLoomThread: View {
-    let progress: CGFloat
-    let safeAreaTop: CGFloat
-    let layoutDirection: LayoutDirection
-
-    var body: some View {
-        GeometryReader { proxy in
-            let x: CGFloat = layoutDirection == .leftToRight ? 26 : proxy.size.width - 26
-            let bottom = (176 - 98 * progress) + safeAreaTop
-
-            Path { path in
-                path.move(to: CGPoint(x: x, y: safeAreaTop + 6))
-                path.addCurve(
-                    to: CGPoint(x: x, y: bottom),
-                    control1: CGPoint(x: x + directional(2), y: safeAreaTop + 44),
-                    control2: CGPoint(x: x - directional(4), y: bottom - 48)
-                )
-            }
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        PPNavPalette.brand,
-                        PPNavPalette.brand.opacity(0.25),
-                        .clear
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                ),
-                style: StrokeStyle(lineWidth: 2, lineCap: .round)
-            )
-        }
-        .allowsHitTesting(false)
-    }
-
-    private func directional(_ value: CGFloat) -> CGFloat {
-        layoutDirection == .leftToRight ? value : -value
-    }
-}
-
-private struct PPLoomContextKnot: View {
-    let status: PPGlobalNavigationStatus?
-
-    var body: some View {
-        HStack(spacing: 7) {
-            ZStack {
-                Circle()
-                    .fill(PPNavPalette.brand.opacity(0.13))
-                    .frame(width: 22, height: 22)
-                Circle()
-                    .fill(PPNavPalette.brand)
-                    .frame(width: 7, height: 7)
-            }
-
-            if let status {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(status.label)
-                        .font(PPNavTypography.eyebrow())
-                        .foregroundStyle(PPNavPalette.primaryText)
-                    if let detail = status.detail {
-                        Text(detail)
-                            .font(.caption2)
-                            .foregroundStyle(PPNavPalette.secondaryText)
-                    }
-                }
-            }
-        }
-        .offset(x: -2)
-    }
-}
-
-// MARK: - Style 3: Context Deck
-
-private struct PPContextDeckNavigation: View {
-    let configuration: PPGlobalNavigationConfiguration
-    let progress: CGFloat
-    let safeAreaTop: CGFloat
-    let layoutDirection: LayoutDirection
-    let namespace: Namespace.ID
-    let onAction: PPGlobalNavigationActionHandler
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            PPAmbientField(progress: progress * 0.45)
-
-            PPContextDeckBackPlane(
-                depth: 2,
-                progress: progress,
-                tint: PPNavPalette.brand.opacity(0.055)
-            )
-            .padding(.top, safeAreaTop + 24.interpolated(to: 13, progress: progress))
-            .padding(.horizontal, 23.interpolated(to: 13, progress: progress))
-
-            PPContextDeckBackPlane(
-                depth: 1,
-                progress: progress,
-                tint: PPNavPalette.brand.opacity(0.085)
-            )
-            .padding(.top, safeAreaTop + 19.interpolated(to: 12, progress: progress))
-            .padding(.horizontal, 18.interpolated(to: 12, progress: progress))
-
-            PPGlassContainer(spacing: 8) {
-                ZStack(alignment: .leading) {
-                    PPTitleCluster(
-                        configuration: configuration,
-                        progress: progress,
-                        alignment: .leading,
-                        style: .contextDeck
-                    )
-                    .padding(.leading, configuration.leadingAction == nil ? 18 : 58)
-                    .padding(.trailing, actionReserve)
-                    .padding(.vertical, 15)
-
-                    if let leading = configuration.leadingAction {
-                        PPNavActionButton(
-                            action: leading,
-                            diameter: 44,
-                            shape: .deckTab,
-                            namespace: namespace,
-                            glassID: "deck.navigation",
-                            onAction: onAction
-                        )
-                        .offset(x: layoutDirection == .leftToRight ? -12 : 12)
-                    }
-
-                    HStack(spacing: 6) {
-                        ForEach(configuration.trailingActions) { action in
-                            PPNavActionButton(
-                                action: action,
-                                diameter: 41,
-                                shape: .circle,
-                                namespace: namespace,
-                                glassID: "deck.\(action.id)",
-                                onAction: onAction
-                            )
-                        }
-                    }
-                    .padding(.trailing, 10)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-                .ppGlassSurface(
-                    shape: RoundedRectangle(cornerRadius: 29.interpolated(to: 24, progress: progress), style: .continuous),
-                    interactive: false,
-                    tint: nil,
-                    namespace: namespace,
-                    id: "context-deck-front"
-                )
-            }
-            .padding(.top, safeAreaTop + 14.interpolated(to: 8, progress: progress))
-            .padding(.horizontal, 13.interpolated(to: 9, progress: progress))
-
-            if let status = configuration.status, progress < 0.7 {
-                PPDeckStatusTab(status: status)
-                    .padding(.top, safeAreaTop + 132)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                    .padding(.trailing, 24)
-                    .transition(.opacity.combined(with: .offset(y: -6)))
-            }
-        }
-        .background(progress > 0.8 ? PPNavPalette.canvas.opacity(0.9) : Color.clear)
-    }
-
-    private var actionReserve: CGFloat {
-        CGFloat(max(configuration.trailingActions.count, 1)) * 47 + 16
-    }
-}
-
-private struct PPContextDeckBackPlane: View {
-    let depth: Int
-    let progress: CGFloat
-    let tint: Color
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 30, style: .continuous)
-            .fill(tint)
-            .frame(height: 124.interpolated(to: 57, progress: progress))
-            .rotationEffect(
-                .degrees(
-                    (depth == 1 ? 1.1 : -1.5) * Double(1 - progress)
-                )
-            )
-            .opacity(1 - 0.82 * progress)
-            .allowsHitTesting(false)
-    }
-}
-
-private struct PPDeckStatusTab: View {
-    let status: PPGlobalNavigationStatus
-
-    var body: some View {
-        HStack(spacing: 7) {
-            if status.isLive {
-                Circle()
-                    .fill(PPNavPalette.brand)
-                    .frame(width: 7, height: 7)
-            }
-
-            Text(status.label)
-                .font(PPNavTypography.eyebrow())
-
-            if let detail = status.detail {
-                Text(detail)
-                    .font(.caption2)
-                    .foregroundStyle(PPNavPalette.secondaryText)
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 30)
-        .background(PPNavPalette.surface.opacity(0.88), in: Capsule())
-        .overlay(Capsule().strokeBorder(PPNavPalette.primaryText.opacity(0.06)))
-    }
-}
-
-// MARK: - Shared title + context
-
-private enum PPTitleClusterStyle {
-    case commandCrown
-    case edgeLoom
-    case contextDeck
-}
-
-private struct PPTitleCluster: View {
-    let configuration: PPGlobalNavigationConfiguration
-    let progress: CGFloat
-    let alignment: HorizontalAlignment
-    let style: PPTitleClusterStyle
-
-    var body: some View {
-        VStack(alignment: alignment, spacing: 0) {
-            if let eyebrow = configuration.eyebrow, progress < 0.72 {
-                Text(eyebrow.uppercased())
-                    .font(PPNavTypography.eyebrow())
-                    .tracking(1.2)
-                    .foregroundStyle(PPNavPalette.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.86)
-                    .transition(.opacity)
-            }
-
-            Text(configuration.title)
-                .font(PPNavTypography.largeTitle(compact: progress > 0.55))
-                .foregroundStyle(PPNavPalette.primaryText)
-                .lineLimit(progress > 0.55 ? 1 : 2)
-                .minimumScaleFactor(0.72)
-                .accessibilityAddTraits(.isHeader)
-                .padding(.top, progress < 0.72 && configuration.eyebrow != nil ? 4 : 0)
-
-            if let subtitle = configuration.subtitle, progress < 0.66 {
-                Text(subtitle)
-                    .font(PPNavTypography.secondary())
-                    .foregroundStyle(PPNavPalette.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                    .padding(.top, 5)
-                    .transition(.opacity)
-            }
-
-            if let context = configuration.context, style == .edgeLoom, progress < 0.5 {
-                Text(context)
-                    .font(.caption2)
-                    .foregroundStyle(PPNavPalette.brand)
-                    .lineLimit(1)
-                    .padding(.top, 6)
-            }
-        }
-    }
-}
-
-// MARK: - Shared actions
-
-private enum PPNavActionShape {
-    case circle
-    case softSquare
-    case deckTab
-}
-
-private struct PPNavActionContainerShape: InsettableShape {
-    let kind: PPNavActionShape
-    let cornerRadius: CGFloat
-    var insetAmount: CGFloat = 0
-
-    func path(in rect: CGRect) -> Path {
-        switch kind {
-        case .circle:
-            return Circle()
-                .inset(by: insetAmount)
-                .path(in: rect)
-        case .softSquare:
-            return RoundedRectangle(
-                cornerRadius: max(8, cornerRadius - insetAmount),
-                style: .continuous
-            )
-            .inset(by: insetAmount)
-            .path(in: rect)
-        case .deckTab:
-            return RoundedRectangle(
-                cornerRadius: max(8, 15 - insetAmount),
-                style: .continuous
-            )
-            .inset(by: insetAmount)
-            .path(in: rect)
-        }
-    }
-
-    func inset(by amount: CGFloat) -> PPNavActionContainerShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
-}
-
-private struct PPNavActionButton: View {
-    let action: PPGlobalNavigationAction
-    let diameter: CGFloat
-    let shape: PPNavActionShape
-    let namespace: Namespace.ID
-    let glassID: String
-    let onAction: PPGlobalNavigationActionHandler
-
-    @Environment(\.layoutDirection) private var layoutDirection
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Button {
-            performHaptic()
-            onAction(action)
-        } label: {
-            ZStack(alignment: .topTrailing) {
-                PPNavigationGlyph(kind: action.kind, layoutDirection: layoutDirection)
-                    .frame(width: 21, height: 21)
-                    .foregroundStyle(foreground)
-
-                if let badge = action.badge, !badge.isEmpty {
-                    Text(badge)
-                        .font(.system(size: 9, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 5)
-                        .frame(minWidth: 17, minHeight: 17)
-                        .background(PPNavPalette.brandDarker, in: Capsule())
-                        .offset(x: 8, y: -8)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(width: diameter, height: diameter)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .ppInteractiveGlass(
-            shape: buttonShape,
-            tint: tint,
-            namespace: namespace,
-            id: glassID
-        )
-        .accessibilityLabel(Text(action.accessibilityLabel))
-        .accessibilityHint(action.accessibilityHint.map(Text.init) ?? Text(""))
-        .accessibilityValue(action.badge.map { Text($0) } ?? Text(""))
-    }
-
-    private var buttonShape: PPNavActionContainerShape {
-        PPNavActionContainerShape(kind: shape, cornerRadius: max(14, diameter * 0.38))
-    }
-
-    private var tint: Color? {
-        switch action.prominence {
-        case .emphasized:
-            return PPNavPalette.brand
-        case .standard, .quiet:
-            return nil
-        }
-    }
-
-    private var foreground: Color {
-        switch action.prominence {
-        case .emphasized:
-            return .white
-        case .standard:
-            return PPNavPalette.primaryText
-        case .quiet:
-            return PPNavPalette.secondaryText
-        }
-    }
-
-    private func performHaptic() {
-        guard !reduceMotion else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-}
-
-// MARK: - Custom navigation glyph layer
-//
-// Conventional controls keep conventional semantics.
-// Proprietary concepts (Capability Lens / Command) get distinctive geometry.
-
-private struct PPNavigationGlyph: View {
-    let kind: PPGlobalNavigationActionKind
-    let layoutDirection: LayoutDirection
-
-    var body: some View {
-        switch kind {
-        case .back:
-            PPChevronGlyph(pointsForward: false, layoutDirection: layoutDirection)
-        case .close:
-            PPCloseGlyph()
-        case .refresh:
-            PPRefreshGlyph()
-        case .more:
-            PPMoreGlyph()
-        case .profile:
-            PPProfileGlyph()
-        case .capabilityLens:
-            PPCapabilityLensGlyph()
-        case .command:
-            PPCommandGlyph()
-        case .notifications:
-            Image(systemName: "bell")
-                .font(PPNavTypography.action())
-        case .custom(let symbol):
-            Image(systemName: symbol)
-                .font(PPNavTypography.action())
-        }
-    }
-}
-
-private struct PPChevronGlyph: View {
-    let pointsForward: Bool
-    let layoutDirection: LayoutDirection
-
-    var body: some View {
-        GeometryReader { proxy in
-            let shouldPointRight = pointsForward
-                ? layoutDirection == .leftToRight
-                : layoutDirection == .rightToLeft
-
-            Path { path in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                let x1 = shouldPointRight ? w * 0.36 : w * 0.64
-                let x2 = shouldPointRight ? w * 0.66 : w * 0.34
-
-                path.move(to: CGPoint(x: x1, y: h * 0.2))
-                path.addLine(to: CGPoint(x: x2, y: h * 0.5))
-                path.addLine(to: CGPoint(x: x1, y: h * 0.8))
-            }
-            .stroke(style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-        }
-    }
-}
-
-private struct PPCloseGlyph: View {
-    var body: some View {
-        GeometryReader { proxy in
-            Path { path in
-                path.move(to: CGPoint(x: proxy.size.width * 0.26, y: proxy.size.height * 0.26))
-                path.addLine(to: CGPoint(x: proxy.size.width * 0.74, y: proxy.size.height * 0.74))
-                path.move(to: CGPoint(x: proxy.size.width * 0.74, y: proxy.size.height * 0.26))
-                path.addLine(to: CGPoint(x: proxy.size.width * 0.26, y: proxy.size.height * 0.74))
-            }
-            .stroke(style: StrokeStyle(lineWidth: 2.05, lineCap: .round))
-        }
-    }
-}
-
-private struct PPRefreshGlyph: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let rect = CGRect(
-                x: proxy.size.width * 0.18,
-                y: proxy.size.height * 0.18,
-                width: proxy.size.width * 0.64,
-                height: proxy.size.height * 0.64
-            )
-
-            ZStack {
-                Path { path in
-                    path.addArc(
-                        center: CGPoint(x: rect.midX, y: rect.midY),
-                        radius: rect.width * 0.45,
-                        startAngle: .degrees(-72),
-                        endAngle: .degrees(212),
-                        clockwise: false
-                    )
-                }
-                .stroke(style: StrokeStyle(lineWidth: 1.9, lineCap: .round))
-
-                Path { path in
-                    path.move(to: CGPoint(x: rect.minX + 1, y: rect.midY - 2))
-                    path.addLine(to: CGPoint(x: rect.minX + 1, y: rect.minY + 4))
-                    path.addLine(to: CGPoint(x: rect.minX + 10, y: rect.minY + 7))
-                }
-                .stroke(style: StrokeStyle(lineWidth: 1.9, lineCap: .round, lineJoin: .round))
-            }
-        }
-    }
-}
-
-private struct PPMoreGlyph: View {
-    var body: some View {
-        HStack(spacing: 3.2) {
-            ForEach(0..<3, id: \.self) { _ in
-                Circle().frame(width: 3.2, height: 3.2)
-            }
-        }
-    }
-}
-
-private struct PPProfileGlyph: View {
-    var body: some View {
-        GeometryReader { proxy in
-            Path { path in
-                let w = proxy.size.width
-                let h = proxy.size.height
-                path.addEllipse(in: CGRect(x: w * 0.35, y: h * 0.14, width: w * 0.3, height: w * 0.3))
-                path.addArc(
-                    center: CGPoint(x: w * 0.5, y: h * 0.82),
-                    radius: w * 0.31,
-                    startAngle: .degrees(205),
-                    endAngle: .degrees(335),
-                    clockwise: false
-                )
-            }
-            .stroke(style: StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-        }
-    }
-}
-
-private struct PPCapabilityLensGlyph: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
-            ZStack {
-                Circle()
-                    .stroke(lineWidth: 1.7)
-                    .frame(width: w * 0.62, height: h * 0.62)
-                    .offset(x: -w * 0.08)
-
-                Circle()
-                    .trim(from: 0.08, to: 0.82)
-                    .stroke(style: StrokeStyle(lineWidth: 1.7, lineCap: .round))
-                    .frame(width: w * 0.42, height: h * 0.42)
-                    .offset(x: w * 0.18, y: h * 0.12)
-
-                Capsule()
-                    .frame(width: w * 0.28, height: 1.8)
-                    .rotationEffect(.degrees(42))
-                    .offset(x: w * 0.28, y: h * 0.27)
-            }
-        }
-    }
-}
-
-private struct PPCommandGlyph: View {
-    var body: some View {
-        GeometryReader { proxy in
-            let w = proxy.size.width
-            let h = proxy.size.height
-            Path { path in
-                let r = min(w, h) * 0.18
-                let left = w * 0.31
-                let right = w * 0.69
-                let top = h * 0.31
-                let bottom = h * 0.69
-
-                path.addArc(center: CGPoint(x: left, y: top), radius: r, startAngle: .degrees(180), endAngle: .degrees(90), clockwise: true)
-                path.addLine(to: CGPoint(x: right, y: top - r))
-                path.addArc(center: CGPoint(x: right, y: top), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
-                path.addLine(to: CGPoint(x: right + r, y: bottom))
-                path.addArc(center: CGPoint(x: right, y: bottom), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-                path.addLine(to: CGPoint(x: left, y: bottom + r))
-                path.addArc(center: CGPoint(x: left, y: bottom), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
-                path.addLine(to: CGPoint(x: left - r, y: top))
-            }
-            .stroke(style: StrokeStyle(lineWidth: 1.65, lineCap: .round, lineJoin: .round))
-        }
-    }
-}
-
-// MARK: - Shared material system
-
-private struct PPAmbientField: View {
-    let progress: CGFloat
-
-    var body: some View {
-        LinearGradient(
-            colors: [
-                PPNavPalette.brand.opacity(0.09 * (1 - progress)),
-                PPNavPalette.brandShiner.opacity(0.025 * (1 - progress)),
-                .clear
-            ],
-            startPoint: .topTrailing,
-            endPoint: .bottomLeading
-        )
-        .allowsHitTesting(false)
-    }
-}
-
-private struct PPStatusReadout: View {
-    let status: PPGlobalNavigationStatus
-
-    var body: some View {
-        HStack(spacing: 7) {
-            if status.isLive {
-                ZStack {
-                    Circle()
-                        .fill(PPNavPalette.brand.opacity(0.13))
-                        .frame(width: 18, height: 18)
-                    Circle()
-                        .fill(PPNavPalette.brand)
-                        .frame(width: 6, height: 6)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text(status.label)
-                    .font(PPNavTypography.eyebrow())
-                    .foregroundStyle(PPNavPalette.primaryText)
-                    .lineLimit(1)
-
-                if let detail = status.detail {
-                    Text(detail)
-                        .font(.caption2)
-                        .foregroundStyle(PPNavPalette.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct PPContextFilament: View {
-    let progress: CGFloat
-    @Environment(\.layoutDirection) private var layoutDirection
-
-    var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .leading) {
-                Rectangle()
-                    .fill(PPNavPalette.primaryText.opacity(0.05))
-                    .frame(height: 1)
-
-                Capsule()
-                    .fill(
-                        LinearGradient(
-                            colors: [PPNavPalette.brand, PPNavPalette.brand.opacity(0)],
-                            startPoint: layoutDirection == .leftToRight ? .leading : .trailing,
-                            endPoint: layoutDirection == .leftToRight ? .trailing : .leading
-                        )
-                    )
-                    .frame(width: max(38, proxy.size.width * (0.21 - 0.12 * progress)), height: 2.5)
-            }
-        }
-        .frame(height: 3)
-        .allowsHitTesting(false)
-    }
-}
-
-private enum PPCrownFlatEdge {
-    case left
-    case right
-}
-
-private struct PPCrownShape: InsettableShape {
-    let flatEdge: PPCrownFlatEdge
-    var insetAmount: CGFloat = 0
-
-    func path(in rect: CGRect) -> Path {
-        let radius = max(14, min(27, rect.height * 0.43) - insetAmount)
-        let minX = rect.minX + insetAmount
-        let maxX = rect.maxX - insetAmount
-        let minY = rect.minY + insetAmount
-        let maxY = rect.maxY - insetAmount
-
-        var path = Path()
-
-        switch flatEdge {
-        case .right:
-            path.move(to: CGPoint(x: minX + radius, y: minY))
-            path.addLine(to: CGPoint(x: maxX, y: minY))
-            path.addLine(to: CGPoint(x: maxX, y: maxY))
-            path.addLine(to: CGPoint(x: minX + radius, y: maxY))
-            path.addQuadCurve(
-                to: CGPoint(x: minX, y: maxY - radius),
-                control: CGPoint(x: minX, y: maxY)
-            )
-            path.addLine(to: CGPoint(x: minX, y: minY + radius))
-            path.addQuadCurve(
-                to: CGPoint(x: minX + radius, y: minY),
-                control: CGPoint(x: minX, y: minY)
-            )
-
-        case .left:
-            path.move(to: CGPoint(x: minX, y: minY))
-            path.addLine(to: CGPoint(x: maxX - radius, y: minY))
-            path.addQuadCurve(
-                to: CGPoint(x: maxX, y: minY + radius),
-                control: CGPoint(x: maxX, y: minY)
-            )
-            path.addLine(to: CGPoint(x: maxX, y: maxY - radius))
-            path.addQuadCurve(
-                to: CGPoint(x: maxX - radius, y: maxY),
-                control: CGPoint(x: maxX, y: maxY)
-            )
-            path.addLine(to: CGPoint(x: minX, y: maxY))
-        }
-
-        path.closeSubpath()
-        return path
-    }
-
-    func inset(by amount: CGFloat) -> PPCrownShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
-}
-
-private struct PPGlassContainer<Content: View>: View {
-    let spacing: CGFloat
-    let content: Content
-
-    init(spacing: CGFloat, @ViewBuilder content: () -> Content) {
-        self.spacing = spacing
-        self.content = content()
-    }
-
-    @ViewBuilder
-    var body: some View {
-#if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: spacing) {
-                content
-            }
-        } else {
-            content
-        }
-#else
-        content
-#endif
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func ppGlassSurface<S: InsettableShape>(
-        shape: S,
-        interactive: Bool,
-        tint: Color?,
-        namespace: Namespace.ID,
-        id: String
-    ) -> some View {
-#if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            if let tint {
-                self
-                    .glassEffect(
-                        interactive
-                            ? .regular.tint(tint).interactive()
-                            : .regular.tint(tint),
-                        in: shape
-                    )
-                    .glassEffectID(id, in: namespace)
-            } else {
-                self
-                    .glassEffect(
-                        interactive
-                            ? .regular.interactive()
-                            : .regular,
-                        in: shape
-                    )
-                    .glassEffectID(id, in: namespace)
-            }
-        } else {
-            fallbackGlass(shape: shape, tint: tint)
-        }
-#else
-        fallbackGlass(shape: shape, tint: tint)
-#endif
-    }
-
-    @ViewBuilder
-    func ppInteractiveGlass<S: InsettableShape>(
-        shape: S,
-        tint: Color?,
-        namespace: Namespace.ID,
-        id: String
-    ) -> some View {
-        ppGlassSurface(
-            shape: shape,
-            interactive: true,
-            tint: tint,
-            namespace: namespace,
-            id: id
-        )
-    }
-
-    func fallbackGlass<S: InsettableShape>(
-        shape: S,
-        tint: Color?
-    ) -> some View {
-        self
-            .background(.ultraThinMaterial, in: shape)
-            .background((tint ?? Color.clear).opacity(tint == nil ? 0 : 0.84), in: shape)
-            .overlay(
-                shape.strokeBorder(
-                    Color.primary.opacity(tint == nil ? 0.08 : 0.035),
-                    lineWidth: 0.7
-                )
-            )
     }
 }
 
@@ -1440,7 +2320,7 @@ private enum PPNavScrollCoordinateSpace {
 }
 
 private struct PPNavScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
@@ -1478,7 +2358,7 @@ private struct PPNavScrollOffsetProbe: View {
 
 @objcMembers
 public final class PPGlobalNavigationDescriptor: NSObject {
-    public var style: PPGlobalNavigationStyleObjC = .commandCrown
+    public var style: PPGlobalNavigationStyleObjC = .contextDeck
     public var title: String = ""
     public var eyebrow: String?
     public var subtitle: String?
@@ -1516,78 +2396,93 @@ public final class PPGlobalNavigationDescriptor: NSObject {
     }
 }
 
-// MARK: - Demo / Preview fixtures
+// MARK: - Math helpers
+
+private extension CGFloat {
+    func ppClamped(to range: ClosedRange<CGFloat> = 0...1) -> CGFloat {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+// MARK: - Previews
 
 #if DEBUG
-private struct PPGlobalNavigationDemo: View {
-    @State private var style: PPGlobalNavigationStyle = .commandCrown
+private struct PPGlobalNavigationReferenceHarness: View {
+    @State private var mode: PPNavigationDisplayMode = .expanded
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("Navigation style", selection: $style) {
-                ForEach(PPGlobalNavigationStyle.allCases) { style in
-                    Text(style.displayName).tag(style)
+            Picker("Display mode", selection: $mode) {
+                ForEach(PPNavigationDisplayMode.allCases) { mode in
+                    Text(mode.rawValue.capitalized).tag(mode)
                 }
             }
             .pickerStyle(.segmented)
             .padding()
 
-            PPGlobalNavigationScrollShell(
-                configuration: configuration,
+            // 01_large_title_expanded / 02_compact_scrolled
+            PPGlobalNavigationBar(
+                configuration: operationsConfiguration,
+                collapseProgress: mode == .compact ? 1 : 0,
+                displayMode: mode,
                 onAction: { _ in }
-            ) {
-                VStack(spacing: 12) {
-                    ForEach(0..<12, id: \.self) { index in
-                        HStack {
-                            Text(index == 0 ? "Overview" : "Operational row \(index)")
-                                .font(.body)
-                            Spacer()
-                            Text(index == 0 ? "Processing" : "\(index * 3)")
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.horizontal, 18)
-                        .frame(minHeight: 62)
-                        .background(
-                            PPNavPalette.surface.opacity(0.72),
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        )
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
+            )
+
+            // 03_modal_create
+            PPGlobalNavigationBar(
+                configuration: modalConfiguration,
+                displayMode: .compact,
+                onAction: { _ in }
+            )
+            .padding(.top, 24)
+
+            Spacer()
         }
+        .background(PPNavPalette.canvas)
     }
 
-    private var configuration: PPGlobalNavigationConfiguration {
+    private var operationsConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
-            style: style,
-            title: "Payment Details",
-            eyebrow: "Marketplace · Orders",
-            subtitle: "PP-260801-RMMRU4",
-            context: "Processing",
-            status: .init(label: "Order", detail: "Processing", isLive: true),
+            title: "Work",
+            eyebrow: "Operations Center",
+            subtitle: "All capabilities",
+            status: .init(label: "Live", detail: "Unified", isLive: true),
             leadingAction: .back,
             trailingActions: [
-                .refresh,
-                .more
-            ]
+                PPGlobalNavigationAction(id: "lens", kind: .capabilityLens, accessibilityLabel: "Capabilities"),
+                PPGlobalNavigationAction(id: "alerts", kind: .notifications, accessibilityLabel: "Notifications", badge: ""),
+                PPGlobalNavigationAction(id: "profile", kind: .profile, accessibilityLabel: "Account", monogram: "YN"),
+            ],
+            showsContextFilament: true
+        )
+    }
+
+    private var modalConfiguration: PPGlobalNavigationConfiguration {
+        PPGlobalNavigationConfiguration(
+            title: "New Product",
+            subtitle: "Create listing",
+            leadingAction: .close,
+            trailingActions: [
+                .more,
+                PPGlobalNavigationAction(
+                    id: "save",
+                    kind: .confirm,
+                    accessibilityLabel: "Save",
+                    prominence: .emphasized,
+                    title: "Save"
+                ),
+            ],
+            showsContextFilament: false
         )
     }
 }
 
 #Preview("Pure Pets Pro — Global Navigation") {
-    PPGlobalNavigationDemo()
+    PPGlobalNavigationReferenceHarness()
+}
+
+#Preview("RTL — Arabic") {
+    PPGlobalNavigationReferenceHarness()
+        .environment(\.layoutDirection, .rightToLeft)
 }
 #endif
-
-// MARK: - Math helpers
-
-private extension CGFloat {
-    func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
-        min(max(self, range.lowerBound), range.upperBound)
-    }
-
-    func interpolated(to target: CGFloat, progress: CGFloat) -> CGFloat {
-        self + (target - self) * progress.clamped(to: 0...1)
-    }
-}
