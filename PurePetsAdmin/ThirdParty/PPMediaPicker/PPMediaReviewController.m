@@ -89,7 +89,11 @@ static NSString * const reuseIdentifier = @"PPMediaReviewCell";
     if (item.image) {
         CLImageEditor *editor = [[CLImageEditor alloc] initWithImage:item.image];
         editor.delegate = self;
-        [self presentViewController:editor animated:YES completion:nil];
+        if (self.navigationController) {
+            [self.navigationController pushViewController:editor animated:YES];
+        } else {
+            [self presentViewController:editor animated:YES completion:nil];
+        }
     } else if (item.asset) {
         PHImageRequestOptions *options = [PHImageRequestOptions new];
         options.networkAccessAllowed = YES;
@@ -105,7 +109,11 @@ static NSString * const reuseIdentifier = @"PPMediaReviewCell";
                 dispatch_async(dispatch_get_main_queue(), ^{
                     CLImageEditor *editor = [[CLImageEditor alloc] initWithImage:result];
                     editor.delegate = self;
-                    [self presentViewController:editor animated:YES completion:nil];
+                    if (self.navigationController) {
+                        [self.navigationController pushViewController:editor animated:YES];
+                    } else {
+                        [self presentViewController:editor animated:YES completion:nil];
+                    }
                 });
             }
         }];
@@ -134,7 +142,11 @@ static NSString * const reuseIdentifier = @"PPMediaReviewCell";
         UIVideoEditorController *editor = [[UIVideoEditorController alloc] init];
         editor.videoPath = url.path;
         editor.delegate = self;
-        [self presentViewController:editor animated:YES completion:nil];
+        if (self.navigationController) {
+            [self.navigationController pushViewController:editor animated:YES];
+        } else {
+            [self presentViewController:editor animated:YES completion:nil];
+        }
     }
 }
 

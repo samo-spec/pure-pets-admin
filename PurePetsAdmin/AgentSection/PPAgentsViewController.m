@@ -45,6 +45,7 @@ static NSString *const kAgentCellID = @"AgentCell";
     if (self.canManage) {
         UIBarButtonItem *addButton = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(didTapAdd)];
         self.navigationItem.rightBarButtonItem = addButton;
+        PPCommandCenterNavigationItemsDidChange(self);
     }
 }
 

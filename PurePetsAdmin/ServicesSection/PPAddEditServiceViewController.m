@@ -87,6 +87,7 @@ static UIColor *PPServiceAccentColor(void) {
 
     UIButton *save = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(saveTapped)];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithCustomView:save];
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 #pragma mark - UI

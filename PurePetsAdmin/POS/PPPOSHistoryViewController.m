@@ -28,6 +28,7 @@ static NSString *const kPPPOSHistoryCellID = @"PPPOSHistoryCell";
     UIBarButtonItem *refreshBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(loadData)];
     refreshBtn.accessibilityLabel = kLang(@"DC_Refresh");
     self.navigationItem.rightBarButtonItem = refreshBtn;
+    PPCommandCenterNavigationItemsDidChange(self);
 
     [self loadData];
 }

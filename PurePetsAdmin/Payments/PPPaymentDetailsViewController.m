@@ -832,8 +832,8 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentDetailsSectionAudit: {
             if (self.record.auditEntries.count == 0) {
                 return [self pp_placeholderCellForTableView:tableView
-                                                      title:kLang(@"PaymentMgmt_Placeholder_NoAuditTitle")
-                                                   subtitle:kLang(@"PaymentMgmt_Placeholder_NoAuditSubtitle")];
+                                                      title:kLang(self.record.auditEvidenceRestricted ? @"PaymentMgmt_Audit_ScopeRestricted_Title" : @"PaymentMgmt_Placeholder_NoAuditTitle")
+                                                   subtitle:kLang(self.record.auditEvidenceRestricted ? @"PaymentMgmt_Audit_ScopeRestricted_Subtitle" : @"PaymentMgmt_Placeholder_NoAuditSubtitle")];
             }
             UITableViewCell *cell = [self pp_subtitleCellForTableView:tableView reuseIdentifier:@"PPPaymentAuditCell"];
             PPPaymentAdminAuditEntry *entry = self.record.auditEntries[indexPath.row];

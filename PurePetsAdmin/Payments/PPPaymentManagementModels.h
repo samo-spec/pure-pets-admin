@@ -74,6 +74,8 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 @property (nonatomic, copy) NSString *entityType;
 @property (nonatomic, copy) NSString *entityId;
 @property (nonatomic, copy) NSString *orderId;
+@property (nonatomic, copy) NSString *branchId;
+@property (nonatomic, copy) NSString *regionId;
 @property (nonatomic, copy) NSString *requestId;
 @property (nonatomic, copy) NSString *adminUid;
 @property (nonatomic, copy) NSString *adminName;
@@ -125,6 +127,8 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 
 @property (nonatomic, copy) NSString *orderId;
 @property (nonatomic, copy, nullable) NSString *orderNumber;
+@property (nonatomic, copy, nullable) NSString *branchId;
+@property (nonatomic, copy, nullable) NSString *regionId;
 @property (nonatomic, copy) NSString *userId;
 @property (nonatomic, copy) NSString *userDisplayName;
 @property (nonatomic, copy) NSString *userEmail;
@@ -162,6 +166,7 @@ typedef NS_ENUM(NSInteger, PPPaymentAdminRequestResolution) {
 @property (nonatomic, copy) NSArray<PPPaymentAdminSupportRequest *> *requests;
 @property (nonatomic, copy) NSArray<PPPaymentAdminTimelineEvent *> *timelineEvents;
 @property (nonatomic, copy) NSArray<PPPaymentAdminAuditEntry *> *auditEntries;
+@property (nonatomic, assign) BOOL auditEvidenceRestricted;
 @property (nonatomic, strong, nullable) FIRDocumentSnapshot *sourceSnapshot;
 
 + (instancetype)recordFromSnapshot:(FIRDocumentSnapshot *)snapshot;

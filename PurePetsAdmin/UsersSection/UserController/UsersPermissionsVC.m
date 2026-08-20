@@ -86,6 +86,7 @@
         [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
                                                       target:self
                                                       action:@selector(refreshTapped)];
+    PPCommandCenterNavigationItemsDidChange(self);
     
     // Bottom toolbar actions
     UIBarButtonItem *roleBtn =

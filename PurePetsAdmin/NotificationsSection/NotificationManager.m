@@ -12,29 +12,7 @@
 @import FirebaseAuth;
 @import FirebaseMessaging;
 @import FirebaseAuth;
-
-@interface PPCombinedNotificationListener : NSObject <FIRListenerRegistration>
-@property (nonatomic, copy) NSArray<id<FIRListenerRegistration>> *registrations;
-- (instancetype)initWithRegistrations:(NSArray<id<FIRListenerRegistration>> *)registrations;
-@end
-
-@implementation PPCombinedNotificationListener
-
-- (instancetype)initWithRegistrations:(NSArray<id<FIRListenerRegistration>> *)registrations {
-    self = [super init];
-    if (self) {
-        _registrations = [registrations copy] ?: @[];
-    }
-    return self;
-}
-
-- (void)remove {
-    for (id<FIRListenerRegistration> registration in self.registrations) {
-        [registration remove];
-    }
-}
-
-@end
+@import FirebaseFunctions;
 
 @implementation NotificationManager
 
@@ -69,98 +47,38 @@
     return [UsrMgrCls inboxRefForCurrentUser];
 }
 
-- (NSArray<NotificationModel *> *)mergedNotificationsWithUserItems:(NSArray<NotificationModel *> *)userItems
-                                                        staffItems:(NSArray<NotificationModel *> *)staffItems {
-    NSMutableDictionary<NSString *, NotificationModel *> *byKey = [NSMutableDictionary dictionary];
-    for (NotificationModel *item in userItems ?: @[]) {
-        if (![item isKindOfClass:NotificationModel.class]) continue;
-        NSString *key = [NSString stringWithFormat:@"%@::%@", item.sourcePath ?: @"UsersCol", item.nid ?: @""];
-        byKey[key] = item;
-    }
-    for (NotificationModel *item in staffItems ?: @[]) {
-        if (![item isKindOfClass:NotificationModel.class]) continue;
-        NSString *key = [NSString stringWithFormat:@"%@::%@", item.sourcePath ?: @"staff_users", item.nid ?: @""];
-        byKey[key] = item;
-    }
-
-    NSArray<NotificationModel *> *merged = byKey.allValues;
-    return [merged sortedArrayUsingComparator:^NSComparisonResult(NotificationModel * _Nonnull lhs, NotificationModel * _Nonnull rhs) {
-        NSDate *leftDate = lhs.createdAt ?: [NSDate distantPast];
-        NSDate *rightDate = rhs.createdAt ?: [NSDate distantPast];
-        return [rightDate compare:leftDate];
-    }];
-}
-
-- (FIRCollectionReference *)inboxReferenceForModel:(NotificationModel *)model user:(NSString *_Nullable)uid {
-    NSString *safePath = model.sourcePath ?: @"";
-    if ([safePath hasPrefix:@"staff_users/"]) {
-        return [self staffInboxForUser:uid];
-    }
-    return [self inboxForUser:uid];
-}
-
 #pragma mark - Reads
 
 - (id<FIRListenerRegistration>)observeInboxForUser:(NSString *)uid
                                            handler:(void (^)(NSArray<NotificationModel *> *))handler {
-    FIRCollectionReference *userRef = [self inboxForUser:uid];
+    return [self observeInboxForUser:uid stateHandler:^(NSArray<NotificationModel *> *items, __unused NSError *error) {
+        if (handler) handler(items);
+    }];
+}
+
+- (id<FIRListenerRegistration>)observeInboxForUser:(NSString *)uid
+                                       stateHandler:(PPInboxObserverStateHandler)handler {
     FIRCollectionReference *staffRef = [self staffInboxForUser:uid];
-    if (!userRef && !staffRef) {
-        if (handler) handler(@[]);
+    if (!staffRef) {
+        if (handler) {
+            handler(@[], [self.class pp_notificationErrorWithMessage:@"Staff inbox reference not found."]);
+        }
         return nil;
     }
 
-    NSMutableArray<id<FIRListenerRegistration>> *registrations = [NSMutableArray array];
-    __block NSArray<NotificationModel *> *userItems = @[];
-    __block NSArray<NotificationModel *> *staffItems = @[];
-    __weak typeof(self) weakSelf = self;
-    void (^emitMerged)(void) = ^{
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self || !handler) return;
-        handler([self mergedNotificationsWithUserItems:userItems staffItems:staffItems]);
-    };
-
-    if (userRef) {
-        id<FIRListenerRegistration> registration =
-        [[userRef queryOrderedByField:@"createdAt" descending:YES]
-         addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-            if (error || !snap) {
-                userItems = @[];
-                emitMerged();
-                return;
-            }
-
-            NSMutableArray<NotificationModel *> *items = [NSMutableArray arrayWithCapacity:snap.documents.count];
-            for (FIRDocumentSnapshot *doc in snap.documents) {
-                [items addObject:[NotificationModel fromDoc:doc]];
-            }
-            userItems = items.copy;
-            emitMerged();
-        }];
-        if (registration) [registrations addObject:registration];
-    }
-
-    if (staffRef) {
-        id<FIRListenerRegistration> registration =
-        [[staffRef queryOrderedByField:@"createdAt" descending:YES]
-         addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-            if (error || !snap) {
-                staffItems = @[];
-                emitMerged();
-                return;
-            }
-
-            NSMutableArray<NotificationModel *> *items = [NSMutableArray arrayWithCapacity:snap.documents.count];
-            for (FIRDocumentSnapshot *doc in snap.documents) {
-                [items addObject:[NotificationModel fromDoc:doc]];
-            }
-            staffItems = items.copy;
-            emitMerged();
-        }];
-        if (registration) [registrations addObject:registration];
-    }
-
-    return [[PPCombinedNotificationListener alloc] initWithRegistrations:registrations];
+    return [[staffRef queryOrderedByField:@"createdAt" descending:YES]
+            addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
+        if (error || !snap) {
+            NSError *resolvedError = error ?: [self.class pp_notificationErrorWithMessage:@"Staff inbox snapshot unavailable."];
+            if (handler) handler(@[], resolvedError);
+            return;
+        }
+        NSMutableArray<NotificationModel *> *items = [NSMutableArray arrayWithCapacity:snap.documents.count];
+        for (FIRDocumentSnapshot *doc in snap.documents) {
+            [items addObject:[NotificationModel fromDoc:doc]];
+        }
+        if (handler) handler(items.copy, nil);
+    }];
 }
 
 - (void)listenInboxForUser:(NSString *)uid handler:(void (^)(NSArray<NotificationModel *> *))handler {
@@ -171,57 +89,27 @@
                         limit:(NSInteger)limit
                    startAfter:(FIRDocumentSnapshot *)startAfter
                    completion:(PPNotifPage)completion {
-    FIRCollectionReference *userRef = [self inboxForUser:uid];
     FIRCollectionReference *staffRef = [self staffInboxForUser:uid];
-    if (!userRef && !staffRef) {
-        if (completion) completion(@[], nil, [self.class pp_notificationErrorWithMessage:@"User inbox reference not found."]);
+    if (!staffRef) {
+        if (completion) completion(@[], nil, [self.class pp_notificationErrorWithMessage:@"Staff inbox reference not found."]);
         return;
     }
 
-    dispatch_group_t group = dispatch_group_create();
-    __block NSArray<NotificationModel *> *userItems = @[];
-    __block NSArray<NotificationModel *> *staffItems = @[];
-    __block NSError *lastError = nil;
     NSInteger safeLimit = MAX(limit, 1);
-
-    void (^fetchBlock)(FIRCollectionReference *, BOOL) = ^(FIRCollectionReference *ref, BOOL isStaff) {
-        if (!ref) return;
-        dispatch_group_enter(group);
-        FIRQuery *query = [ref queryOrderedByField:@"createdAt" descending:YES];
-        query = [query queryLimitedTo:safeLimit];
-        if (startAfter) query = [query queryStartingAfterDocument:startAfter];
-        [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
-            if (error || !snapshot) {
-                lastError = error;
-                dispatch_group_leave(group);
-                return;
-            }
-
-            NSMutableArray<NotificationModel *> *items = [NSMutableArray arrayWithCapacity:snapshot.documents.count];
-            for (FIRDocumentSnapshot *doc in snapshot.documents) {
-                [items addObject:[NotificationModel fromDoc:doc]];
-            }
-            if (isStaff) {
-                staffItems = items.copy;
-            } else {
-                userItems = items.copy;
-            }
-            dispatch_group_leave(group);
-        }];
-    };
-
-    fetchBlock(userRef, NO);
-    fetchBlock(staffRef, YES);
-
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        if (lastError) {
-            if (completion) completion(@[], nil, lastError);
+    FIRQuery *query = [[staffRef queryOrderedByField:@"createdAt" descending:YES] queryLimitedTo:safeLimit];
+    if (startAfter) query = [query queryStartingAfterDocument:startAfter];
+    [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error || !snapshot) {
+            NSError *resolvedError = error ?: [self.class pp_notificationErrorWithMessage:@"Staff inbox page unavailable."];
+            if (completion) completion(@[], nil, resolvedError);
             return;
         }
-        NSArray<NotificationModel *> *merged = [self mergedNotificationsWithUserItems:userItems staffItems:staffItems];
-        NSArray<NotificationModel *> *page = (merged.count > safeLimit) ? [merged subarrayWithRange:NSMakeRange(0, safeLimit)] : merged;
-        if (completion) completion(page, nil, nil);
-    });
+        NSMutableArray<NotificationModel *> *items = [NSMutableArray arrayWithCapacity:snapshot.documents.count];
+        for (FIRDocumentSnapshot *doc in snapshot.documents) {
+            [items addObject:[NotificationModel fromDoc:doc]];
+        }
+        if (completion) completion(items.copy, snapshot.documents.lastObject, nil);
+    }];
 }
 
 #pragma mark - Writes
@@ -229,23 +117,22 @@
 - (void)markRead:(NotificationModel *)model
          forUser:(NSString *_Nullable)uid
       completion:(void (^)(NSError * _Nullable))completion {
-    FIRCollectionReference *ref = [self inboxReferenceForModel:model user:uid];
-    if (!ref) {
-        if (completion) completion([self.class pp_notificationErrorWithMessage:@"Unable to mark notification as read."]);
+    (void)uid;
+    if (![model isKindOfClass:NotificationModel.class] || model.nid.length == 0) {
+        if (completion) completion([self.class pp_notificationErrorWithMessage:@"Staff notification id is required."]);
         return;
     }
-    [[ref documentWithPath:model.nid] updateData:@{@"isRead" : @YES} completion:completion];
-}
-
-- (void)deleteNotification:(NotificationModel *)model
-                   forUser:(NSString *)uid
-                completion:(void (^)(NSError * _Nullable))completion {
-    FIRCollectionReference *ref = [self inboxReferenceForModel:model user:uid];
-    if (!ref) {
-        if (completion) completion([self.class pp_notificationErrorWithMessage:@"Unable to delete notification."]);
+    NSString *sourcePath = [model.sourcePath stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![sourcePath hasPrefix:@"staff_users/"]) {
+        if (completion) completion([self.class pp_notificationErrorWithMessage:@"Staff notification source is required."]);
         return;
     }
-    [[ref documentWithPath:model.nid] deleteDocumentWithCompletion:completion];
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"staffNotificationInboxReadAck"];
+    [callable callWithObject:@{@"notificationId": model.nid} completion:^(__unused FIRHTTPSCallableResult *result, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(error);
+        });
+    }];
 }
 
 - (void)sendToUser:(NSString *)uid

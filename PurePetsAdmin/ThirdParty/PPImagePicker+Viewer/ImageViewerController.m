@@ -113,7 +113,7 @@
     [self.view addSubview:self.pageControl];
     
     [NSLayoutConstraint activateConstraints:@[
-        [self.pageControl.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-10],
+        [self.pageControl.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-10],
         [self.pageControl.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor]
     ]];
 }

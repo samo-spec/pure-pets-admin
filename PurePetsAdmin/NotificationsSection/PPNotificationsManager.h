@@ -54,7 +54,17 @@ typedef NS_ENUM(NSInteger, PPNotificationAudience) {
                              data:(nullable NSDictionary *)data
                          audience:(PPNotificationAudience)audience
                           userIDs:(nullable NSArray<NSString *> *)userIDs
-                       completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
+                        completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
+
+/// Dispatches through the authoritative Notifications V2 callable. Recipient
+/// resolution, authorization, idempotency, and audit logging remain server-owned.
++ (void)sendConsoleNotificationWithTitle:(NSString *)title
+                                    body:(NSString *)body
+                                    type:(NSInteger)type
+                                audience:(PPNotificationAudience)audience
+                                 userIDs:(nullable NSArray<NSString *> *)userIDs
+                          idempotencyKey:(NSString *)idempotencyKey
+                              completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 //=======================================================================================================================================//
 

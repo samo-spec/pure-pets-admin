@@ -1234,15 +1234,12 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
         [weakSelf pp_handlePickedExistingUser:user];
     };
 
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:picker];
-    nav.modalPresentationStyle = UIModalPresentationPageSheet;
-    if (@available(iOS 15.0, *)) {
-        UISheetPresentationController *sheet = nav.sheetPresentationController;
-        sheet.detents = @[[UISheetPresentationControllerDetent mediumDetent], [UISheetPresentationControllerDetent largeDetent]];
-        sheet.prefersGrabberVisible = YES;
-        sheet.prefersScrollingExpandsWhenScrolledToEdge = YES;
+    if (self.navigationController) {
+        [self.navigationController pushViewController:picker animated:YES];
+    } else {
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:picker];
+        [self presentViewController:nav animated:YES completion:nil];
     }
-    [self presentViewController:nav animated:YES completion:nil];
 }
 
 - (void)pp_handlePickedExistingUser:(UserModel *)user {

@@ -865,11 +865,15 @@ moveItemAtIndexPath:(NSIndexPath *)sourceIndexPath
     self.isPresentingMediaPicker = YES;
     self.currentPicker = imagePickerController;
     
-    [presentingVC presentViewController:imagePickerController
-                               animated:YES
-                             completion:^{
-        NSLog(@"[PPImageCollection] Gallery picker presented successfully");
-    }];
+    if (presentingVC.navigationController) {
+        [presentingVC.navigationController pushViewController:imagePickerController animated:YES];
+    } else {
+        [presentingVC presentViewController:imagePickerController
+                                   animated:YES
+                                 completion:^{
+            NSLog(@"[PPImageCollection] Gallery picker presented successfully");
+        }];
+    }
 }
 
 - (void)openCameraFromViewController:(UIViewController *)viewController

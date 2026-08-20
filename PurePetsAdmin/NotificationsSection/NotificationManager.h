@@ -16,17 +16,23 @@ NS_ASSUME_NONNULL_BEGIN
 @protocol FIRListenerRegistration;
 
 typedef void(^PPNotifPage)(NSArray<NotificationModel *> *items, FIRDocumentSnapshot *_Nullable lastDoc, NSError *_Nullable err);
+typedef void(^PPInboxObserverStateHandler)(NSArray<NotificationModel *> *items, NSError *_Nullable error);
 
 @interface NotificationManager : NSObject
 + (instancetype)shared;
 
 // paths: admin notifications collection (global) and per-user inbox
 - (FIRCollectionReference *)adminCollection;     // /admin/notifications/items
-- (FIRCollectionReference *)inboxForUser:(NSString *)uid; // /users/{uid}/inbox
+- (FIRCollectionReference *)inboxForUser:(NSString *)uid; // customer destination used only when composing
 
 // reads
 - (id<FIRListenerRegistration> _Nullable)observeInboxForUser:(NSString *)uid
                                                      handler:(void(^)(NSArray<NotificationModel *> *items))handler;
+
+/// Error-aware observer for the canonical staff inbox. The items-only overload
+/// remains available for legacy callers that cannot surface a listener error.
+- (id<FIRListenerRegistration> _Nullable)observeInboxForUser:(NSString *)uid
+                                                stateHandler:(PPInboxObserverStateHandler)handler;
 
 - (void)listenInboxForUser:(NSString *)uid
                    handler:(void(^)(NSArray<NotificationModel *> *items))handler;
@@ -38,7 +44,6 @@ typedef void(^PPNotifPage)(NSArray<NotificationModel *> *items, FIRDocumentSnaps
 
 // writes
 - (void)markRead:(NotificationModel *)model forUser:(NSString *_Nullable)uid completion:(void(^_Nullable)(NSError * _Nullable err ))completion;
-- (void)deleteNotification:(NotificationModel *)model forUser:(NSString *)uid completion:(void(^)(NSError *_Nullable err))completion;
 
 // send (compose)
 - (void)sendToUser:(NSString *)uid model:(NotificationModel *)model completion:(void(^)(NSError *_Nullable err))completion;

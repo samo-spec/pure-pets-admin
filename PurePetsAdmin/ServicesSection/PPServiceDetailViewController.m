@@ -206,10 +206,10 @@
     [self.view addSubview:self.tableView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-78]
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 }
 
@@ -226,7 +226,7 @@
     [NSLayoutConstraint activateConstraints:@[
         [self.actionBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.actionBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.actionBar.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [self.actionBar.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [self.actionBar.heightAnchor constraintEqualToConstant:68]
     ]];
 

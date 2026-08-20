@@ -61,6 +61,29 @@ static BOOL PPAdminPayloadTargetsOtherApp(NSDictionary *payload)
     return targetApp.length > 0 && ![targetApp isEqualToString:@"admin_ios"];
 }
 
+static BOOL PPAdminPayloadHasSupportedSchema(NSDictionary *payload)
+{
+    NSDictionary *safePayload = [payload isKindOfClass:NSDictionary.class] ? payload : @{};
+    NSDictionary *meta = [safePayload[@"meta"] isKindOfClass:NSDictionary.class] ? safePayload[@"meta"] : @{};
+    id rawSchema = safePayload[@"schemaVersion"] ?: meta[@"schemaVersion"];
+    if (!rawSchema) return YES;
+
+    NSString *schema = @"";
+    if ([rawSchema isKindOfClass:NSString.class]) {
+        schema = [PPAdminRouteTrimmedString(rawSchema) lowercaseString];
+    } else if ([rawSchema isKindOfClass:NSNumber.class]) {
+        schema = [[(NSNumber *)rawSchema stringValue] lowercaseString];
+    }
+    if (schema.length == 0) return NO;
+
+    static NSSet<NSString *> *supportedSchemas;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        supportedSchemas = [NSSet setWithArray:@[@"1", @"2", @"order.lifecycle.v1", @"order.fulfillment.v1"]];
+    });
+    return [supportedSchemas containsObject:schema];
+}
+
 static NSString *PPAdminPaymentOrderIDFromRemoteNotification(NSDictionary *userInfo)
 {
     NSDictionary *safeUserInfo = [userInfo isKindOfClass:NSDictionary.class] ? userInfo : @{};
@@ -95,6 +118,11 @@ static NSString *PPAdminPaymentOrderIDFromRemoteNotification(NSDictionary *userI
 @end
 
 @implementation AppDelegate
+
++ (BOOL)pp_isNotificationPayloadRoutable:(NSDictionary *)payload
+{
+    return PPAdminPayloadHasSupportedSchema(payload) && !PPAdminPayloadTargetsOtherApp(payload);
+}
 
 extern BOOL PP_TouchDotsEnabled;
 
@@ -749,7 +777,7 @@ extern BOOL PP_TouchDotsEnabled;
          withCompletionHandler:(void (^)(UNNotificationPresentationOptions options))completionHandler {
     (void)center;
     NSDictionary *payload = notification.request.content.userInfo;
-    if (PPAdminPayloadTargetsOtherApp(payload)) {
+    if (![AppDelegate pp_isNotificationPayloadRoutable:payload]) {
         NSLog(@"PPLAB NotificationsV2 admin receive suppressed | targetApp_mismatch=yes appId=%@", PPAdminNotificationV2AppID);
         completionHandler(UNNotificationPresentationOptionNone);
         return;
@@ -768,7 +796,7 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
          withCompletionHandler:(void (^)(void))completionHandler {
     (void)center;
     NSDictionary *payload = response.notification.request.content.userInfo;
-    if (PPAdminPayloadTargetsOtherApp(payload)) {
+    if (![AppDelegate pp_isNotificationPayloadRoutable:payload]) {
         NSLog(@"PPLAB NotificationsV2 admin tap ignored | targetApp_mismatch=yes appId=%@", PPAdminNotificationV2AppID);
         if (completionHandler) completionHandler();
         return;

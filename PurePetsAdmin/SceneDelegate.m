@@ -1,4 +1,5 @@
 #import "SceneDelegate.h"
+#import "AppDelegate.h"
 #import <GoogleSignIn/GoogleSignIn.h>
 @import Firebase;
 @import FirebaseAuth;
@@ -133,7 +134,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                                                    selector:@selector(pp_handlePaymentOrderRouteNotification:)
                                                        name:PPAdminRouteToPaymentOrderNotification
                                                      object:nil];
-          NSString *pendingOrderID = PPAdminNotificationOrderIDFromUserInfo(connectionOptions.notificationResponse.notification.request.content.userInfo);
+          NSDictionary *coldStartPayload = connectionOptions.notificationResponse.notification.request.content.userInfo;
+          NSString *pendingOrderID = [AppDelegate pp_isNotificationPayloadRoutable:coldStartPayload]
+               ? PPAdminNotificationOrderIDFromUserInfo(coldStartPayload)
+               : @"";
           if (pendingOrderID.length > 0) {
                [adminRoot routeToPaymentOrderID:pendingOrderID];
            }
@@ -170,7 +174,10 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      self.pp_requiresManualUnlockRetry = NO;
      self.pp_skipNextDidBecomeActiveAutoPrompt = NO;
      self.pp_lastUnlockPromptAt = 0;
-     NSString *pendingOrderID = PPAdminNotificationOrderIDFromUserInfo(connectionOptions.notificationResponse.notification.request.content.userInfo);
+     NSDictionary *coldStartPayload = connectionOptions.notificationResponse.notification.request.content.userInfo;
+     NSString *pendingOrderID = [AppDelegate pp_isNotificationPayloadRoutable:coldStartPayload]
+          ? PPAdminNotificationOrderIDFromUserInfo(coldStartPayload)
+          : @"";
      if (pendingOrderID.length > 0) {
           self.pp_pendingPaymentOrderID = pendingOrderID;
       }

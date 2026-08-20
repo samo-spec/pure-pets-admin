@@ -6,6 +6,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPFulfillmentRecord : NSObject
 @property (nonatomic, copy) NSString *fulfillmentID;
+@property (nonatomic, copy) NSString *branchId;
+@property (nonatomic, copy) NSString *regionId;
 @property (nonatomic, copy) NSString *parentOrderID;
 @property (nonatomic, copy) NSString *parentOrderNumber;
 @property (nonatomic, copy) NSString *parentUserId;
@@ -29,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPFulfillmentService : NSObject
 + (instancetype)shared NS_SWIFT_NAME(shared());
++ (BOOL)isPartialReadError:(nullable NSError *)error;
 
 - (void)fetchFulfillmentsWithCompletion:(void(^)(NSArray<PPFulfillmentRecord *> *records, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillments(completion:));

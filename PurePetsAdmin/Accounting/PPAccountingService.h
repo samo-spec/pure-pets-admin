@@ -29,6 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSArray<PPAccountingExpense *> *expenses;
 @property (nonatomic, readonly) double orderRevenue;
 @property (nonatomic, readonly) NSInteger orderCount;
+@property (nonatomic, readonly) BOOL orderRevenueEvidenceAvailable;
+@property (nonatomic, strong, nullable, readonly) NSError *orderRevenueError;
+
+- (BOOL)currentStaffCanReadOrderRevenue;
 
 - (id<FIRListenerRegistration>)subscribeTransactionsWithFilter:(NSString *)filter callback:(void(^)(void))callback;
 - (id<FIRListenerRegistration>)subscribeExpensesWithFilter:(NSString *)filter callback:(void(^)(void))callback;

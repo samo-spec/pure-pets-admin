@@ -41,6 +41,7 @@
                                                       action:@selector(didTapSave)];
     self.saveButton.tintColor = AppPrimaryClr;
     self.navigationItem.rightBarButtonItem = self.saveButton;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)setupDraft {

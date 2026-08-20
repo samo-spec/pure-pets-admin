@@ -61,6 +61,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     self.clearButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"trash"] style:UIBarButtonItemStylePlain target:self action:@selector(didTapClear)];
     self.clearButton.accessibilityLabel = kLang(@"POS_Clear");
     self.navigationItem.leftBarButtonItem = self.clearButton;
+    PPCommandCenterNavigationItemsDidChange(self);
 
     [self buildCheckoutDock];
     [self buildSearchHeader];
@@ -338,7 +339,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     [NSLayoutConstraint activateConstraints:@[
         [dock.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
         [dock.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-PPSpaceMD],
+        [dock.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [dock.heightAnchor constraintGreaterThanOrEqualToConstant:84.0],
 
         [captionLabel.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor constant:PPSpaceLG],

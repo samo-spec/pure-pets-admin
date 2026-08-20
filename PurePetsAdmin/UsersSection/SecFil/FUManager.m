@@ -848,8 +848,12 @@ static inline BOOL FUShouldTreatAuthErrorAsTransient(NSError * _Nullable error) 
 {
     if (uid.length == 0 || fields.count == 0) { if (completion) completion([self p_err:@"Invalid uid or empty fields" code:-1]); return; }
 
+    NSMutableDictionary<NSString *, id> *safeFields = [fields mutableCopy];
+    [safeFields removeObjectForKey:@"PPUserTokenID"];
+    [safeFields removeObjectForKey:@"PPProTokenID"];
+    if (safeFields.count == 0) { if (completion) completion(nil); return; }
     [[[self.db collectionWithPath:kFUUsersCollection] documentWithPath:uid]
-     updateData:fields
+     updateData:safeFields
      completion:^(NSError * _Nullable error) {
         if (completion) completion(error);
     }];

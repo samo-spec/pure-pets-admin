@@ -665,10 +665,11 @@ private final class PPFulfillmentOrdersViewModel: ObservableObject {
         let registration = service.observeFulfillments { [weak self] records, isFromCache, error in
             let snapshots = records.map(PPFulfillmentSnapshot.init(record:))
             let message = error?.localizedDescription
+            let isPartialRead = PPFulfillmentService.isPartialReadError(error)
             DispatchQueue.main.async {
                 guard let self, generation == self.listenerGeneration else { return }
                 self.isLoading = false
-                if let message {
+                if let message, !isPartialRead {
                     self.errorMessage = message
                     self.finishRefresh()
                     return
@@ -677,7 +678,7 @@ private final class PPFulfillmentOrdersViewModel: ObservableObject {
                 self.isFromCache = isFromCache
                 self.markChangedRecords(in: snapshots)
                 self.records = snapshots
-                self.errorMessage = nil
+                self.errorMessage = isPartialRead ? message : nil
                 self.hasLoadedOnce = true
                 self.resolveNames(for: snapshots)
                 self.finishRefresh()

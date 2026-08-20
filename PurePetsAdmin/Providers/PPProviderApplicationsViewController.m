@@ -1662,6 +1662,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
                                                                                 action:@selector(loadData)];
     refresh.accessibilityLabel = kLang(@"DC_Refresh");
     self.navigationItem.rightBarButtonItem = refresh;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)pp_configureTableView {

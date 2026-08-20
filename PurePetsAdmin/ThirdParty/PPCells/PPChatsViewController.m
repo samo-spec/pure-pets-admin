@@ -861,14 +861,14 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
         [self.messageField.topAnchor constraintEqualToAnchor:self.inputContainer.topAnchor constant:12.0],
         [self.messageField.trailingAnchor constraintEqualToAnchor:self.sendButton.leadingAnchor constant:-10.0],
         self.messageFieldHeightConstraint,
-        [self.messageField.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12.0],
+        [self.messageField.bottomAnchor constraintEqualToAnchor:self.inputContainer.bottomAnchor constant:-12.0],
 
         [self.sendButton.trailingAnchor constraintEqualToAnchor:self.inputContainer.trailingAnchor constant:-16.0],
         [self.sendButton.centerYAnchor constraintEqualToAnchor:self.messageField.centerYAnchor],
         [self.sendButton.widthAnchor constraintEqualToConstant:44.0],
         [self.sendButton.heightAnchor constraintEqualToConstant:44.0],
 
-        [self.tableView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.inputContainer.topAnchor],

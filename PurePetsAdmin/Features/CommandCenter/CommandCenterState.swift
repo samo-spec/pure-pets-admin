@@ -96,6 +96,8 @@ final class CommandCenterState: ObservableObject {
         let pendingProviders = available(raw.pendingProviderApplicationCount)
         let areaOrder = ["payments", "fulfillment", "delivery", "providers", "listings", "users", "stock"]
         let failedAreas = areaOrder.filter { raw.failedAreas.contains($0) }
+        let partialAreas = areaOrder.filter { raw.partialAreas.contains($0) }
+        let degradedAreas = failedAreas + partialAreas.filter { !failedAreas.contains($0) }
 
         var attention: [AttentionItem] = []
         if let pendingProviders, pendingProviders > 0 {
@@ -165,8 +167,8 @@ final class CommandCenterState: ObservableObject {
         }
 
         let health: OperationalHealth
-        if !failedAreas.isEmpty {
-            health = .partial(failedAreas.count)
+        if !degradedAreas.isEmpty {
+            health = .partial(degradedAreas.count)
         } else if attention.isEmpty {
             health = .stable
         } else {
@@ -189,7 +191,8 @@ final class CommandCenterState: ObservableObject {
                 accessories: available(raw.accessoriesCount)
             ),
             requestedAreas: raw.requestedAreas,
-            failedAreas: failedAreas
+            failedAreas: failedAreas,
+            partialAreas: partialAreas
         )
     }
 

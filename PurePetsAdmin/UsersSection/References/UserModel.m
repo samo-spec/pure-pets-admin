@@ -1107,9 +1107,7 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     [coder encodeObject:self.loginDate forKey:kUserKeyLoginDate];
     [coder encodeObject:self.updatedAt forKey:kUserKeyUpdatedAt];
     [coder encodeInteger:self.CountryID forKey:kUserKeyCountryID];
-    [coder encodeObject:self.PPUserTokenID forKey:kUserKeyPPUserTokenID];
     [coder encodeObject:self.PPAdminTokenID forKey:kUserKeyPPAdminTokenID];
-    [coder encodeObject:self.PPProTokenID forKey:kUserKeyPPProTokenID];
     [coder encodeBool:self.isAdmin forKey:kUserKeyIsAdmin];
     [coder encodeBool:self.isSuperAdmin forKey:kUserKeyIsSuperAdmin];
     [coder encodeBool:self.isBlocked forKey:kUserKeyIsBlocked];
@@ -1121,7 +1119,6 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     [coder encodeObject:self.plan forKey:kUserKeyPlan];
     [coder encodeInteger:self.loginSource forKey:kUserKeyLoginSource];
     [coder encodeObject:self.PPAdminTokenID forKey:kUserKeyPPAdminTokenID];
-    [coder encodeObject:self.PPProTokenID forKey:kUserKeyPPProTokenID];
     [coder encodeInteger:self.onlineStatus forKey:kUserKeyOnlineStatus];
     [coder encodeBool:self.isOnline forKey:kUserKeyIsOnline];
     [coder encodeObject:self.lastSeen forKey:kUserKeyLastSeen];

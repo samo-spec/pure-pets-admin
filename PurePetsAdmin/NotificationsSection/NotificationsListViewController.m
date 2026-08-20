@@ -60,6 +60,12 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
     return route.length == 0 || [route isEqualToString:PPAdminNotificationPaymentsOrderRoute] || model.type == PPNotificationTypeOrder;
 }
 
+static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
+{
+    if (![error isKindOfClass:NSError.class]) return @"";
+    return [NSString stringWithFormat:@"%@:%ld", error.domain ?: @"", (long)error.code];
+}
+
 
 
 @interface NotificationsListViewController () <UITableViewDataSource, UITableViewDelegate, PPSDelegate>
@@ -75,6 +81,8 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
 @property (nonatomic, assign) BOOL isLoading;
 @property (nonatomic, strong) NSString *uid;
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> inboxListener;
+@property (nonatomic, strong, nullable) NSError *inboxError;
+@property (nonatomic, copy, nullable) NSString *lastInboxErrorSignature;
 @end
 
 @implementation NotificationsListViewController
@@ -242,16 +250,34 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
     }
 
     __weak typeof(self) weakSelf = self;
+    __block BOOL shouldToastLoaded = showToast;
     // Live listen
 
     [self.inboxListener remove];
-    self.inboxListener = [[NotificationManager shared] observeInboxForUser:UsrMgr.currentUser.uid handler:^(NSArray<NotificationModel *> *items) {
+    self.inboxListener = [[NotificationManager shared] observeInboxForUser:UsrMgr.currentUser.uid stateHandler:^(NSArray<NotificationModel *> *items, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
         self.isLoading = NO;
         if (self.refreshControl.isRefreshing) [self.refreshControl endRefreshing];
-        
-        self.allNotifications = items ?: @[];
-        self.filteredNotifications = self.allNotifications;
+
+        self.inboxError = error;
+        if (error) {
+            NSString *signature = PPAdminNotificationInboxErrorSignature(error);
+            BOOL shouldSurfaceError = signature.length > 0 && ![signature isEqualToString:self.lastInboxErrorSignature];
+            self.lastInboxErrorSignature = signature;
+            if (shouldSurfaceError) {
+                NSLog(@"[NotificationsV2] Admin inbox listener failed | domain=%@ code=%ld", error.domain ?: @"unknown", (long)error.code);
+                [PPToast toast:kLang(@"FetchError") style:PPToastStyleError haptic:YES duration:2.0 position:PPToastPositionBottom inView:self.view];
+            }
+        } else {
+            self.lastInboxErrorSignature = nil;
+        }
+
+        // A listener error must not erase already-rendered, confirmed inbox items.
+        if (!error || items.count > 0 || self.allNotifications.count == 0) {
+            self.allNotifications = items ?: @[];
+            self.filteredNotifications = self.allNotifications;
+        }
         // update PPS search index with items
         [self.searchView setSearchItems:self.allNotifications stringProvider:^NSString * _Nonnull(id item) {
             if (![item isKindOfClass:NotificationModel.class]) return @"";
@@ -261,7 +287,10 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
         }];
 
         [self reloadTableAnimated:YES];
-        [PPToast toast:kLang(@"NotificationsLoaded") style:PPToastStyleSuccess haptic:NO duration:1.0 position:PPToastPositionBottom inView:self.view];
+        if (!error && shouldToastLoaded) {
+            [PPToast toast:kLang(@"NotificationsLoaded") style:PPToastStyleSuccess haptic:NO duration:1.0 position:PPToastPositionBottom inView:self.view];
+            shouldToastLoaded = NO;
+        }
    
         
         
@@ -369,7 +398,9 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
             cell.textLabel.font = [Styling fontMedium:15];
             cell.backgroundColor = UIColor.whiteColor;
         }
-        cell.textLabel.text = kLang(@"NoNotifications");
+        cell.textLabel.text = self.inboxError
+            ? [NSString stringWithFormat:@"%@\n%@", kLang(@"FetchError"), kLang(@"PullToRefresh")]
+            : kLang(@"NoNotifications");
         return cell;
     }
 
@@ -421,25 +452,6 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
     [self.navigationController pushViewController:vc animated:YES];
 }
 
-- (UISwipeActionsConfiguration *)tableView:(UITableView *)tv trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
-    NotificationModel *m = self.filteredNotifications[ip.row];
-    __weak typeof(self) weakSelf = self;
-
-    UIContextualAction *read = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:(m.isRead ? kLang(@"Unread") : kLang(@"Read")) handler:^(__unused UIContextualAction *action, __unused UIView *view, void (^completionHandler)(BOOL)) {
-        __strong typeof(weakSelf) self = weakSelf;
-        m.isRead = !m.isRead;
-        [[NotificationManager shared] markRead:m forUser:self.uid completion:^(__unused NSError *err) { completionHandler(YES); }];
-    }];
-    read.backgroundColor = [UIColor ppPrimary];
-
-    UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:kLang(@"Delete") handler:^(__unused UIContextualAction *a, __unused UIView *v, void (^completion)(BOOL)) {
-        __strong typeof(weakSelf) self = weakSelf;
-        [[NotificationManager shared] deleteNotification:m forUser:self.uid completion:^(__unused NSError *err) { completion(YES); }];
-    }];
-
-    return [UISwipeActionsConfiguration configurationWithActions:@[del, read]];
-}
-
 #pragma mark - Dealloc
 
 - (void)dealloc {
@@ -454,40 +466,3 @@ static BOOL PPAdminNotificationRoutesToPaymentOrder(NotificationModel *model)
 
 
 @end
-
-
-/*
- #pragma mark - Table
- - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section { return self.filtered.count; }
-
- - (UITableViewCell *)tableView:(UITableView *)tv cellForRowAtIndexPath:(NSIndexPath *)ip {
-     NotificationCell *cell = [tv dequeueReusableCellWithIdentifier:NotificationCell.reuseId forIndexPath:ip];
-     [cell configure:self.filtered[ip.row]];
-     return cell;
- }
-
- - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-     NotificationModel *m = self.filtered[indexPath.row];
-     NotificationDetailViewController *vc = [[NotificationDetailViewController alloc] initWithModel:m userID:self.uid];
-     [self.navigationController pushViewController:vc animated:YES];
- }
-
- - (UISwipeActionsConfiguration *)tableView:(UITableView *)tv trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)ip {
-     NotificationModel *m = self.filtered[ip.row];
-     __weak typeof(self) weakSelf = self;
-
-     UIContextualAction *read = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleNormal title:(m.isRead ? kLang(@"Unread") : kLang(@"Read")) handler:^(__unused UIContextualAction *action, __unused UIView *view, void (^completionHandler)(BOOL)) {
-         __strong typeof(weakSelf) self = weakSelf;
-         m.isRead = !m.isRead;
-         [[NotificationManager shared] markRead:m forUser:self.uid completion:^(__unused NSError *err) { completionHandler(YES); }];
-     }];
-     read.backgroundColor = [UIColor ppPrimary];
-
-     UIContextualAction *del = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:kLang(@"Delete") handler:^(__unused UIContextualAction *a, __unused UIView *v, void (^completion)(BOOL)) {
-         __strong typeof(weakSelf) self = weakSelf;
-         [[NotificationManager shared] deleteNotification:m forUser:self.uid completion:^(__unused NSError *err) { completion(YES); }];
-     }];
-
-     return [UISwipeActionsConfiguration configurationWithActions:@[del, read]];
- }
- */

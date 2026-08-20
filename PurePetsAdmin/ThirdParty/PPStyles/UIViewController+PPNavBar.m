@@ -35,6 +35,29 @@ static inline NSMutableDictionary<NSString *, UIView *> *PPDictForVC(UIViewContr
 }
 
 static const void *kPPCommandCenterNavigationManagedKey = &kPPCommandCenterNavigationManagedKey;
+NSNotificationName const PPCommandCenterNavigationItemsDidChangeNotification = @"PPCommandCenterNavigationItemsDidChangeNotification";
+
+void PPCommandCenterNavigationItemsDidChange(UIViewController *viewController) {
+    if (!viewController) return;
+    dispatch_block_t post = ^{
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPCommandCenterNavigationItemsDidChangeNotification
+                                                            object:viewController];
+    };
+    if ([NSThread isMainThread]) {
+        post();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), post);
+    }
+}
+
+BOOL PPCommandCenterNavigationHasCustomBackAction(UIViewController *viewController) {
+    if (!viewController) return NO;
+    SEL selector = @selector(onBack);
+    Method baseMethod = class_getInstanceMethod(UIViewController.class, selector);
+    IMP baseImplementation = baseMethod ? method_getImplementation(baseMethod) : NULL;
+    IMP visibleImplementation = [viewController methodForSelector:selector];
+    return baseImplementation && visibleImplementation && visibleImplementation != baseImplementation;
+}
 
 void PPSetCommandCenterNavigationManaged(UINavigationController *navigationController, BOOL managed) {
     if (!navigationController) return;
@@ -50,7 +73,10 @@ BOOL PPCommandCenterNavigationIsManaged(UINavigationController *navigationContro
 }
 
 static BOOL PPUsesCommandCenterSystemNavigation(UIViewController *vc) {
-    return PPCommandCenterNavigationIsManaged(vc.navigationController);
+    if (PPCommandCenterNavigationIsManaged(vc.navigationController)) {
+        return YES;
+    }
+    return vc.navigationController != nil;
 }
 
 static void PPRemoveOverlayNavigationBar(UIViewController *vc) {
@@ -133,6 +159,7 @@ static UIView *PPConfigureCommandCenterSystemNavigation(UIViewController *vc,
     } else {
         PPRemoveCommandCenterSystemButton(vc, kPPKeyBaseButton);
     }
+    PPCommandCenterNavigationItemsDidChange(vc);
     return navigationController.navigationBar;
 }
 
@@ -362,6 +389,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
         if (resolvedTitle.length > 0) {
             self.navigationItem.title = resolvedTitle;
         }
+        PPCommandCenterNavigationItemsDidChange(self);
         return;
     }
     UILabel *lbl = PPTitleForVC(self);
@@ -499,6 +527,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
             [self _pp_updateButton:btn target:target action:action tap:tapBlock];
         }
         PPSetCommandCenterSystemButton(self, btn, key, YES);
+        PPCommandCenterNavigationItemsDidChange(self);
         return btn;
     }
     UIView *bar = PPBarForVC(self); if (!bar) [self pp_navBarAttachWithTitle:nil];
@@ -527,6 +556,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
             [self _pp_updateButton:btn target:target action:action tap:tapBlock];
         }
         PPSetCommandCenterSystemButton(self, btn, key, NO);
+        PPCommandCenterNavigationItemsDidChange(self);
         return btn;
     }
     UIView *bar = PPBarForVC(self); if (!bar) [self pp_navBarAttachWithTitle:nil];
@@ -551,6 +581,7 @@ static NSDictionary *PPNavTitleAttributes(void) {
 - (void)pp_navBarRemoveButtonForKey:(NSString *)key {
     if (PPUsesCommandCenterSystemNavigation(self)) {
         PPRemoveCommandCenterSystemButton(self, key);
+        PPCommandCenterNavigationItemsDidChange(self);
         return;
     }
     NSMutableDictionary<NSString *, UIView *> *dict = PPDictForVC(self, NO);

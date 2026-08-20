@@ -58,6 +58,7 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
                                                                             action:@selector(pp_chooseProviderTypeForNewPlan)];
         add.accessibilityLabel = kLang(@"Providers_Plans_New");
         self.navigationItem.rightBarButtonItem = add;
+        PPCommandCenterNavigationItemsDidChange(self);
     }
 }
 

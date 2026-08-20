@@ -7,6 +7,15 @@
 
 static NSString *const kAuditCellID = @"AuditCell";
 
+static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
+    PPStaffDoc *current = [PPStaffAuth shared].cachedCurrentStaff;
+    NSString *authUID = [FIRAuth auth].currentUser.uid;
+    return (staff != nil && current == staff && authUID.length > 0 &&
+            [staff.uid isEqualToString:authUID] && staff.isActive &&
+            (staff.isAdmin || staff.hasGlobalScope) &&
+            [staff hasPermission:kStaffPermAuditView]);
+}
+
 static UIColor *PPAuditColorForAction(NSString *action) {
     if ([action hasPrefix:@"set_blocked"] || [action hasPrefix:@"set_unblocked"]) {
         return [action containsString:@"unblocked"] ? [UIColor ppSuccess] : [UIColor ppError];
@@ -70,6 +79,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     self.view.backgroundColor = [UIColor ppBackground];
     UIBarButtonItem *close = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(dismissVC)];
     self.navigationItem.rightBarButtonItem = close;
+    PPCommandCenterNavigationItemsDidChange(self);
     _textView = [[UITextView alloc] init];
     _textView.translatesAutoresizingMaskIntoConstraints = NO;
     _textView.editable = NO;
@@ -98,6 +108,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
 @property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *allEntries;
 @property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *filteredEntries;
 @property (nonatomic, strong) id<FIRListenerRegistration> listenerReg;
+@property (nonatomic, assign) NSUInteger listenerGeneration;
 @property (nonatomic, assign) BOOL hasAppeared;
 @property (nonatomic, assign) BOOL didPrepareEntrance;
 @property (nonatomic, strong) UIView *heroHeaderView;
@@ -125,8 +136,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     [super viewDidLoad];
     [self setupNavigation];
     [self setupTableView];
-    [self evaluatePermissions];
-    [self loadData];
+    if ([self evaluatePermissions]) [self loadData];
 }
 
 - (void)setupNavigation {
@@ -154,22 +164,46 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
     self.refreshControl = refresh;
 }
 
-- (void)evaluatePermissions {
-    BOOL hasView = [[PPStaffAuth shared].cachedCurrentStaff hasPermission:kStaffPermAuditView];
-    BOOL isAdmin = UsrMgr.currentUser.isSuperAdmin || UsrMgr.currentUser.isAdmin;
-    if (!hasView && !isAdmin) {
+- (BOOL)evaluatePermissions {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    BOOL hasGlobalResourceReach = staff.isAdmin || staff.hasGlobalScope;
+    BOOL hasAuditPermission = [staff hasPermission:kStaffPermAuditView];
+    if (!hasGlobalResourceReach || !hasAuditPermission) {
+        [self.listenerReg remove];
+        self.listenerReg = nil;
+        self.listenerGeneration += 1;
         [PPHUD showError:kLang(@"Error_Title")];
         [self.navigationController popViewControllerAnimated:YES];
+        return NO;
     }
+    return YES;
 }
 
 - (void)loadData {
+    [self.listenerReg remove];
+    self.listenerReg = nil;
+    self.listenerGeneration += 1;
+    NSUInteger generation = self.listenerGeneration;
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     FIRQuery *query = [[[[FIRFirestore firestore] collectionWithPath:@"AdminAuditLogs"]
                         queryOrderedByField:@"timestamp" descending:YES]
                        queryLimitedTo:500];
     __weak typeof(self) weakSelf = self;
     self.listenerReg = [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
         __strong typeof(weakSelf) self = weakSelf;
+        if (!self || generation != self.listenerGeneration) return;
+        if (!PPAuditStaffSessionCanRead(staff)) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (generation != self.listenerGeneration) return;
+                [self.listenerReg remove];
+                self.listenerReg = nil;
+                self.listenerGeneration += 1;
+                self.allEntries = @[];
+                [self applyFilter];
+                if ([self evaluatePermissions]) [self loadData];
+            });
+            return;
+        }
         if (error) {
             [PPHUD showError:kLang(@"Error_Title")];
             return;
@@ -180,6 +214,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
             [entries addObject:entry];
         }
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != self.listenerGeneration || !PPAuditStaffSessionCanRead(staff)) return;
             self.allEntries = entries.copy;
             [self applyFilter];
         });
@@ -187,11 +222,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
 }
 
 - (void)refreshData {
-    if (self.listenerReg) {
-        [self.listenerReg remove];
-        self.listenerReg = nil;
-    }
-    [self loadData];
+    if ([self evaluatePermissions]) [self loadData];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self.refreshControl endRefreshing];
     });
@@ -487,9 +518,12 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
         }
     }
     PPAuditJSONDetailViewController *vc = [[PPAuditJSONDetailViewController alloc] initWithTitle:title json:jsonStr];
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
-    nav.modalPresentationStyle = UIModalPresentationPageSheet;
-    [self presentViewController:nav animated:YES completion:nil];
+    if (self.navigationController) {
+        [self.navigationController pushViewController:vc animated:YES];
+    } else {
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
+        [self presentViewController:nav animated:YES completion:nil];
+    }
 }
 
 - (void)presentCombinedJSONModalForEntry:(PPAuditLogEntryModel *)entry {
@@ -532,6 +566,7 @@ static NSString *PPAuditFilterPrefixForSegment(NSInteger segment) {
 }
 
 - (void)dealloc {
+    self.listenerGeneration += 1;
     [self.listenerReg remove];
 }
 

@@ -413,6 +413,7 @@ static NSString *const kBranchCellID = @"PPBranchCell";
                                                                                   action:@selector(didTapAdd)];
         addButton.accessibilityLabel = kLang(@"Branches_New");
         self.navigationItem.rightBarButtonItem = addButton;
+        PPCommandCenterNavigationItemsDidChange(self);
     }
 }
 

@@ -22,7 +22,11 @@
     cropVC.rotateButtonsHidden = YES;
     cropVC.title = kLang(@"Move & Zoom");
 
-    [controller presentViewController:cropVC animated:YES completion:nil];
+    if (controller.navigationController) {
+        [controller.navigationController pushViewController:cropVC animated:YES];
+    } else {
+        [controller presentViewController:cropVC animated:YES completion:nil];
+    }
 }
 
 + (void)pp_clearAllYYCacheNamed:(NSString *)name {

@@ -25,19 +25,18 @@
 		A3088EA6E670D8BABF21EACD /* QBAlbumsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 63514318000226D7F46DE080 /* QBAlbumsViewController.m */; };
 		A5E100022FF1000100A5E002 /* PPHeroApex.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5E100012FF1000100A5E001 /* PPHeroApex.swift */; };
 		A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */; };
-		A6C000012FA9000100A6C001 /* App/AdminAppRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */; };
-		A6C000022FA9000100A6C002 /* App/AdminAppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */; };
-		A6C000032FA9000100A6C003 /* App/AdminTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001032FA9000100A6C003 /* App/AdminTab.swift */; };
-		A6C000042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */; };
-		A6C000052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */; };
-		A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */; };
-		A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */; };
-		A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */; };
-		A6C0000D2FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */; };
-		A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */; };
-		A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */; };
-		A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */; };
-		A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */; };
+		A6C000012FA9000100A6C001 /* AdminAppRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001012FA9000100A6C001 /* AdminAppRoot.swift */; };
+		A6C000022FA9000100A6C002 /* AdminAppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001022FA9000100A6C002 /* AdminAppShell.swift */; };
+		A6C000032FA9000100A6C003 /* AdminTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001032FA9000100A6C003 /* AdminTab.swift */; };
+		A6C000042FA9000100A6C004 /* AuthenticationState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001042FA9000100A6C004 /* AuthenticationState.swift */; };
+		A6C000052FA9000100A6C005 /* AdminLoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001052FA9000100A6C005 /* AdminLoginView.swift */; };
+		A6C000062FA9000100A6C006 /* CommandCenterModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001062FA9000100A6C006 /* CommandCenterModels.swift */; };
+		A6C000072FA9000100A6C007 /* CommandCenterState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001072FA9000100A6C007 /* CommandCenterState.swift */; };
+		A6C000082FA9000100A6C008 /* AdminCommandCenterScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001082FA9000100A6C008 /* AdminCommandCenterScreen.swift */; };
+		A6C000092FA9000100A6C009 /* AdminRoute.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001092FA9000100A6C009 /* AdminRoute.swift */; };
+		A6C0000A2FA9000100A6C00A /* PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* PPAdminSessionBridge.m */; };
+		A6C0000B2FA9000100A6C00B /* PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* PPAdminCommandCenterService.m */; };
+		A6C0000C2FA9000100A6C00C /* PPAdminRouteFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010F2FA9000100A6C00F /* PPAdminRouteFactory.m */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A9F100B12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */; };
 		A9F100B22F70000100C0DE01 /* PPMarketplaceSettingsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A9F100A42F70000100C0DE01 /* PPMarketplaceSettingsViewController.m */; };
@@ -246,10 +245,10 @@
 		F2E33F2C30055F98005E31C6 /* PPFormEngine.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2730055F98005E31C6 /* PPFormEngine.m */; };
 		F2E33F2D30055F98005E31C6 /* PPFormEngineUsageExample.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2830055F98005E31C6 /* PPFormEngineUsageExample.m */; };
 		F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2E30055AD6005E31C6 /* PPDesignTokens.m */; };
-		F2E33F323005D48C005E31C6 /* PPBranchesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */; };
-		F2E33F333005D496005E31C6 /* PPBranchEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */; };
-		F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */; };
-		F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = "F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */; };
+		F2E33F323005D48C005E31C6 /* PPBranchesViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = A4B808B0-D454-440A-8C65-A3E81CDAA952 /* PPBranchesViewController.m */; };
+		F2E33F333005D496005E31C6 /* PPBranchEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 6BB27B6B-1993-44B6-8E52-C064AE476962 /* PPBranchEditorViewController.m */; };
+		F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 0F53CEB8-5FE2-4D03-A082-9F1351EEAB43 /* PPAgentsViewController.m */; };
+		F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F1AC7A8D-0C09-4E55-9691-547F4EAE3272 /* PPAgentEditorViewController.m */; };
 		F2E33F3C3005E7FB005E31C6 /* PPListingsAdminViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F3B3005E7FB005E31C6 /* PPListingsAdminViewController.m */; };
 		F2E33F4A3005E8D6005E31C6 /* PPAuditLogEntryModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F413005E8D6005E31C6 /* PPAuditLogEntryModel.m */; };
 		F2E33F4B3005E8D6005E31C6 /* PPCategoryEditorViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F473005E8D6005E31C6 /* PPCategoryEditorViewController.m */; };
@@ -296,15 +295,15 @@
 
 /* Begin PBXFileReference section */
 		068FBBDA955D966F979652B5 /* QBVideoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBVideoIconView.m; sourceTree = "<group>"; };
-		"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.objc; fileEncoding = 4; name = PPListingsAdminViewController.m; path = CategoriesSection/PPListingsAdminViewController.m; sourceTree = "<group>"; };
+		06EF09F7-BCB6-470D-A1D1-30D24BDBC726 /* PPListingsAdminViewController.m */ = {isa = PBXFileReference; explicitFileType = sourcecode.c.objc; fileEncoding = 4; name = PPListingsAdminViewController.m; path = CategoriesSection/PPListingsAdminViewController.m; sourceTree = "<group>"; };
 		07DD358CFAD6FBBAB5CD3504 /* QB.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QB.m; sourceTree = "<group>"; };
 		082A9B2BA901B0ABA362FD29 /* QB.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QB.h; sourceTree = "<group>"; };
 		09ACEFCC8F7A4CF99078A5AF /* PPAddEditVetViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAddEditVetViewController.h; sourceTree = "<group>"; };
-		"0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentsViewController.m; sourceTree = "<group>"; };
+		0F53CEB8-5FE2-4D03-A082-9F1351EEAB43 /* PPAgentsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentsViewController.m; sourceTree = "<group>"; };
 		125AB814B9EC46368E0C94A1 /* PPPaymentManagementViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementViewController.h; sourceTree = "<group>"; };
 		182F72E6E816B4EAEC09C61A /* QBAlbumsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAlbumsViewController.h; sourceTree = "<group>"; };
 		1F4961B9BADF9C82FBB7B6FC /* ImageViewerController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ImageViewerController.m; sourceTree = "<group>"; };
-		"212FE7C5-E995-4213-B192-DF42AFA0D185" /* PPAgentEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentEditorViewController.h; sourceTree = "<group>"; };
+		212FE7C5-E995-4213-B192-DF42AFA0D185 /* PPAgentEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentEditorViewController.h; sourceTree = "<group>"; };
 		2386A136072F4716BF45E2BE /* PPPaymentManagementModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementModels.m; sourceTree = "<group>"; };
 		25E15FC04EA34A25500E2A8F /* QBAlbumCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumCell.m; sourceTree = "<group>"; };
 		26522282B0D8531E702B2277 /* QBAlbumCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAlbumCell.h; sourceTree = "<group>"; };
@@ -325,9 +324,9 @@
 		4D2191B785CC472BBAF4447F /* PPPaymentManagementViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentManagementViewController.m; sourceTree = "<group>"; };
 		4FB5C3BC68A541BBACAADE46 /* PPPaymentDetailsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentDetailsViewController.h; sourceTree = "<group>"; };
 		5049D2B95AC57DD90700A7C7 /* QBAssetCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetCell.m; sourceTree = "<group>"; };
-		"5180A33C-6D47-48AC-90BB-A3ECA9946F74" /* PPBranchEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchEditorViewController.h; sourceTree = "<group>"; };
+		5180A33C-6D47-48AC-90BB-A3ECA9946F74 /* PPBranchEditorViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchEditorViewController.h; sourceTree = "<group>"; };
 		63514318000226D7F46DE080 /* QBAlbumsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumsViewController.m; sourceTree = "<group>"; };
-		"6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchEditorViewController.m; sourceTree = "<group>"; };
+		6BB27B6B-1993-44B6-8E52-C064AE476962 /* PPBranchEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchEditorViewController.m; sourceTree = "<group>"; };
 		7020D445371E4CC79C849CA0 /* PPPaymentManagementService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentManagementService.h; sourceTree = "<group>"; };
 		704DED2A8C08AC77378B7093 /* PPPickerAssetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPickerAssetManager.h; sourceTree = "<group>"; };
 		7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAssetsViewController.m; sourceTree = "<group>"; };
@@ -337,26 +336,25 @@
 		9845D8DDEB1134D0A9F7E3BB /* QBImagePicker.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBImagePicker.h; sourceTree = "<group>"; };
 		98D40889C7DB786D327F9792 /* QBAssetCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetCell.h; sourceTree = "<group>"; };
 		A1E5604CF63D542D8056E8CC /* QBSlomoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBSlomoIconView.h; sourceTree = "<group>"; };
-		"A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchesViewController.m; sourceTree = "<group>"; };
+		A4B808B0-D454-440A-8C65-A3E81CDAA952 /* PPBranchesViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBranchesViewController.m; sourceTree = "<group>"; };
 		A5E100012FF1000100A5E001 /* PPHeroApex.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPHeroApex.swift; sourceTree = "<group>"; };
 		A5E100032FF1000100A5E003 /* PPHeroApexBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPHeroApexBridge.m; sourceTree = "<group>"; };
-		A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppRoot.swift; sourceTree = "<group>"; };
-		A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppShell.swift; sourceTree = "<group>"; };
-		A6C001032FA9000100A6C003 /* App/AdminTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminTab.swift; sourceTree = "<group>"; };
-		A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AuthenticationState.swift; sourceTree = "<group>"; };
-		A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AdminLoginView.swift; sourceTree = "<group>"; };
-		A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterModels.swift; sourceTree = "<group>"; };
-		A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterState.swift; sourceTree = "<group>"; };
-		A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterView.swift; sourceTree = "<group>"; };
-		A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandOrbitDirect.swift; sourceTree = "<group>"; };
-		A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Routing/AdminRoute.swift; sourceTree = "<group>"; };
-		A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/Session/PPAdminSessionBridge.h; sourceTree = "<group>"; };
-		A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/Session/PPAdminSessionBridge.m; sourceTree = "<group>"; };
-		A6C0010C2FA9000100A6C00C /* Services/CommandCenter/PPAdminCommandCenterService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/CommandCenter/PPAdminCommandCenterService.h; sourceTree = "<group>"; };
-		A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/CommandCenter/PPAdminCommandCenterService.m; sourceTree = "<group>"; };
-		A6C0010E2FA9000100A6C00E /* Shared/Routing/PPAdminRouteFactory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Shared/Routing/PPAdminRouteFactory.h; sourceTree = "<group>"; };
-		A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Shared/Routing/PPAdminRouteFactory.m; sourceTree = "<group>"; };
-		"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentsViewController.h; sourceTree = "<group>"; };
+		A6C001012FA9000100A6C001 /* AdminAppRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppRoot.swift; sourceTree = "<group>"; };
+		A6C001022FA9000100A6C002 /* AdminAppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminAppShell.swift; sourceTree = "<group>"; };
+		A6C001032FA9000100A6C003 /* AdminTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminTab.swift; sourceTree = "<group>"; };
+		A6C001042FA9000100A6C004 /* AuthenticationState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AuthenticationState.swift; sourceTree = "<group>"; };
+		A6C001052FA9000100A6C005 /* AdminLoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Authentication/AdminLoginView.swift; sourceTree = "<group>"; };
+		A6C001062FA9000100A6C006 /* CommandCenterModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterModels.swift; sourceTree = "<group>"; };
+		A6C001072FA9000100A6C007 /* CommandCenterState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/CommandCenterState.swift; sourceTree = "<group>"; };
+		A6C001082FA9000100A6C008 /* AdminCommandCenterScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/CommandCenter/AdminCommandCenterScreen.swift; sourceTree = "<group>"; };
+		A6C001092FA9000100A6C009 /* AdminRoute.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Routing/AdminRoute.swift; sourceTree = "<group>"; };
+		A6C0010A2FA9000100A6C00A /* PPAdminSessionBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/Session/PPAdminSessionBridge.h; sourceTree = "<group>"; };
+		A6C0010B2FA9000100A6C00B /* PPAdminSessionBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/Session/PPAdminSessionBridge.m; sourceTree = "<group>"; };
+		A6C0010C2FA9000100A6C00C /* PPAdminCommandCenterService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Services/CommandCenter/PPAdminCommandCenterService.h; sourceTree = "<group>"; };
+		A6C0010D2FA9000100A6C00D /* PPAdminCommandCenterService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/CommandCenter/PPAdminCommandCenterService.m; sourceTree = "<group>"; };
+		A6C0010E2FA9000100A6C00E /* PPAdminRouteFactory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Shared/Routing/PPAdminRouteFactory.h; sourceTree = "<group>"; };
+		A6C0010F2FA9000100A6C00F /* PPAdminRouteFactory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Shared/Routing/PPAdminRouteFactory.m; sourceTree = "<group>"; };
+		A9EE603D-8855-4272-8D1C-47C018450706 /* PPAgentsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAgentsViewController.h; sourceTree = "<group>"; };
 		A9F100A12F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaymentBasicsSettingsViewController.h; sourceTree = "<group>"; };
 		A9F100A22F70000100C0DE01 /* PPPaymentBasicsSettingsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaymentBasicsSettingsViewController.m; sourceTree = "<group>"; };
 		A9F100A32F70000100C0DE01 /* PPMarketplaceSettingsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPMarketplaceSettingsViewController.h; sourceTree = "<group>"; };
@@ -380,7 +378,7 @@
 		EF6EFC6E14664F16AB54D315 /* PPVetSubscriptionViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPVetSubscriptionViewController.m; sourceTree = "<group>"; };
 		EFBAA62442349371CE398FC6 /* PPPickerAssetManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPickerAssetManager.m; sourceTree = "<group>"; };
 		F18B2ED8BBF11FC7A093DEDC /* QBImagePicker.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = QBImagePicker.storyboard; sourceTree = "<group>"; };
-		"F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentEditorViewController.m; sourceTree = "<group>"; };
+		F1AC7A8D-0C09-4E55-9691-547F4EAE3272 /* PPAgentEditorViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAgentEditorViewController.m; sourceTree = "<group>"; };
 		F2052C822F7E175300C06FDF /* PPPaddingLabel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPaddingLabel.h; sourceTree = "<group>"; };
 		F2052C832F7E175A00C06FDF /* PPPaddingLabel.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPaddingLabel.m; sourceTree = "<group>"; };
 		F20B385F2E60DEAD007465EE /* PPQuickActionsView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPQuickActionsView.h; sourceTree = "<group>"; };
@@ -796,7 +794,7 @@
 		F3E6A1002FA1000100A1D001 /* AddUserViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AddUserViewController.m; sourceTree = "<group>"; };
 		F6E33AEDD7F445E88CB23B22 /* PPFunc+Haptics.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "PPFunc+Haptics.h"; sourceTree = "<group>"; };
 		F7A2866DF1B7B110976975AC /* QBAssetsViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBAssetsViewController.h; sourceTree = "<group>"; };
-		"FD8B57D0-2463-4DA5-861F-5EA766F2A37F" /* PPBranchesViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchesViewController.h; sourceTree = "<group>"; };
+		FD8B57D0-2463-4DA5-861F-5EA766F2A37F /* PPBranchesViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBranchesViewController.h; sourceTree = "<group>"; };
 		FDA9A31358CA7D77ACEC6933 /* Pods-PurePetsAdmin.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PurePetsAdmin.debug.xcconfig"; path = "Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin.debug.xcconfig"; sourceTree = "<group>"; };
 		FF8490CE958C77FF7170D4E9 /* PPImageCollection.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPImageCollection.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -903,7 +901,7 @@
 			path = Payments;
 			sourceTree = "<group>";
 		};
-		"C6983AD2-C833-4E69-8BBD-6C718C5934AC" /* CategoriesSection */ = {
+		C6983AD2-C833-4E69-8BBD-6C718C5934AC /* CategoriesSection */ = {
 			isa = PBXGroup;
 			children = (
 				F2E33F3A3005E7FB005E31C6 /* PPListingsAdminViewController.h */,
@@ -991,10 +989,10 @@
 			children = (
 				F23DDE672F8BEC360020D4F4 /* PPBranchModel.h */,
 				F23DDE682F8BEC360020D4F4 /* PPBranchModel.m */,
-				"FD8B57D0-2463-4DA5-861F-5EA766F2A37F" /* PPBranchesViewController.h */,
-				"A4B808B0-D454-440A-8C65-A3E81CDAA952" /* PPBranchesViewController.m */,
-				"5180A33C-6D47-48AC-90BB-A3ECA9946F74" /* PPBranchEditorViewController.h */,
-				"6BB27B6B-1993-44B6-8E52-C064AE476962" /* PPBranchEditorViewController.m */,
+				FD8B57D0-2463-4DA5-861F-5EA766F2A37F /* PPBranchesViewController.h */,
+				A4B808B0-D454-440A-8C65-A3E81CDAA952 /* PPBranchesViewController.m */,
+				5180A33C-6D47-48AC-90BB-A3ECA9946F74 /* PPBranchEditorViewController.h */,
+				6BB27B6B-1993-44B6-8E52-C064AE476962 /* PPBranchEditorViewController.m */,
 			);
 			path = BranchSection;
 			sourceTree = "<group>";
@@ -1004,10 +1002,10 @@
 			children = (
 				F23DDE6B2F8BEC670020D4F4 /* PPAgentModel.h */,
 				F23DDE6C2F8BEC670020D4F4 /* PPAgentModel.m */,
-				"A9EE603D-8855-4272-8D1C-47C018450706" /* PPAgentsViewController.h */,
-				"0F53CEB8-5FE2-4D03-A082-9F1351EEAB43" /* PPAgentsViewController.m */,
-				"212FE7C5-E995-4213-B192-DF42AFA0D185" /* PPAgentEditorViewController.h */,
-				"F1AC7A8D-0C09-4E55-9691-547F4EAE3272" /* PPAgentEditorViewController.m */,
+				A9EE603D-8855-4272-8D1C-47C018450706 /* PPAgentsViewController.h */,
+				0F53CEB8-5FE2-4D03-A082-9F1351EEAB43 /* PPAgentsViewController.m */,
+				212FE7C5-E995-4213-B192-DF42AFA0D185 /* PPAgentEditorViewController.h */,
+				F1AC7A8D-0C09-4E55-9691-547F4EAE3272 /* PPAgentEditorViewController.m */,
 			);
 			path = AgentSection;
 			sourceTree = "<group>";
@@ -1132,24 +1130,23 @@
 			isa = PBXGroup;
 			children = (
 				F2B1390A302BBBCB00C3C672 /* PPComponent */,
-				A6C001012FA9000100A6C001 /* App/AdminAppRoot.swift */,
-				A6C001022FA9000100A6C002 /* App/AdminAppShell.swift */,
-				A6C001032FA9000100A6C003 /* App/AdminTab.swift */,
-				A6C001042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift */,
-				A6C001052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift */,
-				A6C001062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift */,
-				A6C001072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift */,
-				A6C001082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift */,
-				A6C001102FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift */,
-				A6C001092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift */,
-				A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */,
-				A6C0010B2FA9000100A6C00B /* Services/Session/PPAdminSessionBridge.m */,
-				A6C0010C2FA9000100A6C00C /* Services/CommandCenter/PPAdminCommandCenterService.h */,
-				A6C0010D2FA9000100A6C00D /* Services/CommandCenter/PPAdminCommandCenterService.m */,
-				A6C0010E2FA9000100A6C00E /* Shared/Routing/PPAdminRouteFactory.h */,
-				A6C0010F2FA9000100A6C00F /* Shared/Routing/PPAdminRouteFactory.m */,
+				A6C001012FA9000100A6C001 /* AdminAppRoot.swift */,
+				A6C001022FA9000100A6C002 /* AdminAppShell.swift */,
+				A6C001032FA9000100A6C003 /* AdminTab.swift */,
+				A6C001042FA9000100A6C004 /* AuthenticationState.swift */,
+				A6C001052FA9000100A6C005 /* AdminLoginView.swift */,
+				A6C001062FA9000100A6C006 /* CommandCenterModels.swift */,
+				A6C001072FA9000100A6C007 /* CommandCenterState.swift */,
+				A6C001082FA9000100A6C008 /* AdminCommandCenterScreen.swift */,
+				A6C001092FA9000100A6C009 /* AdminRoute.swift */,
+				A6C0010A2FA9000100A6C00A /* PPAdminSessionBridge.h */,
+				A6C0010B2FA9000100A6C00B /* PPAdminSessionBridge.m */,
+				A6C0010C2FA9000100A6C00C /* PPAdminCommandCenterService.h */,
+				A6C0010D2FA9000100A6C00D /* PPAdminCommandCenterService.m */,
+				A6C0010E2FA9000100A6C00E /* PPAdminRouteFactory.h */,
+				A6C0010F2FA9000100A6C00F /* PPAdminRouteFactory.m */,
 				F2A24ADB3003C4D3003AB79D /* Accounting */,
-				"C6983AD2-C833-4E69-8BBD-6C718C5934AC" /* CategoriesSection */,
+				C6983AD2-C833-4E69-8BBD-6C718C5934AC /* CategoriesSection */,
 				F2A24AE03003C4D3003AB79D /* Delivery */,
 				F2A24AE53003C4D3003AB79D /* Fulfillment */,
 				F2A24AEC3003C4D3003AB79D /* POS */,
@@ -1787,7 +1784,7 @@
 		F2E33F393005E14C005E31C6 /* Recovered References */ = {
 			isa = PBXGroup;
 			children = (
-				"06EF09F7-BCB6-470D-A1D1-30D24BDBC726" /* PPListingsAdminViewController.m */,
+				06EF09F7-BCB6-470D-A1D1-30D24BDBC726 /* PPListingsAdminViewController.m */,
 			);
 			name = "Recovered References";
 			sourceTree = "<group>";
@@ -2005,13 +2002,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-PurePetsAdmin/Pods-PurePetsAdmin-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -2047,19 +2040,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A6C000012FA9000100A6C001 /* App/AdminAppRoot.swift in Sources */,
-				A6C000022FA9000100A6C002 /* App/AdminAppShell.swift in Sources */,
-				A6C000032FA9000100A6C003 /* App/AdminTab.swift in Sources */,
-				A6C000042FA9000100A6C004 /* Features/Authentication/AuthenticationState.swift in Sources */,
-				A6C000052FA9000100A6C005 /* Features/Authentication/AdminLoginView.swift in Sources */,
-				A6C000062FA9000100A6C006 /* Features/CommandCenter/CommandCenterModels.swift in Sources */,
-				A6C000072FA9000100A6C007 /* Features/CommandCenter/CommandCenterState.swift in Sources */,
-				A6C000082FA9000100A6C008 /* Features/CommandCenter/CommandCenterView.swift in Sources */,
-				A6C0000D2FA9000100A6C010 /* Features/CommandCenter/CommandOrbitDirect.swift in Sources */,
-				A6C000092FA9000100A6C009 /* Shared/Routing/AdminRoute.swift in Sources */,
-				A6C0000A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.m in Sources */,
-				A6C0000B2FA9000100A6C00B /* Services/CommandCenter/PPAdminCommandCenterService.m in Sources */,
-				A6C0000C2FA9000100A6C00C /* Shared/Routing/PPAdminRouteFactory.m in Sources */,
+				A6C000012FA9000100A6C001 /* AdminAppRoot.swift in Sources */,
+				A6C000022FA9000100A6C002 /* AdminAppShell.swift in Sources */,
+				A6C000032FA9000100A6C003 /* AdminTab.swift in Sources */,
+				A6C000042FA9000100A6C004 /* AuthenticationState.swift in Sources */,
+				A6C000052FA9000100A6C005 /* AdminLoginView.swift in Sources */,
+				A6C000062FA9000100A6C006 /* CommandCenterModels.swift in Sources */,
+				A6C000072FA9000100A6C007 /* CommandCenterState.swift in Sources */,
+				A6C000082FA9000100A6C008 /* AdminCommandCenterScreen.swift in Sources */,
+				A6C000092FA9000100A6C009 /* AdminRoute.swift in Sources */,
+				A6C0000A2FA9000100A6C00A /* PPAdminSessionBridge.m in Sources */,
+				A6C0000B2FA9000100A6C00B /* PPAdminCommandCenterService.m in Sources */,
+				A6C0000C2FA9000100A6C00C /* PPAdminRouteFactory.m in Sources */,
 				FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */,
 				6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */,
 				66213DB3EE11415A8153A6AA /* PPAddEditVetViewController.m in Sources */,
@@ -2444,7 +2436,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = PurePetsAdmin/PurePetsAdmin.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "PurePetsAdmin/PurePetsAdmin Release.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";

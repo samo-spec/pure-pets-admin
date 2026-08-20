@@ -35,13 +35,14 @@
     snapshot.accessoriesCount = NSNotFound;
 
     NSMutableOrderedSet<NSString *> *failedAreas = [NSMutableOrderedSet orderedSet];
+    NSMutableOrderedSet<NSString *> *partialAreas = [NSMutableOrderedSet orderedSet];
     NSMutableOrderedSet<NSString *> *requestedAreas = [NSMutableOrderedSet orderedSet];
     dispatch_group_t group = dispatch_group_create();
     FIRFirestore *db = [FIRFirestore firestore];
 
-    BOOL canViewPayments = [session hasAnyPermission:@[@"payments.view", @"payments.manage", @"payments.refund", @"accounting.manage"]];
-    BOOL canViewFulfillment = [session hasAnyPermission:@[@"payments.view", @"payments.manage"]];
-    BOOL canViewDelivery = [session hasPermission:@"payments.manage"] || session.hasGlobalScope;
+    BOOL canViewPayments = [session hasAnyPermission:@[@"payments.view", @"payments.manage"]];
+    BOOL canViewFulfillment = [session hasAnyPermission:@[@"payments.view", @"payments.manage", @"providers.view"]];
+    BOOL canViewDelivery = [session hasPermission:@"payments.manage"];
     BOOL canViewProviders = [session hasAnyPermission:@[@"providers.view", @"providers.manage"]];
     BOOL canViewListings = [session hasAnyPermission:@[@"listings.view", @"listings.manage", @"listings.moderate"]] &&
                            [session hasPermission:@"stock.manage"];
@@ -58,9 +59,13 @@
                                                                        FIRDocumentSnapshot * _Nullable nextCursor,
                                                                        NSError * _Nullable error) {
             (void)nextCursor;
-            if (error) {
+            BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
+            if (error && !isPartialRead) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"payments"]; }
             } else {
+                if (isPartialRead) {
+                    @synchronized (partialAreas) { [partialAreas addObject:@"payments"]; }
+                }
                 NSInteger active = 0;
                 for (PPPaymentAdminRecord *record in records ?: @[]) {
                     NSString *status = [record workflowStatusKey];
@@ -84,9 +89,13 @@
         dispatch_group_enter(group);
         [[PPFulfillmentService shared] fetchFulfillmentsWithCompletion:^(NSArray<PPFulfillmentRecord *> *records,
                                                                          NSError * _Nullable error) {
-            if (error) {
+            BOOL isPartialRead = [PPFulfillmentService isPartialReadError:error];
+            if (error && !isPartialRead) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"fulfillment"]; }
             } else {
+                if (isPartialRead) {
+                    @synchronized (partialAreas) { [partialAreas addObject:@"fulfillment"]; }
+                }
                 NSSet<NSString *> *awaiting = [NSSet setWithArray:@[
                     @"new_request", @"accepted", @"preparing", @"ready_for_pickup", @"delivery_assigned"
                 ]];
@@ -171,6 +180,7 @@
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
         snapshot.requestedAreas = requestedAreas.array ?: @[];
         snapshot.failedAreas = failedAreas.array ?: @[];
+        snapshot.partialAreas = partialAreas.array ?: @[];
         snapshot.generatedAt = [NSDate date];
         if (completion) completion(snapshot);
     });

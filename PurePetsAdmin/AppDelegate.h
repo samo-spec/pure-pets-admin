@@ -14,4 +14,6 @@
 @property (strong, nonatomic) UIWindow *window;
 @property (strong, nonatomic) NSString *fcmToken;
 
++ (BOOL)pp_isNotificationPayloadRoutable:(NSDictionary *)payload;
+
 @end

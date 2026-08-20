@@ -252,6 +252,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
     self.view.backgroundColor = PPAccountingCanvasColor();
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:kLang(@"Cancel") style:UIBarButtonItemStylePlain target:self action:@selector(cancelTapped)];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:kLang(@"Save") style:UIBarButtonItemStyleDone target:self action:@selector(saveTapped)];
+    PPCommandCenterNavigationItemsDidChange(self);
     [self pp_buildForm];
 }
 
@@ -419,6 +420,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
 
     UIBarButtonItem *addBtn = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAdd target:self action:@selector(didTapAddExpense)];
     self.navigationItem.rightBarButtonItem = addBtn;
+    PPCommandCenterNavigationItemsDidChange(self);
 
     [self subscribeToData];
 }
@@ -568,7 +570,20 @@ static NSString *PPAccountingDateString(NSDate *date) {
     self.tableView.scrollIndicatorInsets = inset;
 }
 
+- (NSString *)pp_orderRevenueEvidenceSubtitle {
+    if (self.isLoading) return kLang(@"Loading");
+    NSString *message = self.service.orderRevenueError.localizedDescription;
+    return message.length > 0 ? message : kLang(@"PPOrder_Error_PartialRead");
+}
+
 - (void)pp_updateHeaderSummary {
+    if (!self.service.orderRevenueEvidenceAvailable) {
+        UIColor *color = [UIColor ppWarning];
+        self.heroProfitLabel.text = [self pp_orderRevenueEvidenceSubtitle];
+        self.heroProfitLabel.textColor = color;
+        self.heroProfitLabel.backgroundColor = [color colorWithAlphaComponent:0.11];
+        return;
+    }
     double expenses = [self totalExpenses];
     double profit = self.service.orderRevenue - expenses;
     UIColor *color = profit >= 0 ? [UIColor ppSuccess] : [UIColor ppError];
@@ -628,11 +643,15 @@ static NSString *PPAccountingDateString(NSDate *date) {
             });
         }];
     };
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:form];
-    if (@available(iOS 13.0, *)) {
-        nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    if (self.navigationController) {
+        [self.navigationController pushViewController:form animated:YES];
+    } else {
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:form];
+        if (@available(iOS 13.0, *)) {
+            nav.modalPresentationStyle = UIModalPresentationPageSheet;
+        }
+        [self presentViewController:nav animated:YES completion:nil];
     }
-    [self presentViewController:nav animated:YES completion:nil];
 }
 
 #pragma mark - Table View
@@ -688,14 +707,26 @@ static NSString *PPAccountingDateString(NSDate *date) {
         double revenue = self.service.orderRevenue;
         double expenses = [self totalExpenses];
         double profit = revenue - expenses;
+        BOOL revenueEvidenceAvailable = self.service.orderRevenueEvidenceAvailable;
+        NSString *evidenceSubtitle = [self pp_orderRevenueEvidenceSubtitle];
         if (indexPath.row == 0) {
-            NSString *subtitle = [NSString stringWithFormat:kLang(@"Accounting_OrdersCount_Format"), @(self.service.orderCount)];
-            [cell configureTitle:kLang(@"Accounting_Revenue") value:PPAccountingMoneyString(revenue) subtitle:subtitle symbol:@"arrow.up.circle.fill" tint:[UIColor ppSuccess]];
+            NSString *subtitle = revenueEvidenceAvailable
+                ? [NSString stringWithFormat:kLang(@"Accounting_OrdersCount_Format"), @(self.service.orderCount)]
+                : evidenceSubtitle;
+            [cell configureTitle:kLang(@"Accounting_Revenue")
+                           value:(revenueEvidenceAvailable ? PPAccountingMoneyString(revenue) : @"—")
+                        subtitle:subtitle
+                          symbol:@"arrow.up.circle.fill"
+                            tint:(revenueEvidenceAvailable ? [UIColor ppSuccess] : [UIColor ppWarning])];
         } else if (indexPath.row == 1) {
             NSString *subtitle = [NSString stringWithFormat:kLang(@"Accounting_ExpensesCount_Format"), @(self.service.expenses.count)];
             [cell configureTitle:kLang(@"Accounting_Expenses") value:PPAccountingMoneyString(expenses) subtitle:subtitle symbol:@"arrow.down.circle.fill" tint:[UIColor ppError]];
         } else {
-            [cell configureTitle:kLang(@"Accounting_Profit") value:PPAccountingMoneyString(profit) subtitle:kLang(@"Accounting_ProfitSubtitle") symbol:@"dollarsign.circle.fill" tint:(profit >= 0 ? [UIColor ppSuccess] : [UIColor ppError])];
+            [cell configureTitle:kLang(@"Accounting_Profit")
+                           value:(revenueEvidenceAvailable ? PPAccountingMoneyString(profit) : @"—")
+                        subtitle:(revenueEvidenceAvailable ? kLang(@"Accounting_ProfitSubtitle") : evidenceSubtitle)
+                          symbol:@"dollarsign.circle.fill"
+                            tint:(revenueEvidenceAvailable ? (profit >= 0 ? [UIColor ppSuccess] : [UIColor ppError]) : [UIColor ppWarning])];
         }
         return cell;
     }

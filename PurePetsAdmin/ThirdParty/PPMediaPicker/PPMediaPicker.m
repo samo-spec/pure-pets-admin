@@ -66,8 +66,12 @@
     reviewVC.mediaItems = self.selectedMedia;
     reviewVC.delegate = self;
     
-    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:reviewVC];
-    [self.presentingViewController presentViewController:nav animated:YES completion:nil];
+    if (self.presentingViewController.navigationController) {
+        [self.presentingViewController.navigationController pushViewController:reviewVC animated:YES];
+    } else {
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:reviewVC];
+        [self.presentingViewController presentViewController:nav animated:YES completion:nil];
+    }
 }
 
 #pragma mark - QBImagePickerControllerDelegate

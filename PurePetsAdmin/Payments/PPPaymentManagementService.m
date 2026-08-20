@@ -6,6 +6,121 @@
 #import "Language.h"
 
 static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminService";
+static NSString * const PPPaymentPartialReadMarkerKey = @"PPPaymentPartialRead";
+static NSUInteger const PPPaymentAdminScopeChunkLimit = 30;
+
+static NSError *PPPaymentReadError(NSInteger code, NSString *localizationKey)
+{
+    return [NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
+                               code:code
+                           userInfo:@{NSLocalizedDescriptionKey: kLang(localizationKey)}];
+}
+
+static NSError *PPPaymentPartialReadError(NSError *underlyingError,
+                                          NSUInteger successfulQueryCount,
+                                          NSUInteger queryCount)
+{
+    NSMutableDictionary *userInfo = [@{
+        NSLocalizedDescriptionKey: kLang(@"PPOrder_Error_PartialRead"),
+        PPPaymentPartialReadMarkerKey: @YES,
+        @"successfulQueryCount": @(successfulQueryCount),
+        @"queryCount": @(queryCount),
+    } mutableCopy];
+    if (underlyingError) userInfo[NSUnderlyingErrorKey] = underlyingError;
+    return [NSError errorWithDomain:PPPaymentAdminServiceErrorDomain code:414 userInfo:userInfo];
+}
+
+static NSArray<NSString *> *PPPaymentCanonicalScopeIDs(PPStaffDoc *staff, NSString *key)
+{
+    id value = [staff.scope isKindOfClass:NSDictionary.class] ? staff.scope[key] : nil;
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSet];
+    for (id entry in (NSArray *)value) {
+        if (![entry isKindOfClass:NSString.class]) continue;
+        NSString *trimmed = [(NSString *)entry stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (trimmed.length) [ids addObject:trimmed];
+    }
+    return [ids.array sortedArrayUsingSelector:@selector(compare:)];
+}
+
+static BOOL PPPaymentHasReadableScope(PPStaffDoc *staff)
+{
+    return (staff.isActive && (staff.isAdmin || staff.hasGlobalScope ||
+            PPPaymentCanonicalScopeIDs(staff, @"branchIds").count > 0 ||
+            PPPaymentCanonicalScopeIDs(staff, @"regionIds").count > 0));
+}
+
+static BOOL PPPaymentStaffSessionIsCurrent(PPStaffDoc *staff)
+{
+    PPStaffDoc *current = [PPStaffAuth shared].cachedCurrentStaff;
+    NSString *authUID = [FIRAuth auth].currentUser.uid;
+    return (staff != nil && current == staff && authUID.length > 0 &&
+            [staff.uid isEqualToString:authUID] && staff.isActive);
+}
+
+static BOOL PPPaymentStaffCanReachData(PPStaffDoc *staff, NSDictionary *data)
+{
+    if (!PPPaymentStaffSessionIsCurrent(staff) || ![data isKindOfClass:NSDictionary.class]) return NO;
+    if (staff.isAdmin || staff.hasGlobalScope) return YES;
+    NSString *branchID = [data[@"branchId"] isKindOfClass:NSString.class]
+        ? [(NSString *)data[@"branchId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    NSString *regionID = [data[@"regionId"] isKindOfClass:NSString.class]
+        ? [(NSString *)data[@"regionId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    return ((branchID.length > 0 && [PPPaymentCanonicalScopeIDs(staff, @"branchIds") containsObject:branchID]) ||
+            (regionID.length > 0 && [PPPaymentCanonicalScopeIDs(staff, @"regionIds") containsObject:regionID]));
+}
+
+static BOOL PPPaymentStaffCanReachRecord(PPStaffDoc *staff, PPPaymentAdminRecord *record)
+{
+    return PPPaymentStaffCanReachData(staff, @{
+        @"branchId": record.branchId ?: @"",
+        @"regionId": record.regionId ?: @"",
+    });
+}
+
+static BOOL PPPaymentCanReadUnscopedAudit(PPStaffDoc *staff)
+{
+    return PPPaymentStaffSessionIsCurrent(staff) &&
+           (staff.isAdmin || staff.hasGlobalScope) &&
+           [staff hasPermission:kStaffPermAuditView];
+}
+
+static BOOL PPPaymentCursorIsValid(FIRDocumentSnapshot *cursor)
+{
+    return cursor == nil ||
+           (cursor.documentID.length > 0 && [cursor.data[@"updatedAt"] isKindOfClass:FIRTimestamp.class]);
+}
+
+static FIRQuery *PPPaymentQueryStartingAfterCursor(FIRQuery *query, FIRDocumentSnapshot *cursor)
+{
+    if (!cursor) return query;
+    return [query queryStartingAfterValues:@[cursor.data[@"updatedAt"], cursor.documentID]];
+}
+
+static NSArray<FIRDocumentSnapshot *> *PPPaymentMergeOrderDocuments(NSArray<NSArray<FIRDocumentSnapshot *> *> *groups,
+                                                                    NSInteger limit,
+                                                                    BOOL *truncated)
+{
+    NSMutableDictionary<NSString *, FIRDocumentSnapshot *> *byID = [NSMutableDictionary dictionary];
+    for (NSArray<FIRDocumentSnapshot *> *group in groups) {
+        for (FIRDocumentSnapshot *document in group) {
+            if (document.documentID.length) byID[document.documentID] = document;
+        }
+    }
+    NSArray<FIRDocumentSnapshot *> *sorted = [byID.allValues sortedArrayUsingComparator:^NSComparisonResult(FIRDocumentSnapshot *left, FIRDocumentSnapshot *right) {
+        NSDate *leftDate = [left.data[@"updatedAt"] isKindOfClass:FIRTimestamp.class] ? [left.data[@"updatedAt"] dateValue] : NSDate.distantPast;
+        NSDate *rightDate = [right.data[@"updatedAt"] isKindOfClass:FIRTimestamp.class] ? [right.data[@"updatedAt"] dateValue] : NSDate.distantPast;
+        NSComparisonResult dateResult = [rightDate compare:leftDate];
+        return dateResult != NSOrderedSame ? dateResult : [right.documentID compare:left.documentID];
+    }];
+    NSInteger resolvedLimit = MAX(1, limit);
+    if (truncated) *truncated = sorted.count > (NSUInteger)resolvedLimit;
+    return sorted.count > (NSUInteger)resolvedLimit
+        ? [sorted subarrayWithRange:NSMakeRange(0, resolvedLimit)]
+        : sorted;
+}
 
 @interface PPPaymentManagementService ()
 
@@ -20,6 +135,20 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 - (void)pp_completeSettings:(PPPaymentAdminSettings *)settings
                       error:(NSError *)error
                  completion:(PPPaymentAdminSettingsCompletion)completion;
+- (NSArray<FIRQuery *> *)pp_baseOrdersQueriesForFilters:(PPPaymentManagementFilters *)filters
+                                                   staff:(PPStaffDoc *)staff;
+- (void)pp_fetchRequestSummariesForOrderID:(NSString *)orderID
+                                      staff:(PPStaffDoc *)staff
+                                 completion:(void (^)(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error))completion;
+- (void)pp_fetchAllRequestsForOrderID:(NSString *)orderID
+                                staff:(PPStaffDoc *)staff
+                           completion:(void (^)(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error))completion;
+- (void)pp_fetchTimelineForOrderID:(NSString *)orderID
+                             staff:(PPStaffDoc *)staff
+                        completion:(void (^)(NSArray<PPPaymentAdminTimelineEvent *> *events, NSError * _Nullable error))completion;
+- (void)pp_fetchAuditEntriesForOrderID:(NSString *)orderID
+                                  staff:(PPStaffDoc *)staff
+                             completion:(void (^)(NSArray<PPPaymentAdminAuditEntry *> *entries, NSError * _Nullable error))completion;
 
 @end
 
@@ -33,6 +162,12 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         service = [PPPaymentManagementService new];
     });
     return service;
+}
+
++ (BOOL)isPartialReadError:(NSError *)error
+{
+    return [error.domain isEqualToString:PPPaymentAdminServiceErrorDomain] &&
+           [error.userInfo[PPPaymentPartialReadMarkerKey] boolValue];
 }
 
 - (instancetype)init
@@ -67,7 +202,8 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                     startAfter:(FIRDocumentSnapshot *)startAfter
                     completion:(PPPaymentAdminRecordsCompletion)completion
 {
-    if (![self currentAdminCanViewPayments]) {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
         [self pp_completeRecords:@[]
                       nextCursor:nil
                            error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
@@ -76,9 +212,26 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                       completion:completion];
         return;
     }
+    if (!PPPaymentHasReadableScope(staff)) {
+        [self pp_completeRecords:@[]
+                      nextCursor:nil
+                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
+                                                    code:409
+                                                userInfo:@{NSLocalizedDescriptionKey: kLang(@"PPOrder_Error_MissingReadScope")}]
+                      completion:completion];
+        return;
+    }
+    if (!PPPaymentCursorIsValid(startAfter)) {
+        [self pp_completeRecords:@[]
+                      nextCursor:nil
+                           error:PPPaymentReadError(410, @"PPOrder_Error_InvalidCursor")
+                      completion:completion];
+        return;
+    }
 
     NSInteger resolvedPageSize = MAX(10, MIN(100, pageSize));
     PPPaymentManagementFilters *resolvedFilters = filters ? [filters copy] : [PPPaymentManagementFilters defaultFilters];
+    NSArray<FIRQuery *> *baseQueries = [self pp_baseOrdersQueriesForFilters:resolvedFilters staff:staff];
     NSMutableArray<PPPaymentAdminRecord *> *collected = [NSMutableArray array];
     __block FIRDocumentSnapshot *cursor = startAfter;
     __block BOOL exhausted = NO;
@@ -104,28 +257,51 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         }
 
         fetchCount += 1;
-        FIRQuery *query = [strongSelf pp_baseOrdersQueryForFilters:resolvedFilters];
-        query = [query queryLimitedTo:MAX(resolvedPageSize * 2, 40)];
-        if (cursor) {
-            query = [query queryStartingAfterDocument:cursor];
-        }
+        NSInteger batchLimit = MAX(resolvedPageSize * 2, 40);
+        dispatch_group_t queryGroup = dispatch_group_create();
+        NSMutableArray<NSArray<FIRDocumentSnapshot *> *> *queryDocuments = [NSMutableArray arrayWithCapacity:baseQueries.count];
+        for (NSUInteger index = 0; index < baseQueries.count; index++) [queryDocuments addObject:@[]];
+        __block NSError *queryError = nil;
+        __block NSUInteger successfulQueryCount = 0;
+        __block BOOL allQueriesExhausted = YES;
+        [baseQueries enumerateObjectsUsingBlock:^(FIRQuery *baseQuery, NSUInteger index, BOOL *stop) {
+            FIRQuery *query = [baseQuery queryLimitedTo:batchLimit];
+            query = PPPaymentQueryStartingAfterCursor(query, cursor);
+            dispatch_group_enter(queryGroup);
+            [query getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+                @synchronized (queryDocuments) {
+                    if (error && !queryError) queryError = error;
+                    if (!error) {
+                        successfulQueryCount += 1;
+                        NSArray<FIRDocumentSnapshot *> *batch = snapshot.documents ?: @[];
+                        queryDocuments[index] = batch;
+                        if (batch.count >= (NSUInteger)batchLimit) allQueriesExhausted = NO;
+                    }
+                }
+                dispatch_group_leave(queryGroup);
+            }];
+        }];
 
-        [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
-            if (error) {
-                [strongSelf pp_completeRecords:@[] nextCursor:nil error:error completion:completion];
+        dispatch_group_notify(queryGroup, dispatch_get_main_queue(), ^{
+            if (!PPPaymentStaffSessionIsCurrent(staff)) {
+                [strongSelf pp_completeRecords:@[] nextCursor:nil error:PPPaymentReadError(412, @"PPOrder_Error_SessionChanged") completion:completion];
                 return;
             }
+            BOOL isPartialResult = queryError != nil && successfulQueryCount > 0;
+            if (queryError && !isPartialResult) {
+                [strongSelf pp_completeRecords:@[] nextCursor:nil error:queryError completion:completion];
+                return;
+            }
+            NSError *partialError = isPartialResult
+                ? PPPaymentPartialReadError(queryError, successfulQueryCount, baseQueries.count)
+                : nil;
 
-            NSArray<FIRDocumentSnapshot *> *documents = snapshot.documents ?: @[];
+            BOOL mergeTruncated = NO;
+            NSArray<FIRDocumentSnapshot *> *documents = PPPaymentMergeOrderDocuments(queryDocuments, batchLimit, &mergeTruncated);
             if (documents.count == 0) {
                 exhausted = YES;
-                [strongSelf pp_completeRecords:collected nextCursor:nil error:nil completion:completion];
+                [strongSelf pp_completeRecords:collected nextCursor:nil error:partialError completion:completion];
                 return;
-            }
-
-            cursor = documents.lastObject;
-            if (documents.count < MAX(resolvedPageSize * 2, 40)) {
-                exhausted = YES;
             }
 
             NSMutableArray<PPPaymentAdminRecord *> *batchRecords = [NSMutableArray arrayWithCapacity:documents.count];
@@ -137,13 +313,31 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 
             [strongSelf pp_resolveUsersForRecords:batchRecords completion:^{
                 [strongSelf refreshRequestSummariesForRecords:batchRecords completion:^(__unused NSArray<PPPaymentAdminRecord *> *recordsWithSummaries) {
-                    for (PPPaymentAdminRecord *record in batchRecords) {
+                    if (!PPPaymentStaffSessionIsCurrent(staff)) {
+                        [strongSelf pp_completeRecords:@[] nextCursor:nil error:PPPaymentReadError(412, @"PPOrder_Error_SessionChanged") completion:completion];
+                        return;
+                    }
+                    NSUInteger lastExaminedIndex = NSNotFound;
+                    for (NSUInteger index = 0; index < batchRecords.count; index++) {
+                        PPPaymentAdminRecord *record = batchRecords[index];
+                        lastExaminedIndex = index;
                         if ([record matchesFilters:resolvedFilters]) {
                             [collected addObject:record];
                         }
                         if (collected.count >= resolvedPageSize) {
                             break;
                         }
+                    }
+
+                    if (lastExaminedIndex != NSNotFound) cursor = documents[lastExaminedIndex];
+                    BOOL hasUnexaminedDocuments = (lastExaminedIndex != NSNotFound &&
+                                                   lastExaminedIndex + 1 < documents.count);
+                    BOOL sourceHasMore = mergeTruncated || !allQueriesExhausted;
+                    exhausted = !hasUnexaminedDocuments && !sourceHasMore;
+
+                    if (isPartialResult) {
+                        [strongSelf pp_completeRecords:collected nextCursor:nil error:partialError completion:completion];
+                        return;
                     }
 
                     if (collected.count >= resolvedPageSize || exhausted) {
@@ -155,7 +349,7 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                     fetchNextBatch();
                 }];
             }];
-        }];
+        });
     };
 
     fetchNextBatch();
@@ -169,12 +363,19 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         return;
     }
 
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]] ||
+        !PPPaymentHasReadableScope(staff) || !PPPaymentStaffSessionIsCurrent(staff)) {
+        if (completion) completion(records);
+        return;
+    }
+
     dispatch_group_t group = dispatch_group_create();
     __weak typeof(self) weakSelf = self;
     for (PPPaymentAdminRecord *record in records) {
-        if (record.orderId.length == 0) continue;
+        if (record.orderId.length == 0 || !PPPaymentStaffCanReachRecord(staff, record)) continue;
         dispatch_group_enter(group);
-        [self pp_fetchRequestSummariesForOrderID:record.orderId completion:^(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error) {
+        [self pp_fetchRequestSummariesForOrderID:record.orderId staff:staff completion:^(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error) {
             __strong typeof(weakSelf) strongSelf = weakSelf;
             (void)strongSelf;
             if (!error) {
@@ -192,11 +393,20 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 - (void)loadFullRecordForOrderID:(NSString *)orderID
                       completion:(PPPaymentAdminRecordCompletion)completion
 {
-    if (![self currentAdminCanViewPayments]) {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
         [self pp_completeRecord:nil
                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                    code:401
                                                userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Error_NoViewPaymentDetailsPermission")}]
+                     completion:completion];
+        return;
+    }
+    if (!PPPaymentHasReadableScope(staff)) {
+        [self pp_completeRecord:nil
+                          error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
+                                                   code:409
+                                               userInfo:@{NSLocalizedDescriptionKey: kLang(@"PPOrder_Error_MissingReadScope")}]
                      completion:completion];
         return;
     }
@@ -213,6 +423,10 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 
     FIRDocumentReference *orderRef = [[self.db collectionWithPath:@"Orders"] documentWithPath:resolvedOrderID];
     [orderRef getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (!PPPaymentStaffSessionIsCurrent(staff)) {
+            [self pp_completeRecord:nil error:PPPaymentReadError(412, @"PPOrder_Error_SessionChanged") completion:completion];
+            return;
+        }
         if (error) {
             [self pp_completeRecord:nil error:error completion:completion];
             return;
@@ -227,6 +441,10 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         }
 
         PPPaymentAdminRecord *record = [PPPaymentAdminRecord recordFromSnapshot:snapshot];
+        if (!PPPaymentStaffCanReachRecord(staff, record)) {
+            [self pp_completeRecord:nil error:PPPaymentReadError(409, @"PPOrder_Error_MissingReadScope") completion:completion];
+            return;
+        }
         dispatch_group_t group = dispatch_group_create();
 
         dispatch_group_enter(group);
@@ -235,7 +453,7 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         }];
 
         dispatch_group_enter(group);
-        [self pp_fetchAllRequestsForOrderID:record.orderId completion:^(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable requestsError) {
+        [self pp_fetchAllRequestsForOrderID:record.orderId staff:staff completion:^(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable requestsError) {
             if (!requestsError) {
                 [record applyRequestSummaries:requests];
             }
@@ -243,22 +461,30 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         }];
 
         dispatch_group_enter(group);
-        [self pp_fetchTimelineForOrderID:record.orderId completion:^(NSArray<PPPaymentAdminTimelineEvent *> *events, NSError * _Nullable timelineError) {
+        [self pp_fetchTimelineForOrderID:record.orderId staff:staff completion:^(NSArray<PPPaymentAdminTimelineEvent *> *events, NSError * _Nullable timelineError) {
             if (!timelineError) {
                 record.timelineEvents = events ?: @[];
             }
             dispatch_group_leave(group);
         }];
 
-        dispatch_group_enter(group);
-        [self pp_fetchAuditEntriesForOrderID:record.orderId completion:^(NSArray<PPPaymentAdminAuditEntry *> *entries, NSError * _Nullable auditError) {
-            if (!auditError) {
-                record.auditEntries = entries ?: @[];
-            }
-            dispatch_group_leave(group);
-        }];
+        if (PPPaymentCanReadUnscopedAudit(staff)) {
+            dispatch_group_enter(group);
+            [self pp_fetchAuditEntriesForOrderID:record.orderId staff:staff completion:^(NSArray<PPPaymentAdminAuditEntry *> *entries, NSError * _Nullable auditError) {
+                if (!auditError) record.auditEntries = entries ?: @[];
+                else record.auditEvidenceRestricted = YES;
+                dispatch_group_leave(group);
+            }];
+        } else {
+            record.auditEntries = @[];
+            record.auditEvidenceRestricted = YES;
+        }
 
         dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+            if (!PPPaymentStaffSessionIsCurrent(staff)) {
+                [self pp_completeRecord:nil error:PPPaymentReadError(412, @"PPOrder_Error_SessionChanged") completion:completion];
+                return;
+            }
             [self pp_completeRecord:record error:nil completion:completion];
         });
     }];
@@ -267,6 +493,15 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 - (void)loadEventsForRequest:(PPPaymentAdminSupportRequest *)request
                    completion:(PPPaymentAdminRequestEventsCompletion)completion
 {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermPaymentsRefund]]) {
+        if (completion) completion(@[], PPPaymentReadError(410, @"PPOrder_Error_NoReadPermission"));
+        return;
+    }
+    if (!PPPaymentHasReadableScope(staff)) {
+        if (completion) completion(@[], PPPaymentReadError(411, @"PPOrder_Error_MissingReadScope"));
+        return;
+    }
     NSString *orderID = [self pp_trimmedString:request.orderId];
     NSString *requestID = [self pp_trimmedString:request.requestId];
     if (orderID.length == 0 || requestID.length == 0) {
@@ -276,22 +511,40 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
         return;
     }
 
-    FIRQuery *query = [[[[[self.db collectionWithPath:@"Orders"]
-                           documentWithPath:orderID]
-                          collectionWithPath:@"requests"]
-                         documentWithPath:requestID]
-                        collectionWithPath:@"events"];
-    query = [query queryOrderedByField:@"createdAt" descending:NO];
-    [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
-        if (error) {
-            if (completion) completion(@[], error);
+    FIRDocumentReference *orderRef = [[self.db collectionWithPath:@"Orders"] documentWithPath:orderID];
+    [orderRef getDocumentWithCompletion:^(FIRDocumentSnapshot *orderSnapshot, NSError *orderError) {
+        if (!PPPaymentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(@[], PPPaymentReadError(412, @"PPOrder_Error_SessionChanged"));
             return;
         }
-        NSMutableArray<PPPaymentAdminTimelineEvent *> *events = [NSMutableArray array];
-        for (FIRDocumentSnapshot *doc in snapshot.documents ?: @[]) {
-            [events addObject:[PPPaymentAdminTimelineEvent eventFromSnapshot:doc]];
+        if (orderError || !orderSnapshot.exists) {
+            if (completion) completion(@[], orderError ?: PPPaymentReadError(404, @"PaymentMgmt_Error_OrderNotFound"));
+            return;
         }
-        if (completion) completion(events.copy, nil);
+        if (!PPPaymentStaffCanReachData(staff, orderSnapshot.data)) {
+            if (completion) completion(@[], PPPaymentReadError(409, @"PPOrder_Error_MissingReadScope"));
+            return;
+        }
+        FIRQuery *query = [[[[orderRef collectionWithPath:@"requests"]
+                              documentWithPath:requestID]
+                             collectionWithPath:@"events"]
+                            queryOrderedByField:@"createdAt" descending:NO];
+        query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:NO];
+        [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+            if (!PPPaymentStaffSessionIsCurrent(staff)) {
+                if (completion) completion(@[], PPPaymentReadError(412, @"PPOrder_Error_SessionChanged"));
+                return;
+            }
+            if (error) {
+                if (completion) completion(@[], error);
+                return;
+            }
+            NSMutableArray<PPPaymentAdminTimelineEvent *> *events = [NSMutableArray array];
+            for (FIRDocumentSnapshot *doc in snapshot.documents ?: @[]) {
+                [events addObject:[PPPaymentAdminTimelineEvent eventFromSnapshot:doc]];
+            }
+            if (completion) completion(events.copy, nil);
+        }];
     }];
 }
 
@@ -425,7 +678,8 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                 amount:(NSNumber *)amount
             completion:(PPPaymentAdminRecordCompletion)completion
 {
-    if (![self currentAdminCanManagePayments]) {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasPermission:kStaffPermPaymentsManage]) {
         [self pp_completeRecord:nil
                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                    code:401
@@ -433,9 +687,15 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                      completion:completion];
         return;
     }
+    if (!PPPaymentHasReadableScope(staff) || !PPPaymentStaffCanReachRecord(staff, record)) {
+        [self pp_completeRecord:nil
+                          error:PPPaymentReadError(411, @"PPOrder_Error_MissingReadScope")
+                     completion:completion];
+        return;
+    }
     if ((action == PPPaymentAdminRequestResolutionRefund ||
          action == PPPaymentAdminRequestResolutionPartialRefund) &&
-        ![self currentAdminCanRefundPayments]) {
+        ![staff hasPermission:kStaffPermPaymentsRefund]) {
         [self pp_completeRecord:nil
                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                    code:403
@@ -446,10 +706,19 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 
     NSString *resolvedOrderID = [self pp_trimmedString:record.orderId];
     NSString *resolvedRequestID = [self pp_trimmedString:request.requestId];
+    NSString *requestOrderID = [self pp_trimmedString:request.orderId];
     if (resolvedOrderID.length == 0 || resolvedRequestID.length == 0) {
         [self pp_completeRecord:nil
                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                    code:104
+                                               userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Error_MissingRequestReference")}]
+                     completion:completion];
+        return;
+    }
+    if (requestOrderID.length > 0 && ![requestOrderID isEqualToString:resolvedOrderID]) {
+        [self pp_completeRecord:nil
+                          error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
+                                                   code:106
                                                userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Error_MissingRequestReference")}]
                      completion:completion];
         return;
@@ -501,15 +770,40 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 
 #pragma mark - Private Queries
 
-- (FIRQuery *)pp_baseOrdersQueryForFilters:(PPPaymentManagementFilters *)filters
+- (NSArray<FIRQuery *> *)pp_baseOrdersQueriesForFilters:(PPPaymentManagementFilters *)filters
+                                                   staff:(PPStaffDoc *)staff
 {
-    FIRQuery *query = [[self.db collectionWithPath:@"Orders"] queryOrderedByField:@"updatedAt" descending:YES];
-    NSDate *floorDate = [self pp_floorDateForRange:filters.dateRange];
-    if (floorDate) {
-        query = [query queryWhereField:@"updatedAt"
-               isGreaterThanOrEqualTo:[FIRTimestamp timestampWithDate:floorDate]];
+    FIRCollectionReference *collection = [self.db collectionWithPath:@"Orders"];
+    NSMutableArray<FIRQuery *> *queries = [NSMutableArray array];
+    if (staff.isAdmin || staff.hasGlobalScope) {
+        [queries addObject:collection];
+    } else {
+        NSDictionary<NSString *, NSArray<NSString *> *> *scope = @{
+            @"branchId": PPPaymentCanonicalScopeIDs(staff, @"branchIds"),
+            @"regionId": PPPaymentCanonicalScopeIDs(staff, @"regionIds"),
+        };
+        for (NSString *field in @[@"branchId", @"regionId"]) {
+            NSArray<NSString *> *ids = scope[field];
+            for (NSUInteger offset = 0; offset < ids.count; offset += PPPaymentAdminScopeChunkLimit) {
+                NSRange range = NSMakeRange(offset, MIN(PPPaymentAdminScopeChunkLimit, ids.count - offset));
+                [queries addObject:[collection queryWhereField:field in:[ids subarrayWithRange:range]]];
+            }
+        }
     }
-    return query;
+
+    NSDate *floorDate = [self pp_floorDateForRange:filters.dateRange];
+    NSMutableArray<FIRQuery *> *orderedQueries = [NSMutableArray arrayWithCapacity:queries.count];
+    for (FIRQuery *baseQuery in queries) {
+        FIRQuery *query = baseQuery;
+        if (floorDate) {
+            query = [query queryWhereField:@"updatedAt"
+                   isGreaterThanOrEqualTo:[FIRTimestamp timestampWithDate:floorDate]];
+        }
+        query = [query queryOrderedByField:@"updatedAt" descending:YES];
+        query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
+        [orderedQueries addObject:query];
+    }
+    return orderedQueries.copy;
 }
 
 - (NSDate *)pp_floorDateForRange:(PPPaymentAdminDateRange)dateRange
@@ -535,47 +829,64 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 }
 
 - (void)pp_fetchRequestSummariesForOrderID:(NSString *)orderID
+                                      staff:(PPStaffDoc *)staff
                                 completion:(void (^)(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error))completion
 {
     FIRQuery *query = [[[[self.db collectionWithPath:@"Orders"]
                          documentWithPath:orderID]
                         collectionWithPath:@"requests"]
                        queryOrderedByField:@"updatedAt" descending:YES];
+    query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
     query = [query queryLimitedTo:6];
     [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (!PPPaymentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(@[], PPPaymentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
         if (error) {
             if (completion) completion(@[], error);
             return;
         }
         NSMutableArray<PPPaymentAdminSupportRequest *> *requests = [NSMutableArray array];
         for (FIRDocumentSnapshot *doc in snapshot.documents ?: @[]) {
-            [requests addObject:[PPPaymentAdminSupportRequest requestFromSnapshot:doc]];
+            PPPaymentAdminSupportRequest *request = [PPPaymentAdminSupportRequest requestFromSnapshot:doc];
+            if (request.orderId.length == 0) request.orderId = orderID;
+            if ([request.orderId isEqualToString:orderID]) [requests addObject:request];
         }
         if (completion) completion(requests.copy, nil);
     }];
 }
 
 - (void)pp_fetchAllRequestsForOrderID:(NSString *)orderID
+                                staff:(PPStaffDoc *)staff
                            completion:(void (^)(NSArray<PPPaymentAdminSupportRequest *> *requests, NSError * _Nullable error))completion
 {
     FIRQuery *query = [[[[self.db collectionWithPath:@"Orders"]
                          documentWithPath:orderID]
                         collectionWithPath:@"requests"]
-                       queryOrderedByField:@"createdAt" descending:YES];
+                       queryOrderedByField:@"updatedAt" descending:YES];
+    query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
     [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (!PPPaymentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(@[], PPPaymentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
         if (error) {
             if (completion) completion(@[], error);
             return;
         }
         NSMutableArray<PPPaymentAdminSupportRequest *> *requests = [NSMutableArray array];
         for (FIRDocumentSnapshot *doc in snapshot.documents ?: @[]) {
-            [requests addObject:[PPPaymentAdminSupportRequest requestFromSnapshot:doc]];
+            PPPaymentAdminSupportRequest *request = [PPPaymentAdminSupportRequest requestFromSnapshot:doc];
+            if (request.orderId.length == 0) request.orderId = orderID;
+            if ([request.orderId isEqualToString:orderID]) [requests addObject:request];
         }
         if (completion) completion(requests.copy, nil);
     }];
 }
 
 - (void)pp_fetchTimelineForOrderID:(NSString *)orderID
+                             staff:(PPStaffDoc *)staff
                         completion:(void (^)(NSArray<PPPaymentAdminTimelineEvent *> *events, NSError * _Nullable error))completion
 {
     FIRQuery *query = [[[[self.db collectionWithPath:@"Orders"]
@@ -583,6 +894,10 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                         collectionWithPath:@"events"]
                        queryOrderedByField:@"createdAt" descending:NO];
     [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (!PPPaymentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(@[], PPPaymentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
         if (error) {
             if (completion) completion(@[], error);
             return;
@@ -596,12 +911,21 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
 }
 
 - (void)pp_fetchAuditEntriesForOrderID:(NSString *)orderID
+                                  staff:(PPStaffDoc *)staff
                             completion:(void (^)(NSArray<PPPaymentAdminAuditEntry *> *entries, NSError * _Nullable error))completion
 {
+    if (!PPPaymentCanReadUnscopedAudit(staff)) {
+        if (completion) completion(@[], PPPaymentReadError(413, @"PPOrder_Error_AuditRestricted"));
+        return;
+    }
     FIRQuery *query = [[[self.db collectionWithPath:@"AdminAuditLogs"]
                         queryWhereField:@"orderId" isEqualTo:orderID]
                        queryWhereField:@"area" isEqualTo:@"payments"];
     [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (!PPPaymentCanReadUnscopedAudit(staff)) {
+            if (completion) completion(@[], PPPaymentReadError(413, @"PPOrder_Error_AuditRestricted"));
+            return;
+        }
         if (error) {
             if (completion) completion(@[], error);
             return;
@@ -627,11 +951,18 @@ static NSString * const PPPaymentAdminServiceErrorDomain = @"PPPaymentAdminServi
                   note:(NSString *)note
             completion:(PPPaymentAdminRecordCompletion)completion
 {
-    if (![self currentAdminCanManagePayments]) {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasPermission:kStaffPermPaymentsManage]) {
         [self pp_completeRecord:nil
                           error:[NSError errorWithDomain:PPPaymentAdminServiceErrorDomain
                                                    code:402
                                                userInfo:@{NSLocalizedDescriptionKey: kLang(@"PaymentMgmt_Error_NoManagePermission")}]
+                     completion:completion];
+        return;
+    }
+    if (!PPPaymentHasReadableScope(staff) || !PPPaymentStaffCanReachRecord(staff, record)) {
+        [self pp_completeRecord:nil
+                          error:PPPaymentReadError(411, @"PPOrder_Error_MissingReadScope")
                      completion:completion];
         return;
     }

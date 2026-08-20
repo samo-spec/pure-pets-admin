@@ -9,8 +9,11 @@
 #import "PPPickOptionCell.h"
 #import "PPNotificationsManager.h"
 #import "PPSelectUsersViewController.h"
+#import "PPDesignTokens.h"
 #import "Styling.h"
 #import "UserManager.h"
+#import "UIViewController+PPNavBar.h"
+#import <math.h>
 
 typedef NS_ENUM(NSInteger, PPNotificationTargetKind) {
     PPNotificationTargetKindNone = 0,
@@ -19,10 +22,6 @@ typedef NS_ENUM(NSInteger, PPNotificationTargetKind) {
     PPNotificationTargetKindAdmins,
     PPNotificationTargetKindEveryone
 };
-
-static inline NSString *PPNotifL(NSString *ar, NSString *en) {
-    return [Language languageVal] == 1 ? (ar ?: en ?: @"") : (en ?: ar ?: @"");
-}
 
 static inline NSString *PPNotifTrimmedString(id value) {
     if (![value isKindOfClass:[NSString class]]) return @"";
@@ -38,30 +37,6 @@ static inline NSString *PPNotifFirstNonEmpty(NSArray<NSString *> *candidates) {
 }
 
 
-static inline NSString *PPNotifServerMessage(NSDictionary *response) {
-    if (![response isKindOfClass:[NSDictionary class]]) return @"";
-    NSString *error = PPNotifTrimmedString(response[@"error"]);
-    if (error.length) return error;
-    NSString *message = PPNotifTrimmedString(response[@"message"]);
-    if (message.length) return message;
-    NSString *msg = PPNotifTrimmedString(response[@"msg"]);
-    return msg;
-}
-
-static inline BOOL PPNotifResponseHasFailure(NSDictionary *response) {
-    if (![response isKindOfClass:[NSDictionary class]]) return NO;
-    id errorObj = response[@"error"];
-    if ([errorObj isKindOfClass:[NSString class]] && PPNotifTrimmedString(errorObj).length > 0) return YES;
-    if ([errorObj isKindOfClass:[NSDictionary class]]) return YES;
-    id success = response[@"success"];
-    if ([success respondsToSelector:@selector(boolValue)] && ![success boolValue]) return YES;
-    id ok = response[@"ok"];
-    if ([ok respondsToSelector:@selector(boolValue)] && ![ok boolValue]) return YES;
-    NSString *status = PPNotifTrimmedString(response[@"status"]).lowercaseString;
-    if ([status isEqualToString:@"error"] || [status isEqualToString:@"failed"] || [status isEqualToString:@"fail"]) return YES;
-    return NO;
-}
-
 static NSString * const kRowTitleTag = @"title";
 static NSString * const kRowBodyTag = @"body";
 static NSString * const kRowTypeTag = @"type";
@@ -75,10 +50,46 @@ static NSString * const kTargetEveryoneTag = @"t_everyone";
 static NSString * const kSpecificPickRowTag = @"specific_users_picker";
 static NSString * const kSpecificSummaryRowTag = @"specific_users_summary";
 static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
+static const NSUInteger kPPNotificationComposerRecipientLimit = 500;
 
-@interface NotificationComposerViewController ()
+typedef NS_ENUM(NSInteger, PPNotificationComposerDispatchState) {
+    PPNotificationComposerDispatchStateDraft = 0,
+    PPNotificationComposerDispatchStateSending,
+    PPNotificationComposerDispatchStateSuccess,
+    PPNotificationComposerDispatchStateWarning,
+    PPNotificationComposerDispatchStateError
+};
+
+static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
+    if (@available(iOS 11.0, *)) {
+        return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+    }
+    return baseFont;
+}
+
+@interface NotificationComposerViewController () <UIAdaptivePresentationControllerDelegate>
 @property (nonatomic, strong) XLFormSectionDescriptor *specificUsersSection;
 @property (nonatomic, assign) BOOL isSending;
+@property (nonatomic, strong) UIButton *navigationSendButton;
+@property (nonatomic, strong) UIView *dispatchHeader;
+@property (nonatomic, strong) UILabel *dispatchContextLabel;
+@property (nonatomic, strong) UILabel *dispatchTitleLabel;
+@property (nonatomic, strong) UILabel *dispatchSubtitleLabel;
+@property (nonatomic, strong) UIView *dispatchStateBanner;
+@property (nonatomic, strong) UIImageView *dispatchStateIcon;
+@property (nonatomic, strong) UIActivityIndicatorView *dispatchStateSpinner;
+@property (nonatomic, strong) UILabel *dispatchStateLabel;
+@property (nonatomic, assign) CGFloat dispatchHeaderMeasuredWidth;
+@property (nonatomic, strong) UIView *sendDock;
+@property (nonatomic, strong) UILabel *sendDockStatusLabel;
+@property (nonatomic, strong) UIButton *sendDockButton;
+@property (nonatomic, strong) NSLayoutConstraint *sendDockBottomConstraint;
+@property (nonatomic, strong) NSLayoutConstraint *sendDockHeightConstraint;
+@property (nonatomic, assign) UIEdgeInsets baseTableContentInset;
+@property (nonatomic, assign) CGFloat keyboardOverlap;
+@property (nonatomic, copy) NSString *dispatchOutcomeMessage;
+@property (nonatomic, assign) PPNotificationComposerDispatchState dispatchOutcomeState;
+@property (nonatomic, copy) NSString *currentDispatchID;
 @end
 
 @implementation NotificationComposerViewController
@@ -92,18 +103,403 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     [super viewDidLoad];
     self.selectedUIDs = [NSMutableArray array];
     self.cachedUsers = @[];
+    self.dispatchOutcomeState = PPNotificationComposerDispatchStateDraft;
+    self.view.backgroundColor = [UIColor ppBackground];
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.showsHorizontalScrollIndicator = NO;
-    self.tableView.tableFooterView = [UIView new];
+    self.tableView.backgroundColor = [UIColor ppBackground];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceSM, 0);
+    self.tableView.contentInset = self.baseTableContentInset;
+    [self pp_setupDispatchHeader];
+    [self pp_setupSendDock];
+    [self pp_registerKeyboardNotifications];
     [self updateSpecificUsersSummary];
     [self prefetchUsers];
+    [self pp_refreshDispatchStatus];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    UIButton *send = [self pp_ButtonWithSystemName:@"paperplane.fill" action:@selector(onSend)];
-    [self pp_navBarWithOtherButton:send title:PPNotifL(@"إنشاء إشعار", @"Compose Notification")];
+    if (!self.navigationSendButton) {
+        self.navigationSendButton = [self pp_ButtonWithSystemName:@"paperplane.fill" action:@selector(onSend)];
+        self.navigationSendButton.accessibilityLabel = kLang(@"NotificationComposer_Action_Send");
+        self.navigationSendButton.accessibilityIdentifier = @"admin-notification-composer-send";
+    }
+    [self pp_navBarWithOtherButton:self.navigationSendButton title:kLang(@"Compose Notification")];
+    self.navigationItem.rightBarButtonItem.accessibilityIdentifier = @"admin-notification-composer-send";
+    [self pp_refreshDispatchStatus];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    [self.view endEditing:YES];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)pp_setupDispatchHeader {
+    if (self.dispatchHeader) return;
+
+    UIView *header = [[UIView alloc] initWithFrame:CGRectZero];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *stack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentFill;
+    stack.spacing = PPSpaceSM;
+    stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:stack];
+
+    self.dispatchContextLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dispatchContextLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
+    self.dispatchContextLabel.textColor = [UIColor ppPrimary];
+    self.dispatchContextLabel.text = kLang(@"NotificationComposer_Context");
+    self.dispatchContextLabel.adjustsFontForContentSizeCategory = YES;
+    self.dispatchContextLabel.textAlignment = NSTextAlignmentNatural;
+    self.dispatchContextLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    self.dispatchTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dispatchTitleLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
+    self.dispatchTitleLabel.textColor = [UIColor ppTextPrimary];
+    self.dispatchTitleLabel.text = kLang(@"Compose Notification");
+    self.dispatchTitleLabel.numberOfLines = 0;
+    self.dispatchTitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.dispatchTitleLabel.textAlignment = NSTextAlignmentNatural;
+    self.dispatchTitleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    self.dispatchSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dispatchSubtitleLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    self.dispatchSubtitleLabel.textColor = [UIColor ppTextSecondary];
+    self.dispatchSubtitleLabel.text = kLang(@"NotificationComposer_Subtitle");
+    self.dispatchSubtitleLabel.numberOfLines = 0;
+    self.dispatchSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.dispatchSubtitleLabel.textAlignment = NSTextAlignmentNatural;
+    self.dispatchSubtitleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    self.dispatchStateBanner = [[UIView alloc] initWithFrame:CGRectZero];
+    self.dispatchStateBanner.translatesAutoresizingMaskIntoConstraints = NO;
+    PPApplyContinuousCorners(self.dispatchStateBanner, PPCornerSmall);
+    self.dispatchStateBanner.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    self.dispatchStateBanner.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIStackView *stateStack = [[UIStackView alloc] initWithFrame:CGRectZero];
+    stateStack.translatesAutoresizingMaskIntoConstraints = NO;
+    stateStack.axis = UILayoutConstraintAxisHorizontal;
+    stateStack.alignment = UIStackViewAlignmentCenter;
+    stateStack.spacing = PPSpaceSM;
+    stateStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.dispatchStateBanner addSubview:stateStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [stateStack.topAnchor constraintEqualToAnchor:self.dispatchStateBanner.topAnchor constant:PPSpaceSM],
+        [stateStack.leadingAnchor constraintEqualToAnchor:self.dispatchStateBanner.leadingAnchor constant:PPSpaceSM],
+        [stateStack.trailingAnchor constraintEqualToAnchor:self.dispatchStateBanner.trailingAnchor constant:-PPSpaceSM],
+        [stateStack.bottomAnchor constraintEqualToAnchor:self.dispatchStateBanner.bottomAnchor constant:-PPSpaceSM]
+    ]];
+
+    self.dispatchStateIcon = [[UIImageView alloc] initWithFrame:CGRectZero];
+    self.dispatchStateIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dispatchStateIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [stateStack addArrangedSubview:self.dispatchStateIcon];
+    [self.dispatchStateIcon.widthAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+    [self.dispatchStateIcon.heightAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+
+    self.dispatchStateSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.dispatchStateSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dispatchStateSpinner.hidesWhenStopped = YES;
+    [stateStack addArrangedSubview:self.dispatchStateSpinner];
+    [self.dispatchStateSpinner.widthAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+    [self.dispatchStateSpinner.heightAnchor constraintEqualToConstant:PPButtonHeightXS].active = YES;
+
+    self.dispatchStateLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dispatchStateLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    self.dispatchStateLabel.numberOfLines = 0;
+    self.dispatchStateLabel.adjustsFontForContentSizeCategory = YES;
+    self.dispatchStateLabel.textAlignment = NSTextAlignmentNatural;
+    self.dispatchStateLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.dispatchStateLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    [stateStack addArrangedSubview:self.dispatchStateLabel];
+
+    [stack addArrangedSubview:self.dispatchContextLabel];
+    [stack addArrangedSubview:self.dispatchTitleLabel];
+    [stack addArrangedSubview:self.dispatchSubtitleLabel];
+    [stack addArrangedSubview:self.dispatchStateBanner];
+
+    UIView *rule = [[UIView alloc] initWithFrame:CGRectZero];
+    rule.translatesAutoresizingMaskIntoConstraints = NO;
+    rule.backgroundColor = [UIColor ppSeparator];
+    [stack addArrangedSubview:rule];
+    [rule.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXL],
+        [stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
+        [stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
+        [stack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM]
+    ]];
+
+    self.dispatchHeader = header;
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)pp_updateDispatchHeaderFrame {
+    if (!self.dispatchHeader || !self.tableView) return;
+
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    if (width <= 0.0) return;
+    CGRect frame = self.dispatchHeader.frame;
+    if (fabs(self.dispatchHeaderMeasuredWidth - width) < 0.5 && frame.size.height > 0.0) return;
+
+    self.dispatchHeader.frame = CGRectMake(0.0, 0.0, width, 1.0);
+    [self.dispatchHeader setNeedsLayout];
+    [self.dispatchHeader layoutIfNeeded];
+    CGSize fittingSize = [self.dispatchHeader systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                                withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    self.dispatchHeader.frame = CGRectMake(0.0, 0.0, width, MAX(PPSpace4XL, ceil(fittingSize.height)));
+    self.dispatchHeaderMeasuredWidth = width;
+    self.tableView.tableHeaderView = self.dispatchHeader;
+}
+
+- (void)pp_setupSendDock {
+    if (self.sendDock) return;
+
+    UIView *dock = [[UIView alloc] initWithFrame:CGRectZero];
+    dock.translatesAutoresizingMaskIntoConstraints = NO;
+    dock.backgroundColor = [UIColor ppSurface];
+    dock.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    PPApplyElevatedShadow(dock);
+    [self.view addSubview:dock];
+
+    UIView *hairline = [[UIView alloc] initWithFrame:CGRectZero];
+    hairline.translatesAutoresizingMaskIntoConstraints = NO;
+    hairline.backgroundColor = [UIColor ppSeparator];
+    [dock addSubview:hairline];
+
+    self.sendDockStatusLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.sendDockStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendDockStatusLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+    self.sendDockStatusLabel.textColor = [UIColor ppTextSecondary];
+    self.sendDockStatusLabel.numberOfLines = 2;
+    self.sendDockStatusLabel.adjustsFontForContentSizeCategory = YES;
+    self.sendDockStatusLabel.textAlignment = NSTextAlignmentNatural;
+    self.sendDockStatusLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [dock addSubview:self.sendDockStatusLabel];
+
+    self.sendDockButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.sendDockButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendDockButton.accessibilityLabel = kLang(@"NotificationComposer_Action_Send");
+    self.sendDockButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    [self.sendDockButton addTarget:self action:@selector(onSend) forControlEvents:UIControlEventTouchUpInside];
+    [dock addSubview:self.sendDockButton];
+
+    self.sendDockHeightConstraint = [dock.heightAnchor constraintEqualToConstant:PPButtonHeightLG + PPSpaceBase];
+    [NSLayoutConstraint activateConstraints:@[
+        [dock.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [dock.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        self.sendDockHeightConstraint,
+        [hairline.topAnchor constraintEqualToAnchor:dock.topAnchor],
+        [hairline.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor],
+        [hairline.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor],
+        [hairline.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+        [self.sendDockButton.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor constant:-PPScreenMargin],
+        [self.sendDockButton.centerYAnchor constraintEqualToAnchor:dock.centerYAnchor],
+        [self.sendDockButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightLG],
+        [self.sendDockStatusLabel.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor constant:PPScreenMargin],
+        [self.sendDockStatusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.sendDockButton.leadingAnchor constant:-PPSpaceMD],
+        [self.sendDockStatusLabel.centerYAnchor constraintEqualToAnchor:self.sendDockButton.centerYAnchor]
+    ]];
+
+    self.sendDock = dock;
+    self.sendDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
+    self.sendDockBottomConstraint.active = YES;
+}
+
+- (void)pp_applySendDockButtonConfiguration {
+    NSString *title = self.isSending ? kLang(@"NotificationComposer_Action_Sending") : kLang(@"NotificationComposer_Action_Send");
+    self.sendDockButton.accessibilityLabel = title;
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *configuration = [UIButtonConfiguration filledButtonConfiguration];
+        configuration.baseBackgroundColor = [UIColor ppPrimary];
+        configuration.baseForegroundColor = PPOnPrimaryColor();
+        configuration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+        configuration.contentInsets = NSDirectionalEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+        configuration.title = title;
+        configuration.image = [UIImage systemImageNamed:@"paperplane.fill"];
+        configuration.imagePadding = PPSpaceSM;
+        configuration.showsActivityIndicator = self.isSending;
+        self.sendDockButton.configuration = configuration;
+    } else {
+        [self.sendDockButton setTitle:title forState:UIControlStateNormal];
+        self.sendDockButton.backgroundColor = [UIColor ppPrimary];
+        [self.sendDockButton setTitleColor:PPOnPrimaryColor() forState:UIControlStateNormal];
+        PPApplyContinuousCorners(self.sendDockButton, PPCornerSmall);
+        self.sendDockButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+    }
+}
+
+- (void)pp_registerKeyboardNotifications {
+    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
+    [center addObserver:self selector:@selector(pp_keyboardWillChange:) name:UIKeyboardWillChangeFrameNotification object:nil];
+    [center addObserver:self selector:@selector(pp_keyboardWillChange:) name:UIKeyboardWillHideNotification object:nil];
+}
+
+- (void)pp_keyboardWillChange:(NSNotification *)notification {
+    NSDictionary *userInfo = notification.userInfo;
+    CGRect endFrame = [userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    CGRect keyboardFrameInView = [self.view convertRect:endFrame fromView:nil];
+    BOOL isHiding = [notification.name isEqualToString:UIKeyboardWillHideNotification];
+    self.keyboardOverlap = (isHiding || CGRectIsEmpty(endFrame))
+        ? 0.0
+        : MAX(0.0, CGRectGetMaxY(self.view.bounds) - CGRectGetMinY(keyboardFrameInView));
+
+    NSTimeInterval duration = [userInfo[UIKeyboardAnimationDurationUserInfoKey] doubleValue];
+    UIViewAnimationCurve curve = [userInfo[UIKeyboardAnimationCurveUserInfoKey] integerValue];
+    UIViewAnimationOptions options = (UIViewAnimationOptions)(curve << 16) | UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction;
+    [UIView animateWithDuration:duration delay:0.0 options:options animations:^{
+        self.sendDockBottomConstraint.constant = -self.keyboardOverlap;
+        [self.view layoutIfNeeded];
+        [self pp_updateTableInsets];
+    } completion:nil];
+}
+
+- (void)pp_updateTableInsets {
+    if (!self.tableView) return;
+    UIEdgeInsets insets = self.baseTableContentInset;
+    insets.bottom += CGRectGetHeight(self.sendDock.bounds) + PPSpaceLG + self.keyboardOverlap;
+    self.tableView.contentInset = insets;
+    self.tableView.scrollIndicatorInsets = insets;
+}
+
+- (void)pp_clearDispatchOutcome {
+    self.dispatchOutcomeMessage = nil;
+    self.dispatchOutcomeState = PPNotificationComposerDispatchStateDraft;
+    self.currentDispatchID = nil;
+}
+
+- (void)pp_refreshDispatchStatus {
+    PPNotificationComposerDispatchState state = self.dispatchOutcomeState;
+    NSString *message = self.dispatchOutcomeMessage;
+    if (self.isSending) {
+        state = PPNotificationComposerDispatchStateSending;
+        message = kLang(@"NotificationComposer_Status_Sending");
+    } else if (message.length == 0) {
+        PPNotificationTargetKind target = [self currentTargetKind];
+        if (target == PPNotificationTargetKindNone) {
+            message = kLang(@"NotificationComposer_Status_SelectTarget");
+        } else if (target == PPNotificationTargetKindSpecificUsers) {
+            message = self.selectedUIDs.count > 0
+                ? [NSString stringWithFormat:kLang(@"NotificationComposer_Status_RecipientsSelected"), (long)self.selectedUIDs.count]
+                : kLang(@"NotificationComposer_Status_SelectRecipients");
+        } else {
+            message = kLang(@"NotificationComposer_Status_AudienceSelected");
+        }
+        state = PPNotificationComposerDispatchStateDraft;
+    }
+    [self pp_applyDispatchState:state message:message];
+}
+
+- (void)pp_applyDispatchState:(PPNotificationComposerDispatchState)state message:(NSString *)message {
+    UIColor *tone = [UIColor ppTextSecondary];
+    UIColor *background = [[UIColor ppSecondarySurface] colorWithAlphaComponent:0.72];
+    UIImage *icon = [UIImage systemImageNamed:@"square.and.pencil"];
+    BOOL showsSpinner = NO;
+
+    switch (state) {
+        case PPNotificationComposerDispatchStateSending:
+            tone = [UIColor ppInfo];
+            background = [[UIColor ppInfo] colorWithAlphaComponent:0.08];
+            showsSpinner = YES;
+            break;
+        case PPNotificationComposerDispatchStateSuccess:
+            tone = [UIColor ppSuccess];
+            background = [[UIColor ppSuccess] colorWithAlphaComponent:0.08];
+            icon = [UIImage systemImageNamed:@"checkmark.circle.fill"];
+            break;
+        case PPNotificationComposerDispatchStateWarning:
+            tone = [UIColor ppWarning];
+            background = [[UIColor ppWarning] colorWithAlphaComponent:0.10];
+            icon = [UIImage systemImageNamed:@"exclamationmark.triangle.fill"];
+            break;
+        case PPNotificationComposerDispatchStateError:
+            tone = [UIColor ppError];
+            background = [[UIColor ppError] colorWithAlphaComponent:0.08];
+            icon = [UIImage systemImageNamed:@"exclamationmark.triangle.fill"];
+            break;
+        case PPNotificationComposerDispatchStateDraft:
+        default:
+            break;
+    }
+
+    self.dispatchStateBanner.backgroundColor = background;
+    self.dispatchStateBanner.layer.borderColor = [tone colorWithAlphaComponent:0.24].CGColor;
+    self.dispatchStateLabel.text = message;
+    self.dispatchStateLabel.textColor = tone;
+    self.dispatchStateLabel.accessibilityLabel = message;
+    self.dispatchStateIcon.image = icon;
+    self.dispatchStateIcon.tintColor = tone;
+    self.dispatchStateIcon.hidden = showsSpinner;
+    self.dispatchStateSpinner.color = tone;
+    if (showsSpinner) {
+        [self.dispatchStateSpinner startAnimating];
+    } else {
+        [self.dispatchStateSpinner stopAnimating];
+    }
+
+    self.sendDockStatusLabel.text = message;
+    self.sendDockStatusLabel.textColor = tone;
+    self.sendDockButton.enabled = !self.isSending;
+    self.navigationSendButton.enabled = !self.isSending;
+    self.navigationItem.rightBarButtonItem.enabled = !self.isSending;
+    self.tableView.userInteractionEnabled = !self.isSending;
+    [self pp_applySendDockButtonConfiguration];
+    self.dispatchHeaderMeasuredWidth = 0.0;
+    [self pp_updateDispatchHeaderFrame];
+    [self pp_updateTableInsets];
+    PPCommandCenterNavigationItemsDidChange(self);
+}
+
+- (void)pp_formDidChange {
+    if (self.isSending) return;
+    [self pp_clearDispatchOutcome];
+    [self pp_refreshDispatchStatus];
+}
+
+- (void)presentationControllerDidDismiss:(UIPresentationController *)presentationController {
+    (void)presentationController;
+    PPCommandCenterNavigationItemsDidChange(self);
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    self.sendDockHeightConstraint.constant = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)
+        ? PPButtonHeightLG + PPSpaceXL
+        : PPButtonHeightLG + PPSpaceBase;
+    [self pp_updateDispatchHeaderFrame];
+    [self pp_updateTableInsets];
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (![self.traitCollection.preferredContentSizeCategory isEqualToString:previousTraitCollection.preferredContentSizeCategory]) {
+        self.dispatchContextLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
+        self.dispatchTitleLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
+        self.dispatchSubtitleLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+        self.dispatchStateLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+        self.sendDockStatusLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
+        self.dispatchHeaderMeasuredWidth = 0.0;
+        [self.tableView reloadData];
+        [self pp_refreshDispatchStatus];
+    }
 }
 
 #pragma mark - Form
@@ -117,12 +513,19 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     XLFormRowDescriptor *title =
     [XLFormRowDescriptor formRowDescriptorWithTag:kRowTitleTag rowType:XLFormRowDescriptorTypeText title:kLang(@"Title")];
     title.required = YES;
+    __weak typeof(self) weakSelf = self;
+    title.onChangeBlock = ^(__unused id oldValue, __unused id newValue, __unused XLFormRowDescriptor *rowDescriptor) {
+        [weakSelf pp_formDidChange];
+    };
     [Styling applyGlobalStyleToRow:title];
     [content addFormRow:title];
 
     XLFormRowDescriptor *body =
     [XLFormRowDescriptor formRowDescriptorWithTag:kRowBodyTag rowType:XLFormRowDescriptorTypeTextView title:kLang(@"Body")];
     body.required = YES;
+    body.onChangeBlock = ^(__unused id oldValue, __unused id newValue, __unused XLFormRowDescriptor *rowDescriptor) {
+        [weakSelf pp_formDidChange];
+    };
     [Styling applyGlobalStyleToRow:body];
     [content addFormRow:body];
 
@@ -136,24 +539,26 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     ];
     type.value = type.selectorOptions.firstObject;
     type.height = 52.0;
+    type.onChangeBlock = ^(__unused id oldValue, __unused id newValue, __unused XLFormRowDescriptor *rowDescriptor) {
+        [weakSelf pp_formDidChange];
+    };
     [Styling applyGlobalStyleToRow:type];
     [content addFormRow:type];
 
-    XLFormSectionDescriptor *target = [XLFormSectionDescriptor formSectionWithTitle:PPNotifL(@"هدف الإشعار", @"Notification Target")];
+    XLFormSectionDescriptor *target = [XLFormSectionDescriptor formSectionWithTitle:kLang(@"NotificationComposer_Target")];
     [form addFormSection:target];
 
-    [target addFormRow:[self targetRowWithTag:kTargetNoneTag title:PPNotifL(@"لا أحد", @"Nobody") subtitle:PPNotifL(@"لن يتم إرسال أي إشعار.", @"No notification will be sent.") selected:YES]];
-    [target addFormRow:[self targetRowWithTag:kTargetSpecificTag title:PPNotifL(@"مستخدمون محددون", @"Specific Users") subtitle:PPNotifL(@"اختر مستخدماً واحداً أو أكثر.", @"Select one or more users.") selected:NO]];
-    [target addFormRow:[self targetRowWithTag:kTargetAllUsersTag title:PPNotifL(@"جميع المستخدمين", @"All Users") subtitle:PPNotifL(@"إرسال إلى كل مستخدمي التطبيق.", @"Send to all app users.") selected:NO]];
-    [target addFormRow:[self targetRowWithTag:kTargetAdminsTag title:PPNotifL(@"المشرفون", @"Admins") subtitle:PPNotifL(@"إرسال إلى جميع المشرفين فقط.", @"Send to all admins only.") selected:NO]];
-    [target addFormRow:[self targetRowWithTag:kTargetEveryoneTag title:PPNotifL(@"الكل", @"Everyone") subtitle:PPNotifL(@"إرسال إلى المستخدمين والمشرفين.", @"Send to users and admins.") selected:NO]];
+    [target addFormRow:[self targetRowWithTag:kTargetNoneTag title:kLang(@"Nobody") subtitle:kLang(@"NotificationComposer_Target_None_Subtitle") selected:YES]];
+    [target addFormRow:[self targetRowWithTag:kTargetSpecificTag title:kLang(@"Specific Users") subtitle:kLang(@"NotificationComposer_Target_Specific_Subtitle") selected:NO]];
+    [target addFormRow:[self targetRowWithTag:kTargetAllUsersTag title:kLang(@"All Users") subtitle:kLang(@"NotificationComposer_Target_AllUsers_Subtitle") selected:NO]];
+    [target addFormRow:[self targetRowWithTag:kTargetAdminsTag title:kLang(@"NotificationComposer_Admins") subtitle:kLang(@"NotificationComposer_Target_Admins_Subtitle") selected:NO]];
+    [target addFormRow:[self targetRowWithTag:kTargetEveryoneTag title:kLang(@"NotificationComposer_Everyone") subtitle:kLang(@"NotificationComposer_Target_Everyone_Subtitle") selected:NO]];
 
-    self.specificUsersSection = [XLFormSectionDescriptor formSectionWithTitle:PPNotifL(@"مستخدمون محددون", @"Specific Users")];
+    self.specificUsersSection = [XLFormSectionDescriptor formSectionWithTitle:kLang(@"Specific Users")];
 
     XLFormRowDescriptor *pickUsers =
-    [XLFormRowDescriptor formRowDescriptorWithTag:kSpecificPickRowTag rowType:XLFormRowDescriptorTypePickOption title:PPNotifL(@"اختر مستخدم", @"Select User")];
+    [XLFormRowDescriptor formRowDescriptorWithTag:kSpecificPickRowTag rowType:XLFormRowDescriptorTypePickOption title:kLang(@"Select User")];
     pickUsers.height = 60.0;
-    __weak typeof(self) weakSelf = self;
     pickUsers.cellConfig[@"onPickTap"] = ^(XLFormRowDescriptor *sender) {
         __strong typeof(weakSelf) self = weakSelf;
         [self presentSpecificUserPickerForRow:sender];
@@ -216,6 +621,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
 
     BOOL showSpecific = [[[self.form formRowWithTag:kTargetSpecificTag] value] boolValue];
     [self toggleSpecificUsersSection:showSpecific];
+    [self pp_clearDispatchOutcome];
     [self updateSpecificUsersSummary];
 
     self.isUpdatingTargets = NO;
@@ -261,7 +667,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
             __strong typeof(weakSelf) self = weakSelf;
             if (!self) return;
             if (error) {
-                [AlertHelper showErrorIn:self title:PPNotifL(@"خطأ", @"Error") subtitle:error.localizedDescription];
+                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
                 return;
             }
             self.cachedUsers = users ?: @[];
@@ -278,8 +684,8 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     NSArray *options = self.cachedUsers ?: @[];
     if (options.count == 0) {
         [AlertHelper showInfoIn:self
-                          title:PPNotifL(@"معلومة", @"Info")
-                       subtitle:PPNotifL(@"لا يوجد مستخدمون.", @"No users found.")];
+                           title:kLang(@"Info")
+                        subtitle:kLang(@"NoUsersFound")];
         return;
     }
 
@@ -305,6 +711,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
         }
 
         self.selectedUIDs = [uids.array mutableCopy];
+        [self pp_clearDispatchOutcome];
         [self updateSpecificUsersSummary];
     }];
 
@@ -315,7 +722,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     vc.parentForm = self;
     vc.imageLoaded = NO;
     vc.presentationStyle = PPSelectOptionPresentationSheet;
-    vc.title = PPNotifL(@"اختر مستخدم", @"Select User");
+    vc.title = kLang(@"Select User");
 
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:vc];
     nav.modalTransitionStyle = UIModalTransitionStyleCoverVertical;
@@ -334,7 +741,14 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
             sheet.prefersScrollingExpandsWhenScrolledToEdge = NO;
         }
     }
-    [self presentViewController:nav animated:YES completion:nil];
+    if (self.navigationController) {
+        [self.navigationController pushViewController:vc animated:YES];
+    } else {
+        [self presentViewController:nav animated:YES completion:^{
+            nav.presentationController.delegate = self;
+            PPCommandCenterNavigationItemsDidChange(self);
+        }];
+    }
 }
 
 - (void)updateSpecificUsersSummary {
@@ -357,7 +771,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
     pickerRow.height = 60.0;
     pickerRow.cellConfig[@"showPickButton"] = @YES;
     pickerRow.cellConfig[@"showOptionImage"] = @YES;
-    pickerRow.title = PPNotifL(@"اختر مستخدم", @"Select User");
+    pickerRow.title = kLang(@"Select User");
 
     if (selectedCount == 0) {
         pickerRow.value = nil;
@@ -365,12 +779,12 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
         UserModel *singleUser = [self userForUID:self.selectedUIDs.firstObject];
         pickerRow.value = singleUser;
         if (!singleUser) {
-            pickerRow.title = [NSString stringWithFormat:@"%@ (1)", PPNotifL(@"اختر مستخدم", @"Select User")];
+            pickerRow.title = [NSString stringWithFormat:@"%@ (1)", kLang(@"Select User")];
         }
     } else {
         pickerRow.value = nil;
         pickerRow.title = [NSString stringWithFormat:@"%@ (%lu)",
-                           PPNotifL(@"اختر مستخدم", @"Select User"),
+                            kLang(@"Select User"),
                            (unsigned long)selectedCount];
 
         for (NSString *uid in self.selectedUIDs) {
@@ -389,6 +803,7 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
 
     [self updateFormRow:pickerRow];
     [self.tableView reloadData];
+    [self pp_refreshDispatchStatus];
 }
 
 - (NSArray<NSString *> *)normalizedSelectedUIDs {
@@ -443,224 +858,128 @@ static NSString * const kSpecificUserRowPrefix = @"specific_user_row_";
 #pragma mark - Send
 
 - (void)onSend {
+    if (self.isSending) return;
+
     NSArray *errors = [self formValidationErrors];
     if (errors.count) {
-        NSString *message = ((NSError *)errors.firstObject).localizedDescription ?: PPNotifL(@"النموذج غير صالح.", @"Invalid form.");
-        [AlertHelper showErrorIn:self title:PPNotifL(@"خطأ", @"Error") subtitle:message];
+        NSString *message = PPNotifTrimmedString(((NSError *)errors.firstObject).localizedDescription);
+        if (message.length == 0) message = kLang(@"FillRequiredFields");
+        self.dispatchOutcomeMessage = message;
+        self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
+        [self pp_refreshDispatchStatus];
+        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
         return;
     }
 
     PPNotificationTargetKind target = [self currentTargetKind];
     if (target == PPNotificationTargetKindNone) {
+        self.dispatchOutcomeMessage = kLang(@"NotificationComposer_Status_SelectTarget");
+        self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
+        [self pp_refreshDispatchStatus];
         [AlertHelper showInfoIn:self
-                          title:PPNotifL(@"معلومة", @"Info")
-                       subtitle:PPNotifL(@"لم يتم اختيار مستلمين.", @"No recipients selected.")];
+                          title:kLang(@"Info")
+                       subtitle:kLang(@"NotificationComposer_Status_SelectTarget")];
         return;
     }
 
-    if (self.isSending) return;
-
-    NSString *title = [self.form formRowWithTag:kRowTitleTag].value ?: @"";
-    NSString *body = [self.form formRowWithTag:kRowBodyTag].value ?: @"";
+    NSString *title = PPNotifTrimmedString([self.form formRowWithTag:kRowTitleTag].value);
+    NSString *body = PPNotifTrimmedString([self.form formRowWithTag:kRowBodyTag].value);
     NSInteger typeValue = [self integerFromRowValue:[self.form formRowWithTag:kRowTypeTag].value];
-
-    NSMutableDictionary *data = [@{
-        @"senderUID": PPSafeString(UsrMgr.currentUser.uid),
-        @"type": [NSString stringWithFormat:@"%ld", (long)typeValue]
-    } mutableCopy];
 
     PPNotificationAudience audience = PPNotificationAudienceAllUsers;
     NSArray<NSString *> *userIDs = nil;
-    NSString *successMessage = PPNotifL(@"تمت جدولة الإشعار.", @"Notification queued.");
 
     switch (target) {
         case PPNotificationTargetKindSpecificUsers:
             if (self.selectedUIDs.count == 0) {
+                self.dispatchOutcomeMessage = kLang(@"NotificationComposer_Status_SelectRecipients");
+                self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
+                [self pp_refreshDispatchStatus];
                 [AlertHelper showInfoIn:self
-                                  title:PPNotifL(@"معلومة", @"Info")
-                               subtitle:PPNotifL(@"يرجى اختيار مستخدم واحد على الأقل.", @"Please select at least one user.")];
+                                  title:kLang(@"Info")
+                               subtitle:kLang(@"NotificationComposer_Status_SelectRecipients")];
+                return;
+            }
+            if (self.selectedUIDs.count > kPPNotificationComposerRecipientLimit) {
+                NSString *message = [NSString stringWithFormat:kLang(@"NotificationComposer_Recipient_Limit"), (long)kPPNotificationComposerRecipientLimit];
+                self.dispatchOutcomeMessage = message;
+                self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
+                [self pp_refreshDispatchStatus];
+                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
                 return;
             }
             audience = PPNotificationAudienceSpecificUsers;
             userIDs = self.selectedUIDs.copy;
-            successMessage = (self.selectedUIDs.count == 1)
-            ? PPNotifL(@"تم إرسال الإشعار إلى مستخدم واحد.", @"Notification sent to 1 user.")
-            : [NSString stringWithFormat:PPNotifL(@"تم إرسال الإشعار إلى %lu مستخدمين.", @"Notification sent to %lu users."), (unsigned long)self.selectedUIDs.count];
             break;
         case PPNotificationTargetKindAllUsers:
-            [self setSending:YES];
-            [self sendFallbackUsingUsersCollectionWithTitle:title
-                                                       body:body
-                                                       data:data
-                                          includeNonAdmins:YES
-                                         includeAdminTokens:NO
-                                               limitToUIDs:nil];
-            return;
+            audience = PPNotificationAudienceAllUsers;
+            break;
         case PPNotificationTargetKindAdmins:
-            [self setSending:YES];
-            [self sendFallbackUsingUsersCollectionWithTitle:title
-                                                       body:body
-                                                       data:data
-                                          includeNonAdmins:NO
-                                         includeAdminTokens:YES
-                                               limitToUIDs:nil];
-            return;
+            audience = PPNotificationAudienceAdmins;
+            break;
         case PPNotificationTargetKindEveryone:
-            [self setSending:YES];
-            [self sendFallbackUsingUsersCollectionWithTitle:title
-                                                       body:body
-                                                       data:data
-                                          includeNonAdmins:YES
-                                         includeAdminTokens:YES
-                                               limitToUIDs:nil];
-            return;
+            audience = PPNotificationAudienceEveryone;
+            break;
         case PPNotificationTargetKindNone:
         default:
             return;
     }
 
     [self setSending:YES];
-    [PPNotificationsManager sendNotificationWithTitle:title
-                                                 body:body
-                                                 data:data
-                                             audience:audience
-                                              userIDs:userIDs
-                                           completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
-        NSString *errMsg = PPNotifTrimmedString(error.localizedDescription);
-        NSString *serverMsg = PPNotifServerMessage(response);
-        NSString *combinedMsg = [NSString stringWithFormat:@"%@ %@", errMsg, serverMsg];
-        NSString *combinedLower = combinedMsg.lowercaseString;
-
-        BOOL status404 = (error && [error.domain isEqualToString:@"PPNotificationsManager"] && error.code == 404);
-        BOOL noAdminTokens = [combinedLower containsString:@"no admin tokens found"];
-        BOOL noUserToken = [combinedLower containsString:@"no user token found"];
-        BOOL noUserTokens = [combinedLower containsString:@"no user tokens found"];
-        BOOL noTokens = [combinedLower containsString:@"no tokens found"] || [combinedLower containsString:@"no token found"];
-        BOOL userMissing = [combinedLower containsString:@"user not found"];
-        BOOL invalidDataShape = [combinedLower containsString:@"data must only contain string values"];
-
-        BOOL needsSpecificFallback =
-        (target == PPNotificationTargetKindSpecificUsers) &&
-        (noUserToken || noUserTokens || noTokens || userMissing || invalidDataShape || status404);
-
-        BOOL needsAdminFallback =
-        (target == PPNotificationTargetKindAdmins || target == PPNotificationTargetKindEveryone) &&
-        (noAdminTokens || invalidDataShape || status404);
-
-        BOOL needsUsersFallback =
-        (target == PPNotificationTargetKindAllUsers || target == PPNotificationTargetKindEveryone) &&
-        (noUserToken || noUserTokens || noTokens || invalidDataShape || status404);
-
-        if (needsSpecificFallback || needsAdminFallback || needsUsersFallback) {
-            BOOL includeAdminsTokens = (target == PPNotificationTargetKindAdmins || target == PPNotificationTargetKindEveryone || target == PPNotificationTargetKindSpecificUsers);
-            [self sendFallbackUsingUsersCollectionWithTitle:title
-                                                       body:body
-                                                       data:data
-                                          includeNonAdmins:(target != PPNotificationTargetKindAdmins)
-                                         includeAdminTokens:includeAdminsTokens
-                                               limitToUIDs:(target == PPNotificationTargetKindSpecificUsers ? userIDs : nil)];
-            return;
-        }
-
-        [self setSending:NO];
-        BOOL responseFailure = PPNotifResponseHasFailure(response);
-        if (error || responseFailure) {
-            NSString *subtitle = errMsg.length ? errMsg : (serverMsg.length ? serverMsg : PPNotifL(@"فشل إرسال الإشعار.", @"Failed to send notification."));
-            [AlertHelper showErrorIn:self title:PPNotifL(@"فشل", @"Failed") subtitle:subtitle];
-            return;
-        }
-        [AlertHelper showSuccessIn:self title:PPNotifL(@"تم الإرسال", @"Sent") subtitle:successMessage];
-    }];
-}
-
-- (void)sendFallbackUsingUsersCollectionWithTitle:(NSString *)title
-                                              body:(NSString *)body
-                                              data:(NSDictionary *)data
-                                 includeNonAdmins:(BOOL)includeNonAdmins
-                                  includeAdminTokens:(BOOL)includeAdminTokens
-                                      limitToUIDs:(NSArray<NSString *> * _Nullable)limitToUIDs {
+    if (self.currentDispatchID.length == 0) {
+        self.currentDispatchID = [[NSUUID UUID] UUIDString];
+    }
     __weak typeof(self) weakSelf = self;
-    [[UserManager shared] fetchAllUsersWithCompletion:^(NSArray<UserModel *> * _Nullable users, NSError * _Nullable error) {
+    [PPNotificationsManager sendConsoleNotificationWithTitle:title
+                                                         body:body
+                                                         type:typeValue
+                                                     audience:audience
+                                                      userIDs:userIDs
+                                               idempotencyKey:self.currentDispatchID
+                                                   completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
 
-        if (error) {
-            [self setSending:NO];
-            [AlertHelper showErrorIn:self title:PPNotifL(@"فشل", @"Failed") subtitle:error.localizedDescription];
+        [self setSending:NO];
+        NSInteger recipientCount = [response[@"recipientCount"] integerValue];
+        NSInteger deliveryFailureCount = [response[@"failureCount"] integerValue];
+        NSInteger requestFailureCount = [response[@"requestFailureCount"] integerValue];
+        NSString *errorMessage = PPNotifTrimmedString(error.localizedDescription);
+
+        if (error || (requestFailureCount > 0 && recipientCount == 0)) {
+            NSString *message = errorMessage.length > 0 ? errorMessage : kLang(@"NotificationComposer_Failed_Message");
+            self.dispatchOutcomeMessage = message;
+            self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
+            [self pp_refreshDispatchStatus];
+            [AlertHelper showErrorIn:self title:kLang(@"Failed") subtitle:message];
             return;
         }
 
-        NSMutableOrderedSet<NSString *> *allowedSet = nil;
-        if ([limitToUIDs isKindOfClass:[NSArray class]] && limitToUIDs.count > 0) {
-            allowedSet = [NSMutableOrderedSet orderedSet];
-            for (id raw in limitToUIDs) {
-                NSString *uid = PPNotifTrimmedString(raw);
-                if (uid.length) [allowedSet addObject:uid];
-            }
+        if (recipientCount <= 0 && target == PPNotificationTargetKindSpecificUsers) {
+            recipientCount = userIDs.count;
         }
 
-        NSMutableOrderedSet<NSString *> *tokens = [NSMutableOrderedSet orderedSet];
-        for (UserModel *u in users ?: @[]) {
-            NSString *uid = PPNotifFirstNonEmpty(@[u.uid, u.ID]);
-            if (allowedSet.count > 0 && ![allowedSet containsObject:uid]) continue;
-
-            BOOL isAdminRole = (u.role == UserRoleAdmin || u.role == UserRoleSuperAdmin);
-            BOOL isAdminUser = (u.isAdmin || u.isSuperAdmin || isAdminRole);
-            if (!includeNonAdmins && !isAdminUser) continue;
-
-            NSString *adminToken = PPNotifTrimmedString(u.PPAdminTokenID);
-            NSString *userToken = PPNotifTrimmedString(u.PPUserTokenID);
-            NSString *proToken = PPNotifTrimmedString(u.PPProTokenID);
-
-            if (includeAdminTokens && isAdminUser && adminToken.length) [tokens addObject:adminToken];
-            if (userToken.length) [tokens addObject:userToken];
-            if (proToken.length) [tokens addObject:proToken];
-        }
-
-        if (tokens.count == 0) {
-            [self setSending:NO];
-            [AlertHelper showErrorIn:self
-                               title:PPNotifL(@"فشل", @"Failed")
-                            subtitle:PPNotifL(@"لا توجد رموز أجهزة صالحة للإرسال.", @"No valid recipient tokens found.")];
+        if (requestFailureCount > 0 || deliveryFailureCount > 0) {
+            NSInteger attentionCount = requestFailureCount + deliveryFailureCount;
+            NSString *message = [NSString stringWithFormat:kLang(@"NotificationComposer_Status_Partial"), (long)recipientCount, (long)attentionCount];
+            self.dispatchOutcomeMessage = message;
+            self.dispatchOutcomeState = PPNotificationComposerDispatchStateWarning;
+            [self pp_refreshDispatchStatus];
+            [AlertHelper showInfoIn:self title:kLang(@"NotificationComposer_Partial_Title") subtitle:message];
             return;
         }
 
-        dispatch_group_t group = dispatch_group_create();
-        __block NSInteger successCount = 0;
-        __block NSInteger failCount = 0;
-        __block NSString *lastError = @"";
-
-        for (NSString *token in tokens.array) {
-            dispatch_group_enter(group);
-            [PPNotificationsManager sendToToken:token title:title body:body data:data completion:^(NSDictionary * _Nullable response, NSError * _Nullable err) {
-                if (err) {
-                    failCount += 1;
-                    lastError = err.localizedDescription ?: @"";
-                } else {
-                    successCount += 1;
-                }
-                dispatch_group_leave(group);
-            }];
-        }
-
-        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-            [self setSending:NO];
-            if (successCount > 0) {
-                NSString *message = (successCount == 1)
-                ? PPNotifL(@"تم إرسال إشعار واحد.", @"1 notification sent.")
-                : [NSString stringWithFormat:PPNotifL(@"تم إرسال %ld إشعار.", @"%ld notifications sent."), (long)successCount];
-                [AlertHelper showSuccessIn:self title:PPNotifL(@"تم الإرسال", @"Sent") subtitle:message];
-            } else {
-                NSString *msg = lastError.length ? lastError : PPNotifL(@"فشل إرسال الإشعارات.", @"Failed to send notifications.");
-                [AlertHelper showErrorIn:self title:PPNotifL(@"فشل", @"Failed") subtitle:msg];
-            }
-        });
+        NSString *message = [NSString stringWithFormat:kLang(@"NotificationComposer_Success_Message"), (long)recipientCount];
+        self.dispatchOutcomeMessage = message;
+        self.dispatchOutcomeState = PPNotificationComposerDispatchStateSuccess;
+        [self pp_refreshDispatchStatus];
+        [AlertHelper showSuccessIn:self title:kLang(@"Queued") subtitle:message];
     }];
 }
 
 - (void)setSending:(BOOL)isSending {
     _isSending = isSending;
-    self.navigationItem.rightBarButtonItem.enabled = !isSending;
+    [self pp_refreshDispatchStatus];
 }
 
 #pragma mark - UI styling
@@ -702,6 +1021,7 @@ forRowAtIndexPath:(NSIndexPath *)indexPath {
     if (uid.length > 0) {
         [self.selectedUIDs removeObject:uid];
     }
+    [self pp_clearDispatchOutcome];
     [self updateSpecificUsersSummary];
 }
 

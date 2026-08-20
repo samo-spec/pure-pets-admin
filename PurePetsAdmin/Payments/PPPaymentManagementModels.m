@@ -567,6 +567,8 @@ NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
     PPPaymentAdminRecord *record = [PPPaymentAdminRecord new];
     record.orderId = PPPaymentAdminStringFromCandidates(dictionary, @[@"orderId"]);
     if (record.orderId.length == 0) record.orderId = PPPaymentAdminTrimmedString(documentID);
+    record.branchId = PPPaymentAdminTrimmedString(dictionary[@"branchId"]);
+    record.regionId = PPPaymentAdminTrimmedString(dictionary[@"regionId"]);
     NSString *orderNumber = PPPaymentAdminNormalizedPublicOrderNumberString(dictionary[@"orderNumber"]);
     if (orderNumber.length == 0) {
         orderNumber = PPPaymentAdminNormalizedPublicOrderNumberString(dictionary[@"displayOrderNumber"]);
@@ -633,6 +635,7 @@ NSString *PPPaymentAdminDisplayTitleForAuditAction(NSString *actionKey)
     record.requests = @[];
     record.timelineEvents = @[];
     record.auditEntries = @[];
+    record.auditEvidenceRestricted = NO;
     return record;
 }
 

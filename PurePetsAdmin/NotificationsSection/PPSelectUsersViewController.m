@@ -146,6 +146,7 @@ static inline NSString *PPSelectUsersL(NSString *ar, NSString *en) {
 
     self.navigationItem.leftBarButtonItem = done;
     self.navigationItem.rightBarButtonItem = clear;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)onDoneTap {

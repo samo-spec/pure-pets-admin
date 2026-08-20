@@ -618,8 +618,8 @@ static NSString *PPDeliveryErrorText(NSError *error) {
         [self.cardView.widthAnchor constraintLessThanOrEqualToConstant:420.0],
         [self.cardView.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.view.leadingAnchor constant:PPSpaceLG],
         [self.cardView.trailingAnchor constraintLessThanOrEqualToAnchor:self.view.trailingAnchor constant:-PPSpaceLG],
-        [self.cardView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-PPSpaceSM],
-        [self.cardView.topAnchor constraintGreaterThanOrEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:PPSpaceSM],
+        [self.cardView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [self.cardView.topAnchor constraintGreaterThanOrEqualToAnchor:self.view.topAnchor],
 
         [self.scrollView.topAnchor constraintEqualToAnchor:self.cardView.topAnchor constant:PPSpaceXL],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.cardView.leadingAnchor constant:PPSpaceXL],
@@ -777,6 +777,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     item.accessibilityHint = kLang(@"Delivery_Retry_Hint");
     self.globalRefreshItem = item;
     self.navigationItem.rightBarButtonItem = item;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)pp_configureTableView {

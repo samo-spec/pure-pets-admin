@@ -293,7 +293,7 @@ static CGSize CGSizeScale(CGSize size, CGFloat scale) {
     [self.view addSubview:self.infoBTN];
     [NSLayoutConstraint activateConstraints:@[
         [self.infoBTN.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor constant:0],
-        [self.infoBTN.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-12],
+        [self.infoBTN.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor constant:-12],
         [self.infoBTN.widthAnchor constraintEqualToConstant:width],
         [self.infoBTN.heightAnchor constraintEqualToConstant:height]
     ]];

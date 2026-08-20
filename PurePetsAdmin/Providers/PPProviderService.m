@@ -1,4 +1,5 @@
 #import "PPProviderService.h"
+#import "PPStaffAuth.h"
 @import FirebaseFirestore;
 @import FirebaseAuth;
 @import FirebaseFunctions;
@@ -17,6 +18,21 @@ static NSDate *PPProviderServiceDate(id value) {
         return [formatter dateFromString:value];
     }
     return nil;
+}
+
+static BOOL PPProviderLedgerStaffCanRead(PPStaffDoc *staff) {
+    PPStaffDoc *current = [PPStaffAuth shared].cachedCurrentStaff;
+    NSString *authUID = [FIRAuth auth].currentUser.uid;
+    return (staff != nil && current == staff && authUID.length > 0 &&
+            [staff.uid isEqualToString:authUID] && staff.isActive &&
+            (staff.isAdmin || staff.hasGlobalScope) &&
+            [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]]);
+}
+
+static NSError *PPProviderLedgerAccessError(void) {
+    return [NSError errorWithDomain:@"PPProviderService"
+                               code:403
+                           userInfo:@{NSLocalizedDescriptionKey: kLang(@"PPOrder_Error_LedgerRestricted")}];
 }
 
 @implementation PPProviderApplication
@@ -206,6 +222,11 @@ static NSDate *PPProviderServiceDate(id value) {
 
 - (void)fetchCommissionReportForProviderID:(NSString *)providerID
                                 completion:(void(^)(NSArray<PPProviderCommissionRecord *> *, NSArray<NSDictionary *> *, NSError *))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (!PPProviderLedgerStaffCanRead(staff)) {
+        if (completion) completion(@[], @[], PPProviderLedgerAccessError());
+        return;
+    }
     NSString *cleanProviderID = [PPSafeString(providerID) stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (cleanProviderID.length == 0) {
         NSError *error = [NSError errorWithDomain:@"PPProviderService"
@@ -216,6 +237,10 @@ static NSDate *PPProviderServiceDate(id value) {
     }
     FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"getProviderCommissionReport"];
     [callable callWithObject:@{@"providerID": cleanProviderID} completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (!PPProviderLedgerStaffCanRead(staff)) {
+            if (completion) completion(@[], @[], PPProviderLedgerAccessError());
+            return;
+        }
         if (error) {
             if (completion) completion(@[], @[], error);
             return;

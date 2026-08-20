@@ -17,11 +17,12 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @interface AdminDashboardViewController : XLFormViewController<PHPickerViewControllerDelegate, UIImagePickerControllerDelegate, UINavigationControllerDelegate>
-@property (nonatomic, assign) BOOL didAskForBiometric;
-// .h
 @property (nonatomic, strong) UIView *headerRoot;        // immersive hero container
 @property (nonatomic, strong) PPParallax *parallax;
+@property (nonatomic, assign) BOOL pp_isCommandSpine;
 
 @end
+
+FOUNDATION_EXTERN UIViewController *PPAdminCreateCommandSpineDashboardController(void);
 
 NS_ASSUME_NONNULL_END

@@ -5,6 +5,7 @@
 #import "PPS.h"
 #import "Styling.h"
 #import "Language.h"
+#import "PPToast.h"
 
 static NSString *PPPaymentAdminListTrimmedString(id value)
 {
@@ -334,13 +335,14 @@ descripe every that completelly and dont keep any thing
         self.isLoadingMore = NO;
         self.hasLoadedOnce = YES;
 
-        if (error) {
+        BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
+        if (error && !isPartialRead) {
             [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPayments")];
             [self.tableView reloadData];
             return;
         }
 
-        self.nextCursor = nextCursor;
+        self.nextCursor = isPartialRead ? nil : nextCursor;
         if (reset) {
             [self.records removeAllObjects];
         }
@@ -357,6 +359,14 @@ descripe every that completelly and dont keep any thing
 
         [self pp_refreshSearchButtons];
         [self.tableView reloadData];
+        if (isPartialRead) {
+            [PPToast toast:error.localizedDescription ?: kLang(@"PPOrder_Error_PartialRead")
+                      style:PPToastStyleWarning
+                     haptic:NO
+                   duration:3.0
+                   position:PPToastPositionBottom
+                     inView:self.view];
+        }
     }];
 }
 
@@ -493,6 +503,7 @@ descripe every that completelly and dont keep any thing
 
 - (NSArray<NSDictionary *> *)pp_orderActionsForRecord:(PPPaymentAdminRecord *)record
 {
+    if (record.fulfillmentVersion == 1) return @[];
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canApproveOrderStatus:record.rawStatus] &&
         ![[PPPaymentAdminRecord normalizedStatusString:record.paymentMethodId] isEqualToString:@"cash"]) {

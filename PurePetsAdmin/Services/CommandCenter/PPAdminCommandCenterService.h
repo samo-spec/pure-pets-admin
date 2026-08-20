@@ -17,6 +17,7 @@ NS_SWIFT_SENDABLE
 @property (nonatomic, assign) NSInteger accessoriesCount;
 @property (nonatomic, copy) NSArray<NSString *> *requestedAreas;
 @property (nonatomic, copy) NSArray<NSString *> *failedAreas;
+@property (nonatomic, copy) NSArray<NSString *> *partialAreas;
 
 @end
 

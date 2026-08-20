@@ -16,12 +16,13 @@ struct AdminAppShell: View {
         self.sessionStore = sessionStore
         self.router = router
         _commandState = StateObject(wrappedValue: CommandCenterState(session: session))
+        UITabBar.appearance().isHidden = true
     }
 
     var body: some View {
         TabView(selection: $selectedTab) {
             AdminCommandOrbitDashboard(session: session, languageCode: sessionStore.languageCode)
-                .tabItem { tabLabel(.command) }
+                .ignoresSafeArea(.all, edges: .top)
                 .tag(AdminTab.command)
 
             AdminModuleListView(
@@ -32,7 +33,7 @@ struct AdminAppShell: View {
                 commandState: commandState,
                 onOpenCommand: { selectedTab = .command }
             )
-            .tabItem { tabLabel(.work) }
+            .ignoresSafeArea(.all, edges: .top)
             .tag(AdminTab.work)
 
             AdminModuleListView(
@@ -43,7 +44,7 @@ struct AdminAppShell: View {
                 commandState: commandState,
                 onOpenCommand: { selectedTab = .command }
             )
-            .tabItem { tabLabel(.operations) }
+            .ignoresSafeArea(.all, edges: .top)
             .tag(AdminTab.operations)
 
             AdminModuleListView(
@@ -54,7 +55,7 @@ struct AdminAppShell: View {
                 commandState: commandState,
                 onOpenCommand: { selectedTab = .command }
             )
-            .tabItem { tabLabel(.customers) }
+            .ignoresSafeArea(.all, edges: .top)
             .tag(AdminTab.customers)
 
             AdminMoreView(
@@ -66,18 +67,20 @@ struct AdminAppShell: View {
                 onLogout: { showsLogoutConfirmation = true },
                 onOpenCommand: { selectedTab = .command }
             )
-            .tabItem { tabLabel(.more) }
+            .ignoresSafeArea(.all, edges: .top)
             .tag(AdminTab.more)
         }
         .tint(AdminSurface.primary)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            V6GlobalTabBar(selectedTab: $selectedTab)
+        }
         .fullScreenCover(item: $router.presentedRoute) { route in
-            AdminLegacyRouteView(route: route) { router.presentedRoute = nil }
-                // Keep the route background edge-to-edge above the status bar,
-                // while allowing the UIKit route container to own the bottom
-                // safe-area boundary.  Applying ignoresSafeArea to the whole
-                // route previously let scrollable legacy content finish under
-                // the home-indicator / dock clearance.
-                .ignoresSafeArea(edges: .top)
+            AdminLegacyRouteView(route: route, languageCode: sessionStore.languageCode) {
+                router.presentedRoute = nil
+            }
+                // UIKit owns both safe-area edges for presented native routes;
+                // each child then receives the device insets exactly once.
+                .ignoresSafeArea()
         }
         .alert(Language.get("CommandCenter_Permission_Denied_Title", alter: nil), isPresented: $router.permissionDenied) {
             Button(Language.get("OK", alter: nil), role: .cancel) {}
@@ -138,6 +141,8 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     private var globalNavigationHeightConstraint: NSLayoutConstraint?
     private var actionItemsByIdentifier: [String: UIBarButtonItem] = [:]
     private var overflowActionItems: [UIBarButtonItem] = []
+    private var actionItemObservations: [NSKeyValueObservation] = []
+    private nonisolated(unsafe) var navigationItemsObserver: (any NSObjectProtocol)?
     private var appliedLanguageCode: String?
     private var appliedSession: AdminSession?
     private var authorizationRefreshGeneration = 0
@@ -151,56 +156,67 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         workflowNavigationController = navigationController
         PPSetCommandCenterNavigationManaged(navigationController, true)
         navigationController.delegate = self
-        applyGlobalNavigationPresentation(to: dashboard, in: navigationController)
-
-        let globalNavigation = PPGlobalNavigationHostingController(
-            configuration: navigationConfiguration(for: dashboard)
-        ) { [weak self] action in
-            self?.handleGlobalNavigationAction(action)
-        }
-        globalNavigation.onPreferredBarHeightChange = { [weak self] height in
-            guard let self,
-                  abs((self.globalNavigationHeightConstraint?.constant ?? height) - height) > 0.5 else {
-                return
+        navigationItemsObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPCommandCenterNavigationItemsDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let changedController = notification.object as? UIViewController else { return }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.workflowNavigationController?.topViewController === changedController else {
+                    return
+                }
+                self.refreshGlobalNavigation()
             }
-            self.globalNavigationHeightConstraint?.constant = height
-            self.view.setNeedsLayout()
         }
-        globalNavigationController = globalNavigation
-        addChild(globalNavigation)
-        view.addSubview(globalNavigation.view)
-        globalNavigation.view.translatesAutoresizingMaskIntoConstraints = false
-        globalNavigation.view.semanticContentAttribute = view.semanticContentAttribute
-        let heightConstraint = globalNavigation.view.heightAnchor.constraint(
-            equalToConstant: globalNavigation.preferredBarHeight
-        )
-        globalNavigationHeightConstraint = heightConstraint
-        NSLayoutConstraint.activate([
-            globalNavigation.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            globalNavigation.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            globalNavigation.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            heightConstraint,
-        ])
-        heightConstraint.constant = globalNavigation.preferredBarHeight
-        globalNavigation.didMove(toParent: self)
+        applyGlobalNavigationPresentation(to: dashboard, in: navigationController)
 
         addChild(navigationController)
         view.addSubview(navigationController.view)
         navigationController.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            navigationController.view.topAnchor.constraint(equalTo: globalNavigation.view.bottomAnchor),
+            navigationController.view.topAnchor.constraint(equalTo: view.topAnchor),
             navigationController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navigationController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            navigationController.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            navigationController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         navigationController.didMove(toParent: self)
-        view.bringSubviewToFront(globalNavigation.view)
+    }
+
+    deinit {
+        if let navigationItemsObserver {
+            NotificationCenter.default.removeObserver(navigationItemsObserver)
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        if let preferredHeight = globalNavigationController?.preferredBarHeight,
+           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
+            globalNavigationHeightConstraint?.constant = preferredHeight
+            view.setNeedsLayout()
+        }
         refreshBottomDockLanguage()
         applyBottomDockPolish()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if let preferredHeight = globalNavigationController?.preferredBarHeight,
+           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
+            globalNavigationHeightConstraint?.constant = preferredHeight
+            view.setNeedsLayout()
+        }
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        if let preferredHeight = globalNavigationController?.preferredBarHeight,
+           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
+            globalNavigationHeightConstraint?.constant = preferredHeight
+            view.setNeedsLayout()
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -361,25 +377,19 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
 
         let items = (viewController.navigationItem.rightBarButtonItems ?? []) +
             (viewController.navigationItem.leftBarButtonItems ?? [])
+        observeActionItems(items)
         var actions: [PPGlobalNavigationAction] = []
 
         for item in items {
             let fallbackIdentifier = "admin-command-spine-action-\(actions.count + overflowActionItems.count)"
-            if actions.count >= 2 {
+            if actions.count >= maximumDirectActions {
                 overflowActionItems.append(item)
                 continue
             }
 
             let identifier = item.accessibilityIdentifier ?? fallbackIdentifier
             actionItemsByIdentifier[identifier] = item
-            actions.append(PPGlobalNavigationAction(
-                id: identifier,
-                kind: identifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
-                accessibilityLabel: title(for: item),
-                accessibilityHint: item.accessibilityHint,
-                prominence: .standard,
-                isEnabled: item.isEnabled
-            ))
+            actions.append(globalNavigationAction(for: item, identifier: identifier))
         }
 
         if !overflowActionItems.isEmpty {
@@ -390,6 +400,33 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
             ))
         }
         return actions
+    }
+
+    private func observeActionItems(_ items: [UIBarButtonItem]) {
+        var observations: [NSKeyValueObservation] = []
+        for item in items {
+            observations.append(item.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshGlobalNavigation()
+                }
+            })
+            if let control = item.customView as? UIControl {
+                observations.append(control.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
+                    Task { @MainActor [weak self] in
+                        self?.refreshGlobalNavigation()
+                    }
+                })
+            }
+        }
+        actionItemObservations = observations
+    }
+
+    private var maximumDirectActions: Int {
+        traitCollection.preferredContentSizeCategory.isAccessibilityCategory ? 1 : 2
+    }
+
+    private func actionIsEnabled(_ item: UIBarButtonItem) -> Bool {
+        item.isEnabled && ((item.customView as? UIControl)?.isEnabled ?? true)
     }
 
     private func title(for item: UIBarButtonItem) -> String {
@@ -403,15 +440,64 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         return Language.get("CommandCenter_Tab_More", alter: nil)
     }
 
+    private func globalNavigationAction(for item: UIBarButtonItem,
+                                        identifier: String) -> PPGlobalNavigationAction {
+        let label = title(for: item)
+        switch identifier {
+        case "admin-accessory-editor-save":
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: .confirm,
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .emphasized,
+                isEnabled: actionIsEnabled(item),
+                title: Language.get("Save", alter: nil)
+            )
+        case "admin-notification-composer-send":
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: .confirm,
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .emphasized,
+                isEnabled: actionIsEnabled(item),
+                title: Language.get("NotificationComposer_Action_Send", alter: nil)
+            )
+        default:
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: identifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .standard,
+                isEnabled: actionIsEnabled(item)
+            )
+        }
+    }
+
     private func handleGlobalNavigationAction(_ action: PPGlobalNavigationAction) {
         switch action.id {
         case "admin-command-spine-back":
-            workflowNavigationController?.popViewController(animated: true)
+            requestBackFromVisibleController()
         case "admin-command-spine-overflow":
             presentOverflowActions()
         default:
             guard let item = actionItemsByIdentifier[action.id] else { return }
             perform(item)
+        }
+    }
+
+    private func requestBackFromVisibleController() {
+        guard let navigationController = workflowNavigationController,
+              let visibleController = navigationController.topViewController else {
+            return
+        }
+        let selector = NSSelectorFromString("onBack")
+        if PPCommandCenterNavigationHasCustomBackAction(visibleController) {
+            _ = visibleController.perform(selector)
+        } else {
+            navigationController.popViewController(animated: true)
         }
     }
 
@@ -422,7 +508,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
             message: nil,
             preferredStyle: .actionSheet
         )
-        for item in overflowActionItems where item.isEnabled {
+        for item in overflowActionItems where actionIsEnabled(item) {
             controller.addAction(UIAlertAction(title: title(for: item), style: .default) { [weak self] _ in
                 self?.perform(item)
             })
@@ -440,7 +526,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     }
 
     private func perform(_ item: UIBarButtonItem) {
-        guard item.isEnabled else { return }
+        guard actionIsEnabled(item) else { return }
         if let control = item.customView as? UIControl {
             control.sendActions(for: .touchUpInside)
             return
@@ -514,6 +600,76 @@ private final class AdminCommandOrbitNavigationController: UINavigationControlle
 
     override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
         super.setNavigationBarHidden(true, animated: false)
+    }
+}
+
+// MARK: - V6 Global Tab Bar
+
+struct V6GlobalTabBar: View {
+    @Binding var selectedTab: AdminTab
+    
+    var body: some View {
+        HStack {
+            tabItem(title: "الرئيسية", icon: "command", tab: .command)
+            Spacer()
+            tabItem(title: "العمل", icon: "square.stack.3d.up.fill", tab: .work)
+            Spacer()
+            tabItem(title: "العمليات", icon: "waveform.path.ecg", tab: .operations)
+            Spacer()
+            tabItem(title: "الأشخاص", icon: "person.2.fill", tab: .customers)
+            Spacer()
+            tabItem(title: "المزيد", icon: "ellipsis.circle.fill", tab: .more)
+        }
+        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .background(Color(uiColor: .secondarySystemGroupedBackground).ignoresSafeArea(.all, edges: .bottom)) // V6.cardBackgroundElevated
+        .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: -4)
+    }
+    
+    private func tabItem(title: String, icon: String, tab: AdminTab) -> some View {
+        let isSelected = (selectedTab == tab)
+        let criticalColor = Color(red: 0.89, green: 0.15, blue: 0.21)
+        
+        return Button {
+            if selectedTab != tab {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                    selectedTab = tab
+                }
+            }
+        } label: {
+            if isSelected {
+                HStack(spacing: 8) {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                    Text(title)
+                        .font(.custom("Beiruti-Bold", size: 14))
+                }
+                .foregroundStyle(criticalColor)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(criticalColor.opacity(0.12), in: Capsule())
+            } else {
+                VStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.system(size: 20, weight: .medium))
+                    Text(title)
+                        .font(.custom("Beiruti-Medium", size: 12))
+                }
+                .foregroundStyle(Color(uiColor: .label))
+                .frame(minWidth: 44)
+            }
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+}
+
+// MARK: - V6 Button Style (Global)
+
+struct V6CardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 

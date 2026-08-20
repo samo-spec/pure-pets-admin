@@ -320,6 +320,7 @@ static NSString *const kSwitchCellID = @"PPSwitchCell";
     self.saveButton.tintColor = AppPrimaryClr;
     self.saveButton.accessibilityLabel = kLang(@"Save");
     self.navigationItem.rightBarButtonItem = self.saveButton;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)setupDraft {

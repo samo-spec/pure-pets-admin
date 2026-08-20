@@ -306,13 +306,13 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
 
 - (BOOL)hasPermission:(NSString *)perm {
     if (!perm.length || !self.isActive) return NO;
-    if (self.isAdmin || self.hasGlobalScope) return YES;
+    if (self.isAdmin) return YES;
     return [self.permissions containsObject:perm];
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms {
     if (!self.isActive) return NO;
-    if (self.isAdmin || self.hasGlobalScope) return YES;
+    if (self.isAdmin) return YES;
     for (NSString *permission in perms) {
         if ([self.permissions containsObject:permission]) {
             return YES;

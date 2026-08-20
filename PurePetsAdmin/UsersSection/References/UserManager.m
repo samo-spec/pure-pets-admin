@@ -1158,6 +1158,8 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
     
     // Add server timestamp automatically
     NSMutableDictionary *payload = [fields mutableCopy] ?: [NSMutableDictionary new];
+    [payload removeObjectForKey:@"PPUserTokenID"];
+    [payload removeObjectForKey:@"PPProTokenID"];
     payload[@"updatedAt"] = [FIRFieldValue fieldValueForServerTimestamp];
     
     [[self _userDoc:uid] setData:payload merge:YES completion:^(NSError * _Nullable error) {

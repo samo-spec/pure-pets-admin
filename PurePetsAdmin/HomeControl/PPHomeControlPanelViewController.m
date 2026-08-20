@@ -727,6 +727,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }
     self.navigationItem.leftBarButtonItems = leftItems;
     [self pp_updateSaveButton];
+    PPCommandCenterNavigationItemsDidChange(self);
     [[NSNotificationCenter defaultCenter] postNotificationName:PPHomeControlNavigationItemsDidChangeNotification
                                                         object:self];
 }

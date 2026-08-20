@@ -82,7 +82,7 @@
 
     [NSLayoutConstraint activateConstraints:@[
         [self.indicator.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [self.indicator.centerYAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.centerYAnchor constant:-30.0],
+        [self.indicator.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor constant:-30.0],
         [self.statusLabel.topAnchor constraintEqualToAnchor:self.indicator.bottomAnchor constant:16.0],
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
         [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],

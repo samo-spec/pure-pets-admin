@@ -414,14 +414,14 @@
     
     // Constraints
     [NSLayoutConstraint activateConstraints:@[
-        [_imageView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [_imageView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [_imageView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_imageView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_imageView.bottomAnchor constraintEqualToAnchor:_toolbar.topAnchor],
         
         [_toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_toolbar.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [_toolbar.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [_toolbar.heightAnchor constraintEqualToConstant:50.0]
     ]];
     

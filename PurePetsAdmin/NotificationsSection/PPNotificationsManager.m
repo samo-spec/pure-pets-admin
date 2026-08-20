@@ -1,5 +1,6 @@
 #import "PPNotificationsManager.h"
 #import "AppDelegate.h"
+#import "NotificationModel.h"
 #import <UserNotifications/UserNotifications.h>
 #import <UIKit/UIKit.h>
 @import Firebase;
@@ -13,6 +14,8 @@
 
 static NSString * const kPPNotificationTokenDefaultsKey = @"SavedDeviceToken";
 static NSString * const kPPNotificationFunctionsBaseURLDefault = @"https://us-central1-pure-pets-49199.cloudfunctions.net";
+// Keep the explicit-recipient path aligned with the callable's server limit.
+static const NSUInteger kPPConsoleNotificationRecipientLimit = 500;
 
 static NSString * _Nullable sFunctionsBaseURLOverride = nil;
 static NSString * const kPPNotificationV2AdminAppID = @"admin_ios";
@@ -26,6 +29,17 @@ static NSString *PPNotificationV2AdminEnvironment(void)
     return @"production";
 #endif
 }
+
+@interface PPNotificationsManager ()
++ (void)pp_sendConsoleNotificationToUsers:(NSArray<NSString *> *)userIDs
+                                     title:(NSString *)title
+                                      body:(NSString *)body
+                                      type:(NSInteger)type
+                            idempotencyKey:(NSString *)idempotencyKey
+                                completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
++ (void)pp_callConsoleNotificationWithPayload:(NSDictionary *)payload
+                                    completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
+@end
 
 @implementation PPNotificationsManager
 @synthesize deviceToken = _deviceToken;
@@ -271,6 +285,128 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 }
 
 #pragma mark - Unified notification send API
+
++ (void)sendConsoleNotificationWithTitle:(NSString *)title
+                                     body:(NSString *)body
+                                     type:(NSInteger)type
+                                 audience:(PPNotificationAudience)audience
+                                  userIDs:(NSArray<NSString *> * _Nullable)userIDs
+                          idempotencyKey:(NSString *)idempotencyKey
+                              completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    NSString *safeTitle = [self pp_trimmedString:title];
+    NSString *safeBody = [self pp_trimmedString:body];
+    NSString *safeKey = [self pp_trimmedString:idempotencyKey];
+    NSArray<NSString *> *safeUserIDs = [self pp_uniqueNonEmptyStrings:userIDs];
+    BOOL isSpecificAudience = audience == PPNotificationAudienceSpecificUsers;
+
+    if (safeTitle.length == 0 || safeBody.length == 0 || safeKey.length == 0 ||
+        (isSpecificAudience && safeUserIDs.count == 0) ||
+        (isSpecificAudience && safeUserIDs.count > kPPConsoleNotificationRecipientLimit)) {
+        NSError *error = [NSError errorWithDomain:@"PPNotificationsManager" code:400 userInfo:nil];
+        [self pp_completeOnMain:completion response:nil error:error];
+        return;
+    }
+
+    NSInteger normalizedType = MIN(MAX(type, PPNotificationTypeGeneral), PPNotificationTypeWarning);
+    if (isSpecificAudience) {
+        [self pp_sendConsoleNotificationToUsers:safeUserIDs
+                                           title:safeTitle
+                                            body:safeBody
+                                            type:normalizedType
+                                  idempotencyKey:safeKey
+                                      completion:completion];
+        return;
+    }
+
+    NSString *audienceValue = @"everyone";
+    switch (audience) {
+        case PPNotificationAudienceAllUsers:
+            audienceValue = @"users";
+            break;
+        case PPNotificationAudienceAdmins:
+            audienceValue = @"admins";
+            break;
+        case PPNotificationAudienceEveryone:
+        default:
+            break;
+    }
+
+    NSDictionary *payload = @{
+        @"title": safeTitle,
+        @"body": safeBody,
+        @"type": @(normalizedType),
+        @"targetMode": @"broadcast",
+        @"audience": audienceValue,
+        @"idempotencyKey": safeKey
+    };
+    [self pp_callConsoleNotificationWithPayload:payload completion:completion];
+}
+
++ (void)pp_sendConsoleNotificationToUsers:(NSArray<NSString *> *)userIDs
+                                     title:(NSString *)title
+                                      body:(NSString *)body
+                                      type:(NSInteger)type
+                            idempotencyKey:(NSString *)idempotencyKey
+                                completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    dispatch_group_t group = dispatch_group_create();
+    NSObject *resultLock = [NSObject new];
+    __block NSInteger recipientCount = 0;
+    __block NSInteger pushRecipientCount = 0;
+    __block NSInteger successCount = 0;
+    __block NSInteger failureCount = 0;
+    __block NSInteger requestFailureCount = 0;
+    __block NSError *lastError = nil;
+
+    for (NSString *userID in userIDs) {
+        dispatch_group_enter(group);
+        NSDictionary *payload = @{
+            @"title": title,
+            @"body": body,
+            @"type": @(type),
+            @"targetMode": @"user",
+            @"audience": @"users",
+            @"targetUserID": userID,
+            @"idempotencyKey": [NSString stringWithFormat:@"%@:%@", idempotencyKey, userID]
+        };
+        [self pp_callConsoleNotificationWithPayload:payload completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+            @synchronized (resultLock) {
+                if (error) {
+                    requestFailureCount += 1;
+                    lastError = error;
+                } else {
+                    recipientCount += MAX(1, [response[@"recipientCount"] integerValue]);
+                    pushRecipientCount += MAX(0, [response[@"pushRecipientCount"] integerValue]);
+                    successCount += MAX(0, [response[@"successCount"] integerValue]);
+                    failureCount += MAX(0, [response[@"failureCount"] integerValue]);
+                }
+            }
+            dispatch_group_leave(group);
+        }];
+    }
+
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        NSDictionary *response = @{
+            @"ok": @(requestFailureCount == 0),
+            @"recipientCount": @(recipientCount),
+            @"pushRecipientCount": @(pushRecipientCount),
+            @"successCount": @(successCount),
+            @"failureCount": @(failureCount),
+            @"requestFailureCount": @(requestFailureCount)
+        };
+        NSError *error = requestFailureCount == userIDs.count ? lastError : nil;
+        if (completion) completion(response, error);
+    });
+}
+
++ (void)pp_callConsoleNotificationWithPayload:(NSDictionary *)payload
+                                    completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"sendConsoleNotification"];
+    callable.timeoutInterval = 30.0;
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+        [self pp_completeOnMain:completion response:response error:error];
+    }];
+}
 
 + (void)sendNotificationWithTitle:(NSString *)title
                              body:(NSString *)body

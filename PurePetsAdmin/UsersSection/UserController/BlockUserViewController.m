@@ -7,11 +7,7 @@
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
-@import FirebaseAuth;
-@import Firebase;
-@import FirebaseAuth;
-@import FirebaseMessaging;
-@import FirebaseAuth;
+
 @interface BlockUserViewController ()
 // UI
 @property (nonatomic, strong) NSMutableArray<UserModel *> *availableUsers; // header animation (150)
@@ -19,6 +15,7 @@
 @property (nonatomic, strong) NSString *selectedUserID;
 @property (nonatomic, strong) NSMutableArray<UserModel *> *cachedUsers;
 
+- (void)pp_updatePickRow:(XLFormRowDescriptor *)row withUser:(UserModel *)user;
 
 @end
 // In MyFormViewController.h  (or wherever you call the picker from)
@@ -144,7 +141,11 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
                 sheet.prefersScrollingExpandsWhenScrolledToEdge = NO;
             }
         }
-       [self presentViewController:vc animated:YES completion:nil];
+        if (self.navigationController) {
+            [self.navigationController pushViewController:vc animated:YES];
+        } else {
+            [self presentViewController:vc animated:YES completion:nil];
+        }
     };
     [section addFormRow:row];
 

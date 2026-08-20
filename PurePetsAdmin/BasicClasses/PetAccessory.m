@@ -176,8 +176,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.price) dict[@"price"] = self.price;
 
     // Discount fields
-    if (self.discountPercent) dict[@"discountPercent"] = self.discountPercent;
-    if (self.discountAmount) dict[@"discountAmount"] = self.discountAmount;
+    // The editor uses merge writes, so explicit nulls are required to clear a
+    // discount that existed on the previous revision.
+    dict[@"discountPercent"] = self.discountPercent ?: [NSNull null];
+    dict[@"discountAmount"] = self.discountAmount ?: [NSNull null];
     if (self.weightText.length > 0) {
         dict[@"weightText"] = self.weightText;
         dict[@"weight"] = self.weightText;
@@ -191,10 +193,11 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (normalizedMeta.count > 0) {
         dict[@"imageMeta"] = normalizedMeta;
         dict[@"imageItems"] = PPImageItemsPayload(self.imageURLsArray ?: @[], normalizedMeta, self.blurHash ?: @"");
-    } else if (self.imageMeta) {
-        dict[@"imageMeta"] = self.imageMeta;
+    } else {
+        dict[@"imageMeta"] = self.imageMeta ?: @[];
+        dict[@"imageItems"] = @[];
     }
-    if (self.blurHash) dict[@"blurHash"] = self.blurHash;
+    dict[@"blurHash"] = self.blurHash ?: @"";
 
     // Categories
     dict[@"petMainCategoryID"] = @(self.petMainCategoryID);
@@ -359,8 +362,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             [finalPriceValue doubleValue] > 0.0) {
             _price = @([finalPriceValue doubleValue]);
         }
-        _discountPercent = dict[@"discountPercent"];
-        _discountAmount = dict[@"discountAmount"];
+        _discountPercent = PPAccessoryNumberValueForKeys(dict, (@[@"discountPercent"]));
+        _discountAmount = PPAccessoryNumberValueForKeys(dict, (@[@"discountAmount"]));
         _weightText = PPAccessoryStringValueForKeys(dict, (@[
             @"weight",
             @"weightText",
@@ -423,7 +426,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _storeName = dict[@"storeName"] ?: @"";
         _ownerType = [dict[@"ownerType"] isKindOfClass:NSString.class] ? dict[@"ownerType"] : nil;
         _source = [dict[@"source"] isKindOfClass:NSString.class] ? dict[@"source"] : nil;
-        _blurHash = dict[@"blurHash"] ?: @"";
+        _blurHash = PPAccessoryTrimmedString(dict[@"blurHash"]);
         
         _accessKindType = ({
             NSInteger rawKind = [dict[@"accessKindType"] integerValue];

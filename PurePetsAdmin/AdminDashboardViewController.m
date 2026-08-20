@@ -284,7 +284,9 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
 @end
 
 UIViewController *PPAdminCreateCommandSpineDashboardController(void) {
-    return [AdminDashboardViewController new];
+    AdminDashboardViewController *controller = [AdminDashboardViewController new];
+    controller.pp_isCommandSpine = YES;
+    return controller;
 }
 
 @implementation PPAdminDashboardBackdropView
@@ -446,6 +448,19 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                                NSInteger count) {
     if (count == 1) return kLang(singularKey);
     return [NSString stringWithFormat:kLang(pluralKey), (long)count];
+}
+
+// Presentation-only feed readiness states, keyed by stable area tags.
+static NSString * const kPPAdminCommandFeedPending = @"pending";
+static NSString * const kPPAdminCommandFeedLoaded = @"loaded";
+static NSString * const kPPAdminCommandFeedFailed = @"failed";
+static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
+    static NSArray<NSString *> *areas;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        areas = @[@"fulfillment", @"delivery", @"payments", @"accessories"];
+    });
+    return areas;
 }
 
 @interface PPAdminCommandSignal : NSObject
@@ -1391,6 +1406,10 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 @property (nonatomic, assign) BOOL pp_commandSurfaceVisible;
 @property (nonatomic, assign) NSUInteger pp_priorityLiveGeneration;
 @property (nonatomic, assign) NSUInteger pp_priorityOneShotGeneration;
+// Presentation-only feed readiness metadata (pending/loaded/failed per stable
+// area tag). Derived from feeds this controller already owns; no new listeners.
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *pp_feedStatusByArea;
+@property (nonatomic, strong, nullable) NSDate *pp_lastFeedConfirmationAt;
 // PP_ADMIN_COMMAND_SPINE_PROPERTIES_END
 
 
@@ -1460,32 +1479,44 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 
     if (curUser) {
         UsrMgr.currentUser = curUser;
-        [self setupHeaderUIWithUser:curUser];
+        if (!self.pp_isCommandSpine) {
+            [self setupHeaderUIWithUser:curUser];
+        }
         [self pp_rebuildDashboardFormPreservingOffset:NO];
         [self pp_installCommandOrbitIfNeeded];
         [self pp_refreshCommandOrbitSnapshot];
         [self pp_startCommandPriorityFeedsIfNeeded];
         [self pp_syncCachedAdminNotificationTokenIfNeeded];
-        [self pp_setDashboardLoadingVisible:NO];
+        if (!self.pp_isCommandSpine) {
+            [self pp_setDashboardLoadingVisible:NO];
+        }
     } else {
-        [self pp_setDashboardLoadingVisible:YES];
+        if (!self.pp_isCommandSpine) {
+            [self pp_setDashboardLoadingVisible:YES];
+        }
         __weak typeof(self) weakSelf = self;
         [FUM reloadCurrentUserWithCompletion:^(UserModel * _Nullable user, NSError * _Nullable error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (error || !user) {
-                    [weakSelf pp_setDashboardLoadingVisible:NO];
+                    if (!weakSelf.pp_isCommandSpine) {
+                        [weakSelf pp_setDashboardLoadingVisible:NO];
+                    }
                     [weakSelf showLogin];
                     return;
                 }
 
                 UsrMgr.currentUser = user;
-                [weakSelf setupHeaderUIWithUser:user];
+                if (!weakSelf.pp_isCommandSpine) {
+                    [weakSelf setupHeaderUIWithUser:user];
+                }
                 [weakSelf pp_rebuildDashboardFormPreservingOffset:NO];
                 [weakSelf pp_installCommandOrbitIfNeeded];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
                 [weakSelf pp_startCommandPriorityFeedsIfNeeded];
                 [weakSelf pp_syncCachedAdminNotificationTokenIfNeeded];
-                [weakSelf pp_setDashboardLoadingVisible:NO];
+                if (!weakSelf.pp_isCommandSpine) {
+                    [weakSelf pp_setDashboardLoadingVisible:NO];
+                }
             });
         }];
     }
@@ -1525,7 +1556,9 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
         }
 
         [weakSelf pp_rebuildDashboardFormPreservingOffset:YES];
-        [weakSelf setupHeaderUIWithUser:UsrMgr.currentUser];
+        if (!weakSelf.pp_isCommandSpine) {
+            [weakSelf setupHeaderUIWithUser:UsrMgr.currentUser];
+        }
         [weakSelf pp_installCommandOrbitIfNeeded];
         [weakSelf pp_refreshCommandOrbitSnapshot];
         [weakSelf pp_startCommandPriorityFeedsIfNeeded];
@@ -1534,6 +1567,9 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+    if (self.pp_isCommandSpine) {
+        return;
+    }
     [self pp_sizeTableHeaderToFit];
     [self pp_updateHeroGradientFrame];
     [self pp_applyHeaderMotionForOffset:self.tableView.contentOffset.y];
@@ -1542,13 +1578,16 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     }
     if (!CGRectIsEmpty(self.heroShadowView.bounds)) {
         self.heroShadowView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:self.heroShadowView.bounds
-                                                                          cornerRadius:32.0].CGPath;
+                                                                           cornerRadius:32.0].CGPath;
     }
 }
 
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     [self.dashboardBackdropView startMotionIfNeeded];
+    if (self.pp_isCommandSpine) {
+        return;
+    }
     [self.heroGlassBG startAnimations];
     [self pp_animateHeaderIntroIfNeeded];
     [self pp_animateVisibleCellsModern];
@@ -1557,11 +1596,20 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     self.pp_commandSurfaceVisible = YES;
-    if (!PPCommandCenterNavigationIsManaged(self.navigationController)) {
-        [self.navigationController setNavigationBarHidden:YES animated:animated];
+    
+    // Aggressively hide navigation bar and tab bar to allow SwiftUI full-screen control
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    if (self.tabBarController) {
+        self.tabBarController.tabBar.hidden = YES;
     }
-
+    
     [self updateHeaderWithUser:UsrMgr.currentUser];
+    
+    // Forcefully hide all legacy native header views that might be lingering
+    self.tableView.hidden = YES;
+    self.heroShadowView.hidden = YES;
+    self.headerRoot.hidden = YES;
+    
     [self pp_rebuildDashboardFormPreservingOffset:YES];
     [self pp_installCommandOrbitIfNeeded];
     [self pp_refreshCommandOrbitSnapshot];
@@ -1572,9 +1620,13 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     self.pp_commandSurfaceVisible = NO;
-    if (!PPCommandCenterNavigationIsManaged(self.navigationController)) {
-        [self.navigationController setNavigationBarHidden:NO animated:animated];
+    
+    // Restore navigation bar and tab bar for other controllers
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
+    if (self.tabBarController) {
+        self.tabBarController.tabBar.hidden = NO;
     }
+    
     [self pp_stopCommandPriorityFeeds];
     [self.dashboardBackdropView stopMotion];
     [self.heroGlassBG stopAnimations];
@@ -1598,6 +1650,10 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 #pragma mark - Header
 
 - (void)setupHeaderUIWithUser:(UserModel *)curUser {
+    if (self.pp_isCommandSpine) {
+        return;
+    }
+    
     if (self.headerRoot) {
         [self updateHeaderWithUser:curUser];
         [self pp_refreshHeroCopy];
@@ -1907,7 +1963,7 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
         [self.heroGlassBG.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor],
         [self.heroGlassBG.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor],
 
-        [contentOverlay.topAnchor constraintEqualToAnchor:heroSurfaceView.safeAreaLayoutGuide.topAnchor constant:12.0],
+        [contentOverlay.topAnchor constraintEqualToAnchor:heroSurfaceView.topAnchor constant:12.0],
         [contentOverlay.leadingAnchor constraintEqualToAnchor:heroSurfaceView.leadingAnchor constant:22.0],
         [contentOverlay.trailingAnchor constraintEqualToAnchor:heroSurfaceView.trailingAnchor constant:-22.0],
         [contentOverlay.bottomAnchor constraintEqualToAnchor:heroSurfaceView.bottomAnchor constant:-20.0],
@@ -2362,7 +2418,9 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     if (!self.isViewLoaded || !UsrMgr.currentUser) return;
 
     [self pp_rebuildDashboardFormPreservingOffset:YES];
-    [self setupHeaderUIWithUser:UsrMgr.currentUser];
+    if (!self.pp_isCommandSpine) {
+        [self setupHeaderUIWithUser:UsrMgr.currentUser];
+    }
 }
 
 - (void)pp_commandAuthorizationDidChange:(NSNotification *)notification {
@@ -2370,7 +2428,9 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     if (!self.isViewLoaded || !UsrMgr.currentUser) return;
 
     [self pp_rebuildDashboardFormPreservingOffset:YES];
-    [self setupHeaderUIWithUser:UsrMgr.currentUser];
+    if (!self.pp_isCommandSpine) {
+        [self setupHeaderUIWithUser:UsrMgr.currentUser];
+    }
     [self pp_startCommandPriorityFeedsIfNeeded];
 }
 
@@ -2389,6 +2449,28 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     commandOrbitController.onRoute = ^(NSString *tag) {
         [weakSelf pp_handleDashboardActionForTag:tag];
     };
+    commandOrbitController.onRefresh = ^(void) {
+        [weakSelf refreshCommandFeedsFromUser];
+    };
+    commandOrbitController.onRequestLogout = ^(void) {
+        [weakSelf didTapAuthButton];
+    };
+    commandOrbitController.onToggleLanguage = ^(void) {
+        [weakSelf didTapLanguage];
+    };
+    commandOrbitController.onSelectTab = ^(NSInteger index) {
+        if (weakSelf.tabBarController) {
+            weakSelf.tabBarController.selectedIndex = index;
+        }
+    };
+
+    // Every tracked area starts pending so the surface renders an honest
+    // loading state instead of a false "all clear" before feeds confirm.
+    NSMutableDictionary<NSString *, NSString *> *feedStatus = [NSMutableDictionary dictionary];
+    for (NSString *area in PPAdminCommandTrackedFeedAreas()) {
+        feedStatus[area] = kPPAdminCommandFeedPending;
+    }
+    self.pp_feedStatusByArea = feedStatus;
 
     [self addChildViewController:commandOrbitController];
     commandOrbitController.view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -2397,10 +2479,10 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     self.pp_commandOrbitController = commandOrbitController;
 
     [NSLayoutConstraint activateConstraints:@[
-        [commandOrbitController.view.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [commandOrbitController.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [commandOrbitController.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [commandOrbitController.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [commandOrbitController.view.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor]
+        [commandOrbitController.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 
     // Keep the legacy XLForm alive as the permission/routing authority, but remove it
@@ -2410,11 +2492,11 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     self.tableView.accessibilityElementsHidden = YES;
     self.heroShadowView.hidden = YES;
     self.headerRoot.accessibilityElementsHidden = YES;
+    // The command-spine surface is the only visible UI; never let the legacy
+    // loading overlay cover the new command center.
+    self.dashboardLoadingView.hidden = YES;
 
     [self.view bringSubviewToFront:commandOrbitController.view];
-    if (!self.dashboardLoadingView.hidden) {
-        [self.view bringSubviewToFront:self.dashboardLoadingView];
-    }
 }
 
 - (NSArray<NSDictionary<NSString *, id> *> *)pp_commandAllowedItems {
@@ -2649,12 +2731,59 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                   capabilityCount:self.dashboardActionCount
                                           signals:descriptors
                                          animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
+    [self pp_pushCommandReadiness];
+}
+
+/// Derives presentation-only readiness from feed statuses this controller
+/// already owns and hands it to the hosting controller. Fixed area order keeps
+/// the localized source list deterministic in both directions.
+- (void)pp_pushCommandReadiness {
+    if (!self.pp_commandOrbitController) return;
+
+    NSMutableArray<NSString *> *loadingAreas = [NSMutableArray array];
+    NSMutableArray<NSString *> *failedAreas = [NSMutableArray array];
+    for (NSString *area in PPAdminCommandTrackedFeedAreas()) {
+        NSString *status = self.pp_feedStatusByArea[area];
+        if ([status isEqualToString:kPPAdminCommandFeedPending]) {
+            [loadingAreas addObject:area];
+        } else if ([status isEqualToString:kPPAdminCommandFeedFailed]) {
+            [failedAreas addObject:area];
+        }
+    }
+
+    [self.pp_commandOrbitController applyReadinessWithLoadingAreas:loadingAreas
+                                                       failedAreas:failedAreas
+                                                        updatedAt:self.pp_lastFeedConfirmationAt];
+}
+
+- (void)pp_setCommandFeedStatus:(NSString *)status forArea:(NSString *)area {
+    if (area.length == 0 || self.pp_feedStatusByArea[area] == nil) return;
+    self.pp_feedStatusByArea[area] = status;
+    if (![status isEqualToString:kPPAdminCommandFeedPending]) {
+        self.pp_lastFeedConfirmationAt = [NSDate date];
+    }
+}
+
+/// Drops areas the current permissions do not allow so readiness never waits
+/// on a source this operator can never see.
+- (void)pp_pruneUntrackedCommandFeedAreas {
+    for (NSString *area in PPAdminCommandTrackedFeedAreas()) {
+        BOOL allowed = [self pp_commandAllowsTag:area];
+        if (allowed && [area isEqualToString:@"payments"] &&
+            ![[PPPaymentManagementService shared] currentAdminCanViewPayments]) {
+            allowed = NO;
+        }
+        if (!allowed) {
+            [self.pp_feedStatusByArea removeObjectForKey:area];
+        }
+    }
 }
 
 - (void)pp_startCommandPriorityFeedsIfNeeded {
     if (!self.pp_commandOrbitController || !self.pp_commandSurfaceVisible) return;
     if (!self.pp_priorityFeedsStarted) self.pp_priorityLiveGeneration += 1;
     NSUInteger liveGeneration = self.pp_priorityLiveGeneration;
+    [self pp_pruneUntrackedCommandFeedAreas];
 
     if ([self pp_commandAllowsTag:@"fulfillment"] && !self.pp_fulfillmentPriorityReg) {
         __weak typeof(self) weakSelf = self;
@@ -2663,10 +2792,16 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                                                                 BOOL isFromCache,
                                                                                 NSError * _Nullable error) {
             (void)isFromCache;
-            if (error) return;
+            BOOL isPartialRead = [PPFulfillmentService isPartialReadError:error];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
                     liveGeneration != weakSelf.pp_priorityLiveGeneration) return;
+                [weakSelf pp_setCommandFeedStatus:(error && !isPartialRead) ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
+                                          forArea:@"fulfillment"];
+                if (error && !isPartialRead) {
+                    [weakSelf pp_refreshCommandOrbitSnapshot];
+                    return;
+                }
                 weakSelf.pp_fulfillmentPriorityRecords = records ?: @[];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
             });
@@ -2677,10 +2812,15 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
         __weak typeof(self) weakSelf = self;
         self.pp_inventoryPriorityReg =
             [[AccessoryManager shared] observeAllAccessories:^(NSArray<PetAccessory *> * _Nullable items, NSError * _Nullable error) {
-            if (error) return;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
                     liveGeneration != weakSelf.pp_priorityLiveGeneration) return;
+                [weakSelf pp_setCommandFeedStatus:error ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
+                                          forArea:@"accessories"];
+                if (error) {
+                    [weakSelf pp_refreshCommandOrbitSnapshot];
+                    return;
+                }
                 weakSelf.pp_inventoryPriorityItems = items ?: @[];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
             });
@@ -2698,10 +2838,15 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     if ([self pp_commandAllowsTag:@"delivery"]) {
         __weak typeof(self) weakSelf = self;
         [[PPDeliveryService shared] fetchDeliveryRequestsWithCompletion:^(NSArray<PPDeliveryRequestRecord *> *records, NSError *error) {
-            if (error) return;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
                     generation != weakSelf.pp_priorityOneShotGeneration) return;
+                [weakSelf pp_setCommandFeedStatus:error ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
+                                          forArea:@"delivery"];
+                if (error) {
+                    [weakSelf pp_refreshCommandOrbitSnapshot];
+                    return;
+                }
                 weakSelf.pp_deliveryPriorityRecords = records ?: @[];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
             });
@@ -2718,10 +2863,16 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                                                       FIRDocumentSnapshot * _Nullable nextCursor,
                                                                       NSError * _Nullable error) {
             (void)nextCursor;
-            if (error) return;
+            BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
                     generation != weakSelf.pp_priorityOneShotGeneration) return;
+                [weakSelf pp_setCommandFeedStatus:(error && !isPartialRead) ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
+                                          forArea:@"payments"];
+                if (error && !isPartialRead) {
+                    [weakSelf pp_refreshCommandOrbitSnapshot];
+                    return;
+                }
                 weakSelf.pp_paymentPriorityRecords = records ?: @[];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
             });
@@ -2737,6 +2888,27 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
     self.pp_priorityLiveGeneration += 1;
     self.pp_priorityOneShotGeneration += 1;
     self.pp_priorityFeedsStarted = NO;
+    // Nothing is being confirmed while the surface is offscreen; mark tracked
+    // areas pending so returning to the tab shows an honest updating state.
+    for (NSString *area in self.pp_feedStatusByArea.allKeys.copy) {
+        self.pp_feedStatusByArea[area] = kPPAdminCommandFeedPending;
+    }
+}
+
+/// User-requested re-confirmation. Only the one-shot sources are marked
+/// pending: live-listener areas are continuously confirmed by their own
+/// events and would otherwise hang in a false updating state until the next
+/// data change. Stale in-flight results stay rejected by generation.
+- (void)refreshCommandFeedsFromUser {
+    if (!self.pp_commandOrbitController) return;
+    if (self.pp_feedStatusByArea[@"delivery"]) {
+        self.pp_feedStatusByArea[@"delivery"] = kPPAdminCommandFeedPending;
+    }
+    if (self.pp_feedStatusByArea[@"payments"]) {
+        self.pp_feedStatusByArea[@"payments"] = kPPAdminCommandFeedPending;
+    }
+    [self pp_refreshCommandOrbitSnapshot];
+    [self pp_startCommandPriorityFeedsIfNeeded];
 }
 
 // PP_ADMIN_COMMAND_SPINE_METHODS_END
@@ -3044,7 +3216,7 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                                    items:items]];
         actionCount += items.count;
     }
-    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
+    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermProvidersView]]) {
         NSArray *items = @[[self pp_itemWithTag:@"fulfillment"
                                        titleKey:@"Fulfillment_Title"
                                     subtitleKey:@"Fulfillment_Subtitle"
@@ -3088,6 +3260,10 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
                                             titleKey:@"Providers_Features_Title"
                                          subtitleKey:@"Providers_Features_Subtitle"
                                             iconName:@"gearshape.2"]];
+    }
+    PPStaffDoc *providerLedgerStaff = [PPStaffAuth shared].cachedCurrentStaff;
+    if ((providerLedgerStaff.isAdmin || providerLedgerStaff.hasGlobalScope) &&
+        [providerLedgerStaff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
         [providerItems addObject:[self pp_itemWithTag:@"providerAccounting"
                                             titleKey:@"Providers_Accounting_Title"
                                          subtitleKey:@"Providers_Accounting_Subtitle"
@@ -3122,7 +3298,9 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
         actionCount += posItems.count;
     }
 
-    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermAuditView]]) {
+    PPStaffDoc *auditStaff = [PPStaffAuth shared].cachedCurrentStaff;
+    if ((auditStaff.isAdmin || auditStaff.hasGlobalScope) &&
+        [auditStaff hasPermission:kStaffPermAuditView]) {
         NSArray *items = @[[self pp_itemWithTag:@"audit"
                                         titleKey:@"Audit_Title"
                                      subtitleKey:@"Staff_Module_Audit"
@@ -3372,7 +3550,7 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 
     [NSLayoutConstraint activateConstraints:@[
         [loadingView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
-        [loadingView.centerYAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.centerYAnchor],
+        [loadingView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
         [loadingView.widthAnchor constraintEqualToConstant:172.0],
         [loadingView.heightAnchor constraintEqualToConstant:104.0],
 
@@ -3432,6 +3610,16 @@ static NSString *PPAdminCommandLocalizedCount(NSString *singularKey,
 #pragma mark - Helpers
 
 - (void)pp_rebuildDashboardFormPreservingOffset:(BOOL)preserveOffset {
+    if (self.pp_isCommandSpine) {
+        // Command-spine surface: keep the dashboard data model (permissions,
+        // priority derivation) but never build or render the legacy XLForm UI.
+        self.dashboardSections = [self pp_resolvedDashboardSections];
+        if (!self.form) {
+            self.form = [XLFormDescriptor formDescriptor];
+        }
+        [self pp_refreshCommandOrbitSnapshot];
+        return;
+    }
     CGPoint previousOffset = self.tableView.contentOffset;
     self.form = [self buildLoginForm];
     [self.tableView reloadData];

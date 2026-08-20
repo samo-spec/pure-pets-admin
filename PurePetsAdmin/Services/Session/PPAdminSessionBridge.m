@@ -97,7 +97,7 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
     // Firestore Rules. UserModel is populated below only for legacy screens.
     snapshot.permissions = staffDoc.permissions ?: @[];
     snapshot.scope = staffDoc.scope ?: @{};
-    snapshot.grantsAllPermissions = staffDoc.isAdmin || staffDoc.hasGlobalScope;
+    snapshot.grantsAllPermissions = staffDoc.isAdmin;
     return snapshot;
 }
 

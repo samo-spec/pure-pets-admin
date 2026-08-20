@@ -21,6 +21,7 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
 @property (nonatomic, strong) NSError *currentError;
 @property (nonatomic, copy) NSString *loadedProviderID;
 @property (nonatomic, assign) BOOL isLoading;
+- (BOOL)pp_evaluatePermissions;
 @end
 
 @implementation PPProviderAccountingViewController
@@ -31,7 +32,7 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
     [super viewDidLoad];
     self.records = @[];
     self.totals = @[];
-    [self pp_evaluatePermissions];
+    if (![self pp_evaluatePermissions]) return;
     [self pp_configureNavigation];
     [self pp_configureTableView];
     [self pp_buildHeader];
@@ -45,11 +46,16 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
 
 #pragma mark - Setup
 
-- (void)pp_evaluatePermissions {
+- (BOOL)pp_evaluatePermissions {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
-    if (![staff hasAnyPermission:@[kStaffPermAccountingView, kStaffPermAccountingManage]]) {
+    BOOL hasGlobalResourceReach = staff.isAdmin || staff.hasGlobalScope;
+    BOOL hasPaymentRead = [staff hasAnyPermission:@[kStaffPermPaymentsView, kStaffPermPaymentsManage]];
+    if (!hasGlobalResourceReach || !hasPaymentRead) {
+        [PPHUD showError:kLang(@"PPOrder_Error_LedgerRestricted")];
         dispatch_async(dispatch_get_main_queue(), ^{ [self.navigationController popViewControllerAnimated:YES]; });
+        return NO;
     }
+    return YES;
 }
 
 - (void)pp_configureNavigation {
@@ -60,6 +66,7 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
                                                                                 action:@selector(pp_reloadCurrentProvider)];
     refresh.accessibilityLabel = kLang(@"DC_Refresh");
     self.navigationItem.rightBarButtonItem = refresh;
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)pp_configureTableView {

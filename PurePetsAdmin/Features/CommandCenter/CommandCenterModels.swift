@@ -52,6 +52,11 @@ struct AdminCommandSnapshot: Equatable {
     let business: BusinessSnapshot
     let requestedAreas: [String]
     let failedAreas: [String]
+    let partialAreas: [String]
+
+    var degradedAreas: [String] {
+        failedAreas + partialAreas.filter { !failedAreas.contains($0) }
+    }
 
     var hasAvailableData: Bool {
         [

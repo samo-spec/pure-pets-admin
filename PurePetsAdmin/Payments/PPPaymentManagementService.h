@@ -22,6 +22,7 @@ typedef void (^PPPaymentAdminSettingsCompletion)(PPPaymentAdminSettings * _Nulla
 @interface PPPaymentManagementService : NSObject
 
 + (instancetype)shared;
++ (BOOL)isPartialReadError:(nullable NSError *)error;
 
 - (BOOL)currentAdminCanManagePayments;
 - (BOOL)currentAdminCanViewPayments;

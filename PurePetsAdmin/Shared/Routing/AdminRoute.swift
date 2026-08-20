@@ -180,11 +180,12 @@ enum AdminRoute: Hashable, Identifiable {
 
     var requiredPermissions: [String] {
         switch self {
-        case .paymentOrder, .payments: return ["payments.view", "payments.manage", "payments.refund", "accounting.manage", "stock.manage", "stock.create", "stock.delete", "categories.manage"]
+        case .paymentOrder, .payments: return ["payments.view", "payments.manage"]
         case .paymentSettings: return ["payments.manage"]
-        case .fulfillment: return ["payments.view", "payments.manage"]
+        case .fulfillment: return ["payments.view", "payments.manage", "providers.view"]
         case .delivery: return ["payments.manage"]
-        case .providerApplications, .providerPlans, .providerFeatures, .providerAccounting: return ["providers.view", "providers.manage"]
+        case .providerApplications, .providerPlans, .providerFeatures: return ["providers.view", "providers.manage"]
+        case .providerAccounting: return ["payments.view", "payments.manage"]
         case .pointOfSale: return ["pos.view", "pos.sell"]
         case .pointOfSaleHistory: return ["pos.view", "pos.sell", "pos.history"]
         case .users: return ["users.view", "users.manage", "users.block", "users.features.view", "users.features.manage", "users.subscriptions.view", "users.subscriptions.manage", "users.restrictions.view", "users.restrictions.manage"]
@@ -192,7 +193,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .account, .settings: return []
         case .chats: return ["support.view", "support.manage"]
         case .notifications: return ["notifications.view", "support.view", "support.manage", "moderation.view", "moderation.manage"]
-        case .notificationComposer: return ["notifications.send", "support.manage", "moderation.manage", "users.block"]
+        case .notificationComposer: return ["notifications.send"]
         case .notificationSettings: return ["notifications.view", "notifications.send", "support.manage", "moderation.manage", "users.block"]
         case .accessories, .food, .livePets: return ["stock.manage", "stock.create", "stock.delete", "payments.manage", "payments.refund", "accounting.manage", "categories.manage"]
         case .branches: return ["branches.view", "branches.manage"]
@@ -215,6 +216,8 @@ enum AdminRoute: Hashable, Identifiable {
     /// fail after navigation.
     var requiredAllPermissions: [String] {
         switch self {
+        case .accessories, .food, .livePets:
+            return ["stock.manage"]
         case .listings:
             return ["stock.manage"]
         default:
@@ -223,8 +226,11 @@ enum AdminRoute: Hashable, Identifiable {
     }
 
     func isAuthorized(for session: AdminSession) -> Bool {
-        session.hasAnyPermission(requiredPermissions) &&
-            requiredAllPermissions.allSatisfy(session.hasPermission)
+        guard session.hasAnyPermission(requiredPermissions),
+              requiredAllPermissions.allSatisfy(session.hasPermission) else {
+            return false
+        }
+        return ![.audit, .providerAccounting].contains(self) || session.hasGlobalScope
     }
 }
 
@@ -263,6 +269,7 @@ final class AdminRouter: ObservableObject {
 
 struct AdminLegacyRouteView: UIViewControllerRepresentable {
     let route: AdminRoute
+    let languageCode: String
     let onDismiss: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
@@ -280,7 +287,10 @@ struct AdminLegacyRouteView: UIViewControllerRepresentable {
         )
     }
 
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        (uiViewController as? AdminLegacyRouteContainerController)?
+            .refreshLanguageIfNeeded(languageCode)
+    }
 
     private var unavailableController: UIViewController {
         let controller = UIViewController()
@@ -318,8 +328,11 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
     private var globalNavigationHeightConstraint: NSLayoutConstraint?
     private var actionItemsByIdentifier: [String: UIBarButtonItem] = [:]
     private var overflowActionItems: [UIBarButtonItem] = []
+    private var actionItemObservations: [NSKeyValueObservation] = []
     private nonisolated(unsafe) var navigationItemsObserver: (any NSObjectProtocol)?
+    private nonisolated(unsafe) var commandNavigationItemsObserver: (any NSObjectProtocol)?
     private var usesCompactNavigationLayout: Bool?
+    private var appliedLanguageCode: String?
 
     init(rootViewController: UIViewController,
          route: AdminRoute,
@@ -346,6 +359,20 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         workflowNavigationController = navigationController
         PPSetCommandCenterNavigationManaged(navigationController, true)
         navigationController.delegate = self
+        commandNavigationItemsObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPCommandCenterNavigationItemsDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let changedController = notification.object as? UIViewController else { return }
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.workflowNavigationController?.topViewController === changedController else {
+                    return
+                }
+                self.refreshGlobalNavigation()
+            }
+        }
         navigationItemsObserver = NotificationCenter.default.addObserver(
             forName: Notification.Name("PPHomeControlNavigationItemsDidChangeNotification"),
             object: rootViewController,
@@ -385,7 +412,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         )
         globalNavigationHeightConstraint = heightConstraint
         NSLayoutConstraint.activate([
-            globalNavigation.view.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            globalNavigation.view.topAnchor.constraint(equalTo: view.topAnchor),
             globalNavigation.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             globalNavigation.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             heightConstraint,
@@ -400,7 +427,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
             navigationController.view.topAnchor.constraint(equalTo: globalNavigation.view.bottomAnchor),
             navigationController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navigationController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            navigationController.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor),
+            navigationController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         navigationController.didMove(toParent: self)
         view.bringSubviewToFront(globalNavigation.view)
@@ -410,14 +437,31 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         if let navigationItemsObserver {
             NotificationCenter.default.removeObserver(navigationItemsObserver)
         }
+        if let commandNavigationItemsObserver {
+            NotificationCenter.default.removeObserver(commandNavigationItemsObserver)
+        }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        if let preferredHeight = globalNavigationController?.preferredBarHeight,
+           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
+            globalNavigationHeightConstraint?.constant = preferredHeight
+            view.setNeedsLayout()
+        }
         let compact = shouldUseCompactNavigationLayout
         guard usesCompactNavigationLayout != compact else { return }
         usesCompactNavigationLayout = compact
         refreshGlobalNavigation()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        if let preferredHeight = globalNavigationController?.preferredBarHeight,
+           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
+            globalNavigationHeightConstraint?.constant = preferredHeight
+            view.setNeedsLayout()
+        }
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -426,6 +470,29 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
             return
         }
         globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
+        refreshGlobalNavigation()
+    }
+
+    func refreshLanguageIfNeeded(_ languageCode: String) {
+        guard appliedLanguageCode != languageCode else { return }
+        appliedLanguageCode = languageCode
+        guard isViewLoaded else { return }
+
+        let direction = Language.semanticAttributeForCurrentLanguage()
+        view.semanticContentAttribute = direction
+        globalNavigationController?.view.semanticContentAttribute = direction
+        workflowNavigationController?.view.semanticContentAttribute = direction
+
+        guard let navigationController = workflowNavigationController,
+              let visibleController = navigationController.topViewController else {
+            return
+        }
+        if navigationController.viewControllers.first === visibleController {
+            let title = Language.get(route.titleKey, alter: nil)
+            visibleController.title = title
+            visibleController.navigationItem.title = title
+        }
+        AdminConnectedRouteChrome.apply(to: visibleController, in: navigationController, route: route)
         refreshGlobalNavigation()
     }
 
@@ -483,6 +550,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
 
         let items = (viewController.navigationItem.rightBarButtonItems ?? []) +
             (viewController.navigationItem.leftBarButtonItems ?? [])
+        observeActionItems(items)
         var actions: [PPGlobalNavigationAction] = []
 
         for item in items {
@@ -494,14 +562,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
 
             let mappedIdentifier = item.accessibilityIdentifier ?? identifier
             actionItemsByIdentifier[mappedIdentifier] = item
-            actions.append(PPGlobalNavigationAction(
-                id: mappedIdentifier,
-                kind: mappedIdentifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
-                accessibilityLabel: title(for: item),
-                accessibilityHint: item.accessibilityHint,
-                prominence: .standard,
-                isEnabled: item.isEnabled
-            ))
+            actions.append(globalNavigationAction(for: item, identifier: mappedIdentifier))
         }
 
         if !overflowActionItems.isEmpty {
@@ -515,8 +576,31 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         return actions
     }
 
+    private func observeActionItems(_ items: [UIBarButtonItem]) {
+        var observations: [NSKeyValueObservation] = []
+        for item in items {
+            observations.append(item.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshGlobalNavigation()
+                }
+            })
+            if let control = item.customView as? UIControl {
+                observations.append(control.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
+                    Task { @MainActor [weak self] in
+                        self?.refreshGlobalNavigation()
+                    }
+                })
+            }
+        }
+        actionItemObservations = observations
+    }
+
     private var maximumDirectActions: Int {
         shouldUseCompactNavigationLayout ? 1 : 2
+    }
+
+    private func actionIsEnabled(_ item: UIBarButtonItem) -> Bool {
+        item.isEnabled && ((item.customView as? UIControl)?.isEnabled ?? true)
     }
 
     private var shouldUseCompactNavigationLayout: Bool {
@@ -535,6 +619,42 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         return Language.get("CommandCenter_Tab_More", alter: nil)
     }
 
+    private func globalNavigationAction(for item: UIBarButtonItem,
+                                        identifier: String) -> PPGlobalNavigationAction {
+        let label = title(for: item)
+        switch identifier {
+        case "admin-accessory-editor-save":
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: .confirm,
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .emphasized,
+                isEnabled: actionIsEnabled(item),
+                title: Language.get("Save", alter: nil)
+            )
+        case "admin-notification-composer-send":
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: .confirm,
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .emphasized,
+                isEnabled: actionIsEnabled(item),
+                title: Language.get("NotificationComposer_Action_Send", alter: nil)
+            )
+        default:
+            return PPGlobalNavigationAction(
+                id: identifier,
+                kind: identifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
+                accessibilityLabel: label,
+                accessibilityHint: item.accessibilityHint,
+                prominence: .standard,
+                isEnabled: actionIsEnabled(item)
+            )
+        }
+    }
+
     private func handleGlobalNavigationAction(_ action: PPGlobalNavigationAction) {
         switch action.id {
         case "admin-route-close":
@@ -542,12 +662,25 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
                 _ = target.perform(dismissAction)
             }
         case "admin-route-back":
-            workflowNavigationController?.popViewController(animated: true)
+            requestBackFromVisibleController()
         case "admin-route-overflow":
             presentOverflowActions()
         default:
             guard let item = actionItemsByIdentifier[action.id] else { return }
             perform(item)
+        }
+    }
+
+    private func requestBackFromVisibleController() {
+        guard let navigationController = workflowNavigationController,
+              let visibleController = navigationController.topViewController else {
+            return
+        }
+        let selector = NSSelectorFromString("onBack")
+        if PPCommandCenterNavigationHasCustomBackAction(visibleController) {
+            _ = visibleController.perform(selector)
+        } else {
+            navigationController.popViewController(animated: true)
         }
     }
 
@@ -558,7 +691,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
             message: nil,
             preferredStyle: .actionSheet
         )
-        for item in overflowActionItems where item.isEnabled {
+        for item in overflowActionItems where actionIsEnabled(item) {
             controller.addAction(UIAlertAction(title: title(for: item), style: .default) { [weak self] _ in
                 self?.perform(item)
             })
@@ -576,7 +709,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
     }
 
     private func perform(_ item: UIBarButtonItem) {
-        guard item.isEnabled else { return }
+        guard actionIsEnabled(item) else { return }
         if let control = item.customView as? UIControl {
             control.sendActions(for: .touchUpInside)
             return
@@ -659,21 +792,13 @@ private enum AdminConnectedRouteChrome {
         navigationController.view.isOpaque = !usesClearCanvas
         navigationController.setNavigationBarHidden(true, animated: false)
         applyPresentation(to: viewController.view,
-                          direction: direction,
                           canvasColor: canvasColor,
                           usesClearCanvas: usesClearCanvas)
     }
 
     private static func applyPresentation(to view: UIView,
-                                          direction: UISemanticContentAttribute,
                                           canvasColor: UIColor,
                                           usesClearCanvas: Bool) {
-        let preservesExplicitDirection = view.semanticContentAttribute == .forceLeftToRight ||
-            view.semanticContentAttribute == .forceRightToLeft
-        if !preservesExplicitDirection {
-            view.semanticContentAttribute = direction
-        }
-
         if let tableView = view as? UITableView {
             tableView.backgroundColor = canvasColor
             tableView.isOpaque = !usesClearCanvas
@@ -701,7 +826,6 @@ private enum AdminConnectedRouteChrome {
 
         for child in view.subviews {
             applyPresentation(to: child,
-                              direction: direction,
                               canvasColor: canvasColor,
                               usesClearCanvas: usesClearCanvas)
         }

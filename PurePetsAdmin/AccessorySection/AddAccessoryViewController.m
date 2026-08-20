@@ -21,6 +21,7 @@
 #import "AlertHelper.h"
 #import "PPImageCollectionRow.h"
 #import "PPDesignTokens.h"
+#import "UIViewController+PPNavBar.h"
 #import <math.h>
 @import Photos;
 @import Firebase;
@@ -87,6 +88,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
 @property (nonatomic, strong) UIButton *navigationSaveButton;
 @property (nonatomic, strong) UIView *dossierHeader;
+@property (nonatomic, strong) UILabel *dossierContextLabel;
 @property (nonatomic, strong) UILabel *dossierTypeLabel;
 @property (nonatomic, strong) UILabel *dossierTitleLabel;
 @property (nonatomic, strong) UIView *dossierStateBanner;
@@ -109,6 +111,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 @property (nonatomic, assign) BOOL hasUnsavedChanges;
 @property (nonatomic, assign) BOOL isSubmitting;
 @property (nonatomic, assign) BOOL isLeavingAfterSave;
+@property (nonatomic, assign) BOOL saveDockStatusIsError;
 @property (nonatomic, assign) BOOL suppressChangeTracking;
 @property (nonatomic, assign) BOOL mainKindsLoadInFlight;
 @property (nonatomic, assign) BOOL capturedInteractivePopState;
@@ -181,6 +184,15 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     stack.spacing = PPSpaceXS;
     stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:stack];
+
+    self.dossierContextLabel = [[UILabel alloc] initWithFrame:CGRectZero];
+    self.dossierContextLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
+    self.dossierContextLabel.textColor = [UIColor ppTextSecondary];
+    self.dossierContextLabel.text = kLang(@"CommandCenter_Inventory_Workspace");
+    self.dossierContextLabel.numberOfLines = 1;
+    self.dossierContextLabel.adjustsFontForContentSizeCategory = YES;
+    self.dossierContextLabel.textAlignment = NSTextAlignmentNatural;
+    self.dossierContextLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.dossierTypeLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.dossierTypeLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontSubheadline], UIFontTextStyleSubheadline);
@@ -255,6 +267,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     [stateStack addArrangedSubview:self.dossierRetryButton];
     [self.dossierRetryButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
 
+    [stack addArrangedSubview:self.dossierContextLabel];
     [stack addArrangedSubview:self.dossierTypeLabel];
     [stack addArrangedSubview:self.dossierTitleLabel];
     [stack addArrangedSubview:self.dossierStateBanner];
@@ -416,7 +429,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     ]];
 
     self.saveDock = dock;
-    self.saveDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
+    self.saveDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
     self.saveDockBottomConstraint.active = YES;
     [self pp_updateSaveDockState];
 }
@@ -449,9 +462,12 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     BOOL disabled = self.isSubmitting || self.isLeavingAfterSave;
     self.saveDockButton.enabled = !disabled;
     self.navigationSaveButton.enabled = !disabled;
+    self.navigationItem.rightBarButtonItem.enabled = !disabled;
     self.tableView.userInteractionEnabled = !disabled;
     [self pp_updateInteractivePopGestureState];
-    self.saveDockStatusLabel.textColor = self.isLeavingAfterSave ? [UIColor ppSuccess] : [UIColor ppTextSecondary];
+    self.saveDockStatusLabel.textColor = self.isLeavingAfterSave
+        ? [UIColor ppSuccess]
+        : (self.saveDockStatusIsError ? [UIColor ppError] : [UIColor ppTextSecondary]);
 
     if (self.isSubmitting) {
         self.saveDockStatusLabel.hidden = NO;
@@ -459,10 +475,17 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     } else if (self.isLeavingAfterSave) {
         self.saveDockStatusLabel.hidden = NO;
         self.saveDockStatusLabel.text = kLang(@"Saved");
+    } else if (self.hasUnsavedChanges) {
+        self.saveDockStatusLabel.hidden = NO;
+        self.saveDockStatusLabel.text = kLang(@"CommandCenter_UnsavedChanges");
+    } else if (self.saveDockStatusLabel.text.length == 0) {
+        self.saveDockStatusLabel.hidden = NO;
+        self.saveDockStatusLabel.text = kLang(@"CommandCenter_Draft");
     }
 
     [self pp_applySaveDockButtonConfiguration];
     [self pp_updateTableInsets];
+    PPCommandCenterNavigationItemsDidChange(self);
 }
 
 - (void)pp_updateInteractivePopGestureState {
@@ -518,6 +541,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
     if (![self.traitCollection.preferredContentSizeCategory isEqualToString:previousTraitCollection.preferredContentSizeCategory]) {
+        self.dossierContextLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
         self.dossierTypeLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontSubheadline], UIFontTextStyleSubheadline);
         self.dossierTitleLabel.font = PPAccessoryScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
         self.dossierStateLabel.font = PPAccessoryScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
@@ -1158,11 +1182,15 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
         self.capturedInteractivePopState = YES;
     }
     self.title = [self pp_screenTitle];
+    self.dossierContextLabel.text = kLang(@"CommandCenter_Inventory_Workspace");
     if (!self.navigationSaveButton) {
         self.navigationSaveButton = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
         self.navigationSaveButton.accessibilityLabel = kLang(@"Save");
+        self.navigationSaveButton.accessibilityIdentifier = @"admin-accessory-editor-save";
     }
     [self pp_navBarWithOtherButton:self.navigationSaveButton title:self.title];
+    self.navigationItem.rightBarButtonItem.accessibilityIdentifier = @"admin-accessory-editor-save";
+    PPCommandCenterNavigationItemsDidChange(self);
     [self pp_updateDossierHeaderText];
     [self pp_updateSaveDockState];
 }
@@ -1251,6 +1279,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     if (self.suppressChangeTracking || self.isLeavingAfterSave) return;
 
     self.hasUnsavedChanges = YES;
+    self.saveDockStatusIsError = NO;
     if (row.tag.length > 0) {
         [self.invalidRowTags removeObject:row.tag];
         [self.validationMessagesByTag removeObjectForKey:row.tag];
@@ -1260,7 +1289,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
         [self pp_clearDossierState];
     }
     self.saveDockStatusLabel.hidden = NO;
-    self.saveDockStatusLabel.text = kLang(@"Save");
+    self.saveDockStatusLabel.text = kLang(@"CommandCenter_UnsavedChanges");
     self.saveDockStatusLabel.textColor = [UIColor ppTextSecondary];
     [self pp_updateSaveDockState];
 }
@@ -1478,6 +1507,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     }
 
     [self.view endEditing:YES];
+    self.saveDockStatusIsError = NO;
     self.isSubmitting = YES;
     [self pp_updateSaveDockState];
     [PPHUD showRingIn:self.view title:kLang(@"Uploading") subtitle:kLang(@"PleaseWait")];
@@ -1503,6 +1533,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     if (resolved == AccessTypeFood) {
         accessory.condition = AccessConditionsNew;
     }
+    accessory.isNew = accessory.condition != AccessConditionsUsed;
 
     accessory.createdAt = accessory.createdAt ?: [NSDate date];
     if (accessory.ownerID.length == 0) {
@@ -1599,10 +1630,24 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
             uploadErrorSnapshot = uploadError;
         }
 
+        if (uploadErrorSnapshot) {
+            // Do not persist a partially uploaded replacement set. Best-effort
+            // cleanup prevents failed attempts from becoming permanent media.
+            for (NSString *uploadedURL in uploadedSnapshot) {
+                @try {
+                    [[[FIRStorage storage] referenceForURL:uploadedURL] deleteWithCompletion:^(__unused NSError * _Nullable cleanupError) {}];
+                } @catch (NSException *exception) {
+                    DLog(@"[AddAccessory] invalid uploaded storage URL for cleanup: %@", uploadedURL);
+                }
+            }
+            [self handleSaveResult:uploadErrorSnapshot];
+            return;
+        }
+
         if (uploadedSnapshot.count > 0) {
             accessory.imageURLsArray = uploadedSnapshot;
         } else if (images.count == 0) {
-            accessory.imageURLsArray = self.editingAccessory.imageURLsArray ?: @[];
+            accessory.imageURLsArray = @[];
         } else {
             accessory.imageURLsArray = @[];
         }
@@ -1610,16 +1655,11 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
                                       existingMetaByURL:existingMetaByURL
                                       uploadedMetaByURL:uploadedMetaSnapshot ?: @{}];
 
-        if (uploadErrorSnapshot && uploadedSnapshot.count == 0) {
-            [self handleSaveResult:uploadErrorSnapshot];
-            return;
-        }
-
         DLog(@"[AddAccessory] all uploads done. saving accessory…");
         [[AccessoryManager shared] createOrUpdateAccessory:accessory completion:^(NSError * _Nullable error) {
-            if (!error && uploadedSnapshot.count > 0 && oldImageURLs.count > 0) {
+            if (!error && oldImageURLs.count > 0) {
                 // Delete old images that were replaced
-                NSSet *newURLSet = [NSSet setWithArray:uploadedSnapshot];
+                NSSet *newURLSet = [NSSet setWithArray:accessory.imageURLsArray ?: @[]];
                 for (NSString *oldURL in oldImageURLs) {
                     if (oldURL.length == 0 || [newURLSet containsObject:oldURL]) continue;
                     @try {
@@ -1653,6 +1693,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     if (error) {
         self.isSubmitting = NO;
         self.isLeavingAfterSave = NO;
+        self.saveDockStatusIsError = YES;
         self.saveDockStatusLabel.hidden = NO;
         self.saveDockStatusLabel.text = kLang(@"Error");
         self.saveDockStatusLabel.textColor = [UIColor ppError];
@@ -1666,6 +1707,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
     self.isSubmitting = NO;
     self.isLeavingAfterSave = YES;
+    self.saveDockStatusIsError = NO;
     self.hasUnsavedChanges = NO;
     [self pp_clearValidationErrors];
     self.saveDockStatusLabel.hidden = NO;

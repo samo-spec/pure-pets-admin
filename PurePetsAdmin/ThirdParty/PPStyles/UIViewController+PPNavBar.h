@@ -26,6 +26,12 @@ FOUNDATION_EXPORT void PPSetCommandCenterNavigationManaged(UINavigationControlle
                                                             BOOL managed);
 FOUNDATION_EXPORT BOOL PPCommandCenterNavigationIsManaged(UINavigationController * _Nullable navigationController);
 
+/// Posted whenever a legacy controller updates the navigation item mirrored by
+/// the Command Center's global navigation host.
+FOUNDATION_EXPORT NSNotificationName const PPCommandCenterNavigationItemsDidChangeNotification;
+FOUNDATION_EXPORT void PPCommandCenterNavigationItemsDidChange(UIViewController * _Nullable viewController);
+FOUNDATION_EXPORT BOOL PPCommandCenterNavigationHasCustomBackAction(UIViewController * _Nullable viewController);
+
 // ===== Associated keys =====
 static const void *kPPNavBarViewKey  = &kPPNavBarViewKey;
 static const void *kPPTitleLabelKey  = &kPPTitleLabelKey;
