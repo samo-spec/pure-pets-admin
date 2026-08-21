@@ -658,7 +658,8 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     if ([self pp_sectionTypeForIndex:section] == PPPaymentDetailsSectionNextStep) return;
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-    header.textLabel.font = [Styling fontMedium:14];
+    header.textLabel.font = PPPaymentDetailsScaledFont([Styling fontMedium:14], UIFontTextStyleHeadline);
+    header.textLabel.adjustsFontForContentSizeCategory = YES;
     header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
@@ -984,7 +985,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         self.actionInFlight = NO;
         [PPHUD dismiss];
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
 
@@ -1113,7 +1114,8 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     if (![view isKindOfClass:UITableViewHeaderFooterView.class]) return;
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-    header.textLabel.font = [Styling fontMedium:14];
+    header.textLabel.font = PPPaymentDetailsScaledFont([Styling fontMedium:14], UIFontTextStyleHeadline);
+    header.textLabel.adjustsFontForContentSizeCategory = YES;
     header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
@@ -1139,7 +1141,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             self.isRefreshingRequest = NO;
             [PPHUD dismiss];
             [self.refreshControl endRefreshing];
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequest")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequest")];
             return;
         }
 
@@ -1162,7 +1164,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             [self.refreshControl endRefreshing];
 
             if (eventsError) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:eventsError.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequestHistory")];
+                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequestHistory")];
                 return;
             }
 
