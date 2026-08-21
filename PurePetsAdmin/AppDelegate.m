@@ -38,11 +38,19 @@ static NSString *PPAdminRouteTrimmedString(id value)
 
 static NSString *PPAdminNotificationEnvironment(void)
 {
-#if DEBUG
-    return @"sandbox";
-#else
+    NSString *configuredEnvironment = [PPAdminRouteTrimmedString(
+        [NSBundle.mainBundle objectForInfoDictionaryKey:@"PPNotificationsEnvironment"]
+    ) lowercaseString];
+    if ([configuredEnvironment isEqualToString:@"sandbox"] ||
+        [configuredEnvironment isEqualToString:@"production"]) {
+        return configuredEnvironment;
+    }
+
+    // Admin is connected to the production Firebase project in every build
+    // configuration. Notifications V2 uses this as a logical event-routing
+    // environment, so a Debug build must not become invisible to production
+    // staff events merely because its APNs entitlement is development.
     return @"production";
-#endif
 }
 
 static NSString *PPAdminCurrentDeviceModel(void)
@@ -101,6 +109,7 @@ static NSString *PPAdminPaymentOrderIDFromRemoteNotification(NSDictionary *userI
 @property (nonatomic, assign) FIRAuthStateDidChangeListenerHandle authStateHandle;
 @property (nonatomic, copy) NSString *apnsTokenHexString;
 @property (nonatomic, assign) BOOL notificationV2RegistrationInFlight;
+@property (nonatomic, assign) BOOL notificationV2RegistrationNeedsForegroundRetry;
 @property (nonatomic, copy) NSString *notificationV2PendingReason;
 @property (nonatomic, assign) BOOL notificationV2LogoutBarrierActive;
 @property (nonatomic, assign) NSUInteger notificationV2LifecycleEpoch;
@@ -109,6 +118,8 @@ static NSString *PPAdminPaymentOrderIDFromRemoteNotification(NSDictionary *userI
 - (void)pp_attemptAdminNotificationV2RegistrationForReason:(NSString *)reason;
 - (void)pp_finishAdminNotificationV2RegistrationCycle;
 - (void)pp_releaseNotificationV2LogoutBarrierWaiters;
+- (BOOL)pp_hasCurrentAdminNotificationV2BindingForUID:(NSString *)uid;
+- (void)pp_handleAdminApplicationDidBecomeActive:(NSNotification *)notification;
 - (BOOL)pp_adminNotificationV2RegistrationIsCurrentForUID:(NSString *)uid epoch:(NSUInteger)epoch;
 - (void)pp_compensateStaleAdminNotificationV2Registration:(NSDictionary *)response
                                                        uid:(NSString *)uid
@@ -186,6 +197,10 @@ extern BOOL PP_TouchDotsEnabled;
     // Set Firebase Messaging delegate
         [FIRMessaging messaging].delegate = self;
         [self pp_registerForAdminTokenSync];
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(pp_handleAdminApplicationDidBecomeActive:)
+                                                     name:UIApplicationDidBecomeActiveNotification
+                                                   object:nil];
         
         // Register for remote notifications
         [self registerForRemoteNotifications];
@@ -339,6 +354,51 @@ extern BOOL PP_TouchDotsEnabled;
 {
     (void)notification;
     [self pp_attemptAdminNotificationV2RegistrationForReason:@"staff_session_ready"];
+}
+
+- (BOOL)pp_hasCurrentAdminNotificationV2BindingForUID:(NSString *)uid
+{
+    NSString *safeUID = PPAdminRouteTrimmedString(uid);
+    NSDictionary *binding = [NSUserDefaults.standardUserDefaults dictionaryForKey:PPAdminNotificationV2BindingDefaultsKey];
+    if (![binding isKindOfClass:NSDictionary.class] || safeUID.length == 0) {
+        return NO;
+    }
+
+    NSString *bindingUID = PPAdminRouteTrimmedString(binding[@"uid"]);
+    NSString *installationId = PPAdminRouteTrimmedString(binding[@"installationId"]);
+    NSString *appId = PPAdminRouteTrimmedString(binding[@"appId"]);
+    NSString *environment = PPAdminRouteTrimmedString(binding[@"environment"]);
+    NSString *bindingGeneration = PPAdminRouteTrimmedString(binding[@"bindingGeneration"]);
+    NSString *fcmTokenHash = PPAdminRouteTrimmedString(binding[@"fcmTokenHash"]);
+    return [bindingUID isEqualToString:safeUID] &&
+        [appId isEqualToString:PPAdminNotificationV2AppID] &&
+        [environment isEqualToString:PPAdminNotificationEnvironment()] &&
+        installationId.length > 0 && bindingGeneration.length > 0 && fcmTokenHash.length > 0;
+}
+
+- (void)pp_handleAdminApplicationDidBecomeActive:(NSNotification *)notification
+{
+    (void)notification;
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self pp_handleAdminApplicationDidBecomeActive:nil];
+        });
+        return;
+    }
+    if (self.notificationV2LogoutBarrierActive) {
+        return;
+    }
+
+    NSString *uid = PPAdminRouteTrimmedString([FIRAuth auth].currentUser.uid);
+    if (uid.length == 0) {
+        return;
+    }
+    if (!self.notificationV2RegistrationNeedsForegroundRetry &&
+        [self pp_hasCurrentAdminNotificationV2BindingForUID:uid]) {
+        return;
+    }
+
+    [self pp_attemptAdminNotificationV2RegistrationForReason:@"foreground_retry"];
 }
 
 - (void)pp_syncAdminPushToken:(NSString *)token preferredUID:(NSString *)preferredUID {
@@ -679,6 +739,7 @@ extern BOOL PP_TouchDotsEnabled;
                                 if (!strongSelf) return;
 
                                 if (error) {
+                                    strongSelf.notificationV2RegistrationNeedsForegroundRetry = YES;
                                     NSLog(@"PPLAB NotificationsV2 admin registration failed | reason=%@ appId=%@ error=%@",
                                           safeReason.length > 0 ? safeReason : @"unknown",
                                           PPAdminNotificationV2AppID,
@@ -707,6 +768,7 @@ extern BOOL PP_TouchDotsEnabled;
                                 NSString *fcmTokenHash = PPAdminRouteTrimmedString(response[@"fcmTokenHash"]);
                                 NSString *environment = PPAdminRouteTrimmedString(response[@"environment"]);
                                 if (environment.length == 0) environment = PPAdminNotificationEnvironment();
+                                BOOL storedCurrentBinding = NO;
                                 if (ok && bindingGeneration.length > 0 && fcmTokenHash.length > 0) {
                                     NSDictionary *binding = @{
                                         @"uid": uid,
@@ -717,7 +779,9 @@ extern BOOL PP_TouchDotsEnabled;
                                         @"fcmTokenHash": fcmTokenHash
                                     };
                                     [NSUserDefaults.standardUserDefaults setObject:binding forKey:PPAdminNotificationV2BindingDefaultsKey];
+                                    storedCurrentBinding = YES;
                                 }
+                                strongSelf.notificationV2RegistrationNeedsForegroundRetry = !storedCurrentBinding;
                                 NSLog(@"PPLAB NotificationsV2 admin registration finish | reason=%@ appId=%@ ok=%@ hasBinding=%@",
                                       safeReason.length > 0 ? safeReason : @"unknown",
                                       PPAdminNotificationV2AppID,

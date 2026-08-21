@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>PPNotificationsEnvironment</key>
+	<string>production</string>
 	<key>GIDClientID</key>
 	<string>646051621158-369tbjrpc15ufvmj6hti4ph3r8k6ehet.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
