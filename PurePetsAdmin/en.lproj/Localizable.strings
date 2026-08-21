@@ -3188,3 +3188,9 @@
 "POS_CatalogLoadFailed" = "Couldn’t load the catalog. Try again.";
 
 "POS_OrderSubmitFailed" = "Couldn’t complete the sale. Try again.";
+
+"POS_HistoryLoadFailed" = "Couldn’t load sales history. Try again.";
+
+"POS_ReceiptSummary" = "Receipt summary";
+
+"POS_ReceiptDate" = "Date";
