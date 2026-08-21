@@ -30,6 +30,8 @@ jobs:
               '_statusContainer.accessibilityLabel',
               'showConfirmationIn:self',
               'PaymentMgmt_Error_LoadPaymentDetails',
+              'PaymentMgmt_Error_LoadRequest',
+              'PaymentMgmt_Error_LoadRequestHistory',
           ]
           missing = [x for x in required if x not in s]
           if missing: raise SystemExit('Missing Payment Details markers: ' + ', '.join(missing))
@@ -37,6 +39,10 @@ jobs:
               '_cardGradientLayer', '_haloView',
               'shadowOpacity = 0.12', 'shadowOpacity = 0.2',
               'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPaymentDetails")',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequest")',
+              'subtitle:eventsError.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequestHistory")',
+              'header.textLabel.font = [Styling fontMedium:14]',
           ]
           present = [x for x in forbidden if x in s]
           if present: raise SystemExit('Payment Details regressions remain: ' + ', '.join(present))
