@@ -1,0 +1,48 @@
+name: Finalize Runtime Screenshot V6
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+    paths:
+      - .github/finalize-runtime-screenshot-v6-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+          fetch-depth: 0
+
+      - name: Finalize source
+        run: python3 scripts/finalize_runtime_screenshot_v6.py
+
+      - name: Verify screenshot contracts
+        run: |
+          set -euo pipefail
+          if grep -q 'PPApplyElevatedShadow(dock)' PurePetsAdmin/AccessorySection/AddAccessoryViewController.m; then
+            echo 'Accessory save dock still has decorative shadow' >&2
+            exit 1
+          fi
+          grep -q 'safeAreaLayoutGuide.bottomAnchor' PurePetsAdmin/AccessorySection/AddAccessoryViewController.m
+          grep -q 'commandShowsNestedWorkflow' PurePetsAdmin/App/AdminAppShell.swift
+          grep -q 'pending_collection' PurePetsAdmin/Payments/PPPaymentManagementModels.m
+          grep -q 'colorWithAlphaComponent:0.11' PurePetsAdmin/Payments/PPPaymentManagementRecordCell.m
+
+      - name: Commit source finalization
+        run: |
+          if git diff --quiet; then
+            echo 'No finalization changes required.'
+            exit 0
+          fi
+          git config user.name 'pure-pets-v6-bot'
+          git config user.email 'pure-pets-v6-bot@users.noreply.github.com'
+          git add PurePetsAdmin/AccessorySection/AddAccessoryViewController.m \
+                  PurePetsAdmin/Payments/PPPaymentManagementModels.m
+          git commit -m 'Finalize screenshot-driven V6 polish'
+          git push origin HEAD:redesign/admin-ui-v6-traversal
