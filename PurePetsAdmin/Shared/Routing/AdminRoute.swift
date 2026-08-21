@@ -513,7 +513,7 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
             context: Language.get(route.contextTitleKey, alter: nil),
             leadingAction: leadingAction,
             trailingActions: trailingActions(for: viewController),
-            showsContextFilament: true
+            showsContextFilament: false
         )
     }
 

@@ -46,6 +46,8 @@ static NSString *PPPaymentAdminWorkflowSymbolForManagement(NSString *statusKey)
     if ([normalized isEqualToString:@"failed"]) return @"exclamationmark.octagon.fill";
     if ([normalized isEqualToString:@"cancelled"]) return @"xmark.octagon.fill";
     if ([normalized isEqualToString:@"refunded"] || [normalized isEqualToString:@"partially_refunded"]) return @"arrow.uturn.left.circle.fill";
+    if ([normalized isEqualToString:@"pending"]) return @"clock.fill";
+    if ([normalized isEqualToString:@"pending_collection"]) return @"banknote.fill";
     if ([normalized isEqualToString:@"verification_pending"]) return @"shield.lefthalf.filled";
     if ([normalized isEqualToString:@"preparing"] || [normalized isEqualToString:@"packed"]) return @"tray.2.fill";
     if ([normalized isEqualToString:@"shipping"] || [normalized isEqualToString:@"in_transit"] || [normalized isEqualToString:@"out_for_delivery"]) return @"car.fill";
@@ -143,7 +145,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     self.tableView.backgroundColor = AppBackgroundClr;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 124.0;
+    self.tableView.estimatedRowHeight = 108.0;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
     self.refreshControl = [UIRefreshControl new];
@@ -153,6 +155,9 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     [self setupSearchHeader];
     [self pp_reloadPaymentsReset:YES showHUD:YES];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    if (@available(iOS 15.0, *)) {
+        self.tableView.sectionHeaderTopPadding = PPSpaceSM;
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -180,8 +185,8 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
 - (void)setupSearchHeader
 {
     CGFloat horizontal = PPScreenMargin;
-    CGFloat vertical = PPSpaceSM;
-    CGFloat searchHeight = PPButtonHeightLG;
+    CGFloat vertical = PPSpaceXS;
+    CGFloat searchHeight = MAX(PPTouchTargetMin, PPButtonHeightMD);
     CGFloat containerHeight = vertical + searchHeight + vertical;
     CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
 
@@ -199,7 +204,12 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     search.diacriticsInsensitive = YES;
     search.delegate = self;
     search.backgroundColor = [UIColor ppSurface];
-    search.textField.placeholder = kLang(@"PaymentMgmt_Search_Placeholder");
+    NSString *searchPlaceholder = kLang(@"PaymentMgmt_Search_Placeholder");
+    search.textField.placeholder = searchPlaceholder;
+    search.textField.textColor = [UIColor ppTextPrimary];
+    search.textField.tintColor = [UIColor ppPrimary];
+    search.textField.attributedPlaceholder = [[NSAttributedString alloc] initWithString:searchPlaceholder
+                                                                            attributes:@{NSForegroundColorAttributeName: [UIColor ppTextTertiary]}];
     search.textField.textAlignment = Language.alignmentForCurrentLanguage;
     search.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage;
     search.textField.text = self.filters.searchText ?: @"";
@@ -677,7 +687,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
         [self.inFlightOrderActions removeObject:orderID];
         [PPHUD dismiss];
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
         if (updatedRecord.orderId.length > 0) {
@@ -826,7 +836,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     cell.textLabel.text = self.records.count == 1
         ? kLang(@"PaymentMgmt_Summary_Loaded_Singular")
         : [NSString stringWithFormat:kLang(@"PaymentMgmt_Summary_Loaded_Plural"), (long)self.records.count];
-    cell.detailTextLabel.text = [parts componentsJoinedByString:@"\n"];
+    cell.detailTextLabel.text = [parts componentsJoinedByString:@" • "];
     cell.imageView.image = [UIImage systemImageNamed:@"creditcard.and.123"];
         cell.imageView.tintColor = [UIColor ppPrimary];
     return cell;
@@ -948,7 +958,8 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     if (![view isKindOfClass:UITableViewHeaderFooterView.class]) return;
 
     UITableViewHeaderFooterView *header = (UITableViewHeaderFooterView *)view;
-    header.textLabel.font = [Styling fontMedium:14];
+    header.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline] scaledFontForFont:[Styling fontMedium:14]];
+    header.textLabel.adjustsFontForContentSizeCategory = YES;
     header.textLabel.textColor = [UIColor ppTextSecondary];
     header.textLabel.textAlignment = [Language alignmentForCurrentLanguage];
     header.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];

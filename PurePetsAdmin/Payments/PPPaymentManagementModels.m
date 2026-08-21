@@ -215,9 +215,22 @@ NSString *PPPaymentAdminDisplayTitleForRequestType(NSString *typeKey)
 NSString *PPPaymentAdminDisplayTitleForWorkflowStatus(NSString *statusKey)
 {
     NSString *normalized = PPPaymentAdminEffectiveString(statusKey);
-    if (normalized.length == 0) return kLang(@"PaymentMgmt_WorkflowStatus_Pending");
+    if (normalized.length == 0 || [normalized isEqualToString:@"pending"] || [normalized isEqualToString:@"pending_collection"]) {
+        return kLang(@"PaymentMgmt_WorkflowStatus_Pending");
+    }
+    if ([normalized isEqualToString:@"verification_pending"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"verification_pending");
     if ([normalized isEqualToString:@"paid"]) return kLang(@"PaymentMgmt_WorkflowStatus_Paid");
-    if ([normalized isEqualToString:@"processing"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"processing");
+    if ([normalized isEqualToString:@"processing"] ||
+        [normalized isEqualToString:@"preparing"] ||
+        [normalized isEqualToString:@"packed"] ||
+        [normalized isEqualToString:@"shipped"] ||
+        [normalized isEqualToString:@"shipping"] ||
+        [normalized isEqualToString:@"in_transit"] ||
+        [normalized isEqualToString:@"out_for_delivery"] ||
+        [normalized isEqualToString:@"delivered"] ||
+        [normalized isEqualToString:@"completed"]) {
+        return PPPaymentAdminDisplayTitleForOrderStatus(normalized);
+    }
     if ([normalized isEqualToString:@"shipped"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"shipped");
     if ([normalized isEqualToString:@"delivered"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"delivered");
     if ([normalized isEqualToString:@"failed"]) return kLang(@"PaymentMgmt_WorkflowStatus_Failed");

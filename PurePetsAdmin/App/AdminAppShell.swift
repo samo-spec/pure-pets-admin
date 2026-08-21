@@ -7,6 +7,7 @@ struct AdminAppShell: View {
     @ObservedObject var router: AdminRouter
 
     @State private var selectedTab: AdminTab = .command
+    @State private var commandShowsNestedWorkflow = false
     @State private var showsLogoutConfirmation = false
     @StateObject private var commandState: CommandCenterState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -21,7 +22,11 @@ struct AdminAppShell: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            AdminCommandOrbitDashboard(session: session, languageCode: sessionStore.languageCode)
+            AdminCommandOrbitDashboard(
+                session: session,
+                languageCode: sessionStore.languageCode,
+                onNavigationDepthChanged: { commandShowsNestedWorkflow = $0 }
+            )
                 .ignoresSafeArea(.all, edges: .top)
                 .tag(AdminTab.command)
 
@@ -72,7 +77,9 @@ struct AdminAppShell: View {
         }
         .tint(AdminSurface.primary)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            V6GlobalTabBar(selectedTab: $selectedTab)
+            if !(selectedTab == .command && commandShowsNestedWorkflow) {
+                V6GlobalTabBar(selectedTab: $selectedTab)
+            }
         }
         .fullScreenCover(item: $router.presentedRoute) { route in
             AdminLegacyRouteView(route: route, languageCode: sessionStore.languageCode) {
@@ -124,17 +131,22 @@ struct AdminAppShell: View {
 private struct AdminCommandOrbitDashboard: UIViewControllerRepresentable {
     let session: AdminSession
     let languageCode: String
+    let onNavigationDepthChanged: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> AdminCommandOrbitContainerController {
-        AdminCommandOrbitContainerController()
+        let controller = AdminCommandOrbitContainerController()
+        controller.onNavigationDepthChanged = onNavigationDepthChanged
+        return controller
     }
 
     func updateUIViewController(_ controller: AdminCommandOrbitContainerController, context: Context) {
+        controller.onNavigationDepthChanged = onNavigationDepthChanged
         controller.refresh(session: session, languageCode: languageCode)
     }
 }
 
 private final class AdminCommandOrbitContainerController: UIViewController, UINavigationControllerDelegate {
+    var onNavigationDepthChanged: ((Bool) -> Void)?
     private let dashboard = PPAdminCreateCommandSpineDashboardController()
     private var workflowNavigationController: AdminCommandOrbitNavigationController?
     private var globalNavigationController: PPGlobalNavigationHostingController?
@@ -349,7 +361,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
             subtitle: isRoot ? Language.get("AdminCommand_Subtitle", alter: nil) : nil,
             leadingAction: isRoot ? nil : backAction,
             trailingActions: trailingActions(for: viewController),
-            showsContextFilament: true
+            showsContextFilament: false
         )
     }
 
@@ -571,6 +583,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     func navigationController(_ navigationController: UINavigationController,
                               willShow viewController: UIViewController,
                               animated: Bool) {
+        onNavigationDepthChanged?(navigationController.viewControllers.first !== viewController)
         applyGlobalNavigationPresentation(to: viewController, in: navigationController)
         connectGlobalNavigationStateBridge(to: viewController)
         refreshGlobalNavigation()
@@ -588,6 +601,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     func navigationController(_ navigationController: UINavigationController,
                               didShow viewController: UIViewController,
                               animated: Bool) {
+        onNavigationDepthChanged?(navigationController.viewControllers.first !== viewController)
         refreshGlobalNavigation()
     }
 }

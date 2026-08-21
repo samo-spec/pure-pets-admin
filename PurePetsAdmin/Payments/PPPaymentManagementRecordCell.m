@@ -128,7 +128,7 @@ static UIFont *PPPaymentManagementScaledFont(UIFont *baseFont, UIFontTextStyle t
     UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[_topRow, _customerLabel, _bottomRow]];
     contentStack.translatesAutoresizingMaskIntoConstraints = NO;
     contentStack.axis = UILayoutConstraintAxisVertical;
-    contentStack.spacing = PPSpaceMD;
+    contentStack.spacing = PPSpaceSM;
     [_surfaceView addSubview:contentStack];
 
     _actionMinimumWidthConstraint = [_actionButton.widthAnchor constraintGreaterThanOrEqualToConstant:112.0];
@@ -140,10 +140,10 @@ static UIFont *PPPaymentManagementScaledFont(UIFont *baseFont, UIFontTextStyle t
         [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceSM],
 
-        [contentStack.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceBase],
+        [contentStack.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceMD],
         [contentStack.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:PPSpaceBase],
         [contentStack.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-PPSpaceBase],
-        [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceBase],
+        [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceMD],
 
         [_statusIconView.leadingAnchor constraintEqualToAnchor:_statusContainer.leadingAnchor constant:PPSpaceSM],
         [_statusIconView.centerYAnchor constraintEqualToAnchor:_statusContainer.centerYAnchor],
@@ -261,9 +261,12 @@ static UIFont *PPPaymentManagementScaledFont(UIFont *baseFont, UIFontTextStyle t
 
     [_actionButton setTitle:actionTitle forState:UIControlStateNormal];
     if (prominentAction) {
-        _actionButton.backgroundColor = resolvedActionTint;
-        _actionButton.layer.borderColor = UIColor.clearColor.CGColor;
-        [_actionButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        // In a repeated work queue, keep the next action visually clear without
+        // turning every row into a competing solid CTA. Confirmation remains
+        // mandatory in the controller before any mutation is executed.
+        _actionButton.backgroundColor = [resolvedActionTint colorWithAlphaComponent:0.11];
+        _actionButton.layer.borderColor = [resolvedActionTint colorWithAlphaComponent:0.22].CGColor;
+        [_actionButton setTitleColor:resolvedActionTint forState:UIControlStateNormal];
     } else {
         _actionButton.backgroundColor = [UIColor ppSurface];
         _actionButton.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
