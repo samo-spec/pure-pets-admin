@@ -4,6 +4,7 @@ import re
 
 vc_path = Path("PurePetsAdmin/Payments/PPPaymentManagementViewController.m")
 cell_path = Path("PurePetsAdmin/Payments/PPPaymentManagementRecordCell.m")
+settings_path = Path("PurePetsAdmin/Payments/PPPaymentBasicsSettingsViewController.m")
 
 vc = vc_path.read_text(encoding="utf-8")
 vc = re.sub(
@@ -52,9 +53,40 @@ new = '''    [self pp_refreshAdaptiveLayout];
     _statusLabel.isAccessibilityElement = NO;
     _actionButton.accessibilityLabel = actionTitle ?: @"";
 '''
-if old not in cell:
-    raise SystemExit("Payment record accessibility block not found")
-cell = cell.replace(old, new)
+if old in cell:
+    cell = cell.replace(old, new)
+elif "_statusContainer.isAccessibilityElement = YES;" not in cell:
+    raise SystemExit("Payment record accessibility contract not found")
 cell_path.write_text(cell, encoding="utf-8")
+
+settings = settings_path.read_text(encoding="utf-8")
+settings = settings.replace("button.contentEdgeInsets = UIEdgeInsetsMake(7, 14, 7, 14);", "button.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);")
+settings = settings.replace("button.layer.cornerRadius = 18.0;", "button.layer.cornerRadius = PPCorner16;")
+settings = settings.replace("button.titleLabel.font = [Styling fontMedium:17];", "button.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCallout] scaledFontForFont:[Styling fontBold:15]];\n        button.titleLabel.adjustsFontForContentSizeCategory = YES;")
+settings = settings.replace("[button.heightAnchor constraintEqualToConstant:36.0].active = YES;", "[button.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;")
+settings = settings.replace("[button.widthAnchor constraintGreaterThanOrEqualToConstant:58.0].active = YES;", "[button.widthAnchor constraintGreaterThanOrEqualToConstant:72.0].active = YES;")
+settings = settings.replace("        [PPButtonHelper attachTapAnimationToButton:button style:PPButtonAnimationStylePulse];\n", "")
+settings = settings.replace("UIColor *titleColor = [UIColor ppTextPrimary];", "UIColor *titleColor = UIColor.whiteColor;")
+settings = settings.replace("self.saveButton.titleLabel.font = [Styling fontMedium:17];", "self.saveButton.titleLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleCallout] scaledFontForFont:[Styling fontBold:15]];\n    self.saveButton.titleLabel.adjustsFontForContentSizeCategory = YES;")
+settings = settings.replace("self.saveButton.backgroundColor = AppBackgroundClr;", "self.saveButton.backgroundColor = enabled ? [UIColor ppPrimary] : [[UIColor ppPrimary] colorWithAlphaComponent:0.16];")
+settings = settings.replace("self.saveButton.layer.borderColor = [borderColor colorWithAlphaComponent:0.18].CGColor;", "self.saveButton.layer.borderColor = UIColor.clearColor.CGColor;")
+settings = settings.replace("self.saveButton.alpha = enabled ? 1.0 : 0.65;", "self.saveButton.alpha = enabled ? 1.0 : 0.72;")
+settings = settings.replace(
+    "[AlertHelper showErrorIn:self title:kLang(@\"Error\") subtitle:error.localizedDescription ?: kLang(@\"PaymentMgmt_Error_LoadPayments\")];",
+    "[AlertHelper showErrorIn:self title:kLang(@\"Error\") subtitle:kLang(@\"PaymentMgmt_Error_LoadPayments\")];",
+)
+settings = settings.replace(
+    "[AlertHelper showErrorIn:self title:kLang(@\"Error\") subtitle:error.localizedDescription ?: kLang(@\"PaymentMgmt_Error_UpdateOrder\")];",
+    "[AlertHelper showErrorIn:self title:kLang(@\"Error\") subtitle:kLang(@\"PaymentMgmt_Error_UpdateOrder\")];",
+)
+settings = settings.replace(
+    "header.textLabel.font = [Styling fontMedium:15];",
+    "header.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[Styling fontMedium:15]];\n    header.textLabel.adjustsFontForContentSizeCategory = YES;",
+)
+settings = settings.replace(
+    "footer.textLabel.font = [Styling fontRegular:13];",
+    "footer.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleFootnote] scaledFontForFont:[Styling fontRegular:13]];\n    footer.textLabel.adjustsFontForContentSizeCategory = YES;",
+)
+settings_path.write_text(settings, encoding="utf-8")
 
 print("Applied Work/Payments V6 refinements")
