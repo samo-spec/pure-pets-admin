@@ -1,0 +1,52 @@
+name: Fulfillment V6
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+    paths:
+      - .github/fulfillment-v6-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+          fetch-depth: 0
+
+      - name: Apply Fulfillment V6
+        run: python3 scripts/apply_fulfillment_v6.py
+
+      - name: Static V6 contracts
+        run: |
+          set -euo pipefail
+          FILE=PurePetsAdmin/Fulfillment/PPFulfillmentOrdersViewController.swift
+          grep -q 'static let spaceXS = CGFloat(PPSpaceXS)' "$FILE"
+          grep -q 'static let canvas = AdminSurface.background' "$FILE"
+          grep -q 'operationalStatusBar' "$FILE"
+          grep -q 'frame(minHeight: PPFulfillmentTokens.minimumTarget)' "$FILE"
+          if grep -q 'shadow(color: Color.black.opacity(0.06)' "$FILE"; then
+            echo 'Broad decorative card shadow remains' >&2
+            exit 1
+          fi
+          if grep -q 'shadow(color: tone.color.opacity' "$FILE"; then
+            echo 'Decorative timeline glow remains' >&2
+            exit 1
+          fi
+
+      - name: Commit source
+        run: |
+          if git diff --quiet; then
+            echo 'No Fulfillment source changes required.'
+            exit 0
+          fi
+          git config user.name 'pure-pets-v6-bot'
+          git config user.email 'pure-pets-v6-bot@users.noreply.github.com'
+          git add PurePetsAdmin/Fulfillment/PPFulfillmentOrdersViewController.swift
+          git commit -m 'Refactor Fulfillment into V6 work queue'
+          git push origin HEAD:redesign/admin-ui-v6-traversal
