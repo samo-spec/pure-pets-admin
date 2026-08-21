@@ -1,0 +1,59 @@
+name: Shared Inventory V6
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+    paths:
+      - .github/inventory-list-v6-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+          fetch-depth: 0
+
+      - name: Apply shared inventory V6
+        run: python3 scripts/apply_inventory_list_v6.py
+
+      - name: Static production contracts
+        run: |
+          set -euo pipefail
+          LIST=PurePetsAdmin/AccessorySection/AccessoriesListViewController.m
+          CELL=PurePetsAdmin/AccessorySection/AccessoryCell.m
+          grep -q 'UITableViewAutomaticDimension' "$LIST"
+          grep -q 'sv.shadowEnabled = NO' "$LIST"
+          grep -q 'Inventory_LoadFailed' "$LIST"
+          grep -q 'PPInventoryRouteTitle' "$LIST"
+          grep -q 'PPTouchTargetMin' "$CELL"
+          grep -q 'UIAccessibilityIsReduceMotionEnabled' "$CELL"
+          grep -q 'ppSurfaceBorder' "$CELL"
+          if grep -q '_cardView.layer.shadowColor' "$CELL"; then
+            echo 'Decorative inventory card shadow remains' >&2
+            exit 1
+          fi
+          if grep -E 'PPHUD showError:.*localizedDescription' "$LIST"; then
+            echo 'Raw inventory mutation error remains' >&2
+            exit 1
+          fi
+
+      - name: Commit source
+        run: |
+          if git diff --quiet; then
+            echo 'No shared inventory source changes required.'
+            exit 0
+          fi
+          git config user.name 'pure-pets-v6-bot'
+          git config user.email 'pure-pets-v6-bot@users.noreply.github.com'
+          git add PurePetsAdmin/AccessorySection/AccessoriesListViewController.m \
+                  PurePetsAdmin/AccessorySection/AccessoryCell.m \
+                  PurePetsAdmin/en.lproj/Localizable.strings \
+                  PurePetsAdmin/ar.lproj/Localizable.strings
+          git commit -m 'Refine shared inventory routes with SwiftyMax V6'
+          git push origin HEAD:redesign/admin-ui-v6-traversal
