@@ -15,45 +15,56 @@ import FirebaseFunctions
 // MARK: - Design system
 
 private enum PPFulfillmentTokens {
-    static let spaceXS: CGFloat = 4
-    static let spaceSM: CGFloat = 8
-    static let spaceMD: CGFloat = 12
-    static let spaceBase: CGFloat = 16
-    static let spaceLG: CGFloat = 20
-    static let spaceXL: CGFloat = 24
-    static let screenMargin: CGFloat = 20
-    static let cornerSmall: CGFloat = 12
-    static let cornerMedium: CGFloat = 18
-    static let cornerCard: CGFloat = 22
-    static let cornerHero: CGFloat = CGFloat(PPCornerHero)
-    static let minimumTarget: CGFloat = 44
+    static let spaceXS = CGFloat(PPSpaceXS)
+    static let spaceSM = CGFloat(PPSpaceSM)
+    static let spaceMD = CGFloat(PPSpaceMD)
+    static let spaceBase = CGFloat(PPSpaceBase)
+    static let spaceLG = CGFloat(PPSpaceLG)
+    static let spaceXL = CGFloat(PPSpaceXL)
+    static let screenMargin = CGFloat(PPScreenMargin)
+    static let cornerSmall = CGFloat(PPCornerSmall)
+    static let cornerMedium = CGFloat(PPCorner16)
+    static let cornerCard = CGFloat(PPCornerCard)
+    static let cornerHero = CGFloat(PPCornerCard)
+    static let minimumTarget = CGFloat(PPTouchTargetMin)
 
-    static let canvas = Color(uiColor: .ppBackground)
-    static let surface = Color(uiColor: .ppElevatedSurface)
-    static let ink = Color(uiColor: .ppTextPrimary)
-    static let secondaryInk = Color(uiColor: .ppTextSecondary)
+    static let canvas = AdminSurface.background
+    static let surface = AdminSurface.surface
+    static let ink = AdminSurface.primaryText
+    static let secondaryInk = AdminSurface.secondaryText
     static let tertiaryInk = Color(uiColor: .ppTextTertiary)
     static let gold = Color(uiColor: .ppPremiumAccent)
     static let success = Color(uiColor: .ppSuccess)
     static let warning = Color(uiColor: .ppWarning)
     static let danger = Color(uiColor: .ppError)
     static let info = Color(uiColor: .ppInfo)
-    static let primary = Color(uiColor: .ppPrimary)
-    static let primarySoft = Color(uiColor: .ppPrimaryShiner)
-    static let border = Color(uiColor: .ppSurfaceBorder)
+    static let primary = AdminSurface.primary
+    static let primarySoft = AdminSurface.primarySoft
+    static let border = AdminSurface.hairline
     static let disabledFill = Color(uiColor: .ppSecondarySurface)
 
+    /// Keeps existing call sites semantic while routing all typography through
+    /// the app-wide AdminType scale instead of a Fulfillment-only font system.
     static func beiruti(_ weight: Font.Weight, size: CGFloat, relativeTo style: Font.TextStyle) -> Font {
-        let name: String
+        let strong: Bool
         switch weight {
-        case .bold, .heavy, .black:
-            name = "Beiruti-Bold"
-        case .semibold, .medium:
-            name = "Beiruti-Medium"
-        default:
-            name = "Beiruti-Regular"
+        case .medium, .semibold, .bold, .heavy, .black: strong = true
+        default: strong = false
         }
-        return .custom(name, size: size, relativeTo: style)
+        switch style {
+        case .largeTitle: return strong ? AdminType.title : AdminType.title2
+        case .title: return AdminType.title
+        case .title2: return AdminType.title2
+        case .title3: return AdminType.title3
+        case .headline: return AdminType.headline
+        case .subheadline: return strong ? AdminType.subheadlineBold : AdminType.subheadline
+        case .body: return strong ? AdminType.headline : AdminType.body
+        case .callout: return strong ? AdminType.calloutBold : AdminType.callout
+        case .footnote: return strong ? AdminType.footnoteBold : AdminType.footnote
+        case .caption: return strong ? AdminType.captionBold : AdminType.caption1
+        case .caption2: return strong ? AdminType.caption2Bold : AdminType.caption2
+        @unknown default: return strong ? AdminType.headline : AdminType.body
+        }
     }
 }
 
@@ -64,9 +75,8 @@ private struct PPFulfillmentCardModifier: ViewModifier {
             .clipShape(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerCard, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerCard, style: .continuous)
-                    .stroke(PPFulfillmentTokens.ink.opacity(0.07), lineWidth: 1)
+                    .stroke(PPFulfillmentTokens.border, lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.06), radius: 20, x: 0, y: 8)
     }
 }
 
@@ -791,8 +801,8 @@ private struct PPFulfillmentOrdersScreen: View {
             PPFulfillmentTokens.canvas.ignoresSafeArea()
 
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXL) {
-                    commandHeader
+                LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceBase) {
+                    operationalStatusBar
                     operationalPulse
                     workflowBoard
                     queueControls
@@ -803,8 +813,8 @@ private struct PPFulfillmentOrdersScreen: View {
                     content
                 }
                 .padding(.horizontal, PPFulfillmentTokens.screenMargin)
-                .padding(.top, PPFulfillmentTokens.spaceBase)
-                .padding(.bottom, 36)
+                .padding(.top, PPFulfillmentTokens.spaceXS)
+                .padding(.bottom, PPFulfillmentTokens.spaceXL)
             }
             .refreshable { await viewModel.refresh() }
         }
@@ -817,52 +827,38 @@ private struct PPFulfillmentOrdersScreen: View {
         .onDisappear(perform: viewModel.stopListening)
     }
 
-    private var commandHeader: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
-            HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
-                VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXS) {
-                    Text(PPFulfillmentL10n.text("Fulfillment_Mission_Eyebrow"))
-                        .font(PPFulfillmentTokens.beiruti(.bold, size: 13, relativeTo: .caption))
-                        .foregroundStyle(PPFulfillmentTokens.primary)
-                        .textCase(.uppercase)
-                    Text(PPFulfillmentL10n.text("Fulfillment_Mission_Title"))
-                        .font(PPFulfillmentTokens.beiruti(.bold, size: 32, relativeTo: .largeTitle))
-                        .foregroundStyle(PPFulfillmentTokens.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityAddTraits(.isHeader)
-                    Text(PPFulfillmentL10n.text("Fulfillment_Mission_Subtitle"))
-                        .font(PPFulfillmentTokens.beiruti(.regular, size: 16, relativeTo: .body))
-                        .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var operationalStatusBar: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
+                    liveStatus
+                    refreshControl
                 }
-
-                Spacer(minLength: PPFulfillmentTokens.spaceSM)
-
-                Button(action: viewModel.retry) {
-                    Group {
-                        if viewModel.isRefreshing {
-                            ProgressView().tint(PPFulfillmentTokens.primary)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                    }
-                    .frame(width: PPFulfillmentTokens.minimumTarget, height: PPFulfillmentTokens.minimumTarget)
-                    .background(PPFulfillmentTokens.primarySoft, in: Circle())
+            } else {
+                HStack(spacing: PPFulfillmentTokens.spaceSM) {
+                    liveStatus
+                    Spacer(minLength: PPFulfillmentTokens.spaceSM)
+                    refreshControl
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(PPFulfillmentTokens.primary)
-                .disabled(viewModel.isRefreshing)
-                .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
-                .accessibilityIdentifier("fulfillment.refresh")
             }
-
-            liveStatus
-            .font(PPFulfillmentTokens.beiruti(.medium, size: 13, relativeTo: .caption))
-            .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-            .accessibilityElement(children: .combine)
         }
-        .accessibilityIdentifier("fulfillment.mission.header")
+        .font(AdminType.caption1)
+        .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+        .accessibilityIdentifier("fulfillment.live.status")
+    }
+
+    private var refreshControl: some View {
+        Button(action: viewModel.retry) {
+            Image(systemName: viewModel.isRefreshing ? "arrow.triangle.2.circlepath" : "arrow.clockwise")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(PPFulfillmentTokens.primary)
+                .frame(width: PPFulfillmentTokens.minimumTarget, height: PPFulfillmentTokens.minimumTarget)
+                .background(PPFulfillmentTokens.primarySoft, in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerSmall, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.isRefreshing)
+        .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+        .accessibilityIdentifier("fulfillment.refresh")
     }
 
     @ViewBuilder
@@ -900,7 +896,7 @@ private struct PPFulfillmentOrdersScreen: View {
     }
 
     private var operationalPulse: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceLG) {
+        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
             operationalPulseHeader
 
             if hasOperationalSnapshot {
@@ -940,18 +936,12 @@ private struct PPFulfillmentOrdersScreen: View {
                 }
             }
         }
-        .padding(PPFulfillmentTokens.spaceLG)
+        .padding(PPFulfillmentTokens.spaceBase)
         .background(PPFulfillmentTokens.surface)
-        .clipShape(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerHero, style: .continuous))
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(healthColor)
-                .frame(width: 4)
-                .padding(.vertical, PPFulfillmentTokens.spaceLG)
-        }
+        .clipShape(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerCard, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerHero, style: .continuous)
-                .stroke(healthColor.opacity(0.28), lineWidth: 1)
+            RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerCard, style: .continuous)
+                .stroke(PPFulfillmentTokens.border, lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("fulfillment.operational.pulse")
@@ -998,12 +988,11 @@ private struct PPFulfillmentOrdersScreen: View {
     }
 
     private var workflowBoard: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
-            PPFulfillmentSectionHeading(
-                title: PPFulfillmentL10n.text("Fulfillment_Workflow_Title"),
-                detail: PPFulfillmentL10n.text("Fulfillment_Workflow_Subtitle"),
-                symbol: "point.3.connected.trianglepath.dotted"
-            )
+        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
+            Text(PPFulfillmentL10n.text("Fulfillment_Workflow_Title"))
+                .font(AdminType.captionBold)
+                .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                .accessibilityAddTraits(.isHeader)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: PPFulfillmentTokens.spaceSM) {
@@ -1020,7 +1009,7 @@ private struct PPFulfillmentOrdersScreen: View {
                         }
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 1)
             }
         }
     }
@@ -1375,40 +1364,35 @@ private struct PPFulfillmentStageNode: View {
     let count: Int
     let isSelected: Bool
     let action: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
-                HStack {
-                    Image(systemName: stage.symbol)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(stageColor)
-                    Spacer(minLength: PPFulfillmentTokens.spaceSM)
-                    Text("\(count)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(PPFulfillmentTokens.ink)
-                }
+            HStack(spacing: PPFulfillmentTokens.spaceSM) {
+                Image(systemName: stage.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(stageColor)
+                    .accessibilityHidden(true)
                 Text(PPFulfillmentL10n.text(stage.titleKey))
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .headline))
+                    .font(AdminType.calloutBold)
                     .foregroundStyle(PPFulfillmentTokens.ink)
-                    .lineLimit(2)
-                Text(PPFulfillmentL10n.text(stage.detailKey))
-                    .font(PPFulfillmentTokens.beiruti(.regular, size: 12, relativeTo: .caption))
-                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-                    .lineLimit(2)
+                    .lineLimit(1)
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(isSelected ? stageColor : PPFulfillmentTokens.secondaryInk)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background((isSelected ? stageColor : PPFulfillmentTokens.secondaryInk).opacity(0.09), in: Capsule())
             }
-            .padding(PPFulfillmentTokens.spaceMD)
-            .frame(width: dynamicTypeSize.isAccessibilitySize ? 200 : 138, alignment: .leading)
-            .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 150 : 116, alignment: .leading)
+            .padding(.horizontal, PPFulfillmentTokens.spaceMD)
+            .frame(minHeight: PPFulfillmentTokens.minimumTarget)
             .background(
-                isSelected ? stageColor.opacity(0.10) : PPFulfillmentTokens.surface,
-                in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous)
+                isSelected ? stageColor.opacity(0.09) : PPFulfillmentTokens.surface,
+                in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerSmall, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous)
-                    .stroke(isSelected ? stageColor : PPFulfillmentTokens.border, lineWidth: isSelected ? 2 : 1)
+                RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerSmall, style: .continuous)
+                    .stroke(isSelected ? stageColor.opacity(0.55) : PPFulfillmentTokens.border, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1439,7 +1423,7 @@ private struct PPFulfillmentCommandRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
+        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
             commandHeader
 
             commandRoute
@@ -1463,7 +1447,8 @@ private struct PPFulfillmentCommandRow: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
             }
         }
-        .padding(PPFulfillmentTokens.spaceBase)
+        .padding(.horizontal, PPFulfillmentTokens.spaceBase)
+        .padding(.vertical, PPFulfillmentTokens.spaceMD)
         .background(hasChanged ? record.tone.color.opacity(0.045) : Color.clear)
         .overlay(alignment: .leading) {
             Rectangle()
@@ -2870,7 +2855,6 @@ private struct PPFulfillmentTimelineRow: View {
                     .fill(tone.color)
                     .overlay(Circle().stroke(PPFulfillmentTokens.surface, lineWidth: 3))
                     .frame(width: 18, height: 18)
-                    .shadow(color: tone.color.opacity(0.35), radius: 4)
                 if !isLast {
                     Rectangle()
                         .fill(tone.color.opacity(0.25))
