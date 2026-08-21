@@ -231,8 +231,6 @@ NSString *PPPaymentAdminDisplayTitleForWorkflowStatus(NSString *statusKey)
         [normalized isEqualToString:@"completed"]) {
         return PPPaymentAdminDisplayTitleForOrderStatus(normalized);
     }
-    if ([normalized isEqualToString:@"shipped"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"shipped");
-    if ([normalized isEqualToString:@"delivered"]) return PPPaymentAdminDisplayTitleForOrderStatus(@"delivered");
     if ([normalized isEqualToString:@"failed"]) return kLang(@"PaymentMgmt_WorkflowStatus_Failed");
     if ([normalized isEqualToString:@"cancelled"]) return kLang(@"PaymentMgmt_WorkflowStatus_Cancelled");
     if ([normalized isEqualToString:@"refunded"]) return kLang(@"PaymentMgmt_WorkflowStatus_Refunded");

@@ -385,7 +385,6 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     dock.translatesAutoresizingMaskIntoConstraints = NO;
     dock.backgroundColor = [UIColor ppSurface];
     dock.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    PPApplyElevatedShadow(dock);
     [self.view addSubview:dock];
 
     UIView *hairline = [[UIView alloc] initWithFrame:CGRectZero];
