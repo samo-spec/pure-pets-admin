@@ -1,0 +1,74 @@
+name: Command Center V6 Source Gate
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+
+permissions:
+  contents: write
+
+jobs:
+  command-source-gate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+      - name: Apply Command Center redesign
+        run: python3 scripts/apply_command_center_v6.py
+      - name: Parse Swift source
+        run: xcrun --sdk iphonesimulator swiftc -frontend -parse PurePetsAdmin/Features/CommandCenter/AdminCommandCenterScreen.swift
+      - name: Validate localization files
+        run: |
+          plutil -lint PurePetsAdmin/en.lproj/Localizable.strings
+          plutil -lint PurePetsAdmin/ar.lproj/Localizable.strings
+      - name: Static V6 contract checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p = Path('PurePetsAdmin/Features/CommandCenter/AdminCommandCenterScreen.swift')
+          s = p.read_text()
+          required = [
+              'signals.prefix(6)',
+              'AdminSurface.background',
+              'AdminType.headline',
+              'CommandPrimarySignalCard',
+              'CommandSignalRow',
+              'AdminCommandCenter_OtherPriorities',
+              'AdminCommandCenter_Retry',
+              '@Environment(\\.accessibilityReduceMotion)',
+              'dynamicTypeSize.isAccessibilitySize',
+          ]
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit('Missing Command V6 markers: ' + ', '.join(missing))
+          forbidden = [
+              'signals.prefix(8)',
+              'private enum V6Font',
+              'private enum V6 {',
+              'glassStroke',
+              'glassmorphism',
+              '.padding(.bottom, 140)',
+              '@available(iOS 16.0, *)\n@MainActor\n@objcMembers\npublic final class AdminCommandOrbitHostingController',
+          ]
+          present = [x for x in forbidden if x in s]
+          if present:
+              raise SystemExit('Forbidden Command regression patterns remain: ' + ', '.join(present))
+          if re.search(r'[\u0600-\u06FF]', s):
+              raise SystemExit('Hardcoded Arabic remains in Command Swift source')
+          print('Command Center V6 source gate passed')
+          PY
+      - name: Commit generated Command source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PurePetsAdmin/Features/CommandCenter/AdminCommandCenterScreen.swift
+          if git diff --cached --quiet; then
+            echo "No generated Command changes"
+          else
+            git commit -m "Restore Command Center Priority Handoff V6"
+            git push origin HEAD:redesign/admin-ui-v6-traversal
+          fi
