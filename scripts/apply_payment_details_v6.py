@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import re
 
 path = Path('PurePetsAdmin/Payments/PPPaymentDetailsViewController.m')
 s = path.read_text(encoding='utf-8')
 
-start = s.index('@implementation PPPaymentNextStepCell')
-end_marker = '@end\n\n@class PPPaymentRequestDetailsViewController;'
-end = s.index(end_marker, start)
+if '_cardGradientLayer' in s:
+    start = s.index('@implementation PPPaymentNextStepCell')
+    end_marker = '@end\n\n@class PPPaymentRequestDetailsViewController;'
+    end = s.index(end_marker, start)
 
-replacement = r'''@implementation PPPaymentNextStepCell {
+    replacement = r'''@implementation PPPaymentNextStepCell {
     UIView *_surfaceView;
     UIView *_statusContainer;
     UIImageView *_workflowIconView;
@@ -102,12 +102,10 @@ static UIFont *PPPaymentDetailsScaledFont(UIFont *baseFont, UIFontTextStyle text
         [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceSM],
-
         [contentStack.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceBase],
         [contentStack.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:PPSpaceBase],
         [contentStack.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-PPSpaceBase],
         [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceBase],
-
         [_workflowIconView.leadingAnchor constraintEqualToAnchor:_statusContainer.leadingAnchor constant:PPSpaceSM],
         [_workflowIconView.centerYAnchor constraintEqualToAnchor:_statusContainer.centerYAnchor],
         [_workflowIconView.widthAnchor constraintEqualToConstant:17.0],
@@ -122,10 +120,7 @@ static UIFont *PPPaymentDetailsScaledFont(UIFont *baseFont, UIFontTextStyle text
     return self;
 }
 
-- (UIButton *)actionButton
-{
-    return _actionButton;
-}
+- (UIButton *)actionButton { return _actionButton; }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
 {
@@ -187,13 +182,20 @@ static UIFont *PPPaymentDetailsScaledFont(UIFont *baseFont, UIFontTextStyle text
 @end
 
 @class PPPaymentRequestDetailsViewController;'''
+    s = s[:start] + replacement + s[end + len(end_marker):]
 
-s = s[:start] + replacement + s[end + len(end_marker):]
 s = s.replace('self.refreshControl.tintColor = [UIColor ppPrimaryShiner];', 'self.refreshControl.tintColor = [UIColor ppPrimary];')
 s = s.replace('subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPaymentDetails")', 'subtitle:kLang(@"PaymentMgmt_Error_LoadPaymentDetails")')
+s = s.replace('subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")', 'subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")')
+s = s.replace('subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequest")', 'subtitle:kLang(@"PaymentMgmt_Error_LoadRequest")')
+s = s.replace('subtitle:eventsError.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequestHistory")', 'subtitle:kLang(@"PaymentMgmt_Error_LoadRequestHistory")')
 s = s.replace(
     'cell.textLabel.font = [Styling fontBold:15];\n        cell.detailTextLabel.font = [Styling fontRegular:13];',
     'cell.textLabel.font = PPPaymentDetailsScaledFont([Styling fontBold:15], UIFontTextStyleHeadline);\n        cell.textLabel.adjustsFontForContentSizeCategory = YES;\n        cell.detailTextLabel.font = PPPaymentDetailsScaledFont([Styling fontRegular:13], UIFontTextStyleSubheadline);\n        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;'
+)
+s = s.replace(
+    'header.textLabel.font = [Styling fontMedium:14];',
+    'header.textLabel.font = PPPaymentDetailsScaledFont([Styling fontMedium:14], UIFontTextStyleHeadline);\n    header.textLabel.adjustsFontForContentSizeCategory = YES;'
 )
 path.write_text(s, encoding='utf-8')
 print('Applied Payment Details V6 refinements')
