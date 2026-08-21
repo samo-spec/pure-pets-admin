@@ -8,21 +8,7 @@
 // Canonical official seller identity from Pure Pets Infra seed/migration contracts.
 static NSString * const kPPPOSOfficialOwnerID = @"PUIDPOFFICILAL20262214";
 static NSInteger const kPPPOSSearchFieldTag = 6101;
-
-// Warm till surface (warm settle language carried from the Command Bar).
-static UIColor *PPFastSellWarmIvory(void) {
-    return [UIColor ppSurfaceOverlay];
-}
-
-// Gold ops signal for count chip and in-cart badges.
-static UIColor *PPFastSellOpsGold(void) {
-    return [UIColor ppPremiumAccent];
-}
-
-// Gold hairline for the till edge.
-static UIColor *PPFastSellGoldHairline(void) {
-    return [[UIColor ppPremiumAccent] colorWithAlphaComponent:0.55];
-}
+static NSInteger const kPPPOSCatalogStateAuxTag = 6102;
 
 static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     return UIContentSizeCategoryIsAccessibilityCategory(traits.preferredContentSizeCategory);
@@ -39,6 +25,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 @property (nonatomic, strong) UIBarButtonItem *clearButton;
 @property (nonatomic, weak) UITextField *searchField;
 @property (nonatomic, assign) BOOL didPrepareEntrance;
+@property (nonatomic, assign) BOOL isSubmittingOrder;
 @property (nonatomic, strong) UILabel *countChip;
 @end
 
@@ -55,7 +42,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.rowHeight = UITableViewAutomaticDimension;
-    self.tableView.estimatedRowHeight = 92.0;
+    self.tableView.estimatedRowHeight = 84.0;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
     self.clearButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"trash"] style:UIBarButtonItemStylePlain target:self action:@selector(didTapClear)];
@@ -71,7 +58,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
-    UIEdgeInsets insets = UIEdgeInsetsMake(PPSpaceBase, 0.0, CGRectGetHeight(self.checkoutButton.superview.bounds) + PPSpaceLG, 0.0);
+    UIEdgeInsets insets = UIEdgeInsetsMake(PPSpaceSM, 0.0, CGRectGetHeight(self.checkoutButton.superview.bounds) + PPSpaceSM, 0.0);
     if (!UIEdgeInsetsEqualToEdgeInsets(self.tableView.contentInset, insets)) {
         self.tableView.contentInset = insets;
         self.tableView.scrollIndicatorInsets = insets;
@@ -91,7 +78,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
             __strong typeof(weakSelf) self = weakSelf;
             if (!self) return;
             self.isLoadingCatalog = NO;
-            self.catalogErrorMessage = error.localizedDescription;
+            self.catalogErrorMessage = error ? kLang(@"POS_CatalogLoadFailed") : nil;
             self.catalog = error ? @[] : (items ?: @[]);
             [self applyCatalogFilter];
         });
@@ -233,6 +220,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 }
 
 - (void)didTapCheckout {
+    if (self.isSubmittingOrder) return;
     if (self.cart.count == 0) {
         [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_EmptyCart")];
         return;
@@ -246,10 +234,18 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         [self submitOrder:@"card"];
     }]];
     [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    UIPopoverPresentationController *popover = alert.popoverPresentationController;
+    if (popover) {
+        popover.sourceView = self.checkoutButton;
+        popover.sourceRect = self.checkoutButton.bounds;
+    }
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)submitOrder:(NSString *)method {
+    if (self.isSubmittingOrder) return;
+    self.isSubmittingOrder = YES;
+    [self refreshCartPresentation];
     NSMutableArray *itemsPayload = [NSMutableArray array];
     double total = 0;
     for (PPPOSCartItem *item in self.cart) {
@@ -264,8 +260,10 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
     [[PPPOSService shared] submitPOSOrderWithItems:itemsPayload total:total paymentMethod:method completion:^(NSString *orderID, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            self.isSubmittingOrder = NO;
             if (error) {
-                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                [self refreshCartPresentation];
+                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_OrderSubmitFailed")];
             } else {
                 [PPFunc pp_playSuccessEffect];
                 [self stampSaleWithOrderID:orderID];
@@ -279,15 +277,11 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 - (void)buildCheckoutDock {
     UIView *dock = [UIView new];
     dock.translatesAutoresizingMaskIntoConstraints = NO;
-    dock.backgroundColor = PPFastSellWarmIvory();
-    dock.layer.cornerRadius = PPCornerCard;
+    dock.backgroundColor = [UIColor ppSurface];
+    dock.layer.cornerRadius = 0.0;
     dock.layer.cornerCurve = kCACornerCurveContinuous;
     dock.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    dock.layer.borderColor = PPFastSellGoldHairline().CGColor;
-    dock.layer.shadowColor = UIColor.blackColor.CGColor;
-    dock.layer.shadowOpacity = PPShadowSubtleOpacity;
-    dock.layer.shadowRadius = PPShadowCardRadius;
-    dock.layer.shadowOffset = CGSizeMake(0.0, PPShadowCardOffsetY);
+    dock.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     dock.accessibilityIdentifier = @"FastSellDock";
     [self.view addSubview:dock];
 
@@ -309,8 +303,8 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     countChip.translatesAutoresizingMaskIntoConstraints = NO;
     countChip.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:12.0]];
     countChip.adjustsFontForContentSizeCategory = YES;
-    countChip.textColor = PPFastSellOpsGold();
-    countChip.backgroundColor = [PPFastSellOpsGold() colorWithAlphaComponent:0.14];
+    countChip.textColor = [UIColor ppPrimary];
+    countChip.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.14];
     countChip.layer.cornerRadius = 13.0;
     countChip.layer.masksToBounds = YES;
     countChip.textAlignment = NSTextAlignmentCenter;
@@ -323,12 +317,13 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     self.checkoutButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.checkoutButton.backgroundColor = PPPrimaryColor();
     self.checkoutButton.tintColor = UIColor.whiteColor;
-    self.checkoutButton.layer.cornerRadius = PPCornerMedium;
+    self.checkoutButton.layer.cornerRadius = PPCorner16;
     self.checkoutButton.layer.cornerCurve = kCACornerCurveContinuous;
     self.checkoutButton.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:16.0]];
     self.checkoutButton.titleLabel.adjustsFontForContentSizeCategory = YES;
     [self.checkoutButton setTitle:kLang(@"POS_Checkout") forState:UIControlStateNormal];
-    [self.checkoutButton setImage:[UIImage systemImageNamed:@"arrow.left.circle.fill"] forState:UIControlStateNormal];
+    NSString *checkoutSymbol = [Language isRTL] ? @"arrow.left.circle.fill" : @"arrow.right.circle.fill";
+    [self.checkoutButton setImage:[UIImage systemImageNamed:checkoutSymbol] forState:UIControlStateNormal];
     self.checkoutButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.checkoutButton.accessibilityHint = kLang(@"POS_CheckoutHint");
     [self.checkoutButton addTarget:self action:@selector(didTapCheckout) forControlEvents:UIControlEventTouchUpInside];
@@ -337,16 +332,16 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     [dock addSubview:self.checkoutTotalLabel];
     [dock addSubview:self.checkoutButton];
     [NSLayoutConstraint activateConstraints:@[
-        [dock.leadingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.leadingAnchor],
-        [dock.trailingAnchor constraintEqualToAnchor:self.view.layoutMarginsGuide.trailingAnchor],
-        [dock.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        [dock.heightAnchor constraintGreaterThanOrEqualToConstant:84.0],
+        [dock.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [dock.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [dock.heightAnchor constraintGreaterThanOrEqualToConstant:PPButtonHeightLG + PPSpaceXL],
 
-        [captionLabel.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor constant:PPSpaceLG],
+        [captionLabel.leadingAnchor constraintEqualToAnchor:dock.leadingAnchor constant:PPScreenMargin],
         [captionLabel.topAnchor constraintEqualToAnchor:dock.topAnchor constant:PPSpaceMD],
 
         [countChip.leadingAnchor constraintGreaterThanOrEqualToAnchor:captionLabel.trailingAnchor constant:PPSpaceMD],
-        [countChip.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor constant:-PPSpaceLG],
+        [countChip.trailingAnchor constraintEqualToAnchor:dock.trailingAnchor constant:-PPScreenMargin],
         [countChip.centerYAnchor constraintEqualToAnchor:captionLabel.centerYAnchor],
         [countChip.heightAnchor constraintEqualToConstant:26.0],
         [countChip.widthAnchor constraintGreaterThanOrEqualToConstant:44.0],
@@ -365,7 +360,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 - (void)buildSearchHeader {
     CGFloat width = CGRectGetWidth(self.view.bounds);
     if (width <= 0.0) width = UIScreen.mainScreen.bounds.size.width;
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, width, 76.0)];
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, width, 64.0)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
@@ -391,8 +386,13 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     searchGlyph.tintColor = SeconderyTextClr;
     searchGlyph.frame = CGRectMake(0.0, 0.0, 28.0, 20.0);
     searchGlyph.contentMode = UIViewContentModeScaleAspectFit;
-    field.leftView = searchGlyph;
-    field.leftViewMode = UITextFieldViewModeAlways;
+    if ([Language isRTL]) {
+        field.rightView = searchGlyph;
+        field.rightViewMode = UITextFieldViewModeAlways;
+    } else {
+        field.leftView = searchGlyph;
+        field.leftViewMode = UITextFieldViewModeAlways;
+    }
     [field addTarget:self action:@selector(didChangeSearch:) forControlEvents:UIControlEventEditingChanged];
     [searchSurface addSubview:field];
     self.searchField = field;
@@ -437,7 +437,8 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     }
     self.checkoutTotalLabel.text = [NSString stringWithFormat:@"%.2f %@", total, kLang(@"Accounting_QAR")];
     self.checkoutTotalLabel.textColor = AppPrimaryClr;
-    self.checkoutButton.enabled = self.cart.count > 0;
+    [self.checkoutButton setTitle:kLang(@"POS_Checkout") forState:UIControlStateNormal];
+    self.checkoutButton.enabled = self.cart.count > 0 && !self.isSubmittingOrder;
     self.checkoutButton.alpha = self.checkoutButton.enabled ? 1.0 : 0.55;
     self.clearButton.enabled = self.cart.count > 0;
     self.countChip.text = [NSString stringWithFormat:kLang(@"POS_ItemsInCart"), (long)count];
@@ -458,7 +459,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     }
 
     self.checkoutTotalLabel.text = [NSString stringWithFormat:@"✓ %@", [NSString stringWithFormat:kLang(@"POS_OrderCreated"), orderID]];
-    self.checkoutTotalLabel.textColor = PPFastSellOpsGold();
+    self.checkoutTotalLabel.textColor = [UIColor ppPrimary];
     self.checkoutTotalLabel.transform = CGAffineTransformMakeScale(0.6, 0.6);
     [UIView animateWithDuration:0.45 delay:0.0
          usingSpringWithDamping:0.6 initialSpringVelocity:0.9
@@ -482,10 +483,10 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         cell = [[UITableViewCell alloc] initWithStyle:style reuseIdentifier:identifier];
         cell.backgroundColor = UIColor.clearColor;
         cell.contentView.backgroundColor = AppForgroundColr;
-        cell.contentView.layer.cornerRadius = PPCornerMedium;
+        cell.contentView.layer.cornerRadius = PPCorner16;
         cell.contentView.layer.cornerCurve = kCACornerCurveContinuous;
         cell.contentView.layer.masksToBounds = YES;
-        cell.layoutMargins = UIEdgeInsetsMake(PPSpaceLG, PPSpaceLG, PPSpaceLG, PPSpaceLG);
+        cell.layoutMargins = UIEdgeInsetsMake(PPSpaceMD, PPSpaceBase, PPSpaceMD, PPSpaceBase);
         cell.textLabel.numberOfLines = 2;
         cell.textLabel.adjustsFontForContentSizeCategory = YES;
         cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
@@ -506,9 +507,9 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     UIButton *minus = [UIButton buttonWithType:UIButtonTypeSystem];
     minus.translatesAutoresizingMaskIntoConstraints = NO;
     minus.tag = indexPath.row;
-    minus.backgroundColor = [PPFastSellOpsGold() colorWithAlphaComponent:0.10];
-    minus.tintColor = PPFastSellOpsGold();
-    minus.layer.cornerRadius = 12.0;
+    minus.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.08];
+    minus.tintColor = [UIColor ppPrimary];
+    minus.layer.cornerRadius = PPCornerSmall;
     [minus setImage:[UIImage systemImageNamed:@"minus"] forState:UIControlStateNormal];
     minus.accessibilityLabel = [NSString stringWithFormat:@"%@، %@", kLang(@"POS_RemoveOne"), item.name];
     [minus addTarget:self action:@selector(didTapStepperMinus:) forControlEvents:UIControlEventTouchUpInside];
@@ -529,7 +530,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     plus.tag = indexPath.row;
     plus.backgroundColor = PPPrimaryColor();
     plus.tintColor = UIColor.whiteColor;
-    plus.layer.cornerRadius = 12.0;
+    plus.layer.cornerRadius = PPCornerSmall;
     [plus setImage:[UIImage systemImageNamed:@"plus"] forState:UIControlStateNormal];
     plus.accessibilityLabel = [NSString stringWithFormat:@"%@، %@", kLang(@"POS_AddOne"), item.name];
     [plus addTarget:self action:@selector(didTapStepperPlus:) forControlEvents:UIControlEventTouchUpInside];
@@ -538,7 +539,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     [NSLayoutConstraint activateConstraints:@[
         [minus.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
         [minus.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
-        [minus.widthAnchor constraintEqualToConstant:36.0],
+        [minus.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
         [minus.heightAnchor constraintEqualToConstant:44.0],
 
         [qty.leadingAnchor constraintEqualToAnchor:minus.trailingAnchor],
@@ -548,7 +549,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         [plus.leadingAnchor constraintEqualToAnchor:qty.trailingAnchor],
         [plus.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
         [plus.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
-        [plus.widthAnchor constraintEqualToConstant:36.0],
+        [plus.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
         [plus.heightAnchor constraintEqualToConstant:44.0],
     ]];
     return container;
@@ -561,10 +562,10 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     button.translatesAutoresizingMaskIntoConstraints = NO;
     button.tag = index;
     button.backgroundColor = AppForgroundColr;
-    button.layer.cornerRadius = PPCornerMedium;
+    button.layer.cornerRadius = PPCorner16;
     button.layer.cornerCurve = kCACornerCurveContinuous;
     button.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    button.layer.borderColor = inCart > 0 ? PPFastSellGoldHairline().CGColor : PPHairlineColor().CGColor;
+    button.layer.borderColor = inCart > 0 ? [UIColor ppSurfaceBorder].CGColor : PPHairlineColor().CGColor;
     button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentFill;
     button.contentVerticalAlignment = UIControlContentVerticalAlignmentFill;
     button.accessibilityLabel = inCart > 0
@@ -772,7 +773,9 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
         cell.accessoryType = UITableViewCellAccessoryNone;
 
-        [cell.contentView.subviews makeObjectsPerformSelector:@selector(removeFromSuperview)];
+        for (UIView *subview in cell.contentView.subviews.copy) {
+            if (subview.tag == kPPPOSCatalogStateAuxTag) [subview removeFromSuperview];
+        }
         [self configureCatalogStateCell:cell];
         return cell;
     }
@@ -817,6 +820,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
         UIActivityIndicatorView *spinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
         spinner.color = AppPrimaryClr;
         spinner.translatesAutoresizingMaskIntoConstraints = NO;
+        spinner.tag = kPPPOSCatalogStateAuxTag;
         [spinner startAnimating];
         [cell.contentView addSubview:spinner];
         [NSLayoutConstraint activateConstraints:@[
@@ -835,6 +839,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
         UIButton *retry = [UIButton buttonWithType:UIButtonTypeSystem];
         retry.translatesAutoresizingMaskIntoConstraints = NO;
+        retry.tag = kPPPOSCatalogStateAuxTag;
         retry.backgroundColor = AppPrimaryClr;
         retry.tintColor = UIColor.whiteColor;
         retry.layer.cornerRadius = PPCornerMedium;

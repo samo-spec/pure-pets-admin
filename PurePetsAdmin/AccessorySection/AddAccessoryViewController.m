@@ -279,7 +279,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     [rule.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
 
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXL],
+        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceSM],
         [stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
         [stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
         [stack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM]
@@ -316,7 +316,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     CGSize fittingSize = [self.dossierHeader systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
                                              withHorizontalFittingPriority:UILayoutPriorityRequired
                                                    verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
-    CGFloat height = MAX(PPSpace4XL, ceil(fittingSize.height));
+    CGFloat height = MAX(PPButtonHeightLG, ceil(fittingSize.height));
     self.dossierHeader.frame = CGRectMake(0.0, 0.0, width, height);
     self.dossierHeaderMeasuredWidth = width;
     self.tableView.tableHeaderView = self.dossierHeader;
@@ -385,7 +385,6 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     dock.translatesAutoresizingMaskIntoConstraints = NO;
     dock.backgroundColor = [UIColor ppSurface];
     dock.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    PPApplyElevatedShadow(dock);
     [self.view addSubview:dock];
 
     UIView *hairline = [[UIView alloc] initWithFrame:CGRectZero];
@@ -429,7 +428,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     ]];
 
     self.saveDock = dock;
-    self.saveDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor];
+    self.saveDockBottomConstraint = [dock.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor];
     self.saveDockBottomConstraint.active = YES;
     [self pp_updateSaveDockState];
 }
@@ -505,7 +504,7 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
 
     UIEdgeInsets insets = self.baseTableContentInset;
     CGFloat dockHeight = CGRectGetHeight(self.saveDock.bounds);
-    insets.bottom += dockHeight + PPSpaceLG + self.keyboardOverlap;
+    insets.bottom += dockHeight + PPSpaceSM + self.keyboardOverlap;
     self.tableView.contentInset = insets;
     self.tableView.scrollIndicatorInsets = insets;
 }
@@ -1163,7 +1162,10 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     self.tableView.showsHorizontalScrollIndicator = NO;
     self.tableView.backgroundColor = AppBackgroundClr;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceSM, 0);
+    if (@available(iOS 15.0, *)) {
+        self.tableView.sectionHeaderTopPadding = PPSpaceSM;
+    }
+    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceXS, 0, PPSpaceSM, 0);
     self.tableView.contentInset = self.baseTableContentInset;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     self.tableView.estimatedRowHeight = PPAccessoryDefaultRowHeight;
@@ -1183,13 +1185,9 @@ static UIFont *PPAccessoryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle
     }
     self.title = [self pp_screenTitle];
     self.dossierContextLabel.text = kLang(@"CommandCenter_Inventory_Workspace");
-    if (!self.navigationSaveButton) {
-        self.navigationSaveButton = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
-        self.navigationSaveButton.accessibilityLabel = kLang(@"Save");
-        self.navigationSaveButton.accessibilityIdentifier = @"admin-accessory-editor-save";
-    }
-    [self pp_navBarWithOtherButton:self.navigationSaveButton title:self.title];
-    self.navigationItem.rightBarButtonItem.accessibilityIdentifier = @"admin-accessory-editor-save";
+    // Long inventory forms use the persistent save dock as the single
+    // primary commit action. Avoid duplicating Save in global navigation.
+    [self pp_navBarWithOtherButton:nil title:self.title];
     PPCommandCenterNavigationItemsDidChange(self);
     [self pp_updateDossierHeaderText];
     [self pp_updateSaveDockState];

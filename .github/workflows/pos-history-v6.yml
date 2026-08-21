@@ -1,0 +1,55 @@
+name: POS History V6
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+    paths:
+      - .github/pos-history-v6-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+          fetch-depth: 0
+
+      - name: Apply POS History V6
+        run: python3 scripts/apply_pos_history_v6.py
+
+      - name: Static production contracts
+        run: |
+          set -euo pipefail
+          FILE=PurePetsAdmin/POS/PPPOSHistoryViewController.m
+          grep -q 'PPPOSReceiptDetailViewController' "$FILE"
+          grep -q 'POS_HistoryLoadFailed' "$FILE"
+          grep -q 'PPPOSHistoryPaymentMethodTitle' "$FILE"
+          grep -q 'UITableViewStyleInsetGrouped' "$FILE"
+          grep -q 'PPCommandCenterNavigationItemsDidChange(weakSelf)' "$FILE"
+          if grep -q 'error.localizedDescription' "$FILE"; then
+            echo 'Raw error presentation remains in POS History' >&2
+            exit 1
+          fi
+          if grep -q 'UIAlertControllerStyleAlert' "$FILE"; then
+            echo 'Receipt detail is still collapsed into an alert' >&2
+            exit 1
+          fi
+
+      - name: Commit source
+        run: |
+          if git diff --quiet; then
+            echo 'No POS History source changes required.'
+            exit 0
+          fi
+          git config user.name 'pure-pets-v6-bot'
+          git config user.email 'pure-pets-v6-bot@users.noreply.github.com'
+          git add PurePetsAdmin/POS/PPPOSHistoryViewController.m \
+                  PurePetsAdmin/en.lproj/Localizable.strings \
+                  PurePetsAdmin/ar.lproj/Localizable.strings
+          git commit -m 'Upgrade POS History to V6 receipt drill-in'
+          git push origin HEAD:redesign/admin-ui-v6-traversal

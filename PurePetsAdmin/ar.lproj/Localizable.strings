@@ -3235,3 +3235,13 @@
 "AdminCommandCenter_Confirming_Format" = "جارٍ تأكيد: %@";
 "AdminCommandCenter_Confirming_A11y" = "جارٍ تأكيد صورة العمليات";
 "AdminCommandCenter_Source_Default" = "المصادر";
+
+"POS_CatalogLoadFailed" = "تعذر تحميل المنتجات. حاول مرة أخرى.";
+
+"POS_OrderSubmitFailed" = "تعذر إتمام عملية البيع. حاول مرة أخرى.";
+
+"POS_HistoryLoadFailed" = "تعذر تحميل سجل المبيعات. حاول مرة أخرى.";
+
+"POS_ReceiptSummary" = "ملخص الإيصال";
+
+"POS_ReceiptDate" = "التاريخ";

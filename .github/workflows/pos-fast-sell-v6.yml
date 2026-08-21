@@ -1,0 +1,56 @@
+name: POS Fast Sell V6
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+    paths:
+      - .github/pos-fast-sell-v6-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+          fetch-depth: 0
+
+      - name: Apply POS Fast Sell V6
+        run: python3 scripts/apply_pos_fast_sell_v6.py
+
+      - name: Static production contracts
+        run: |
+          set -euo pipefail
+          FILE=PurePetsAdmin/POS/PPPOSFastSellViewController.m
+          grep -q 'safeAreaLayoutGuide.bottomAnchor' "$FILE"
+          grep -q 'isSubmittingOrder' "$FILE"
+          grep -q 'PPTouchTargetMin' "$FILE"
+          grep -q 'kPPPOSCatalogStateAuxTag' "$FILE"
+          grep -q 'POS_CatalogLoadFailed' "$FILE"
+          grep -q 'POS_OrderSubmitFailed' "$FILE"
+          if grep -q 'layer.shadowColor = UIColor.blackColor' "$FILE"; then
+            echo 'Decorative checkout dock shadow remains' >&2
+            exit 1
+          fi
+          if grep -q 'subtitle:error.localizedDescription' "$FILE"; then
+            echo 'Raw backend submit error remains' >&2
+            exit 1
+          fi
+
+      - name: Commit source
+        run: |
+          if git diff --quiet; then
+            echo 'No POS source changes required.'
+            exit 0
+          fi
+          git config user.name 'pure-pets-v6-bot'
+          git config user.email 'pure-pets-v6-bot@users.noreply.github.com'
+          git add PurePetsAdmin/POS/PPPOSFastSellViewController.m \
+                  PurePetsAdmin/en.lproj/Localizable.strings \
+                  PurePetsAdmin/ar.lproj/Localizable.strings
+          git commit -m 'Polish POS Fast Sell with SwiftyMax V6'
+          git push origin HEAD:redesign/admin-ui-v6-traversal

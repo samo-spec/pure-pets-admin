@@ -1,7 +1,6 @@
 #import "PPPaymentManagementRecordCell.h"
 
 #import "Language.h"
-#import "PPButtonHelper.h"
 #import "Styling.h"
 
 static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
@@ -10,19 +9,26 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     return [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
+static UIFont *PPPaymentManagementScaledFont(UIFont *baseFont, UIFontTextStyle textStyle)
+{
+    if (!baseFont) return [UIFont preferredFontForTextStyle:textStyle];
+    return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
+}
+
 @implementation PPPaymentManagementRecordCell {
     UIView *_surfaceView;
-    UIView *_surfaceContentView;
-    CAGradientLayer *_gradientLayer;
-    UIView *_haloView;
     UILabel *_orderLabel;
     UILabel *_amountLabel;
     UILabel *_customerLabel;
     UILabel *_subtitleLabel;
-    UIView *_statusIconWrapView;
+    UIView *_statusContainer;
     UIImageView *_statusIconView;
     UILabel *_statusLabel;
     UIButton *_actionButton;
+    UIStackView *_topRow;
+    UIStackView *_bottomRow;
+    NSLayoutConstraint *_actionMinimumWidthConstraint;
+    NSLayoutConstraint *_actionMaximumWidthConstraint;
 }
 
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier
@@ -33,173 +39,127 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     self.selectionStyle = UITableViewCellSelectionStyleNone;
     self.backgroundColor = UIColor.clearColor;
     self.contentView.backgroundColor = UIColor.clearColor;
-    self.clipsToBounds = NO;
-    self.contentView.clipsToBounds = NO;
     self.layoutMargins = UIEdgeInsetsZero;
     self.separatorInset = UIEdgeInsetsZero;
 
     _surfaceView = [UIView new];
     _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
-    _surfaceView.backgroundColor = UIColor.clearColor;
-    _surfaceView.layer.shadowColor = AppClearClr.CGColor;
-    _surfaceView.layer.shadowOpacity = 0.00f;
-    _surfaceView.layer.shadowOffset = CGSizeMake(0.0, 00.0);
-    _surfaceView.layer.shadowRadius = 0.0f;
+    _surfaceView.backgroundColor = [UIColor ppElevatedSurface];
+    PPApplyContinuousCorners(_surfaceView, PPCornerCard);
+    _surfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _surfaceView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     [self.contentView addSubview:_surfaceView];
-
-    _surfaceContentView = [UIView new];
-    _surfaceContentView.translatesAutoresizingMaskIntoConstraints = NO;
-    _surfaceContentView.backgroundColor = [UIColor ppElevatedSurface];
-    _surfaceContentView.layer.cornerRadius = 22.0;
-    _surfaceContentView.layer.masksToBounds = YES;
-    _surfaceContentView.layer.borderWidth = 1.0;
-    _surfaceContentView.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.18].CGColor;
-    [_surfaceView addSubview:_surfaceContentView];
-
-    _gradientLayer = [CAGradientLayer layer];
-    _gradientLayer.startPoint = CGPointMake(0.0, 0.0);
-    _gradientLayer.endPoint = CGPointMake(1.0, 1.0);
-    [_surfaceContentView.layer insertSublayer:_gradientLayer atIndex:0];
-
-    _haloView = [UIView new];
-    _haloView.translatesAutoresizingMaskIntoConstraints = NO;
-    _haloView.userInteractionEnabled = NO;
-    _haloView.alpha = 0.10;
-    _haloView.layer.cornerRadius = 56.0;
-    [_surfaceContentView addSubview:_haloView];
 
     _orderLabel = [UILabel new];
     _orderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _orderLabel.font = [Styling fontBold:16];
+    _orderLabel.font = PPPaymentManagementScaledFont([Styling fontBold:16], UIFontTextStyleHeadline);
+    _orderLabel.adjustsFontForContentSizeCategory = YES;
     _orderLabel.textColor = [UIColor ppTextPrimary];
-    _orderLabel.numberOfLines = 2;
+    _orderLabel.numberOfLines = 0;
 
     _amountLabel = [UILabel new];
     _amountLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _amountLabel.font = [Styling fontBold:16];
+    _amountLabel.font = PPPaymentManagementScaledFont([Styling fontBold:16], UIFontTextStyleHeadline);
+    _amountLabel.adjustsFontForContentSizeCategory = YES;
     _amountLabel.textColor = [UIColor ppTextPrimary];
-    _amountLabel.textAlignment = NSTextAlignmentRight;
-    _amountLabel.numberOfLines = 2;
+    _amountLabel.numberOfLines = 0;
     [_amountLabel setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
 
     _customerLabel = [UILabel new];
     _customerLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _customerLabel.font = [Styling fontRegular:13];
+    _customerLabel.font = PPPaymentManagementScaledFont([Styling fontRegular:13], UIFontTextStyleSubheadline);
+    _customerLabel.adjustsFontForContentSizeCategory = YES;
     _customerLabel.textColor = [UIColor ppTextSecondary];
-    _customerLabel.numberOfLines = 2;
+    _customerLabel.numberOfLines = 0;
 
-    _statusIconWrapView = [UIView new];
-    _statusIconWrapView.translatesAutoresizingMaskIntoConstraints = NO;
-    _statusIconWrapView.layer.cornerRadius = 13.0;
-    _statusIconWrapView.layer.masksToBounds = YES;
+    _statusContainer = [UIView new];
+    _statusContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    PPApplyContinuousCorners(_statusContainer, PPCornerSmall);
 
     _statusIconView = [UIImageView new];
     _statusIconView.translatesAutoresizingMaskIntoConstraints = NO;
     _statusIconView.contentMode = UIViewContentModeScaleAspectFit;
-    [_statusIconWrapView addSubview:_statusIconView];
+    [_statusContainer addSubview:_statusIconView];
 
     _statusLabel = [UILabel new];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _statusLabel.font = [Styling fontBold:12];
-    _statusLabel.numberOfLines = 1;
-    _statusLabel.layer.cornerRadius = 12.0;
-    _statusLabel.layer.masksToBounds = YES;
-    _statusLabel.layer.borderWidth = 1.0;
-    _statusLabel.textAlignment = NSTextAlignmentCenter;
+    _statusLabel.font = PPPaymentManagementScaledFont([Styling fontBold:12], UIFontTextStyleCaption1);
+    _statusLabel.adjustsFontForContentSizeCategory = YES;
+    _statusLabel.numberOfLines = 0;
+    [_statusContainer addSubview:_statusLabel];
 
     _subtitleLabel = [UILabel new];
     _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _subtitleLabel.font = [Styling fontRegular:11];
+    _subtitleLabel.font = PPPaymentManagementScaledFont([Styling fontRegular:12], UIFontTextStyleFootnote);
+    _subtitleLabel.adjustsFontForContentSizeCategory = YES;
     _subtitleLabel.textColor = [UIColor ppTextTertiary];
-    _subtitleLabel.numberOfLines = 2;
+    _subtitleLabel.numberOfLines = 0;
 
     _actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _actionButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _actionButton.layer.cornerRadius = 16.0;
-    _actionButton.layer.masksToBounds = NO;
-    _actionButton.layer.borderWidth = 1.0;
-    _actionButton.titleLabel.font = [Styling fontBold:12];
-    _actionButton.titleLabel.numberOfLines = 2;
+    PPApplyContinuousCorners(_actionButton, PPCorner16);
+    _actionButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _actionButton.titleLabel.font = PPPaymentManagementScaledFont([Styling fontBold:13], UIFontTextStyleCallout);
+    _actionButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    _actionButton.titleLabel.numberOfLines = 0;
     _actionButton.titleLabel.textAlignment = NSTextAlignmentCenter;
-    _actionButton.titleLabel.adjustsFontSizeToFitWidth = YES;
-    _actionButton.titleLabel.minimumScaleFactor = 0.80;
-    _actionButton.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    _actionButton.contentEdgeInsets = UIEdgeInsetsMake(10.0, 14.0, 10.0, 14.0);
-    _actionButton.layer.shadowColor = AppShadowColor.CGColor;
-    _actionButton.layer.shadowOffset = CGSizeMake(0.0, 3.0);
-    _actionButton.layer.shadowRadius = 06.0f;
+    _actionButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceMD, PPSpaceBase, PPSpaceMD, PPSpaceBase);
     [_actionButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [_actionButton setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [PPButtonHelper attachTapAnimationToButton:_actionButton style:PPButtonAnimationStylePulse];
 
-    UIStackView *topRow = [[UIStackView alloc] initWithArrangedSubviews:@[_orderLabel, _amountLabel]];
-    topRow.translatesAutoresizingMaskIntoConstraints = NO;
-    topRow.axis = UILayoutConstraintAxisHorizontal;
-    topRow.alignment = UIStackViewAlignmentTop;
-    topRow.spacing = 10.0;
+    _topRow = [[UIStackView alloc] initWithArrangedSubviews:@[_orderLabel, _amountLabel]];
+    _topRow.translatesAutoresizingMaskIntoConstraints = NO;
+    _topRow.axis = UILayoutConstraintAxisHorizontal;
+    _topRow.alignment = UIStackViewAlignmentFirstBaseline;
+    _topRow.spacing = PPSpaceMD;
 
-    UIStackView *statusRow = [[UIStackView alloc] initWithArrangedSubviews:@[_statusIconWrapView, _statusLabel]];
-    statusRow.translatesAutoresizingMaskIntoConstraints = NO;
-    statusRow.axis = UILayoutConstraintAxisHorizontal;
-    statusRow.alignment = UIStackViewAlignmentCenter;
-    statusRow.spacing = 8.0;
-
-    UIStackView *metaStack = [[UIStackView alloc] initWithArrangedSubviews:@[statusRow, _subtitleLabel]];
+    UIStackView *metaStack = [[UIStackView alloc] initWithArrangedSubviews:@[_statusContainer, _subtitleLabel]];
     metaStack.translatesAutoresizingMaskIntoConstraints = NO;
     metaStack.axis = UILayoutConstraintAxisVertical;
     metaStack.alignment = UIStackViewAlignmentLeading;
-    metaStack.spacing = 6.0;
+    metaStack.spacing = PPSpaceSM;
     [metaStack setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    [metaStack setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
 
-    UIStackView *bottomRow = [[UIStackView alloc] initWithArrangedSubviews:@[metaStack, _actionButton]];
-    bottomRow.translatesAutoresizingMaskIntoConstraints = NO;
-    bottomRow.axis = UILayoutConstraintAxisHorizontal;
-    bottomRow.alignment = UIStackViewAlignmentBottom;
-    bottomRow.spacing = 12.0;
+    _bottomRow = [[UIStackView alloc] initWithArrangedSubviews:@[metaStack, _actionButton]];
+    _bottomRow.translatesAutoresizingMaskIntoConstraints = NO;
+    _bottomRow.axis = UILayoutConstraintAxisHorizontal;
+    _bottomRow.alignment = UIStackViewAlignmentBottom;
+    _bottomRow.spacing = PPSpaceMD;
 
-    UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[topRow, _customerLabel, bottomRow]];
+    UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[_topRow, _customerLabel, _bottomRow]];
     contentStack.translatesAutoresizingMaskIntoConstraints = NO;
     contentStack.axis = UILayoutConstraintAxisVertical;
-    contentStack.spacing = 10.0;
-    [_surfaceContentView addSubview:contentStack];
+    contentStack.spacing = PPSpaceSM;
+    [_surfaceView addSubview:contentStack];
+
+    _actionMinimumWidthConstraint = [_actionButton.widthAnchor constraintGreaterThanOrEqualToConstant:112.0];
+    _actionMaximumWidthConstraint = [_actionButton.widthAnchor constraintLessThanOrEqualToConstant:152.0];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6.0],
-        [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:0.0],
-        [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-0.0],
-        [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6.0],
+        [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceSM],
+        [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceSM],
 
-        [_surfaceContentView.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor],
-        [_surfaceContentView.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor],
-        [_surfaceContentView.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor],
-        [_surfaceContentView.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor],
+        [contentStack.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceMD],
+        [contentStack.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:PPSpaceBase],
+        [contentStack.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-PPSpaceBase],
+        [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceMD],
 
-        [_haloView.widthAnchor constraintEqualToConstant:0.0],
-        [_haloView.heightAnchor constraintEqualToConstant:0.0],
-        [_haloView.trailingAnchor constraintEqualToAnchor:_surfaceContentView.trailingAnchor constant:28.0],
-        [_haloView.topAnchor constraintEqualToAnchor:_surfaceContentView.topAnchor constant:-36.0],
+        [_statusIconView.leadingAnchor constraintEqualToAnchor:_statusContainer.leadingAnchor constant:PPSpaceSM],
+        [_statusIconView.centerYAnchor constraintEqualToAnchor:_statusContainer.centerYAnchor],
+        [_statusIconView.widthAnchor constraintEqualToConstant:16.0],
+        [_statusIconView.heightAnchor constraintEqualToConstant:16.0],
+        [_statusLabel.leadingAnchor constraintEqualToAnchor:_statusIconView.trailingAnchor constant:PPSpaceMDHalf],
+        [_statusLabel.trailingAnchor constraintEqualToAnchor:_statusContainer.trailingAnchor constant:-PPSpaceSM],
+        [_statusLabel.topAnchor constraintEqualToAnchor:_statusContainer.topAnchor constant:PPSpaceMDHalf],
+        [_statusLabel.bottomAnchor constraintEqualToAnchor:_statusContainer.bottomAnchor constant:-PPSpaceMDHalf],
 
-        [contentStack.topAnchor constraintEqualToAnchor:_surfaceContentView.topAnchor constant:16.0],
-        [contentStack.leadingAnchor constraintEqualToAnchor:_surfaceContentView.leadingAnchor constant:16.0],
-        [contentStack.trailingAnchor constraintEqualToAnchor:_surfaceContentView.trailingAnchor constant:-16.0],
-        [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceContentView.bottomAnchor constant:-16.0],
-
-        [_statusIconWrapView.widthAnchor constraintEqualToConstant:26.0],
-        [_statusIconWrapView.heightAnchor constraintEqualToConstant:26.0],
-        [_statusIconView.centerXAnchor constraintEqualToAnchor:_statusIconWrapView.centerXAnchor],
-        [_statusIconView.centerYAnchor constraintEqualToAnchor:_statusIconWrapView.centerYAnchor],
-        [_statusIconView.widthAnchor constraintEqualToConstant:14.0],
-        [_statusIconView.heightAnchor constraintEqualToConstant:14.0],
-
-        [_actionButton.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
-        [_actionButton.widthAnchor constraintLessThanOrEqualToConstant:132.0],
-        [_actionButton.heightAnchor constraintGreaterThanOrEqualToConstant:42.0],
-
-        [_statusLabel.heightAnchor constraintEqualToConstant:26.0],
-        [_statusLabel.widthAnchor constraintEqualToConstant:64.0],
+        [_actionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
+        _actionMinimumWidthConstraint,
+        _actionMaximumWidthConstraint,
     ]];
 
+    [self pp_refreshAdaptiveLayout];
     return self;
 }
 
@@ -208,11 +168,24 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     return _actionButton;
 }
 
-- (void)layoutSubviews
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
 {
-    [super layoutSubviews];
-    _gradientLayer.frame = _surfaceContentView.bounds;
-    _surfaceView.layer.shadowPath = [UIBezierPath bezierPathWithRoundedRect:_surfaceView.bounds cornerRadius:22.0].CGPath;
+    [super traitCollectionDidChange:previousTraitCollection];
+    [self pp_refreshAdaptiveLayout];
+}
+
+- (void)pp_refreshAdaptiveLayout
+{
+    BOOL accessibilitySize = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    _topRow.axis = accessibilitySize ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    _topRow.alignment = accessibilitySize ? UIStackViewAlignmentFill : UIStackViewAlignmentFirstBaseline;
+    _bottomRow.axis = accessibilitySize ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    _bottomRow.alignment = accessibilitySize ? UIStackViewAlignmentFill : UIStackViewAlignmentBottom;
+    _actionMinimumWidthConstraint.active = !accessibilitySize;
+    _actionMaximumWidthConstraint.active = !accessibilitySize;
+    _amountLabel.textAlignment = accessibilitySize
+        ? [Language alignmentForCurrentLanguage]
+        : ([Language isRTL] ? NSTextAlignmentLeft : NSTextAlignmentRight);
 }
 
 - (void)prepareForReuse
@@ -226,10 +199,20 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated
 {
     [super setHighlighted:highlighted animated:animated];
-    CGFloat targetAlpha = highlighted ? 0.92 : 1.0;
-    CGAffineTransform targetTransform = highlighted ? CGAffineTransformMakeScale(0.988, 0.988) : CGAffineTransformIdentity;
-    NSTimeInterval duration = animated ? 0.18 : 0.0;
-    [UIView animateWithDuration:duration delay:0.0 options:UIViewAnimationOptionBeginFromCurrentState animations:^{
+    CGFloat targetAlpha = highlighted ? 0.78 : 1.0;
+    if (UIAccessibilityIsReduceMotionEnabled()) {
+        _surfaceView.alpha = targetAlpha;
+        _surfaceView.transform = CGAffineTransformIdentity;
+        return;
+    }
+
+    CGAffineTransform targetTransform = highlighted
+        ? CGAffineTransformMakeScale(PPTapCardScaleDown, PPTapCardScaleDown)
+        : CGAffineTransformIdentity;
+    [UIView animateWithDuration:(animated ? PPAnimDurationFast : 0.0)
+                          delay:0.0
+                        options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                     animations:^{
         self->_surfaceView.alpha = targetAlpha;
         self->_surfaceView.transform = targetTransform;
     } completion:nil];
@@ -251,22 +234,13 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     self.semanticContentAttribute = semantic;
     self.contentView.semanticContentAttribute = semantic;
     _surfaceView.semanticContentAttribute = semantic;
-    _surfaceContentView.semanticContentAttribute = semantic;
     _orderLabel.textAlignment = alignment;
     _customerLabel.textAlignment = alignment;
     _subtitleLabel.textAlignment = alignment;
-    _amountLabel.textAlignment = [Language isRTL] ? NSTextAlignmentLeft : NSTextAlignmentRight;
+    _statusLabel.textAlignment = alignment;
 
     UIColor *resolvedStatusColor = statusColor ?: [UIColor ppPrimary];
     UIColor *resolvedActionTint = actionTint ?: [UIColor ppPrimary];
-
-    _surfaceContentView.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.16].CGColor;
-    _gradientLayer.colors = @[
-        (id)[resolvedStatusColor colorWithAlphaComponent:0.01].CGColor,
-        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.16].CGColor,
-        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.24].CGColor
-    ];
-    _haloView.backgroundColor = resolvedStatusColor;
 
     _orderLabel.text = orderTitle;
     _amountLabel.text = amountText;
@@ -274,30 +248,40 @@ static NSString *PPPaymentManagementRecordCellTrimmedString(id value)
     _subtitleLabel.text = subtitleText;
     _subtitleLabel.hidden = PPPaymentManagementRecordCellTrimmedString(subtitleText).length == 0;
 
-    _statusLabel.text = [NSString stringWithFormat:@" %@ ", statusTitle ?: @"--"];
+    _statusLabel.text = statusTitle ?: @"--";
     _statusLabel.textColor = resolvedStatusColor;
-    _statusLabel.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.13];
-    _statusLabel.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.24].CGColor;
-
-    _statusIconWrapView.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.14];
+    _statusContainer.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.10];
+    _statusContainer.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _statusContainer.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.20].CGColor;
     _statusIconView.tintColor = resolvedStatusColor;
     UIImageSymbolConfiguration *iconConfig = [UIImageSymbolConfiguration configurationWithPointSize:13.0
-                                                                                             weight:UIImageSymbolWeightBold
-                                                                                              scale:UIImageSymbolScaleSmall];
-    _statusIconView.image = [[UIImage systemImageNamed:statusSymbol ?: @"shippingbox.circle.fill"] imageByApplyingSymbolConfiguration:iconConfig];
+                                                                                             weight:UIImageSymbolWeightSemibold];
+    _statusIconView.image = [[UIImage systemImageNamed:statusSymbol ?: @"shippingbox.circle.fill"]
+                             imageByApplyingSymbolConfiguration:iconConfig];
 
     [_actionButton setTitle:actionTitle forState:UIControlStateNormal];
     if (prominentAction) {
-        _actionButton.backgroundColor = resolvedActionTint;
-        _actionButton.layer.borderColor = UIColor.clearColor.CGColor;
-        _actionButton.layer.shadowOpacity = 0.16f;
-        [_actionButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+        // In a repeated work queue, keep the next action visually clear without
+        // turning every row into a competing solid CTA. Confirmation remains
+        // mandatory in the controller before any mutation is executed.
+        _actionButton.backgroundColor = [resolvedActionTint colorWithAlphaComponent:0.11];
+        _actionButton.layer.borderColor = [resolvedActionTint colorWithAlphaComponent:0.22].CGColor;
+        [_actionButton setTitleColor:resolvedActionTint forState:UIControlStateNormal];
     } else {
-        _actionButton.backgroundColor = [[UIColor ppSurface] colorWithAlphaComponent:0.74];
-        _actionButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.30].CGColor;
-        _actionButton.layer.shadowOpacity = 0.04f;
+        _actionButton.backgroundColor = [UIColor ppSurface];
+        _actionButton.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
         [_actionButton setTitleColor:[UIColor ppTextPrimary] forState:UIControlStateNormal];
     }
+
+    [self pp_refreshAdaptiveLayout];
+    self.isAccessibilityElement = NO;
+    _surfaceView.isAccessibilityElement = NO;
+    _statusContainer.isAccessibilityElement = YES;
+    _statusContainer.accessibilityLabel = statusTitle ?: @"";
+    _statusContainer.accessibilityTraits = UIAccessibilityTraitStaticText;
+    _statusIconView.accessibilityElementsHidden = YES;
+    _statusLabel.isAccessibilityElement = NO;
+    _actionButton.accessibilityLabel = actionTitle ?: @"";
 }
 
 @end

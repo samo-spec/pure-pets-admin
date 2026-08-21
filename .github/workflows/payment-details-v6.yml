@@ -1,0 +1,58 @@
+name: Payment Details V6 Source Gate
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+
+permissions:
+  contents: write
+
+jobs:
+  payment-details:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+      - name: Apply refinements
+        run: python3 scripts/apply_payment_details_v6.py
+      - name: Static contract gate
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s = Path('PurePetsAdmin/Payments/PPPaymentDetailsViewController.m').read_text()
+          required = [
+              'PPPaymentDetailsScaledFont',
+              'PPTouchTargetMin',
+              'UIContentSizeCategoryIsAccessibilityCategory',
+              '_statusContainer.accessibilityLabel',
+              'showConfirmationIn:self',
+              'PaymentMgmt_Error_LoadPaymentDetails',
+              'PaymentMgmt_Error_LoadRequest',
+              'PaymentMgmt_Error_LoadRequestHistory',
+          ]
+          missing = [x for x in required if x not in s]
+          if missing: raise SystemExit('Missing Payment Details markers: ' + ', '.join(missing))
+          forbidden = [
+              '_cardGradientLayer', '_haloView',
+              'shadowOpacity = 0.12', 'shadowOpacity = 0.2',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPaymentDetails")',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequest")',
+              'subtitle:eventsError.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadRequestHistory")',
+              'header.textLabel.font = [Styling fontMedium:14]',
+          ]
+          present = [x for x in forbidden if x in s]
+          if present: raise SystemExit('Payment Details regressions remain: ' + ', '.join(present))
+          print('Payment Details V6 source gate passed')
+          PY
+      - name: Commit generated source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PurePetsAdmin/Payments/PPPaymentDetailsViewController.m
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Polish Payment Details with SwiftyMax V6"
+          git push origin HEAD:redesign/admin-ui-v6-traversal

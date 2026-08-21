@@ -1,213 +1,16 @@
-//
-//  AdminCommandCenterScreen.swift
-//  PurePetsAdmin
-//
-//  NEXTGEN V6 REDESIGN — Command Center Flagship Surface
-//  ─────────────────────────────────────────────────────────────────────────────
-//  Priority Handoff operational surface built with the shared Pure Pets V6
-//  semantic design system, explicit state communication, and bounded hierarchy.
-//  RTL/LTR, Dynamic Type, VoiceOver, and Reduce Motion remain first-class.
-//  Applied Pure Pets Beiruti brand typography to all strings.
-//
-//  CONTRACT
-//  ─────────────────────────────────────────────────────────────────────────────
-//  • Objective-C backend bridge contract is 100% preserved.
-//  • All descriptor fields, applyRoleName, onRoute, onRefresh, applyReadiness,
-//    and AdminCommandOrbitHostingController names are intact.
-//  • String format specifiers strictly respect locale and string types.
-//
+#!/usr/bin/env python3
+from pathlib import Path
 
-import SwiftUI
-import Combine
-import UIKit
+path = Path("PurePetsAdmin/Features/CommandCenter/AdminCommandCenterScreen.swift")
+source = path.read_text(encoding="utf-8")
+source = source.replace("signals.prefix(8)", "signals.prefix(6)")
+source = source.replace("@available(iOS 16.0, *)\n@MainActor\n@objcMembers\npublic final class AdminCommandOrbitHostingController", "@MainActor\n@objcMembers\npublic final class AdminCommandOrbitHostingController")
+marker = "// MARK: - Typography (Beiruti Brand Font)"
+if marker not in source:
+    raise SystemExit("Command Center presentation marker not found")
+head = source.split(marker, 1)[0]
 
-// MARK: - Bridge Descriptor (Preserved Obj-C Contract)
-
-/// A presentation-only value supplied by the Objective-C backend
-/// (`AdminDashboardViewController`). Field names and types are frozen.
-@objc public class AdminCommandOrbitSignalDescriptor: NSObject {
-    @objc public var identifier: String = ""
-    @objc public var moduleTitle: String = ""
-    @objc public var title: String = ""
-    @objc public var detail: String = ""
-    @objc public var symbolName: String = "square.grid.2x2"
-    @objc public var urgency: Int = 0
-    @objc public var count: Int = 0
-    @objc public var isLive: Bool = false
-}
-
-// MARK: - Internal Domain Models
-
-struct AdminCommandOrbitSignal: Identifiable, Hashable {
-    let id: String
-    let moduleTitle: String
-    let title: String
-    let detail: String
-    let symbolName: String
-    let urgency: Int
-    let count: Int
-    let isLive: Bool
-
-    var isCritical: Bool { urgency >= 2 }
-    var isElevated: Bool { urgency == 1 }
-}
-
-struct AdminCommandOrbitReadiness {
-    let loadingAreas: [String]
-    let failedAreas: [String]
-    let updatedAt: Date?
-}
-
-struct AdminCommandOrbitSnapshot {
-    var signals: [AdminCommandOrbitSignal]
-    var roleName: String
-    var capabilityCount: Int
-    var isInitialized: Bool
-
-    static let empty = AdminCommandOrbitSnapshot(signals: [], roleName: "", capabilityCount: 0, isInitialized: false)
-}
-
-enum AdminCommandOrbitPhase: Equatable {
-    case connecting
-    case loading
-    case ready
-    case allClear
-    case degradedEmpty
-    case denied
-}
-
-// MARK: - Observable Store
-
-final class AdminCommandCenterStore: ObservableObject {
-    @Published var snapshot: AdminCommandOrbitSnapshot = .empty
-    @Published var readiness: AdminCommandOrbitReadiness = .init(loadingAreas: [], failedAreas: [], updatedAt: nil)
-    @Published var localeCode: String = Language.currentLanguageCode()
-
-    var onRoute: ((String) -> Void)?
-    var onRefresh: (() -> Void)?
-    var onRequestLogout: (() -> Void)?
-    var onToggleLanguage: (() -> Void)?
-    var onSelectTab: ((Int) -> Void)?
-
-    func apply(roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
-        let mapped = signals.prefix(6).map { d in
-            AdminCommandOrbitSignal(
-                id: d.identifier,
-                moduleTitle: d.moduleTitle,
-                title: d.title,
-                detail: d.detail,
-                symbolName: d.symbolName.isEmpty ? "square.grid.2x2" : d.symbolName,
-                urgency: d.urgency,
-                count: d.count,
-                isLive: d.isLive
-            )
-        }
-        snapshot = AdminCommandOrbitSnapshot(
-            signals: mapped,
-            roleName: roleName ?? "",
-            capabilityCount: capabilityCount,
-            isInitialized: true
-        )
-    }
-
-    func applyReadiness(loadingAreas: [String], failedAreas: [String], updatedAt: Date?) {
-        readiness = AdminCommandOrbitReadiness(
-            loadingAreas: loadingAreas,
-            failedAreas: failedAreas,
-            updatedAt: updatedAt
-        )
-    }
-}
-
-// MARK: - Hosting Controller (Preserved Obj-C Bridge)
-
-@MainActor
-@objcMembers
-public final class AdminCommandOrbitHostingController: UIViewController {
-
-    public var onRoute: ((String) -> Void)? {
-        didSet { store.onRoute = onRoute }
-    }
-    public var onRefresh: (() -> Void)? {
-        didSet { store.onRefresh = onRefresh }
-    }
-    public var onRequestLogout: (() -> Void)? {
-        didSet { store.onRequestLogout = onRequestLogout }
-    }
-    public var onToggleLanguage: (() -> Void)? {
-        didSet { store.onToggleLanguage = onToggleLanguage }
-    }
-    public var onSelectTab: ((Int) -> Void)? {
-        didSet { store.onSelectTab = onSelectTab }
-    }
-
-    let store: AdminCommandCenterStore
-    private var hostingController: UIHostingController<AdminCommandCenterScreenView>?
-    private nonisolated(unsafe) var languageObserver: NSObjectProtocol?
-
-    public init() {
-        let store = AdminCommandCenterStore()
-        store.localeCode = Language.currentLanguageCode()
-        self.store = store
-        super.init(nibName: nil, bundle: nil)
-        observeLanguage()
-    }
-
-    public required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .clear
-
-        let root = AdminCommandCenterScreenView(store: store)
-        let host = UIHostingController(rootView: root)
-        host.view.backgroundColor = .clear
-        if #available(iOS 16.4, *) {
-            host.safeAreaRegions = []
-        }
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        host.didMove(toParent: self)
-        hostingController = host
-    }
-
-    public func applyRoleName(_ roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
-        store.apply(roleName: roleName, capabilityCount: capabilityCount, signals: signals, animated: animated)
-    }
-
-    public func applyReadinessWithLoadingAreas(_ loadingAreas: [String], failedAreas: [String], updatedAt: Date?) {
-        store.applyReadiness(loadingAreas: loadingAreas, failedAreas: failedAreas, updatedAt: updatedAt)
-    }
-
-    private func observeLanguage() {
-        languageObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("LanguageDidChangeNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.store.localeCode = Language.currentLanguageCode()
-            }
-        }
-    }
-
-    deinit {
-        if let observer = languageObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-}
-
-// MARK: - SwiftyMax V6 Priority Handoff Presentation
+tail = r'''// MARK: - SwiftyMax V6 Priority Handoff Presentation
 
 private enum AdminCommandMetric {
     static let pageMargin: CGFloat = 20
@@ -742,3 +545,7 @@ private struct CommandSignalRow: View {
         return .normal
     }
 }
+'''
+
+path.write_text(head + tail, encoding="utf-8")
+print("Applied Command Center SwiftyMax V6 Priority Handoff")

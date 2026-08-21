@@ -7,6 +7,7 @@ struct AdminAppShell: View {
     @ObservedObject var router: AdminRouter
 
     @State private var selectedTab: AdminTab = .command
+    @State private var commandShowsNestedWorkflow = false
     @State private var showsLogoutConfirmation = false
     @StateObject private var commandState: CommandCenterState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -21,7 +22,11 @@ struct AdminAppShell: View {
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            AdminCommandOrbitDashboard(session: session, languageCode: sessionStore.languageCode)
+            AdminCommandOrbitDashboard(
+                session: session,
+                languageCode: sessionStore.languageCode,
+                onNavigationDepthChanged: { commandShowsNestedWorkflow = $0 }
+            )
                 .ignoresSafeArea(.all, edges: .top)
                 .tag(AdminTab.command)
 
@@ -72,7 +77,9 @@ struct AdminAppShell: View {
         }
         .tint(AdminSurface.primary)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            V6GlobalTabBar(selectedTab: $selectedTab)
+            if !(selectedTab == .command && commandShowsNestedWorkflow) {
+                V6GlobalTabBar(selectedTab: $selectedTab)
+            }
         }
         .fullScreenCover(item: $router.presentedRoute) { route in
             AdminLegacyRouteView(route: route, languageCode: sessionStore.languageCode) {
@@ -124,17 +131,22 @@ struct AdminAppShell: View {
 private struct AdminCommandOrbitDashboard: UIViewControllerRepresentable {
     let session: AdminSession
     let languageCode: String
+    let onNavigationDepthChanged: (Bool) -> Void
 
     func makeUIViewController(context: Context) -> AdminCommandOrbitContainerController {
-        AdminCommandOrbitContainerController()
+        let controller = AdminCommandOrbitContainerController()
+        controller.onNavigationDepthChanged = onNavigationDepthChanged
+        return controller
     }
 
     func updateUIViewController(_ controller: AdminCommandOrbitContainerController, context: Context) {
+        controller.onNavigationDepthChanged = onNavigationDepthChanged
         controller.refresh(session: session, languageCode: languageCode)
     }
 }
 
 private final class AdminCommandOrbitContainerController: UIViewController, UINavigationControllerDelegate {
+    var onNavigationDepthChanged: ((Bool) -> Void)?
     private let dashboard = PPAdminCreateCommandSpineDashboardController()
     private var workflowNavigationController: AdminCommandOrbitNavigationController?
     private var globalNavigationController: PPGlobalNavigationHostingController?
@@ -349,7 +361,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
             subtitle: isRoot ? Language.get("AdminCommand_Subtitle", alter: nil) : nil,
             leadingAction: isRoot ? nil : backAction,
             trailingActions: trailingActions(for: viewController),
-            showsContextFilament: true
+            showsContextFilament: false
         )
     }
 
@@ -571,6 +583,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     func navigationController(_ navigationController: UINavigationController,
                               willShow viewController: UIViewController,
                               animated: Bool) {
+        onNavigationDepthChanged?(navigationController.viewControllers.first !== viewController)
         applyGlobalNavigationPresentation(to: viewController, in: navigationController)
         connectGlobalNavigationStateBridge(to: viewController)
         refreshGlobalNavigation()
@@ -588,6 +601,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
     func navigationController(_ navigationController: UINavigationController,
                               didShow viewController: UIViewController,
                               animated: Bool) {
+        onNavigationDepthChanged?(navigationController.viewControllers.first !== viewController)
         refreshGlobalNavigation()
     }
 }
@@ -605,71 +619,86 @@ private final class AdminCommandOrbitNavigationController: UINavigationControlle
 
 // MARK: - V6 Global Tab Bar
 
+private enum AdminShellMetric {
+    static let pageMargin: CGFloat = 20
+    static let groupRadius: CGFloat = 22
+    static let compactRadius: CGFloat = 16
+    static let rowMinimumHeight: CGFloat = 68
+    static let tabBarTopInset: CGFloat = 8
+    static let tabBarHorizontalInset: CGFloat = 10
+    static let tabItemMinimumHeight: CGFloat = 58
+}
+
 struct V6GlobalTabBar: View {
     @Binding var selectedTab: AdminTab
-    
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        HStack {
-            tabItem(title: "الرئيسية", icon: "command", tab: .command)
-            Spacer()
-            tabItem(title: "العمل", icon: "square.stack.3d.up.fill", tab: .work)
-            Spacer()
-            tabItem(title: "العمليات", icon: "waveform.path.ecg", tab: .operations)
-            Spacer()
-            tabItem(title: "الأشخاص", icon: "person.2.fill", tab: .customers)
-            Spacer()
-            tabItem(title: "المزيد", icon: "ellipsis.circle.fill", tab: .more)
+        HStack(alignment: .top, spacing: 2) {
+            ForEach(AdminTab.allCases) { tab in
+                tabItem(tab)
+                    .frame(maxWidth: .infinity)
+            }
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground).ignoresSafeArea(.all, edges: .bottom)) // V6.cardBackgroundElevated
-        .shadow(color: Color.black.opacity(0.06), radius: 16, x: 0, y: -4)
+        .padding(.horizontal, AdminShellMetric.tabBarHorizontalInset)
+        .padding(.top, AdminShellMetric.tabBarTopInset)
+        .padding(.bottom, 6)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 1 / UIScreen.main.scale)
+                .accessibilityHidden(true)
+        }
     }
-    
-    private func tabItem(title: String, icon: String, tab: AdminTab) -> some View {
-        let isSelected = (selectedTab == tab)
-        let criticalColor = Color(red: 0.89, green: 0.15, blue: 0.21)
-        
+
+    private func tabItem(_ tab: AdminTab) -> some View {
+        let isSelected = selectedTab == tab
+        let title = Language.get(tab.titleKey, alter: nil)
+
         return Button {
-            if selectedTab != tab {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+            guard selectedTab != tab else { return }
+            if reduceMotion {
+                selectedTab = tab
+            } else {
+                withAnimation(.easeOut(duration: 0.16)) {
                     selectedTab = tab
                 }
             }
         } label: {
-            if isSelected {
-                HStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
-                    Text(title)
-                        .font(.custom("Beiruti-Bold", size: 14))
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? AdminSurface.primary.opacity(0.11) : Color.clear)
+                        .frame(width: 38, height: 30)
+                    Image(systemName: tab.symbol)
+                        .font(.system(size: 18, weight: isSelected ? .semibold : .medium))
+                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
                 }
-                .foregroundStyle(criticalColor)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                .background(criticalColor.opacity(0.12), in: Capsule())
-            } else {
-                VStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .medium))
-                    Text(title)
-                        .font(.custom("Beiruti-Medium", size: 12))
-                }
-                .foregroundStyle(Color(uiColor: .label))
-                .frame(minWidth: 44)
+                .accessibilityHidden(true)
+
+                Text(title)
+                    .font(isSelected ? AdminType.captionBold : AdminType.caption1)
+                    .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, minHeight: AdminShellMetric.tabItemMinimumHeight, alignment: .top)
+            .contentShape(Rectangle())
         }
         .buttonStyle(V6CardButtonStyle())
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
-// MARK: - V6 Button Style (Global)
+// MARK: - Shared shell interaction style
 
 struct V6CardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.68 : 1)
     }
 }
 
@@ -705,20 +734,20 @@ private struct AdminModuleListView: View {
 
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
-            LazyVStack(alignment: .leading, spacing: 14) {
+            LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+
                 if routes.isEmpty {
                     AdminEmptyRoutesView()
                 } else {
-                    ForEach(routes) { route in
-                        Button { router.present(route, session: session) } label: {
-                            AdminRouteRow(route: route)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    AdminRouteGroup(
+                        routes: routes,
+                        action: { router.present($0, session: session) }
+                    )
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, AdminShellMetric.pageMargin)
+            .padding(.bottom, 8)
         }
     }
 }
@@ -747,57 +776,148 @@ private struct AdminMoreView: View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                AdminProfileSummaryCard(session: session)
 
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(session.displayName)
-                        .font(AdminType.title2)
-                        .foregroundColor(AdminSurface.primaryText)
-                    Text(session.localizedRoleName)
-                        .font(AdminType.callout)
-                        .foregroundColor(AdminSurface.secondaryText)
-                    Text(session.email)
-                        .font(AdminType.footnote)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .environment(\.layoutDirection, .leftToRight)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(AdminSurface.hairline))
-                .accessibilityElement(children: .combine)
-
-                ForEach(routes) { route in
-                    Button { router.present(route, session: session) } label: { AdminRouteRow(route: route) }
-                        .buttonStyle(.plain)
+                if !routes.isEmpty {
+                    AdminRouteGroup(
+                        routes: routes,
+                        action: { router.present($0, session: session) }
+                    )
                 }
 
-                Button {
-                    let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
-                    Language.userSelectedLanguage(next)
-                } label: {
-                    Label(Language.get("Confirm_LanguageChange_Title", alter: nil), systemImage: "globe")
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(maxWidth: .infinity, minHeight: 48)
-                        .background(AdminSurface.control, in: Capsule())
-                        .overlay(Capsule().stroke(AdminSurface.hairline))
-                }
-
-                Button(role: .destructive, action: onLogout) {
-                    HStack(spacing: 10) {
-                        if isSigningOut { ProgressView().tint(Color(uiColor: .ppError)) }
-                        Label(Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
-                    }
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(Color(uiColor: .ppError))
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(Color(uiColor: .ppError).opacity(0.09), in: Capsule())
-                    .overlay(Capsule().stroke(Color(uiColor: .ppError).opacity(0.20)))
-                }
-                .disabled(isSigningOut)
+                AdminUtilityActionGroup(
+                    isSigningOut: isSigningOut,
+                    onLanguage: {
+                        let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
+                        Language.userSelectedLanguage(next)
+                    },
+                    onLogout: onLogout
+                )
             }
-            .padding(.horizontal, 20)
+            .padding(.horizontal, AdminShellMetric.pageMargin)
+            .padding(.bottom, 8)
         }
+    }
+}
+
+private struct AdminProfileSummaryCard: View {
+    let session: AdminSession
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(monogram)
+                .font(AdminType.headline)
+                .foregroundColor(AdminSurface.primary)
+                .frame(width: 48, height: 48)
+                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(session.displayName)
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(session.localizedRoleName)
+                    .font(AdminType.callout)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(session.email)
+                    .font(AdminType.footnote)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var monogram: String {
+        let parts = session.displayName.split(separator: " ").prefix(2)
+        let letters = parts.compactMap(\.first).map(String.init).joined()
+        return letters.isEmpty ? "PP" : letters.uppercased()
+    }
+}
+
+private struct AdminUtilityActionGroup: View {
+    let isSigningOut: Bool
+    let onLanguage: () -> Void
+    let onLogout: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: onLanguage) {
+                AdminUtilityRow(
+                    title: Language.get("Confirm_LanguageChange_Title", alter: nil),
+                    symbol: "globe",
+                    tint: AdminSurface.primary,
+                    showsProgress: false
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider().padding(.leading, 58)
+
+            Button(role: .destructive, action: onLogout) {
+                AdminUtilityRow(
+                    title: Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: nil),
+                    symbol: "rectangle.portrait.and.arrow.right",
+                    tint: Color(uiColor: .ppError),
+                    showsProgress: isSigningOut
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(isSigningOut)
+        }
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+    }
+}
+
+private struct AdminUtilityRow: View {
+    let title: String
+    let symbol: String
+    let tint: Color
+    let showsProgress: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(tint.opacity(0.10))
+                if showsProgress {
+                    ProgressView().tint(tint)
+                } else {
+                    Image(systemName: symbol)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(tint)
+                }
+            }
+            .frame(width: 40, height: 40)
+            .accessibilityHidden(true)
+
+            Text(title)
+                .font(AdminType.calloutBold)
+                .foregroundColor(tint == AdminSurface.primary ? AdminSurface.primaryText : tint)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AdminSurface.secondaryText)
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: AdminShellMetric.rowMinimumHeight)
+        .contentShape(Rectangle())
     }
 }
 
@@ -810,36 +930,42 @@ private struct AdminCommandPulseStrip: View {
     var body: some View {
         Button(action: onOpenCommand) {
             HStack(spacing: 12) {
-                Image(systemName: pulseSymbol)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(pulseColor)
-                    .frame(width: 36, height: 36)
-                    .background(pulseColor.opacity(0.11), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .accessibilityHidden(true)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(pulseColor.opacity(0.10))
+                    Image(systemName: pulseSymbol)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(pulseColor)
+                }
+                .frame(width: 40, height: 40)
+                .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("CommandCenter_Title", alter: nil))
                         .font(AdminType.captionBold)
                         .foregroundColor(AdminSurface.secondaryText)
                     Text(pulseTitle)
-                        .font(AdminType.headline)
+                        .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.primaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-
-                Spacer(minLength: 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(AdminSurface.secondaryText)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 12)
-            .background(pulseColor.opacity(0.055), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(pulseColor.opacity(0.20)))
+            .padding(.horizontal, 14)
+            .frame(minHeight: 64)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminShellMetric.compactRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminShellMetric.compactRadius, style: .continuous)
+                    .stroke(AdminSurface.hairline)
+            )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(V6CardButtonStyle())
         .accessibilityElement(children: .combine)
         .accessibilityHint(Language.get("CommandCenter_Open_Detail", alter: nil))
     }
@@ -881,36 +1007,62 @@ private struct AdminCommandPulseStrip: View {
     }
 }
 
-struct AdminRouteRow: View {
-    let route: AdminRoute
+private struct AdminRouteGroup: View {
+    let routes: [AdminRoute]
+    let action: (AdminRoute) -> Void
 
     var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: route.symbol)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 44, height: 44)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Language.get(route.contextTitleKey, alter: nil))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
+        VStack(spacing: 0) {
+            ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
+                Button { action(route) } label: {
+                    AdminRouteRow(route: route, showsSeparator: index < routes.count - 1)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+    }
+}
+
+struct AdminRouteRow: View {
+    let route: AdminRoute
+    var showsSeparator = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: route.symbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 40, height: 40)
+                    .background(AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+
                 Text(Language.get(route.titleKey, alter: nil))
                     .font(AdminType.headline)
                     .foregroundColor(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .accessibilityHidden(true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                .foregroundColor(AdminSurface.secondaryText)
-                .accessibilityHidden(true)
+            .padding(.horizontal, 16)
+            .frame(minHeight: AdminShellMetric.rowMinimumHeight)
+            .contentShape(Rectangle())
+
+            if showsSeparator {
+                Divider().padding(.leading, 70)
+            }
         }
-        .padding(16)
-        .frame(minHeight: 68)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline))
-        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Language.get("CommandCenter_Open_Detail", alter: nil))
     }
 }
 
@@ -932,16 +1084,29 @@ struct ContentUnavailableCompat: View {
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: symbol)
-                .font(.system(size: 32, weight: .medium))
+                .font(.system(size: 28, weight: .medium))
                 .foregroundColor(AdminSurface.secondaryText)
-            Text(title).font(AdminType.headline).foregroundColor(AdminSurface.primaryText)
+                .frame(width: 52, height: 52)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .accessibilityHidden(true)
+            Text(title)
+                .font(AdminType.headline)
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.center)
             Text(message)
                 .font(AdminType.callout)
                 .foregroundColor(AdminSurface.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity)
-        .padding(32)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .padding(.horizontal, 24)
+        .padding(.vertical, 30)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+        .accessibilityElement(children: .combine)
     }
 }

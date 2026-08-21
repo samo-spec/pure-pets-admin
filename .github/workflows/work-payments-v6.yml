@@ -1,0 +1,75 @@
+name: Work Payments V6 Source Gate
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+
+permissions:
+  contents: write
+
+jobs:
+  payments-source-gate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+      - name: Apply Payments refinements
+        run: python3 scripts/apply_work_payments_v6.py
+      - name: Static Payments contract checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          vc = Path('PurePetsAdmin/Payments/PPPaymentManagementViewController.m').read_text()
+          cell = Path('PurePetsAdmin/Payments/PPPaymentManagementRecordCell.m').read_text()
+          settings = Path('PurePetsAdmin/Payments/PPPaymentBasicsSettingsViewController.m').read_text()
+          combined = vc + '\n' + cell + '\n' + settings
+          required = [
+              'PPScreenMargin',
+              'PPButtonHeightLG',
+              'adjustsFontForContentSizeCategory = YES',
+              'PPTouchTargetMin',
+              'UIContentSizeCategoryIsAccessibilityCategory',
+              'UIAccessibilityIsReduceMotionEnabled()',
+              '_statusContainer.isAccessibilityElement = YES',
+              'button.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin',
+              'self.saveButton.backgroundColor = enabled ? [UIColor ppPrimary]',
+          ]
+          missing = [x for x in required if x not in combined]
+          if missing:
+              raise SystemExit('Missing Payments V6 markers: ' + ', '.join(missing))
+          forbidden = [
+              'Act as a multi-agent system with 3 roles',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPayments")',
+              'subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")',
+              '[PPToast toast:error.localizedDescription ?: kLang(@"PPOrder_Error_PartialRead")',
+              '_gradientLayer',
+              '_haloView',
+              'PPButtonAnimationStylePulse',
+              'constraintGreaterThanOrEqualToConstant:42.0',
+              'constraintEqualToConstant:36.0',
+          ]
+          present = [x for x in forbidden if x in combined]
+          if present:
+              raise SystemExit('Forbidden Payments regression patterns remain: ' + ', '.join(present))
+          print('Payments V6 source gate passed')
+          PY
+      - name: Validate paired localization
+        run: |
+          plutil -lint PurePetsAdmin/en.lproj/Localizable.strings
+          plutil -lint PurePetsAdmin/ar.lproj/Localizable.strings
+      - name: Commit generated Payments source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PurePetsAdmin/Payments/PPPaymentManagementViewController.m \
+                  PurePetsAdmin/Payments/PPPaymentManagementRecordCell.m \
+                  PurePetsAdmin/Payments/PPPaymentBasicsSettingsViewController.m
+          if git diff --cached --quiet; then
+            echo "No generated Payments changes"
+          else
+            git commit -m "Polish Work Payments settings with SwiftyMax V6"
+            git push origin HEAD:redesign/admin-ui-v6-traversal
+          fi

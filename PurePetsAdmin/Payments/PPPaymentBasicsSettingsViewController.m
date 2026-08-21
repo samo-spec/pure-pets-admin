@@ -1,6 +1,5 @@
 #import "PPPaymentBasicsSettingsViewController.h"
 
-#import "PPButtonHelper.h"
 #import "PPPaymentManagementService.h"
 #import "Styling.h"
 
@@ -26,6 +25,12 @@ static double PPPaymentBasicsDoubleValue(id value)
 
     NSString *normalized = [[trimmed stringByReplacingOccurrencesOfString:@"," withString:@"."] copy];
     return normalized.doubleValue;
+}
+
+static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textStyle)
+{
+    if (!baseFont) return [UIFont preferredFontForTextStyle:textStyle];
+    return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
 }
 
 @interface PPPaymentBasicsSettingsViewController ()
@@ -68,7 +73,9 @@ static double PPPaymentBasicsDoubleValue(id value)
     [super viewDidLoad];
 
     self.view.backgroundColor = AppBackgroundClr;
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.backgroundColor = AppBackgroundClr;
+    self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
     self.tableView.estimatedSectionHeaderHeight = 32.0;
     self.tableView.estimatedSectionFooterHeight = 44.0;
@@ -142,15 +149,14 @@ static double PPPaymentBasicsDoubleValue(id value)
     if (!self.saveButton) {
         UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
         button.translatesAutoresizingMaskIntoConstraints = NO;
-        button.contentEdgeInsets = UIEdgeInsetsMake(7, 14, 7, 14);
-        button.layer.cornerRadius = 18.0;
-        button.layer.masksToBounds = YES;
-        button.layer.borderWidth = 1.0;
-        button.titleLabel.font = [Styling fontMedium:17];
+        button.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceBase, PPSpaceSM, PPSpaceBase);
+        PPApplyContinuousCorners(button, PPCorner16);
+        button.titleLabel.font = PPPaymentBasicsScaledFont([Styling fontBold:15], UIFontTextStyleCallout);
+        button.titleLabel.adjustsFontForContentSizeCategory = YES;
+        button.titleLabel.numberOfLines = 1;
         [button addTarget:self action:@selector(onSaveTapped) forControlEvents:UIControlEventTouchUpInside];
-        [button.heightAnchor constraintEqualToConstant:36.0].active = YES;
-        [button.widthAnchor constraintGreaterThanOrEqualToConstant:58.0].active = YES;
-        [PPButtonHelper attachTapAnimationToButton:button style:PPButtonAnimationStylePulse];
+        [button.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
+        [button.widthAnchor constraintGreaterThanOrEqualToConstant:72.0].active = YES;
         self.saveButton = button;
     }
 
@@ -172,8 +178,8 @@ static double PPPaymentBasicsDoubleValue(id value)
         appearance.backgroundColor = AppBackgroundClr;
         appearance.shadowColor = UIColor.clearColor;
         appearance.titleTextAttributes = @{
-            NSFontAttributeName: [Styling fontBold:20],
-            NSForegroundColorAttributeName: PrimaryTextClr
+            NSFontAttributeName: PPPaymentBasicsScaledFont([Styling fontBold:20], UIFontTextStyleHeadline),
+            NSForegroundColorAttributeName: [UIColor ppTextPrimary]
         };
         navBar.standardAppearance = appearance;
         navBar.scrollEdgeAppearance = appearance;
@@ -209,18 +215,22 @@ static double PPPaymentBasicsDoubleValue(id value)
 {
     if (!self.saveButton) return;
 
-    UIColor *titleColor = [UIColor ppTextPrimary];
-    UIColor *borderColor = [UIColor ppPrimary];
     BOOL enabled = !(self.isLoadingSettings || self.isSaving);
+    UIColor *activeTitle = UIColor.whiteColor;
+    UIColor *disabledTitle = [UIColor.whiteColor colorWithAlphaComponent:0.62];
 
     [self.saveButton setTitle:kLang(@"PaymentMgmt_Settings_Save") forState:UIControlStateNormal];
-    [self.saveButton setTitleColor:titleColor forState:UIControlStateNormal];
-    [self.saveButton setTitleColor:[titleColor colorWithAlphaComponent:0.45] forState:UIControlStateDisabled];
-    self.saveButton.titleLabel.font = [Styling fontMedium:17];
-    self.saveButton.backgroundColor = AppBackgroundClr;
-    self.saveButton.layer.borderColor = [borderColor colorWithAlphaComponent:0.18].CGColor;
+    [self.saveButton setTitleColor:activeTitle forState:UIControlStateNormal];
+    [self.saveButton setTitleColor:disabledTitle forState:UIControlStateDisabled];
+    self.saveButton.titleLabel.font = PPPaymentBasicsScaledFont([Styling fontBold:15], UIFontTextStyleCallout);
+    self.saveButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.saveButton.backgroundColor = enabled
+        ? [UIColor ppPrimary]
+        : [[UIColor ppPrimary] colorWithAlphaComponent:0.30];
+    self.saveButton.layer.borderWidth = 0.0;
     self.saveButton.enabled = enabled;
-    self.saveButton.alpha = enabled ? 1.0 : 0.65;
+    self.saveButton.alpha = enabled ? 1.0 : 0.76;
+    self.saveButton.accessibilityLabel = kLang(@"PaymentMgmt_Settings_Save");
 }
 
 - (void)pp_applySettingsToForm:(PPPaymentAdminSettings *)settings
@@ -267,7 +277,7 @@ static double PPPaymentBasicsDoubleValue(id value)
         [self pp_applySaveButton];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPayments")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
             return;
         }
 
@@ -321,7 +331,7 @@ static double PPPaymentBasicsDoubleValue(id value)
         [self pp_applySaveButton];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
 
@@ -342,8 +352,9 @@ static double PPPaymentBasicsDoubleValue(id value)
     if (header.backgroundView) {
         header.backgroundView.backgroundColor = UIColor.clearColor;
     }
-    header.textLabel.font = [Styling fontMedium:15];
-    header.textLabel.textColor = PrimaryTextClr;
+    header.textLabel.font = PPPaymentBasicsScaledFont([Styling fontMedium:15], UIFontTextStyleHeadline);
+    header.textLabel.adjustsFontForContentSizeCategory = YES;
+    header.textLabel.textColor = [UIColor ppTextPrimary];
 }
 
 - (void)tableView:(UITableView *)tableView willDisplayFooterView:(UIView *)view forSection:(NSInteger)section
@@ -357,8 +368,9 @@ static double PPPaymentBasicsDoubleValue(id value)
     if (footer.backgroundView) {
         footer.backgroundView.backgroundColor = UIColor.clearColor;
     }
-    footer.textLabel.font = [Styling fontRegular:13];
-    footer.textLabel.textColor = SeconderyTextClr;
+    footer.textLabel.font = PPPaymentBasicsScaledFont([Styling fontRegular:13], UIFontTextStyleFootnote);
+    footer.textLabel.adjustsFontForContentSizeCategory = YES;
+    footer.textLabel.textColor = [UIColor ppTextSecondary];
 }
 
 @end
