@@ -58,7 +58,20 @@
 
 - (id<FIRListenerRegistration>)observeInboxForUser:(NSString *)uid
                                        stateHandler:(PPInboxObserverStateHandler)handler {
-    FIRCollectionReference *staffRef = [self staffInboxForUser:uid];
+    NSString *safeUID = [uid isKindOfClass:NSString.class]
+        ? [uid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    NSString *authUID = [([FIRAuth auth].currentUser.uid ?: @"")
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeUID.length == 0) safeUID = authUID;
+    if (authUID.length == 0 || ![safeUID isEqualToString:authUID]) {
+        if (handler) {
+            handler(@[], [self.class pp_notificationErrorWithMessage:@"The requested staff inbox does not belong to the current session."]);
+        }
+        return nil;
+    }
+
+    FIRCollectionReference *staffRef = [self staffInboxForUser:safeUID];
     if (!staffRef) {
         if (handler) {
             handler(@[], [self.class pp_notificationErrorWithMessage:@"Staff inbox reference not found."]);
@@ -89,7 +102,18 @@
                         limit:(NSInteger)limit
                    startAfter:(FIRDocumentSnapshot *)startAfter
                    completion:(PPNotifPage)completion {
-    FIRCollectionReference *staffRef = [self staffInboxForUser:uid];
+    NSString *safeUID = [uid isKindOfClass:NSString.class]
+        ? [uid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    NSString *authUID = [([FIRAuth auth].currentUser.uid ?: @"")
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeUID.length == 0) safeUID = authUID;
+    if (authUID.length == 0 || ![safeUID isEqualToString:authUID]) {
+        if (completion) completion(@[], nil, [self.class pp_notificationErrorWithMessage:@"The requested staff inbox does not belong to the current session."]);
+        return;
+    }
+
+    FIRCollectionReference *staffRef = [self staffInboxForUser:safeUID];
     if (!staffRef) {
         if (completion) completion(@[], nil, [self.class pp_notificationErrorWithMessage:@"Staff inbox reference not found."]);
         return;
@@ -117,7 +141,16 @@
 - (void)markRead:(NotificationModel *)model
          forUser:(NSString *_Nullable)uid
       completion:(void (^)(NSError * _Nullable))completion {
-    (void)uid;
+    NSString *safeUID = [uid isKindOfClass:NSString.class]
+        ? [uid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    NSString *authUID = [([FIRAuth auth].currentUser.uid ?: @"")
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeUID.length == 0) safeUID = authUID;
+    if (authUID.length == 0 || ![safeUID isEqualToString:authUID]) {
+        if (completion) completion([self.class pp_notificationErrorWithMessage:@"The requested staff inbox does not belong to the current session."]);
+        return;
+    }
     if (![model isKindOfClass:NotificationModel.class] || model.nid.length == 0) {
         if (completion) completion([self.class pp_notificationErrorWithMessage:@"Staff notification id is required."]);
         return;

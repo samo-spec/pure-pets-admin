@@ -16,6 +16,11 @@ static NSString *PPAdminNotificationsTrimmedString(id value)
     return [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
 }
 
+static NSString *PPAdminAuthenticatedNotificationUID(void)
+{
+    return PPAdminNotificationsTrimmedString([FIRAuth auth].currentUser.uid);
+}
+
 static NSDictionary *PPAdminNotificationSafeMeta(NotificationModel *model)
 {
     return [model.meta isKindOfClass:NSDictionary.class] ? model.meta : @{};
@@ -89,7 +94,7 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    self.uid = UsrMgr.currentUser.uid;
+    self.uid = PPAdminAuthenticatedNotificationUID();
 
     self.view.backgroundColor = AppBackgroundClr;
     self.allNotifications = @[];
@@ -110,6 +115,19 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
     [super viewWillAppear:animated];
     // globe  // plus
     [self pp_navBarWithOtherButton:nil title:kLang(@"NotificationsTitle")];
+
+    NSString *currentUID = PPAdminAuthenticatedNotificationUID();
+    if (![self.uid isEqualToString:currentUID] ||
+        (currentUID.length > 0 && !self.inboxListener)) {
+        [self.inboxListener remove];
+        self.inboxListener = nil;
+        self.uid = currentUID;
+        self.allNotifications = @[];
+        self.filteredNotifications = @[];
+        self.isLoading = NO;
+        [self reloadTableAnimated:NO];
+        [self fetchNotificationsShowToast:NO];
+    }
 
 }
 
@@ -249,12 +267,23 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
         [PPToast toast:kLang(@"Loading") style:PPToastStyleInfo haptic:NO duration:1.2 position:PPToastPositionBottom inView:self.view];
     }
 
+    NSString *currentUID = PPAdminAuthenticatedNotificationUID();
+    if (currentUID.length == 0) {
+        self.isLoading = NO;
+        [self.refreshControl endRefreshing];
+        self.allNotifications = @[];
+        self.filteredNotifications = @[];
+        [self reloadTableAnimated:NO];
+        return;
+    }
+    self.uid = currentUID;
+
     __weak typeof(self) weakSelf = self;
     __block BOOL shouldToastLoaded = showToast;
     // Live listen
 
     [self.inboxListener remove];
-    self.inboxListener = [[NotificationManager shared] observeInboxForUser:UsrMgr.currentUser.uid stateHandler:^(NSArray<NotificationModel *> *items, NSError * _Nullable error) {
+    self.inboxListener = [[NotificationManager shared] observeInboxForUser:self.uid stateHandler:^(NSArray<NotificationModel *> *items, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         self.isLoading = NO;
@@ -448,7 +477,7 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
             return;
         }
     }
-    NotificationDetailViewController *vc = [[NotificationDetailViewController alloc] initWithModel:m userID:UsrMgr.currentUser.uid];
+    NotificationDetailViewController *vc = [[NotificationDetailViewController alloc] initWithModel:m userID:self.uid];
     [self.navigationController pushViewController:vc animated:YES];
 }
 
