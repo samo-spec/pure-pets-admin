@@ -4,10 +4,9 @@
 //
 //  NEXTGEN V6 REDESIGN — Command Center Flagship Surface
 //  ─────────────────────────────────────────────────────────────────────────────
-//  World-class, high-density operational command center built with Pure Pets
-//  NextGen V6 design language. Features glassmorphism materials, living ambient
-//  depth, reactive status telemetry, dynamic priority dominance hierarchy,
-//  and full RTL/LTR & VoiceOver accessibility.
+//  Priority Handoff operational surface built with the shared Pure Pets V6
+//  semantic design system, explicit state communication, and bounded hierarchy.
+//  RTL/LTR, Dynamic Type, VoiceOver, and Reduce Motion remain first-class.
 //  Applied Pure Pets Beiruti brand typography to all strings.
 //
 //  CONTRACT
@@ -91,7 +90,7 @@ final class AdminCommandCenterStore: ObservableObject {
     var onSelectTab: ((Int) -> Void)?
 
     func apply(roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
-        let mapped = signals.prefix(8).map { d in
+        let mapped = signals.prefix(6).map { d in
             AdminCommandOrbitSignal(
                 id: d.identifier,
                 moduleTitle: d.moduleTitle,
@@ -122,7 +121,6 @@ final class AdminCommandCenterStore: ObservableObject {
 
 // MARK: - Hosting Controller (Preserved Obj-C Bridge)
 
-@available(iOS 16.0, *)
 @MainActor
 @objcMembers
 public final class AdminCommandOrbitHostingController: UIViewController {
@@ -209,549 +207,538 @@ public final class AdminCommandOrbitHostingController: UIViewController {
     }
 }
 
-// MARK: - Typography (Beiruti Brand Font)
+// MARK: - SwiftyMax V6 Priority Handoff Presentation
 
-private enum V6Font {
-    static func bold(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
-        Font.custom("Beiruti-Bold", size: size, relativeTo: textStyle)
-    }
-
-    static func medium(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
-        Font.custom("Beiruti-Medium", size: size, relativeTo: textStyle)
-    }
-
-    static func regular(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
-        Font.custom("Beiruti-Regular", size: size, relativeTo: textStyle)
-    }
-
-    static func semibold(_ size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
-        Font.custom("Beiruti-SemiBold", size: size, relativeTo: textStyle)
-    }
-
-    // Semantic Presets
-    static let heroTitle = Font.custom("Beiruti-Bold", size: 20, relativeTo: .title2)
-    static let sectionTitle = Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline)
-    static let cardTitle = Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline)
-    static let cardTitleMedium = Font.custom("Beiruti-Medium", size: 15, relativeTo: .subheadline)
-    static let roleName = Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline)
-    static let moduleTag = Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
-    static let body = Font.custom("Beiruti-Regular", size: 14, relativeTo: .body)
-    static let bodyMedium = Font.custom("Beiruti-Medium", size: 14, relativeTo: .body)
-    static let callout = Font.custom("Beiruti-Medium", size: 13, relativeTo: .callout)
-    static let caption = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
-    static let captionBold = Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
-    static let badge = Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2)
-    static let time = Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2)
-    static let avatarMonogram = Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption)
+private enum AdminCommandMetric {
+    static let pageMargin: CGFloat = 20
+    static let sectionSpacing: CGFloat = 20
+    static let cardRadius: CGFloat = 22
+    static let compactRadius: CGFloat = 16
+    static let iconSize: CGFloat = 44
+    static let minimumActionHeight: CGFloat = 52
 }
 
-// MARK: - NextGen V6 Design Tokens
+private enum AdminCommandTone {
+    case critical
+    case elevated
+    case normal
+    case info
 
-private enum V6 {
-    // Semantic Colors
-    static let canvas = Color(uiColor: .ppBackground)
-    static let cardBackground = Color(uiColor: .ppSurface)
-    static let cardBackgroundElevated = Color(uiColor: .ppSurfaceElevated)
-    static let primaryText = Color(uiColor: .ppTextPrimary)
-    static let secondaryText = Color(uiColor: .ppTextSecondary)
-    static let tertiaryText = Color(uiColor: .ppTextTertiary)
-    static let brand = Color(uiColor: .ppPrimary)
-    static let accent = Color(uiColor: .ppAccent)
+    var color: Color {
+        switch self {
+        case .critical: return Color(uiColor: .ppError)
+        case .elevated: return Color(uiColor: .ppWarning)
+        case .normal: return Color(uiColor: .ppSuccess)
+        case .info: return Color(uiColor: .ppInfo)
+        }
+    }
 
-    // Status Tints
-    static let critical = Color(uiColor: .ppError)
-    static let elevated = Color(uiColor: .ppWarning)
-    static let live = Color(uiColor: .ppInfo)
-    static let success = Color(uiColor: .ppSuccess)
-
-    // Geometry & Layout
-    static let spacingXS: CGFloat = 6.0
-    static let spacingSM: CGFloat = 10.0
-    static let spacingMD: CGFloat = 14.0
-    static let spacingLG: CGFloat = 18.0
-    static let spacingXL: CGFloat = 24.0
-
-    static let radiusSM: CGFloat = 12.0
-    static let radiusMD: CGFloat = 16.0
-    static let radiusLG: CGFloat = 22.0
-    static let radiusXL: CGFloat = 28.0
-
-    // Glass & Lighting
-    static let glassStroke = LinearGradient(
-        colors: [
-            Color.white.opacity(0.32),
-            Color.white.opacity(0.08),
-            Color.black.opacity(0.04)
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    static let glassStrokeDark = LinearGradient(
-        colors: [
-            Color.white.opacity(0.18),
-            Color.white.opacity(0.04),
-            Color.clear
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-}
-
-// MARK: - Interactive Button Styles
-
-private struct V6GlassIconButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+    var symbol: String {
+        switch self {
+        case .critical: return "exclamationmark.triangle.fill"
+        case .elevated: return "exclamationmark.circle.fill"
+        case .normal: return "checkmark.circle.fill"
+        case .info: return "arrow.triangle.2.circlepath"
+        }
     }
 }
 
-// MARK: - Root Command Center View
-
-@available(iOS 16.0, *)
 struct AdminCommandCenterScreenView: View {
     @ObservedObject var store: AdminCommandCenterStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var locale: Locale { Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA") }
-    private var isRTL: Bool { Language.isRTL() }
+    private var locale: Locale {
+        Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA")
+    }
+
+    private var direction: LayoutDirection {
+        store.localeCode == "ar" ? .rightToLeft : .leftToRight
+    }
 
     private var phase: AdminCommandOrbitPhase {
-        let s = store.snapshot
-        if !s.isInitialized { return .connecting }
-        if !store.readiness.loadingAreas.isEmpty && s.signals.isEmpty && store.readiness.failedAreas.isEmpty {
+        let snapshot = store.snapshot
+        if !snapshot.isInitialized { return .connecting }
+        if snapshot.roleName.isEmpty { return .denied }
+        if !store.readiness.loadingAreas.isEmpty,
+           snapshot.signals.isEmpty,
+           store.readiness.failedAreas.isEmpty {
             return .loading
         }
-        if !store.readiness.failedAreas.isEmpty && s.signals.isEmpty {
+        if !store.readiness.failedAreas.isEmpty, snapshot.signals.isEmpty {
             return .degradedEmpty
         }
-        if s.roleName.isEmpty { return .denied }
-        if s.signals.isEmpty { return .allClear }
+        if snapshot.signals.isEmpty { return .allClear }
         return .ready
     }
 
     var body: some View {
-        let direction: LayoutDirection = isRTL ? .rightToLeft : .leftToRight
-        ZStack(alignment: .bottom) {
-            // Ambient Living Canvas
-            V6.canvas.ignoresSafeArea()
-
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 32) {
-                    // Header (Top Nav)
-                    v6NewHeader
-                    
-                    // Priority Section
-                    v6PhaseContent
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
-                .padding(.bottom, 140) // Space for custom tab bar
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                operationalContext
+                phaseContent
             }
-            .ignoresSafeArea(.all, edges: .bottom)
-            
+            .padding(.horizontal, AdminCommandMetric.pageMargin)
+            .padding(.top, 12)
+            .padding(.bottom, 28)
         }
-        .ignoresSafeArea(.all, edges: .bottom)
+        .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, direction)
         .environment(\.locale, locale)
-        .accessibilityElement(children: .contain)
     }
 
-    // MARK: - New Header Layout
-    
-    private var v6NewHeader: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Top Part
-            VStack(alignment: .leading, spacing: 8) {
-                Text("PURE PETS عمليات")
-                    .font(V6Font.bold(12))
-                    .foregroundStyle(V6.critical)
-                    .tracking(1)
-                
-                Text(L10n("AdminCommandCenter_CommandCenter") == "AdminCommandCenter_CommandCenter" ? "مدار القيادة" : L10n("AdminCommandCenter_CommandCenter"))
-                    .font(V6Font.bold(34))
-                    .foregroundStyle(V6.primaryText)
-                
-                Text("العمل الحي ينجذب نحو أولويته.")
-                    .font(V6Font.medium(15))
-                    .foregroundStyle(V6.secondaryText)
+    private var operationalContext: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L10n("AdminCommandCenter_Role"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(store.snapshot.roleName.isEmpty ? L10n("pp_role_admin") : store.snapshot.roleName)
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 12)
+
+                Text(moduleCountText)
+                    .font(AdminType.footnoteBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.trailing)
             }
-            .padding(.top, 12)
-            
-            // Divider
-            Rectangle()
-                .fill(V6.secondaryText.opacity(0.15))
-                .frame(height: 1)
-            
-            // Status & Role Row
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("مساحة العمل النشطة")
-                        .font(V6Font.regular(13))
-                        .foregroundStyle(V6.secondaryText)
-                    Text(store.snapshot.roleName.isEmpty ? "مشرف عام" : store.snapshot.roleName)
-                        .font(V6Font.bold(17))
-                        .foregroundStyle(V6.primaryText)
-                }
-                
-                Spacer()
-                
-                let criticalCount = store.snapshot.signals.filter { $0.isCritical }.count
-                if criticalCount > 0 {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("مباشر")
-                                .font(V6Font.regular(13))
-                                .foregroundStyle(V6.primaryText)
-                            Text("\(criticalCount) حرجة")
-                                .font(V6Font.bold(15))
-                                .foregroundStyle(V6.primaryText)
-                        }
-                        
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(V6.critical.opacity(0.12))
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(V6.critical)
-                        }
-                        .frame(width: 44, height: 44)
-                    }
-                } else {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("الحالة")
-                                .font(V6Font.regular(13))
-                                .foregroundStyle(V6.primaryText)
-                            Text("مستقرة")
-                                .font(V6Font.bold(15))
-                                .foregroundStyle(V6.success)
-                        }
-                        
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(V6.success.opacity(0.12))
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(V6.success)
-                        }
-                        .frame(width: 44, height: 44)
-                    }
-                }
-            }
-        }
-    }
 
-    // MARK: - Phase Dynamic Content Router
+            Divider()
 
-    @ViewBuilder
-    private var v6PhaseContent: some View {
-        switch phase {
-        case .connecting, .loading:
-            v6LoadingSkeletons
-        case .ready:
-            v6ReadyMatrix
-        case .allClear:
-            v6AllClearCelebration
-        case .degradedEmpty:
-            v6DegradedEmptyState
-        case .denied:
-            v6AccessDeniedState
-        }
-    }
+            HStack(spacing: 10) {
+                Image(systemName: readinessTone.symbol)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(readinessTone.color)
+                    .frame(width: 28, height: 28)
+                    .background(readinessTone.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .accessibilityHidden(true)
 
-    // MARK: - Ready Phase Matrix
-
-    @ViewBuilder
-    private var v6ReadyMatrix: some View {
-        let criticalSignals = store.snapshot.signals.filter { $0.isCritical }
-        let nonCriticalSignals = store.snapshot.signals.filter { !$0.isCritical }
-
-        if let topHeroSignal = (criticalSignals.first ?? nonCriticalSignals.first) {
-            VStack(alignment: .leading, spacing: 32) {
-                // Dominant Hero Section
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("الأولوية الآن")
-                        .font(V6Font.bold(18))
-                        .foregroundStyle(V6.secondaryText)
-                    
-                    v6DominantHeroCard(for: topHeroSignal)
-                }
-
-                // Secondary Signals Deck
-                if store.snapshot.signals.count > 1 {
-                    let secondaryDeck = store.snapshot.signals.filter { $0.id != topHeroSignal.id }
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("الأولويات التالية")
-                            .font(V6Font.bold(18))
-                            .foregroundStyle(V6.primaryText)
-                        
-                        ForEach(secondaryDeck) { signal in
-                            v6TacticalSignalRow(signal: signal)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Cards
-    
-    private func v6DominantHeroCard(for signal: AdminCommandOrbitSignal) -> some View {
-        Button {
-            store.onRoute?(signal.id)
-        } label: {
-            HStack(spacing: 0) {
-                // Thick border on leading edge
-                Rectangle()
-                    .fill(urgencyTint(signal.urgency))
-                    .frame(width: 4)
-                
-                VStack(spacing: 0) {
-                    // Top row
-                    HStack(alignment: .top) {
-                        // Right side content (in RTL this is leading)
-                        HStack(spacing: 12) {
-                            // Icon
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(urgencyTint(signal.urgency).opacity(0.12))
-                                Image(systemName: signal.symbolName)
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(V6.primaryText)
-                            }
-                            .frame(width: 48, height: 48)
-                            
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(signal.moduleTitle)
-                                    .font(V6Font.medium(14))
-                                    .foregroundStyle(V6.secondaryText)
-                                Text(priorityName(signal.urgency))
-                                    .font(V6Font.bold(16))
-                                    .foregroundStyle(V6.primaryText)
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // Left side number
-                        Text(formattedCount(signal.count))
-                            .font(V6Font.bold(52)) // huge number
-                            .foregroundStyle(V6.primaryText)
-                    }
-                    
-                    Spacer().frame(height: 24)
-                    
-                    // Middle text
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(signal.title)
-                            .font(V6Font.bold(22))
-                            .foregroundStyle(V6.primaryText)
-                        Text(signal.detail.isEmpty ? "يحتاج مراجعتك الآن" : signal.detail)
-                            .font(V6Font.medium(16))
-                            .foregroundStyle(V6.secondaryText)
-                    }
+                Text(readinessText)
+                    .font(AdminType.callout)
+                    .foregroundColor(AdminSurface.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    Spacer().frame(height: 32)
-                    
-                    // Bottom row
-                    HStack {
-                        HStack(spacing: 6) {
-                            Text("فتح " + signal.moduleTitle)
-                                .font(V6Font.bold(15))
-                            Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .foregroundStyle(urgencyTint(signal.urgency))
-                        
-                        Spacer()
-                        
-                        if signal.isLive {
-                            HStack(spacing: 6) {
-                                Text("مباشر")
-                                    .font(V6Font.medium(15))
-                                    .foregroundStyle(V6.primaryText)
-                                Circle()
-                                    .fill(V6.critical)
-                                    .frame(width: 8, height: 8)
-                            }
-                        }
-                    }
-                }
-                .padding(.all, 24)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .background(V6.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(urgencyTint(signal.urgency).opacity(0.4), lineWidth: 1)
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var phaseContent: some View {
+        switch phase {
+        case .connecting:
+            statePanel(
+                tone: .info,
+                title: L10n("AdminCommandCenter_Connecting"),
+                detail: L10n("AdminCommandCenter_Connecting_Detail"),
+                showsProgress: true,
+                actionTitle: nil,
+                action: nil
             )
-            .shadow(color: urgencyTint(signal.urgency).opacity(0.08), radius: 12, x: 0, y: 6)
-        }
-        .buttonStyle(V6CardButtonStyle())
-    }
-
-    private func v6TacticalSignalRow(signal: AdminCommandOrbitSignal) -> some View {
-        Button {
-            store.onRoute?(signal.id)
-        } label: {
-            HStack(spacing: 0) {
-                // Thick border on leading edge
-                Rectangle()
-                    .fill(urgencyTint(signal.urgency))
-                    .frame(width: 4)
-                
-                HStack(alignment: .center, spacing: 16) {
-                    // Icon
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(urgencyTint(signal.urgency).opacity(0.12))
-                        Image(systemName: signal.symbolName)
-                            .font(.system(size: 20))
-                            .foregroundStyle(V6.primaryText)
-                    }
-                    .frame(width: 48, height: 48)
-                    
-                    // Text block
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(signal.moduleTitle)
-                                .font(V6Font.medium(13))
-                                .foregroundStyle(V6.secondaryText)
-                            if signal.isLive {
-                                Text("مباشر")
-                                    .font(V6Font.bold(13))
-                                    .foregroundStyle(V6.primaryText)
-                            }
-                        }
-                        Text(signal.title)
-                            .font(V6Font.bold(17))
-                            .foregroundStyle(V6.primaryText)
-                            .lineLimit(2)
-                        if !signal.detail.isEmpty {
-                            Text(signal.detail)
-                                .font(V6Font.medium(14))
-                                .foregroundStyle(V6.secondaryText)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    // Left side
-                    VStack(alignment: .center, spacing: 12) {
-                        Text(formattedCount(signal.count))
-                            .font(V6Font.bold(26))
-                            .foregroundStyle(V6.primaryText)
-                        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(urgencyTint(signal.urgency))
-                    }
-                }
-                .padding(.vertical, 20)
-                .padding(.horizontal, 20)
-            }
-            .background(V6.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(urgencyTint(signal.urgency).opacity(0.3), lineWidth: 1)
+        case .loading:
+            statePanel(
+                tone: .info,
+                title: L10n("AdminCommandCenter_Confirming"),
+                detail: confirmingDetail,
+                showsProgress: true,
+                actionTitle: nil,
+                action: nil
             )
-            .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 4)
+        case .ready:
+            readyContent
+        case .allClear:
+            statePanel(
+                tone: .normal,
+                title: L10n("AdminCommandCenter_AllClear_Title"),
+                detail: L10n("AdminCommandCenter_AllClear_Detail"),
+                showsProgress: false,
+                actionTitle: nil,
+                action: nil
+            )
+        case .degradedEmpty:
+            statePanel(
+                tone: .critical,
+                title: L10n("AdminCommandCenter_Failed_Title"),
+                detail: failedDetail,
+                showsProgress: false,
+                actionTitle: L10n("AdminCommandCenter_Retry"),
+                action: store.onRefresh
+            )
+        case .denied:
+            statePanel(
+                tone: .elevated,
+                title: L10n("AdminCommandCenter_NoAccess_Title"),
+                detail: L10n("AdminCommandCenter_NoAccess_Detail"),
+                showsProgress: false,
+                actionTitle: nil,
+                action: nil
+            )
         }
-        .buttonStyle(V6CardButtonStyle())
     }
 
-    // MARK: - Custom Bottom Tab Bar
-    
-
-
-    // MARK: - Utility States
-
-    private var v6AllClearCelebration: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle().fill(V6.success.opacity(0.1)).frame(width: 80, height: 80)
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(V6.success)
+    private var readyContent: some View {
+        VStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+            if !store.readiness.failedAreas.isEmpty {
+                readinessWarning
             }
-            Text(L10n("AdminCommandCenter_AllClear_Title") == "AdminCommandCenter_AllClear_Title" ? "كل شيء مستقر" : L10n("AdminCommandCenter_AllClear_Title"))
-                .font(V6Font.bold(20))
-                .foregroundStyle(V6.primaryText)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(40)
-        .background(V6.cardBackground)
-        .cornerRadius(24)
-    }
 
-    private var v6LoadingSkeletons: some View {
-        VStack(spacing: 16) {
-            ForEach(0..<2, id: \.self) { _ in
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(V6.cardBackground)
-                    .frame(height: 120)
+            if let primary = store.snapshot.signals.first {
+                CommandPrimarySignalCard(
+                    signal: primary,
+                    locale: locale,
+                    action: { store.onRoute?(primary.id) }
+                )
+            }
+
+            let remaining = Array(store.snapshot.signals.dropFirst())
+            if !remaining.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(L10n("AdminCommandCenter_OtherPriorities"))
+                        .font(AdminType.title3)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    VStack(spacing: 0) {
+                        ForEach(Array(remaining.enumerated()), id: \.element.id) { index, signal in
+                            Button {
+                                store.onRoute?(signal.id)
+                            } label: {
+                                CommandSignalRow(
+                                    signal: signal,
+                                    locale: locale,
+                                    showsDivider: index < remaining.count - 1
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 24)
-                            .stroke(V6.secondaryText.opacity(0.1), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous)
+                            .stroke(AdminSurface.hairline)
                     )
+                }
             }
         }
     }
 
-    private var v6DegradedEmptyState: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(V6.critical)
-            Text("فشل التحميل")
-                .font(V6Font.bold(20))
-                .foregroundStyle(V6.primaryText)
+    private var readinessWarning: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(Color(uiColor: .ppWarning))
+                .frame(width: 36, height: 36)
+                .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .accessibilityHidden(true)
+
+            Text(failedDetail)
+                .font(AdminType.callout)
+                .foregroundColor(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .ppWarning).opacity(0.06), in: RoundedRectangle(cornerRadius: AdminCommandMetric.compactRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminCommandMetric.compactRadius, style: .continuous)
+                .stroke(Color(uiColor: .ppWarning).opacity(0.20))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func statePanel(
+        tone: AdminCommandTone,
+        title: String,
+        detail: String,
+        showsProgress: Bool,
+        actionTitle: String?,
+        action: (() -> Void)?
+    ) -> some View {
+        VStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(tone.color.opacity(0.10))
+                if showsProgress {
+                    ProgressView().tint(tone.color)
+                } else {
+                    Image(systemName: tone.symbol)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundColor(tone.color)
+                }
+            }
+            .frame(width: 54, height: 54)
+            .accessibilityHidden(true)
+
+            Text(title)
+                .font(AdminType.title3)
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.center)
+
+            Text(detail)
+                .font(AdminType.callout)
+                .foregroundColor(AdminSurface.secondaryText)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: AdminCommandMetric.minimumActionHeight)
+                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 2)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(40)
-        .background(V6.cardBackground)
-        .cornerRadius(24)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 28)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous)
+                .stroke(AdminSurface.hairline)
+        )
+        .accessibilityElement(children: action == nil ? .combine : .contain)
     }
 
-    private var v6AccessDeniedState: some View {
-        VStack(spacing: 24) {
-            Image(systemName: "lock.shield.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(V6.secondaryText)
-            Text("لا توجد صلاحية")
-                .font(V6Font.bold(20))
-                .foregroundStyle(V6.primaryText)
+    private var readinessTone: AdminCommandTone {
+        if !store.readiness.failedAreas.isEmpty { return .elevated }
+        if !store.readiness.loadingAreas.isEmpty || !store.snapshot.isInitialized { return .info }
+        return .normal
+    }
+
+    private var readinessText: String {
+        if !store.readiness.failedAreas.isEmpty { return failedDetail }
+        if !store.readiness.loadingAreas.isEmpty { return confirmingDetail }
+        if !store.snapshot.isInitialized { return L10n("AdminCommandCenter_Connecting_Detail") }
+        return L10n("AdminCommandCenter_Ready_Detail")
+    }
+
+    private var confirmingDetail: String {
+        guard !store.readiness.loadingAreas.isEmpty else {
+            return L10n("AdminCommandCenter_Confirming_Detail")
         }
-        .frame(maxWidth: .infinity)
-        .padding(40)
-        .background(V6.cardBackground)
-        .cornerRadius(24)
+        return String(
+            format: L10n("AdminCommandCenter_Confirming_Format"),
+            store.readiness.loadingAreas.joined(separator: ", ")
+        )
     }
 
-    // MARK: - Helpers
-
-    private func urgencyTint(_ urgency: Int) -> Color {
-        if urgency >= 2 { return V6.critical }
-        if urgency == 1 { return V6.elevated }
-        return V6.success
+    private var failedDetail: String {
+        guard !store.readiness.failedAreas.isEmpty else {
+            return L10n("AdminCommandCenter_Degraded_Generic")
+        }
+        return String(
+            format: L10n("AdminCommandCenter_Degraded_Format"),
+            store.readiness.failedAreas.joined(separator: ", ")
+        )
     }
 
-    private func priorityName(_ urgency: Int) -> String {
-        if urgency >= 2 { return "أولوية حرجة" }
-        if urgency == 1 { return "أولوية متوسطة" }
-        return "أولوية عادية"
+    private var moduleCountText: String {
+        String(
+            format: L10n("AdminCommand_ModuleCount_Format"),
+            store.snapshot.capabilityCount
+        )
+    }
+
+    private func L10n(_ key: String) -> String {
+        Language.get(key, alter: nil)
+    }
+}
+
+private struct CommandPrimarySignalCard: View {
+    let signal: AdminCommandOrbitSignal
+    let locale: Locale
+    let action: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 16) { cardContent }
+                } else {
+                    cardContent
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
+            .overlay(alignment: .leading) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(tone.color)
+                    .frame(width: 4)
+                    .padding(.vertical, 14)
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous)
+                    .stroke(AdminSurface.hairline)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: nil))
+    }
+
+    @ViewBuilder
+    private var cardContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                statusIcon
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(signal.moduleTitle)
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(priorityTitle)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(tone.color)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(formattedCount(signal.count))
+                    .font(AdminType.title2)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(signal.title)
+                    .font(AdminType.title3)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                if !signal.detail.isEmpty {
+                    Text(signal.detail)
+                        .font(AdminType.callout)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Text(Language.get("AdminCommandCenter_Act", alter: nil))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(tone.color)
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(tone.color)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 8)
+                if signal.isLive {
+                    Image(systemName: "wave.3.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppInfo))
+                        .accessibilityLabel(Language.get("CommandCenter_Live", alter: nil))
+                }
+            }
+        }
+    }
+
+    private var statusIcon: some View {
+        Image(systemName: signal.symbolName)
+            .font(.system(size: 18, weight: .semibold))
+            .foregroundColor(tone.color)
+            .frame(width: AdminCommandMetric.iconSize, height: AdminCommandMetric.iconSize)
+            .background(tone.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .accessibilityHidden(true)
+    }
+
+    private var tone: AdminCommandTone {
+        if signal.urgency >= 2 { return .critical }
+        if signal.urgency == 1 { return .elevated }
+        return .normal
+    }
+
+    private var priorityTitle: String {
+        switch tone {
+        case .critical: return Language.get("AdminCommandCenter_Priority_Critical", alter: nil)
+        case .elevated: return Language.get("AdminCommandCenter_Priority_Elevated", alter: nil)
+        default: return Language.get("AdminCommandCenter_Priority_Normal", alter: nil)
+        }
     }
 
     private func formattedCount(_ value: Int) -> String {
         value.formatted(.number.locale(locale))
     }
+}
 
-    private func L10n(_ key: String) -> String {
-        Language.get(key, alter: nil)
+private struct CommandSignalRow: View {
+    let signal: AdminCommandOrbitSignal
+    let locale: Locale
+    let showsDivider: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 14) {
+                Image(systemName: signal.symbolName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(tone.color)
+                    .frame(width: 40, height: 40)
+                    .background(tone.color.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(signal.moduleTitle)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Image(systemName: tone.symbol)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(tone.color)
+                            .accessibilityHidden(true)
+                    }
+                    Text(signal.title)
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if !signal.detail.isEmpty {
+                        Text(signal.detail)
+                            .font(AdminType.footnote)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(signal.count.formatted(.number.locale(locale)))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(minHeight: 72)
+            .contentShape(Rectangle())
+
+            if showsDivider {
+                Divider().padding(.leading, 70)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: nil))
+    }
+
+    private var tone: AdminCommandTone {
+        if signal.urgency >= 2 { return .critical }
+        if signal.urgency == 1 { return .elevated }
+        return .normal
     }
 }
