@@ -1,0 +1,58 @@
+name: Admin Shell V6 Source Gate
+
+on:
+  push:
+    branches:
+      - redesign/admin-ui-v6-traversal
+
+permissions:
+  contents: write
+
+jobs:
+  shell-source-gate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: redesign/admin-ui-v6-traversal
+      - name: Apply shell redesign
+        run: python3 scripts/apply_admin_shell_v6.py
+      - name: Parse Swift shell source
+        run: |
+          xcrun --sdk iphonesimulator swiftc -frontend -parse PurePetsAdmin/App/AdminAppShell.swift
+      - name: Static shell contract checks
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('PurePetsAdmin/App/AdminAppShell.swift')
+          s = p.read_text()
+          required = [
+              'ForEach(AdminTab.allCases)',
+              'Language.get(tab.titleKey',
+              '@Environment(\\.accessibilityReduceMotion)',
+              'AdminRouteGroup',
+              'AdminProfileSummaryCard',
+              'AdminUtilityActionGroup',
+              '.accessibilityAddTraits(isSelected ? .isSelected : [])',
+          ]
+          missing = [x for x in required if x not in s]
+          if missing:
+              raise SystemExit('Missing V6 shell markers: ' + ', '.join(missing))
+          forbidden = ['title: "الرئيسية"', 'criticalColor = Color(red:', '.spring(response:']
+          present = [x for x in forbidden if x in s]
+          if present:
+              raise SystemExit('Forbidden legacy shell patterns remain: ' + ', '.join(present))
+          print('Admin shell V6 source gate passed')
+          PY
+      - name: Commit generated shell
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add PurePetsAdmin/App/AdminAppShell.swift
+          if git diff --cached --quiet; then
+            echo "No generated shell changes"
+          else
+            git commit -m "Redesign admin shell and tabs with SwiftyMax V6"
+            git push origin HEAD:redesign/admin-ui-v6-traversal
+          fi
