@@ -112,50 +112,6 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
 @property (nonatomic, strong) NSDateFormatter *dateFormatter;
 @property (nonatomic, strong) NSMutableSet<NSString *> *inFlightOrderActions;
 
-/*
-Act as a multi-agent system with 3 roles:
-      
-descripe every that completelly and dont keep any thing
-  Agent 1 (Analyzer):
-  - Read and analyze the entire project "code-review-commons"
-  - Identify and list all files you read before doing anything else
-  - Understand full frontend and backend structure, flows, and features
-                                                                                                                                                                                                                                     
-  Agent 2 (Product Writer):
-  - Based on the analysis, write to PROJECT_CONTEXT
-  - Write it in simple, clear language for a normal user
-  - Include:
-    - What is Pure Pets
-    - What the app does
-    - How it helps users
-    - All available functionality:
-      (posting ads, browsing pets/accessories, chat, support, payments, profiles, etc.)
-  - Make it complete, structured, and user-friendly (non-technical)
-                                                                                                                                                                                                                                     
-  Agent 3 (System Architect):
-  - write to PROJECT_CONTEXT
-  - Include:
-    - Architecture overview
-    - Firebase collections (with short descriptions) "use mcp to read all data you need from firebase"
-    - Backend functions (with purpose/description) "use mcp to read all data you need from firebase"
-    - Security rules and access logic "use mcp to read all data you need from firebase"
-    - Data flow between frontend and backend "use mcp to read all data you need from firebase"
-  - Keep it structured and clear, no code
-                                                                                                                                                                                                                                     
-  Then create:
-                                                                                                                                                                                                                                     
-  PROJECT_TO_DO:
-  - List missing features to implement
-  - List existing features that need refactor
-  - Assign priorities (High / Medium / Low)
-  - Focus on product quality, scalability, and security
-                                                                                                                                                                                                                                     
-  Rules:
-  - DO NOT write any code
-  - DO NOT guess — only use what exists in the project
-  - Be structured, clear, and complete
-  - Start by listing: “Files analyzed: …”
-*/
 
 
 @end
@@ -191,7 +147,7 @@ descripe every that completelly and dont keep any thing
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeOnDrag;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
+    self.refreshControl.tintColor = [UIColor ppPrimary];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self setupSearchHeader];
@@ -223,9 +179,9 @@ descripe every that completelly and dont keep any thing
 
 - (void)setupSearchHeader
 {
-    CGFloat horizontal = 16.0;
-    CGFloat vertical = 10.0;
-    CGFloat searchHeight = 50.0;
+    CGFloat horizontal = PPScreenMargin;
+    CGFloat vertical = PPSpaceSM;
+    CGFloat searchHeight = PPButtonHeightLG;
     CGFloat containerHeight = vertical + searchHeight + vertical;
     CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
 
@@ -242,7 +198,7 @@ descripe every that completelly and dont keep any thing
     search.caseInsensitive = YES;
     search.diacriticsInsensitive = YES;
     search.delegate = self;
-    search.backgroundColor = AppForgroundColr;
+    search.backgroundColor = [UIColor ppSurface];
     search.textField.placeholder = kLang(@"PaymentMgmt_Search_Placeholder");
     search.textField.textAlignment = Language.alignmentForCurrentLanguage;
     search.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage;
@@ -337,7 +293,7 @@ descripe every that completelly and dont keep any thing
 
         BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
         if (error && !isPartialRead) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPayments")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
             [self.tableView reloadData];
             return;
         }
@@ -360,7 +316,7 @@ descripe every that completelly and dont keep any thing
         [self pp_refreshSearchButtons];
         [self.tableView reloadData];
         if (isPartialRead) {
-            [PPToast toast:error.localizedDescription ?: kLang(@"PPOrder_Error_PartialRead")
+            [PPToast toast:kLang(@"PPOrder_Error_PartialRead")
                       style:PPToastStyleWarning
                      haptic:NO
                    duration:3.0
@@ -817,8 +773,10 @@ descripe every that completelly and dont keep any thing
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.textLabel.font = [Styling fontBold:15];
-        cell.detailTextLabel.font = [Styling fontRegular:13];
+        cell.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[Styling fontBold:15]];
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline] scaledFontForFont:[Styling fontRegular:13]];
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
         cell.detailTextLabel.numberOfLines = 0;
     }
     PPPaymentAdminApplyLanguageToTableCell(cell);
@@ -881,8 +839,10 @@ descripe every that completelly and dont keep any thing
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:cellID];
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
-        cell.textLabel.font = [Styling fontBold:16];
-        cell.detailTextLabel.font = [Styling fontRegular:13];
+        cell.textLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleHeadline] scaledFontForFont:[Styling fontBold:16]];
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.font = [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline] scaledFontForFont:[Styling fontRegular:13]];
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
         cell.detailTextLabel.numberOfLines = 0;
     }
     PPPaymentAdminApplyLanguageToTableCell(cell);

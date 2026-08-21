@@ -271,10 +271,14 @@ static UIFont *PPPaymentManagementScaledFont(UIFont *baseFont, UIFontTextStyle t
     }
 
     [self pp_refreshAdaptiveLayout];
-    self.isAccessibilityElement = YES;
-    self.accessibilityLabel = [@[orderTitle ?: @"", amountText ?: @"", customerText ?: @"", statusTitle ?: @""] componentsJoinedByString:@", "];
-    self.accessibilityHint = actionTitle ?: @"";
-    self.accessibilityTraits = UIAccessibilityTraitButton;
+    self.isAccessibilityElement = NO;
+    _surfaceView.isAccessibilityElement = NO;
+    _statusContainer.isAccessibilityElement = YES;
+    _statusContainer.accessibilityLabel = statusTitle ?: @"";
+    _statusContainer.accessibilityTraits = UIAccessibilityTraitStaticText;
+    _statusIconView.accessibilityElementsHidden = YES;
+    _statusLabel.isAccessibilityElement = NO;
+    _actionButton.accessibilityLabel = actionTitle ?: @"";
 }
 
 @end
