@@ -91,15 +91,20 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
 @end
 
 @implementation PPPaymentNextStepCell {
-    UIView *_cardContainer;
-    UIView *_cardSurface;
-    CAGradientLayer *_cardGradientLayer;
-    UIView *_haloView;
+    UIView *_surfaceView;
+    UIView *_statusContainer;
     UIImageView *_workflowIconView;
     UILabel *_captionLabel;
     UILabel *_statusLabel;
     UILabel *_subtitleLabel;
     UIButton *_actionButton;
+    UIStackView *_actionRow;
+}
+
+static UIFont *PPPaymentDetailsScaledFont(UIFont *baseFont, UIFontTextStyle textStyle)
+{
+    if (!baseFont) return [UIFont preferredFontForTextStyle:textStyle];
+    return [[UIFontMetrics metricsForTextStyle:textStyle] scaledFontForFont:baseFont];
 }
 
 - (instancetype)initWithStyle:(UITableViewCellStyle)style reuseIdentifier:(NSString *)reuseIdentifier
@@ -111,157 +116,109 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     self.contentView.backgroundColor = UIColor.clearColor;
     self.selectionStyle = UITableViewCellSelectionStyleNone;
 
-    _cardContainer = [UIView new];
-    _cardContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    _cardContainer.backgroundColor = UIColor.clearColor;
-    _cardContainer.layer.cornerRadius = 26.0;
-    _cardContainer.layer.shadowColor = AppShadowColor.CGColor;
-    _cardContainer.layer.shadowOpacity = 0.12f;
-    _cardContainer.layer.shadowRadius = 16.0f;
-    _cardContainer.layer.shadowOffset = CGSizeMake(0.0, 14.0);
-    [self.contentView addSubview:_cardContainer];
-
-    _cardSurface = [UIView new];
-    _cardSurface.translatesAutoresizingMaskIntoConstraints = NO;
-    _cardSurface.backgroundColor = [UIColor ppElevatedSurface];
-    _cardSurface.layer.cornerRadius = 26.0;
-    _cardSurface.layer.masksToBounds = YES;
-    _cardSurface.layer.borderWidth = 1.0;
-    _cardSurface.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.28].CGColor;
-    [_cardContainer addSubview:_cardSurface];
-
-    _cardGradientLayer = [CAGradientLayer layer];
-    _cardGradientLayer.startPoint = CGPointMake(0.0, 0.0);
-    _cardGradientLayer.endPoint = CGPointMake(1.0, 1.0);
-    _cardGradientLayer.colors = @[
-        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.75].CGColor,
-        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.6].CGColor,
-        (id)[[UIColor ppSurfaceOverlay] colorWithAlphaComponent:0.2].CGColor
-    ];
-    _cardGradientLayer.locations = @[@0.0, @0.62, @1.0];
-    [_cardSurface.layer insertSublayer:_cardGradientLayer atIndex:0];
-
-    _haloView = [UIView new];
-    _haloView.translatesAutoresizingMaskIntoConstraints = NO;
-    _haloView.backgroundColor = [UIColor ppPrimaryShiner];
-    _haloView.alpha = 0.3;
-    _haloView.userInteractionEnabled = NO;
-    _haloView.layer.cornerRadius = 56.0;
-    [_cardSurface addSubview:_haloView];
+    _surfaceView = [UIView new];
+    _surfaceView.translatesAutoresizingMaskIntoConstraints = NO;
+    _surfaceView.backgroundColor = [UIColor ppElevatedSurface];
+    PPApplyContinuousCorners(_surfaceView, PPCornerCard);
+    _surfaceView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _surfaceView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    [self.contentView addSubview:_surfaceView];
 
     _captionLabel = [UILabel new];
     _captionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _captionLabel.font = [Styling fontMedium:11];
-    _captionLabel.textColor = [UIColor ppTextTertiary];
+    _captionLabel.font = PPPaymentDetailsScaledFont([Styling fontMedium:12], UIFontTextStyleCaption1);
+    _captionLabel.adjustsFontForContentSizeCategory = YES;
+    _captionLabel.textColor = [UIColor ppTextSecondary];
     _captionLabel.text = kLang(@"PaymentMgmt_Field_Workflow");
-    _captionLabel.text = _captionLabel.text.uppercaseString ?: @"";
+    _captionLabel.numberOfLines = 0;
+
+    _statusContainer = [UIView new];
+    _statusContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    PPApplyContinuousCorners(_statusContainer, PPCornerSmall);
 
     _workflowIconView = [UIImageView new];
     _workflowIconView.translatesAutoresizingMaskIntoConstraints = NO;
     _workflowIconView.contentMode = UIViewContentModeScaleAspectFit;
-    _workflowIconView.tintColor = UIColor.whiteColor;
-    _workflowIconView.backgroundColor = [UIColor ppPrimary];
-    _workflowIconView.layer.cornerRadius = 14.0;
-    _workflowIconView.layer.masksToBounds = YES;
-    _workflowIconView.image = [[UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"]
-        imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    [_statusContainer addSubview:_workflowIconView];
 
     _statusLabel = [UILabel new];
     _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _statusLabel.font = [Styling fontBold:12];
-    _statusLabel.textAlignment = NSTextAlignmentCenter;
-    _statusLabel.textColor = [UIColor ppTextPrimary];
-    _statusLabel.textAlignment = NSTextAlignmentCenter;
-    _statusLabel.layer.cornerRadius = 15.0;
-    _statusLabel.layer.masksToBounds = YES;
-    _statusLabel.layer.borderWidth = 1.0;
-    [_statusLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    [_statusLabel setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
+    _statusLabel.font = PPPaymentDetailsScaledFont([Styling fontBold:13], UIFontTextStyleCallout);
+    _statusLabel.adjustsFontForContentSizeCategory = YES;
+    _statusLabel.numberOfLines = 0;
+    [_statusContainer addSubview:_statusLabel];
 
     _actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
     _actionButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _actionButton.layer.cornerRadius = 18.0;
-    _actionButton.layer.masksToBounds = NO;
-    _actionButton.titleLabel.font = [Styling fontBold:13];
-    _actionButton.titleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
-    _actionButton.titleLabel.adjustsFontSizeToFitWidth = YES;
-    _actionButton.titleLabel.minimumScaleFactor = 0.82;
-    _actionButton.contentEdgeInsets = UIEdgeInsetsMake(11.0, 16.0, 11.0, 16.0);
+    PPApplyContinuousCorners(_actionButton, PPCorner16);
+    _actionButton.titleLabel.font = PPPaymentDetailsScaledFont([Styling fontBold:14], UIFontTextStyleCallout);
+    _actionButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    _actionButton.titleLabel.numberOfLines = 0;
+    _actionButton.titleLabel.textAlignment = NSTextAlignmentCenter;
+    _actionButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceMD, PPSpaceBase, PPSpaceMD, PPSpaceBase);
     [_actionButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    _actionButton.layer.shadowColor = AppShadowColor.CGColor;
-    _actionButton.layer.shadowOpacity = 0.2f;
-    _actionButton.layer.shadowOffset = CGSizeMake(0.0, 4.0);
-    _actionButton.layer.shadowRadius = 6.0;
-    [_actionButton setContentCompressionResistancePriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [_actionButton setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [_actionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin].active = YES;
 
     _subtitleLabel = [UILabel new];
     _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _subtitleLabel.font = [Styling fontRegular:12];
+    _subtitleLabel.font = PPPaymentDetailsScaledFont([Styling fontRegular:13], UIFontTextStyleFootnote);
+    _subtitleLabel.adjustsFontForContentSizeCategory = YES;
     _subtitleLabel.textColor = [UIColor ppTextSecondary];
     _subtitleLabel.numberOfLines = 0;
 
-    UIStackView *statusChipRow = [[UIStackView alloc] initWithArrangedSubviews:@[_workflowIconView, _statusLabel]];
-    statusChipRow.translatesAutoresizingMaskIntoConstraints = NO;
-    statusChipRow.axis = UILayoutConstraintAxisHorizontal;
-    statusChipRow.alignment = UIStackViewAlignmentCenter;
-    statusChipRow.spacing = 10.0;
+    _actionRow = [[UIStackView alloc] initWithArrangedSubviews:@[_statusContainer, _actionButton]];
+    _actionRow.translatesAutoresizingMaskIntoConstraints = NO;
+    _actionRow.axis = UILayoutConstraintAxisHorizontal;
+    _actionRow.alignment = UIStackViewAlignmentCenter;
+    _actionRow.spacing = PPSpaceMD;
 
-    [_workflowIconView.widthAnchor constraintEqualToConstant:28.0].active = YES;
-    [_workflowIconView.heightAnchor constraintEqualToConstant:28.0].active = YES;
-
-    UIStackView *actionRow = [[UIStackView alloc] initWithArrangedSubviews:@[statusChipRow, _actionButton]];
-    actionRow.translatesAutoresizingMaskIntoConstraints = NO;
-    actionRow.axis = UILayoutConstraintAxisHorizontal;
-    actionRow.alignment = UIStackViewAlignmentCenter;
-    actionRow.spacing = 10.0;
-    [statusChipRow setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-    [statusChipRow setContentHuggingPriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
-
-    UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[_captionLabel, actionRow, _subtitleLabel]];
+    UIStackView *contentStack = [[UIStackView alloc] initWithArrangedSubviews:@[_captionLabel, _actionRow, _subtitleLabel]];
     contentStack.translatesAutoresizingMaskIntoConstraints = NO;
     contentStack.axis = UILayoutConstraintAxisVertical;
-    contentStack.spacing = 12.0;
-    [_cardSurface addSubview:contentStack];
+    contentStack.spacing = PPSpaceMD;
+    [_surfaceView addSubview:contentStack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_cardContainer.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:0.0],
-        [_cardContainer.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-        [_cardContainer.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [_cardContainer.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-4.0],
+        [_surfaceView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceSM],
+        [_surfaceView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [_surfaceView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [_surfaceView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceSM],
 
-        [_cardSurface.topAnchor constraintEqualToAnchor:_cardContainer.topAnchor],
-        [_cardSurface.leadingAnchor constraintEqualToAnchor:_cardContainer.leadingAnchor],
-        [_cardSurface.trailingAnchor constraintEqualToAnchor:_cardContainer.trailingAnchor],
-        [_cardSurface.bottomAnchor constraintEqualToAnchor:_cardContainer.bottomAnchor],
+        [contentStack.topAnchor constraintEqualToAnchor:_surfaceView.topAnchor constant:PPSpaceBase],
+        [contentStack.leadingAnchor constraintEqualToAnchor:_surfaceView.leadingAnchor constant:PPSpaceBase],
+        [contentStack.trailingAnchor constraintEqualToAnchor:_surfaceView.trailingAnchor constant:-PPSpaceBase],
+        [contentStack.bottomAnchor constraintEqualToAnchor:_surfaceView.bottomAnchor constant:-PPSpaceBase],
 
-        [_haloView.widthAnchor constraintEqualToConstant:112.0],
-        [_haloView.heightAnchor constraintEqualToConstant:112.0],
-        [_haloView.trailingAnchor constraintEqualToAnchor:_cardSurface.trailingAnchor constant:24.0],
-        [_haloView.topAnchor constraintEqualToAnchor:_cardSurface.topAnchor constant:-34.0],
-
-        [contentStack.topAnchor constraintEqualToAnchor:_cardSurface.topAnchor constant:18.0],
-        [contentStack.leadingAnchor constraintEqualToAnchor:_cardSurface.leadingAnchor constant:18.0],
-        [contentStack.trailingAnchor constraintEqualToAnchor:_cardSurface.trailingAnchor constant:-18.0],
-        [contentStack.bottomAnchor constraintEqualToAnchor:_cardSurface.bottomAnchor constant:-18.0],
-        [_actionButton.heightAnchor constraintGreaterThanOrEqualToConstant:44.0],
-        [_statusLabel.heightAnchor constraintGreaterThanOrEqualToConstant:40.0],
+        [_workflowIconView.leadingAnchor constraintEqualToAnchor:_statusContainer.leadingAnchor constant:PPSpaceSM],
+        [_workflowIconView.centerYAnchor constraintEqualToAnchor:_statusContainer.centerYAnchor],
+        [_workflowIconView.widthAnchor constraintEqualToConstant:17.0],
+        [_workflowIconView.heightAnchor constraintEqualToConstant:17.0],
+        [_statusLabel.leadingAnchor constraintEqualToAnchor:_workflowIconView.trailingAnchor constant:PPSpaceSM],
+        [_statusLabel.trailingAnchor constraintEqualToAnchor:_statusContainer.trailingAnchor constant:-PPSpaceSM],
+        [_statusLabel.topAnchor constraintEqualToAnchor:_statusContainer.topAnchor constant:PPSpaceSM],
+        [_statusLabel.bottomAnchor constraintEqualToAnchor:_statusContainer.bottomAnchor constant:-PPSpaceSM],
     ]];
 
+    [self pp_refreshAdaptiveLayout];
     return self;
-}
-
-- (void)layoutSubviews
-{
-    [super layoutSubviews];
-    if (_cardGradientLayer) {
-        _cardGradientLayer.frame = _cardSurface.bounds;
-    }
 }
 
 - (UIButton *)actionButton
 {
     return _actionButton;
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection
+{
+    [super traitCollectionDidChange:previousTraitCollection];
+    [self pp_refreshAdaptiveLayout];
+}
+
+- (void)pp_refreshAdaptiveLayout
+{
+    BOOL accessibilitySize = UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    _actionRow.axis = accessibilitySize ? UILayoutConstraintAxisVertical : UILayoutConstraintAxisHorizontal;
+    _actionRow.alignment = accessibilitySize ? UIStackViewAlignmentFill : UIStackViewAlignmentCenter;
 }
 
 - (void)prepareForReuse
@@ -280,32 +237,32 @@ static void PPPaymentAdminApplyLanguageToTableCell(UITableViewCell *cell)
     NSTextAlignment alignment = [Language alignmentForCurrentLanguage];
     self.semanticContentAttribute = semantic;
     self.contentView.semanticContentAttribute = semantic;
-    _cardSurface.semanticContentAttribute = semantic;
+    _surfaceView.semanticContentAttribute = semantic;
     _captionLabel.textAlignment = alignment;
+    _statusLabel.textAlignment = alignment;
     _subtitleLabel.textAlignment = alignment;
 
     UIColor *resolvedStatusColor = statusColor ?: [UIColor ppPrimary];
     UIColor *resolvedActionTint = actionTint ?: [UIColor ppPrimary];
-
-    _workflowIconView.backgroundColor = resolvedActionTint;
-    _workflowIconView.tintColor = UIColor.whiteColor;
-    _cardGradientLayer.colors = @[
-        (id)[resolvedActionTint colorWithAlphaComponent:0.24].CGColor,
-        (id)[[UIColor ppElevatedSurface] colorWithAlphaComponent:0.85].CGColor,
-        (id)[[UIColor ppSurface] colorWithAlphaComponent:0.95].CGColor
-    ];
-    _haloView.backgroundColor = resolvedActionTint;
-    _captionLabel.textColor = [UIColor ppTextSecondary];
-    _statusLabel.text = [NSString stringWithFormat:@"  %@  ", statusTitle ?: @"--"];
-    _statusLabel.textColor = UIColor.whiteColor;
-    _statusLabel.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.28];
-    _statusLabel.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.45].CGColor;
+    _statusContainer.backgroundColor = [resolvedStatusColor colorWithAlphaComponent:0.10];
+    _statusContainer.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
+    _statusContainer.layer.borderColor = [resolvedStatusColor colorWithAlphaComponent:0.20].CGColor;
+    _workflowIconView.tintColor = resolvedStatusColor;
+    _workflowIconView.image = [[UIImage systemImageNamed:@"arrowshape.turn.up.right.fill"] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    _statusLabel.text = statusTitle ?: @"--";
+    _statusLabel.textColor = resolvedStatusColor;
 
     [_actionButton setTitle:actionTitle ?: @"--" forState:UIControlStateNormal];
     _actionButton.backgroundColor = resolvedActionTint;
-    _actionButton.accessibilityLabel = actionTitle;
+    _actionButton.accessibilityLabel = actionTitle ?: @"";
     _subtitleLabel.text = subtitle;
     _subtitleLabel.hidden = PPPaymentAdminDetailsTrimmedString(subtitle).length == 0;
+
+    _statusContainer.isAccessibilityElement = YES;
+    _statusContainer.accessibilityLabel = statusTitle ?: @"";
+    _workflowIconView.accessibilityElementsHidden = YES;
+    _statusLabel.isAccessibilityElement = NO;
+    [self pp_refreshAdaptiveLayout];
 }
 
 @end
@@ -361,7 +318,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.tableView.estimatedRowHeight = 74.0;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
+    self.refreshControl.tintColor = [UIColor ppPrimary];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self pp_rebuildSections];
@@ -396,7 +353,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         [self.refreshControl endRefreshing];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_LoadPaymentDetails")];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPaymentDetails")];
             return;
         }
 
@@ -618,8 +575,10 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuseIdentifier];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuseIdentifier];
-        cell.textLabel.font = [Styling fontBold:15];
-        cell.detailTextLabel.font = [Styling fontRegular:13];
+        cell.textLabel.font = PPPaymentDetailsScaledFont([Styling fontBold:15], UIFontTextStyleHeadline);
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.font = PPPaymentDetailsScaledFont([Styling fontRegular:13], UIFontTextStyleSubheadline);
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
         cell.detailTextLabel.numberOfLines = 0;
     }
     PPPaymentAdminApplyLanguageToTableCell(cell);
@@ -1134,7 +1093,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.tableView.estimatedRowHeight = 72.0;
 
     self.refreshControl = [UIRefreshControl new];
-    self.refreshControl.tintColor = [UIColor ppPrimaryShiner];
+    self.refreshControl.tintColor = [UIColor ppPrimary];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
     [self pp_reloadRequestShowHUD:YES];
@@ -1354,8 +1313,10 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:reuseIdentifier];
     if (!cell) {
         cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:reuseIdentifier];
-        cell.textLabel.font = [Styling fontBold:15];
-        cell.detailTextLabel.font = [Styling fontRegular:13];
+        cell.textLabel.font = PPPaymentDetailsScaledFont([Styling fontBold:15], UIFontTextStyleHeadline);
+        cell.textLabel.adjustsFontForContentSizeCategory = YES;
+        cell.detailTextLabel.font = PPPaymentDetailsScaledFont([Styling fontRegular:13], UIFontTextStyleSubheadline);
+        cell.detailTextLabel.adjustsFontForContentSizeCategory = YES;
         cell.detailTextLabel.numberOfLines = 0;
     }
     PPPaymentAdminApplyLanguageToTableCell(cell);
