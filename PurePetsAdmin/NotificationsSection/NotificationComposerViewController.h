@@ -8,7 +8,7 @@
 
 // NotificationComposerViewController.h
 #import <UIKit/UIKit.h>
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 #import "UserModel.h"
 #import "NotificationModel.h"
 @interface NotificationComposerViewController : XLFormViewController

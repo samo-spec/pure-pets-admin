@@ -6,8 +6,8 @@
 //  Refactored for best practices
 //
 #import <Foundation/Foundation.h>
-#import "XLForm.h"
-#import "PPRolePermission.h"
+#import <XLForm/XLForm.h>
+#import "UsersSection/SecFil/PPRolePermission.h"
 
 @class FIRDocumentSnapshot;
 @class FIRUser;

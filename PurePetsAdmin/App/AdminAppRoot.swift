@@ -302,6 +302,7 @@ struct AdminAppRoot: View {
                 AdminAppShell(session: session, sessionStore: sessionStore, router: router)
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .environment(\.locale, Locale(identifier: sessionStore.languageCode == "ar" ? "ar_QA" : "en_QA"))
         .onChange(of: sessionStore.languageCode) { _ in

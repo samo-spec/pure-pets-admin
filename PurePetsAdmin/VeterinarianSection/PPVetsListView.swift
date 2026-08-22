@@ -96,6 +96,8 @@ final class PPVetsListViewModel: ObservableObject {
 
 @MainActor
 struct PPVetsListView: View {
+    var onDismiss: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = PPVetsListViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -106,26 +108,29 @@ struct PPVetsListView: View {
     @State private var vetToToggle: PPVetModel?
     @State private var showEntranceAnimation = false
 
-    init(onPushViewController: @escaping (UIViewController) -> Void = { _ in }) {
+    init(onPushViewController: @escaping (UIViewController) -> Void = { _ in }, onDismiss: (() -> Void)? = nil) {
         self.onPushViewController = onPushViewController
+        self.onDismiss = onDismiss
     }
 
     var body: some View {
         GeometryReader { geometry in
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    dossierHeaderView
                     statsHeader
                     filterSegment
                     searchField
                     vetList
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 4)
                 .padding(.bottom, 32)
             }
             .background(AdminSurface.background.ignoresSafeArea())
             .refreshable { await viewModel.refresh() }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             viewModel.startListening()
             withAnimation(reduceMotion ? nil : .easeOut(duration: 0.4).delay(0.1)) {
@@ -175,6 +180,58 @@ struct PPVetsListView: View {
                 Text(Language.get(msgKey, alter: nil))
             }
         }
+    }
+
+    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+
+    private var dossierHeaderView: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack {
+                Button(action: {
+                    if let onDismiss {
+                        onDismiss()
+                    } else {
+                        dismiss()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(Language.get("Back", alter: "رجوع"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(minHeight: 44)
+                }
+
+                Spacer()
+
+                if viewModel.isLoading {
+                    ProgressView().tint(AdminSurface.primary)
+                } else {
+                    Button(action: { Task { await viewModel.refresh() } }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(width: 36, height: 36)
+                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                }
+            }
+
+            Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات") + " / " + Language.get("Vet_Section_Title", alter: "الأطباء البيطريين"))
+                .font(AdminType.caption1)
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(.top, 2)
+
+            Text(Language.get("Vet_Section_Title", alter: "إدارة الأطباء البيطريين والعيادات"))
+                .font(AdminType.title2)
+                .foregroundColor(AdminSurface.primaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 12)
     }
 
     // MARK: - Stats Header

@@ -6,6 +6,7 @@
 
 static NSString * const PPFulfillmentServiceErrorDomain = @"PPFulfillmentService";
 static NSString * const PPFulfillmentPartialReadMarkerKey = @"PPFulfillmentPartialRead";
+static NSString * const PPFulfillmentOfficialOwnerID = @"PUIDPOFFICILAL20262214";
 static NSUInteger const PPFulfillmentScopeChunkLimit = 30;
 
 @interface PPFulfillmentCompositeRegistration : NSObject <FIRListenerRegistration>
@@ -479,6 +480,70 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
     }];
 }
 
+- (void)fetchOfficialFulfillmentForParentOrderID:(NSString *)parentOrderID
+                                  fulfillmentIDs:(NSArray<NSString *> *)fulfillmentIDs
+                                      completion:(void(^)(PPFulfillmentRecord *, NSError *))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (![staff hasPermission:kStaffPermPaymentsManage] || !PPFulfillmentHasReadableScope(staff)) {
+        if (completion) completion(nil, PPFulfillmentReadError([staff hasPermission:kStaffPermPaymentsManage] ? 411 : 410,
+                                                               [staff hasPermission:kStaffPermPaymentsManage] ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission"));
+        return;
+    }
+    NSString *safeParentID = [parentOrderID isKindOfClass:NSString.class]
+        ? [parentOrderID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    NSMutableOrderedSet<NSString *> *exactIDs = [NSMutableOrderedSet orderedSet];
+    for (id value in fulfillmentIDs ?: @[]) {
+        if (![value isKindOfClass:NSString.class]) continue;
+        NSString *fulfillmentID = [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (fulfillmentID.length) [exactIDs addObject:fulfillmentID];
+    }
+    if (!safeParentID.length || exactIDs.count == 0) {
+        if (completion) completion(nil, nil);
+        return;
+    }
+
+    FIRCollectionReference *collection = [[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"];
+    dispatch_group_t group = dispatch_group_create();
+    NSMutableArray<PPFulfillmentRecord *> *matches = [NSMutableArray array];
+    __block NSError *firstError = nil;
+    for (NSString *fulfillmentID in exactIDs.array) {
+        dispatch_group_enter(group);
+        [[collection documentWithPath:fulfillmentID] getDocumentWithCompletion:^(FIRDocumentSnapshot *snapshot, NSError *error) {
+            @synchronized (matches) {
+                if (!firstError && error) firstError = error;
+                if (!error && snapshot.exists) {
+                    PPFulfillmentRecord *record = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
+                    if ([record.parentOrderID isEqualToString:safeParentID] &&
+                        [PPFulfillmentService isOfficialPlatformFulfillment:record]) {
+                        if (PPFulfillmentStaffCanReachData(staff, snapshot.data)) {
+                            [matches addObject:record];
+                        } else if (!firstError) {
+                            firstError = PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope");
+                        }
+                    }
+                }
+            }
+            dispatch_group_leave(group);
+        }];
+    }
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        if (firstError) {
+            if (completion) completion(nil, firstError);
+            return;
+        }
+        if (matches.count > 1) {
+            if (completion) completion(nil, PPFulfillmentReadError(414, @"PaymentMgmt_OfficialFulfillment_Ambiguous"));
+            return;
+        }
+        if (completion) completion(matches.firstObject, nil);
+    });
+}
+
 - (id<FIRListenerRegistration>)observeFulfillmentEvents:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *, NSError *))completion {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     PPFulfillmentCompositeRegistration *composite = [PPFulfillmentCompositeRegistration new];
@@ -663,6 +728,70 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
     }];
 }
 
+- (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
+                       expectedStatus:(NSString *)expectedStatus
+                                action:(NSString *)action
+                                  note:(NSString *)note
+                             commandID:(NSString *)commandID
+                            completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    NSString *safeExpectedStatus = [expectedStatus.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeAction = [action.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeNote = [note stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeCommandID = [commandID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![staff hasPermission:kStaffPermPaymentsManage] || !PPFulfillmentHasReadableScope(staff)) {
+        if (completion) completion(nil, PPFulfillmentReadError([staff hasPermission:kStaffPermPaymentsManage] ? 411 : 410,
+                                                               [staff hasPermission:kStaffPermPaymentsManage] ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission"));
+        return;
+    }
+    if (![PPFulfillmentService isOfficialPlatformFulfillment:record] ||
+        !record.fulfillmentID.length || !record.parentOrderID.length) {
+        if (completion) completion(nil, PPFulfillmentReadError(415, @"PaymentMgmt_OfficialFulfillment_NotManageable"));
+        return;
+    }
+    if (!safeExpectedStatus.length || ![safeExpectedStatus isEqualToString:record.status.lowercaseString] ||
+        ![[PPFulfillmentService availableOfficialActionsForStatus:safeExpectedStatus] containsObject:safeAction] ||
+        safeNote.length < 3 || !safeCommandID.length) {
+        if (completion) completion(nil, PPFulfillmentReadError(416, @"PaymentMgmt_OfficialFulfillment_InvalidCommand"));
+        return;
+    }
+
+    FIRDocumentReference *fulfillmentRef = [[[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"] documentWithPath:record.fulfillmentID];
+    [fulfillmentRef getDocumentWithCompletion:^(FIRDocumentSnapshot *snapshot, NSError *readError) {
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        if (readError || !snapshot.exists) {
+            if (completion) completion(nil, readError ?: PPFulfillmentReadError(404, @"PaymentMgmt_OfficialFulfillment_NotManageable"));
+            return;
+        }
+        PPFulfillmentRecord *freshRecord = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
+        if (![freshRecord.parentOrderID isEqualToString:record.parentOrderID] ||
+            ![PPFulfillmentService isOfficialPlatformFulfillment:freshRecord] ||
+            !PPFulfillmentStaffCanReachData(staff, snapshot.data)) {
+            if (completion) completion(nil, PPFulfillmentReadError(415, @"PaymentMgmt_OfficialFulfillment_NotManageable"));
+            return;
+        }
+
+        FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"staffTransitionOfficialFulfillment"];
+        [callable callWithObject:@{
+            @"fulfillmentID": freshRecord.fulfillmentID,
+            @"expectedStatus": safeExpectedStatus,
+            @"action": safeAction,
+            @"note": safeNote,
+            @"commandId": safeCommandID,
+        } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+            if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+                if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+                return;
+            }
+            NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
+            if (completion) completion(dict, error);
+        }];
+    }];
+}
+
 - (BOOL)canAdminOverride {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
     return [staff hasPermission:kStaffPermPaymentsManage] && PPFulfillmentHasReadableScope(staff);
@@ -681,6 +810,29 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         @"handed_over": @[@"in_transit"]
     };
     return transitions[currentStatus] ?: @[];
+}
+
++ (BOOL)isOfficialPlatformFulfillment:(PPFulfillmentRecord *)record {
+    if (![record isKindOfClass:PPFulfillmentRecord.class]) return NO;
+    NSString *ownerType = record.ownerType.lowercaseString ?: @"";
+    NSString *mode = record.fulfillmentMode.lowercaseString ?: @"";
+    return [ownerType isEqualToString:@"platform"] &&
+           [record.ownerID isEqualToString:PPFulfillmentOfficialOwnerID] &&
+           (mode.length == 0 || [mode isEqualToString:@"platform_managed"]);
+}
+
++ (NSArray<NSString *> *)availableOfficialActionsForStatus:(NSString *)currentStatus {
+    NSString *status = currentStatus.lowercaseString ?: @"";
+    NSDictionary<NSString *, NSArray<NSString *> *> *transitions = @{
+        @"new_request": @[@"accept", @"reject", @"cancel_request"],
+        @"accepted": @[@"start_preparing", @"cancel_request"],
+        @"preparing": @[@"mark_ready", @"cancel_request"],
+        @"ready_for_pickup": @[@"request_delivery", @"cancel_request"],
+        @"delivery_requested": @[@"cancel_request"],
+        @"delivery_assigned": @[@"confirm_handover", @"cancel_request"],
+        @"awaiting_handover": @[@"cancel_request"],
+    };
+    return transitions[status] ?: @[];
 }
 
 @end

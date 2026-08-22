@@ -15,6 +15,7 @@
 #import "PPImageCollection.h"
 #import "PPFormEngine.h"
 #import "PPDesignTokens.h"
+#import "PPAlertHelper.h"
 
 @import Firebase;
 @import FirebaseAuth;

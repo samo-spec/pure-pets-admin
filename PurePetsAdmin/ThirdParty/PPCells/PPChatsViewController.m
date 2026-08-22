@@ -11,6 +11,7 @@
 #import "Styling.h"
 #import "Language.h"
 #import "AlertHelper.h"
+#import "PurePetsAdmin-Swift.h"
 @import FirebaseAuth;
 @import FirebaseFirestore;
 @import FirebaseFunctions;
@@ -1932,7 +1933,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     NSDictionary *thread = self.filteredChats[indexPath.row];
     [self markThreadRead:thread];
     PPSupportThreadViewController *detail = [[PPSupportThreadViewController alloc] initWithThread:thread currentUID:self.currentUID canManageSupport:self.hasManagePermission];
-    [self.navigationController pushViewController:detail animated:YES];
+    PPAdminSupportThreadHostingController *hosting = [[PPAdminSupportThreadHostingController alloc] initWithController:detail];
+    [self.navigationController pushViewController:hosting animated:YES];
 }
 
 @end

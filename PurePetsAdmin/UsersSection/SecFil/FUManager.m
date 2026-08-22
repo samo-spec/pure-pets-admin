@@ -366,7 +366,7 @@ static inline BOOL FUShouldTreatAuthErrorAsTransient(NSError * _Nullable error) 
         return;
     }
 
-    GIDSignIn.sharedInstance.configuration = [[GIDConfiguration alloc] initWithClientID:clientID];
+    // GIDSignIn.sharedInstance.configuration removed to preserve App Check
     [GIDSignIn.sharedInstance signInWithPresentingViewController:presentingVC completion:^(GIDSignInResult * _Nullable signInResult, NSError * _Nullable error) {
         if (error) {
             [self p_finishUser:nil error:error completion:completion];

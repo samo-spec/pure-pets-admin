@@ -1,5 +1,6 @@
 #import "PPContentModerationViewController.h"
 #import "PPStaffAuth.h"
+#import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseFirestore;
@@ -553,12 +554,8 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
 }
 
 - (void)showContentDetail:(PPContentModerationItem *)item {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:item.title
-        message:[NSString stringWithFormat:kLang(@"Moderation_Detail_Format"),
-                 [item sourceLabel], item.documentID, item.status, item.reportReason ?: kLang(@"None")]
-        preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK_Title") style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showInfoIn:self title:item.title subtitle:[NSString stringWithFormat:kLang(@"Moderation_Detail_Format"),
+                 [item sourceLabel], item.documentID, item.status, item.reportReason ?: kLang(@"None")]];
 }
 
 - (void)showChatReportDetail:(PPChatReportItem *)report {

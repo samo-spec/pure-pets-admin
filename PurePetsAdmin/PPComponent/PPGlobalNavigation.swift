@@ -234,10 +234,10 @@ private enum PPNavPalette {
 
 private enum PPNavSpec {
     // Host reservations -------------------------------------------------------
-    static let expandedHeight: CGFloat = 83
-    static let largeTextExpandedHeight: CGFloat = 83
-    static let accessibilityExpandedHeight: CGFloat = 83
-    static let compactHeight: CGFloat = 52
+    static let expandedHeight: CGFloat = 72
+    static let largeTextExpandedHeight: CGFloat = 72
+    static let accessibilityExpandedHeight: CGFloat = 72
+    static let compactHeight: CGFloat = 48
 
     // Navigation pearl --------------------------------------------------------
     static let expandedLeadingMargin: CGFloat = 20
@@ -334,11 +334,11 @@ private enum PPNavSpec {
         largeText: Bool = false
     ) -> CGFloat {
         guard mode == .expanded else { return compactHeight }
-        if accessibilitySize { return 96 }
+        if accessibilitySize { return 88 }
         if hasSubtitle {
-            return largeText ? 94 : 84
+            return largeText ? 82 : 72
         } else {
-            return largeText ? 74 : 66
+            return largeText ? 64 : 56
         }
     }
 

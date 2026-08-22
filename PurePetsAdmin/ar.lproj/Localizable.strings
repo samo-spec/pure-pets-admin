@@ -3245,3 +3245,22 @@
 "POS_ReceiptSummary" = "ملخص الإيصال";
 
 "POS_ReceiptDate" = "التاريخ";
+"PaymentMgmt_OfficialFulfillment_Title" = "تنفيذ طلب بيور بتس الرسمي";
+"PaymentMgmt_OfficialFulfillment_Loading" = "جارٍ تحميل سجل التنفيذ الرسمي…";
+"PaymentMgmt_OfficialFulfillment_Error" = "تعذر تحميل سجل التنفيذ الرسمي.";
+"PaymentMgmt_OfficialFulfillment_None" = "لا يوجد سجل تنفيذ رسمي تابع لبيور بتس مرتبط بهذا الطلب. تظل سجلات الشركاء مُدارة من شاشة طلبات التنفيذ.";
+"PaymentMgmt_OfficialFulfillment_Ambiguous" = "يحتوي هذا الطلب على أكثر من سجل تنفيذ رسمي، لذلك لم يُسمح بأي إجراء.";
+"PaymentMgmt_OfficialFulfillment_NotManageable" = "سجل التنفيذ ليس طلبًا رسميًا لبيور بتس أو يقع خارج نطاق صلاحيات الموظف.";
+"PaymentMgmt_OfficialFulfillment_InvalidCommand" = "حدّث الطلب وأدخل ملاحظة موظف صحيحة قبل المتابعة.";
+"PaymentMgmt_OfficialFulfillment_Action_Accept" = "قبول الطلب الرسمي";
+"PaymentMgmt_OfficialFulfillment_Action_Reject" = "رفض الطلب الرسمي";
+"PaymentMgmt_OfficialFulfillment_Action_StartPreparing" = "بدء التجهيز";
+"PaymentMgmt_OfficialFulfillment_Action_MarkReady" = "تحديده جاهزًا للاستلام";
+"PaymentMgmt_OfficialFulfillment_Action_RequestDelivery" = "طلب التوصيل";
+"PaymentMgmt_OfficialFulfillment_Action_ConfirmHandover" = "تأكيد التسليم للمندوب";
+"PaymentMgmt_OfficialFulfillment_Action_Cancel" = "إلغاء الطلب الرسمي";
+"PaymentMgmt_OfficialFulfillment_Action_Subtitle" = "يحدّث سجل التنفيذ الرسمي ويزامن حالة الطلب الرئيسي تلقائيًا.";
+"PaymentMgmt_OfficialFulfillment_DefaultNote" = "إجراء موظف المدفوعات: %@";
+"PaymentMgmt_OfficialFulfillment_Prompt" = "أضف ملاحظة تشغيلية قصيرة. سيُسجّل الإجراء في سجل تدقيق التنفيذ.";
+"PaymentMgmt_OfficialFulfillment_Confirm" = "سينقل هذا الإجراء سجل التنفيذ الرسمي عبر دورة الحالة المعتمدة ويحدّث الطلب الرئيسي تلقائيًا.";
+"PaymentMgmt_OfficialFulfillment_Success" = "تم تحديث سجل التنفيذ الرسمي.";

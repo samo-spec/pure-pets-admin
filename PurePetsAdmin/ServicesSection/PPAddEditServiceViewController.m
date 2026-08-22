@@ -16,6 +16,7 @@
 @import FirebaseMessaging;
 #import <PhotosUI/PhotosUI.h>
 #import <objc/runtime.h>
+#import "PPAlertHelper.h"
 
 static NSString * const kTagTitle = @"serviceTitle";
 static NSString * const kTagDescription = @"serviceDescription";
@@ -448,18 +449,14 @@ static UIColor *PPServiceAccentColor(void) {
 #pragma mark - Alerts
 
 - (void)pp_showErrorAlert:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Error") ?: @"Error" message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") ?: @"OK" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showInfoIn:self title:kLang(@"Error") ?: @"Error" subtitle:message];
 }
 
 - (void)pp_showSuccessAlertAndPop:(NSString *)message {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Success_Title") ?: @"Success" message:message preferredStyle:UIAlertControllerStyleAlert];
     __weak typeof(self) weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") ?: @"OK" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+    [PPAlertHelper showSuccessIn:self title:kLang(@"Success_Title") ?: @"Success" subtitle:message OKAction:^(__unused NSString * _Nullable text, __unused BOOL didConfirm) {
         [weakSelf.navigationController popViewControllerAnimated:YES];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+    }];
 }
 
 #pragma mark - Image Picking

@@ -152,7 +152,76 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
 #pragma mark - Setup
 
+- (void)pp_onBackTapped {
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)setupStatsHeader {
+    // 1. Navigation Top Bar (Back Button + Add Button)
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:AppPrimaryClr forState:UIControlStateNormal];
+    backBtn.tintColor = AppPrimaryClr;
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:backBtn];
+
+    UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    addBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *addConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [addBtn setImage:[UIImage systemImageNamed:@"plus" withConfiguration:addConfig] forState:UIControlStateNormal];
+    addBtn.tintColor = AppPrimaryClr;
+    addBtn.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.10];
+    addBtn.layer.cornerRadius = 18.0;
+    addBtn.layer.masksToBounds = YES;
+    [addBtn addTarget:self action:@selector(addServiceTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:addBtn];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = SeconderyTextClr;
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"Service_Section_Title")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [self.view addSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = PrimaryTextClr;
+    titleLabel.text = kLang(@"Service_Section_Title");
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [self.view addSubview:titleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4],
+        [backBtn.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [addBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [addBtn.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+        [addBtn.widthAnchor constraintEqualToConstant:36],
+        [addBtn.heightAnchor constraintEqualToConstant:36],
+
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
+
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16]
+    ]];
+
     self.totalPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Total") accentColor:AppPrimaryClr];
     self.livePill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Live") accentColor:[UIColor ppSuccess]];
     self.reviewPill = [[_PPServiceStatPill alloc] initWithCaption:kLang(@"Service_Stat_Review") accentColor:[UIColor ppWarning]];
@@ -171,7 +240,7 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
     [self.view addSubview:self.statsStack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.statsStack.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:10],
+        [self.statsStack.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:12],
         [self.statsStack.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
         [self.statsStack.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16]
     ]];

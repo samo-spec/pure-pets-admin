@@ -51,6 +51,13 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)fetchFulfillmentDetail:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSArray *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillmentDetail(_:completion:));
 
+/// Resolves the single official, platform-owned child using only the exact IDs
+/// already bound to the parent order. Partner children are never returned.
+- (void)fetchOfficialFulfillmentForParentOrderID:(NSString *)parentOrderID
+                                  fulfillmentIDs:(NSArray<NSString *> *)fulfillmentIDs
+                                      completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchOfficialFulfillment(parentOrderID:fulfillmentIDs:completion:));
+
 - (id<FIRListenerRegistration>)observeFulfillmentEvents:(NSString *)fulfillmentID completion:(void(^)(NSArray<NSDictionary *> *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(observeFulfillmentEvents(_:completion:));
 
@@ -67,11 +74,28 @@ NS_ASSUME_NONNULL_BEGIN
                         completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
     NS_SWIFT_NAME(adminOverride(_:expectedStatus:targetStatus:reason:note:notify:commandID:completion:));
 
+/// Advances only the official platform child through the normal provider-side
+/// lifecycle graph. The callable remains the authoritative permission and
+/// transition gate and synchronizes the parent projection atomically.
+- (void)transitionOfficialFulfillment:(PPFulfillmentRecord *)record
+                       expectedStatus:(NSString *)expectedStatus
+                                action:(NSString *)action
+                                  note:(NSString *)note
+                             commandID:(NSString *)commandID
+                            completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(transitionOfficialFulfillment(_:expectedStatus:action:note:commandID:completion:));
+
 /// Mirrors the callable's canonical `payments.manage` authorization gate.
 - (BOOL)canAdminOverride NS_SWIFT_NAME(canAdminOverride());
 
 + (NSArray<NSString *> *)allowedOverrideTargetsForStatus:(NSString *)currentStatus
     NS_SWIFT_NAME(allowedOverrideTargets(forStatus:));
+
++ (BOOL)isOfficialPlatformFulfillment:(nullable PPFulfillmentRecord *)record
+    NS_SWIFT_NAME(isOfficialPlatformFulfillment(_:));
+
++ (NSArray<NSString *> *)availableOfficialActionsForStatus:(NSString *)currentStatus
+    NS_SWIFT_NAME(availableOfficialActions(forStatus:));
 @end
 
 NS_ASSUME_NONNULL_END

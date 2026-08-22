@@ -23,8 +23,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface PPPOSService : NSObject
 + (instancetype)shared;
-- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items total:(double)total paymentMethod:(NSString *)paymentMethod completion:(void(^)(NSString *orderID, NSError *error))completion;
-- (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> *receipts, NSError *error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items total:(double)total paymentMethod:(NSString *)paymentMethod completion:(void(^)(NSString * _Nullable orderID, NSError * _Nullable error))completion;
+- (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts, NSError * _Nullable error))completion;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -7,6 +7,7 @@
 #import "PPDesignTokens.h"
 #import "UIViewController+PPNavBar.h"
 #import "PPStaffAuth.h"
+#import "PPAlertHelper.h"
 
 static UIFont *PPDeliveryScaledFont(UIFont *baseFont, UIFontTextStyle textStyle) {
     if (@available(iOS 11.0, *)) {
@@ -796,6 +797,14 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     self.refreshControl = refresh;
 }
 
+- (void)pp_onBackTapped {
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)pp_buildHeader {
     UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, CGRectGetWidth(self.tableView.bounds), 1.0)];
     header.backgroundColor = UIColor.clearColor;
@@ -804,9 +813,67 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     UIStackView *stack = [UIStackView new];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = PPSpaceSM;
+    stack.spacing = PPSpaceXS;
     stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:stack];
+
+    // 1. Navigation Top Bar (Back Button + Refresh Button)
+    UIView *navRow = [UIView new];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:backBtn];
+
+    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    refreshBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *refreshConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [refreshBtn setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfig] forState:UIControlStateNormal];
+    refreshBtn.tintColor = [UIColor ppPrimary];
+    refreshBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    refreshBtn.layer.cornerRadius = 18.0;
+    refreshBtn.layer.masksToBounds = YES;
+    [refreshBtn addTarget:self action:@selector(loadData) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:refreshBtn];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor],
+        [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [refreshBtn.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor],
+        [refreshBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [refreshBtn.widthAnchor constraintEqualToConstant:36],
+        [refreshBtn.heightAnchor constraintEqualToConstant:36]
+    ]];
+    [stack addArrangedSubview:navRow];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"Delivery_Title")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [stack addArrangedSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = kLang(@"Delivery_Title");
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [stack addArrangedSubview:titleLabel];
 
     self.headerStatusView = [UIView new];
     self.headerStatusView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -1240,16 +1307,9 @@ static NSString *PPDeliveryErrorText(NSError *error) {
                    title:(NSString *)title
               destructive:(BOOL)destructive
                   handler:(dispatch_block_t)handler {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
-                                                                     message:[NSString stringWithFormat:@"%@ - %@", PPDeliveryOrderReference(record), PPDeliveryStatusText(record.status)]
-                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Confirm")
-                                               style:destructive ? UIAlertActionStyleDestructive : UIAlertActionStyleDefault
-                                             handler:^(__unused UIAlertAction *action) {
+    [PPAlertHelper showConfirmationIn:self title:title subtitle:[NSString stringWithFormat:@"%@ - %@", PPDeliveryOrderReference(record), PPDeliveryStatusText(record.status)] confirmButton:kLang(@"Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(__unused NSString * _Nullable text, __unused BOOL didConfirm) {
         if (handler) handler();
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    } cancelBlock:nil];
 }
 
 - (void)pp_beginSubmitting {

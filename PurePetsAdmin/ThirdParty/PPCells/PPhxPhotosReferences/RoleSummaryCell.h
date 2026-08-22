@@ -7,7 +7,7 @@
 
 
 // RoleSummaryCell.h
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 
 @interface RoleSummaryCell : XLFormBaseCell
 @end

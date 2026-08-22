@@ -5,6 +5,7 @@
 #import "Language.h"
 #import "AlertHelper.h"
 #import "PPFunc+Haptics.h"
+#import "PPAlertHelper.h"
 
 static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
 
@@ -321,14 +322,9 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
 #pragma mark - Delete Plan
 
 - (void)pp_confirmDeletePlan:(PPProviderPlan *)plan {
-    UIAlertController *confirmation = [UIAlertController alertControllerWithTitle:kLang(@"Providers_Plans_Delete_Title")
-                                                                           message:kLang(@"Providers_Plans_Delete_Explanation")
-                                                                    preferredStyle:UIAlertControllerStyleAlert];
-    [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"Delete") style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+    [PPAlertHelper showConfirmationIn:self title:kLang(@"Providers_Plans_Delete_Title") subtitle:kLang(@"Providers_Plans_Delete_Explanation") confirmButton:kLang(@"Delete") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(__unused NSString * _Nullable text, __unused BOOL didConfirm) {
         [self pp_deletePlan:plan];
-    }]];
-    [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:confirmation animated:YES completion:nil];
+    } cancelBlock:nil];
 }
 
 - (void)pp_deletePlan:(PPProviderPlan *)plan {

@@ -10,12 +10,9 @@
 #import "NotificationSettingsViewController.h"
 #import "NotificationsListViewController.h"
 #import "PPBannersListVC.h"
-#import "PPPaymentManagementViewController.h"
-#import "PPPaymentBasicsSettingsViewController.h"
 // Legacy PPVetsListViewController replaced by SwiftUI PPVetsListHostingController
 #import "PPServicesListViewController.h"
 #import "PPAdminWebAppViewController.h"
-#import "AccessoriesListViewController.h"
 #import "UsersListVC.h"
 #import "UserManagementController.h"
 #import "AdminLoginViewController.h"
@@ -31,14 +28,11 @@
 #import "BranchSection/PPBranchesViewController.h"
 #import "AgentSection/PPAgentsViewController.h"
 #import "PurePetsAdmin-Swift.h"
-#import "Delivery/PPDeliveryManagementViewController.h"
 #import "Accounting/PPAccountingViewController.h"
 #import "Providers/PPProviderApplicationsViewController.h"
 #import "Providers/PPProviderPlansViewController.h"
 #import "Providers/PPProviderFeatureAccessViewController.h"
 #import "Providers/PPProviderAccountingViewController.h"
-#import "POS/PPPOSFastSellViewController.h"
-#import "POS/PPPOSHistoryViewController.h"
 #import "CategoriesSection/PPContentModerationViewController.h"
 #import "CategoriesSection/PPAuditLogViewController.h"
 #import <QuartzCore/QuartzCore.h>
@@ -50,6 +44,9 @@
 #import "Delivery/PPDeliveryService.h"
 #import "Payments/PPPaymentManagementService.h"
 #import "Payments/PPPaymentManagementModels.h"
+#import "Payments/PPPaymentManagementViewController.h"
+#import "Payments/PPPaymentBasicsSettingsViewController.h"
+#import "POS/PPPOSFastSellViewController.h"
 #import "AccessorySection/AccessoryManager.h"
 #import "BasicClasses/PetAccessory.h"
 // PP_ADMIN_COMMAND_SPINE_IMPORTS_END
@@ -3408,13 +3405,13 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [[UsersListVC alloc] initWithViewFor:ViewForEditRoleAndPermissions];
     }
     if ([tag isEqualToString:@"accessories"]) {
-        return [[AccessoriesListViewController alloc] initWithKind:AccessTypeAccessory];
+        return [PPInventoryListHostingController makeForAccessories];
     }
     if ([tag isEqualToString:@"food"]) {
-        return [[AccessoriesListViewController alloc] initWithKind:AccessTypeFood];
+        return [PPInventoryListHostingController makeForFood];
     }
     if ([tag isEqualToString:@"livePets"]) {
-        return [[AccessoriesListViewController alloc] initWithKind:AccessTypeLivePets];
+        return [PPInventoryListHostingController makeForLivePets];
     }
     if ([tag isEqualToString:@"services"]) {
         return [PPServicesListViewController new];
@@ -3441,7 +3438,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPBannersListVC new];
     }
     if ([tag isEqualToString:@"payments"]) {
-        return [PPPaymentManagementViewController new];
+        return [AdminPaymentListHostingController new];
     }
     if ([tag isEqualToString:@"paymentBasics"]) {
         return [PPPaymentBasicsSettingsViewController new];
@@ -3486,7 +3483,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPPOSFastSellViewController new];
     }
     if ([tag isEqualToString:@"posHistory"]) {
-        return [PPPOSHistoryViewController new];
+        return [AdminPOSHistoryHostingController new];
     }
     if ([tag isEqualToString:@"audit"]) {
         return [PPAuditLogViewController new];

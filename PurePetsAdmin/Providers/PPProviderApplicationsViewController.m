@@ -6,6 +6,7 @@
 #import "AlertHelper.h"
 #import "PPFunc+Haptics.h"
 #import "Styling.h"
+#import "PPAlertHelper.h"
 @import FirebaseFirestore;
 @import FirebaseFunctions;
 
@@ -957,6 +958,11 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     [divider.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
     [stack addArrangedSubview:divider];
 
+    UIStackView *nextActionStack = [UIStackView new];
+    nextActionStack.axis = UILayoutConstraintAxisVertical;
+    nextActionStack.spacing = PPSpaceXXS;
+    nextActionStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
     UILabel *nextLabel = [self pp_labelWithText:kLang(@"Providers_ApplicationDetail_NextMove")
                                            font:[Styling fontBold:PPFontFootnote]
                                           color:PPProviderSecondaryTextColor()
@@ -965,18 +971,19 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
                                            font:[Styling fontMedium:PPFontBody]
                                           color:PPProviderPrimaryTextColor()
                                           lines:0];
-    [stack addArrangedSubview:nextLabel];
-    [stack addArrangedSubview:nextValue];
+    [nextActionStack addArrangedSubview:nextLabel];
+    [nextActionStack addArrangedSubview:nextValue];
+    [stack addArrangedSubview:nextActionStack];
 
     [NSLayoutConstraint activateConstraints:@[
         [rail.topAnchor constraintEqualToAnchor:surface.topAnchor constant:PPSpaceMD],
         [rail.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor constant:-PPSpaceMD],
         [rail.leadingAnchor constraintEqualToAnchor:surface.leadingAnchor],
         [rail.widthAnchor constraintEqualToConstant:PPSpaceXS],
-        [stack.topAnchor constraintEqualToAnchor:surface.topAnchor constant:PPSpaceBase],
+        [stack.topAnchor constraintEqualToAnchor:surface.topAnchor constant:PPSpaceMD],
         [stack.leadingAnchor constraintEqualToAnchor:surface.leadingAnchor constant:PPSpaceLG],
-        [stack.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor constant:-PPSpaceBase],
-        [stack.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor constant:-PPSpaceBase],
+        [stack.trailingAnchor constraintEqualToAnchor:surface.trailingAnchor constant:-PPSpaceMD],
+        [stack.bottomAnchor constraintEqualToAnchor:surface.bottomAnchor constant:-PPSpaceMD],
     ]];
     return surface;
 }
@@ -1031,7 +1038,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     surface.translatesAutoresizingMaskIntoConstraints = NO;
     surface.backgroundColor = [UIColor ppSurface];
     surface.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    surface.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(PPSpaceBase, PPSpaceBase, PPSpaceBase, PPSpaceBase);
+    surface.directionalLayoutMargins = NSDirectionalEdgeInsetsMake(PPSpaceMD, PPSpaceMD, PPSpaceSM, PPSpaceMD);
     surface.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     PPApplyContinuousCorners(surface, PPCornerCard);
     [self.borderedSurfaces addObject:surface];
@@ -1065,7 +1072,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     [heading addArrangedSubview:symbol];
     [heading addArrangedSubview:title];
     [stack addArrangedSubview:heading];
-    [stack setCustomSpacing:PPSpaceMD afterView:heading];
+    [stack setCustomSpacing:PPSpaceSM afterView:heading];
 
     for (NSUInteger index = 0; index < rows.count; index++) {
         if (index > 0) {
@@ -1304,7 +1311,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     UIStackView *stack = [UIStackView new];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
     stack.axis = UILayoutConstraintAxisVertical;
-    stack.spacing = PPSpaceXS;
+    stack.spacing = PPSpaceXXS;
     [row addSubview:stack];
 
     UILabel *label = [self pp_labelWithText:labelText
@@ -1354,10 +1361,10 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     }
 
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:row.topAnchor constant:PPSpaceMD],
+        [stack.topAnchor constraintEqualToAnchor:row.topAnchor constant:PPSpaceSM],
         [stack.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
         [stack.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
-        [stack.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-PPSpaceMD],
+        [stack.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-PPSpaceSM],
     ]];
     return row;
 }
@@ -1368,10 +1375,10 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     UILabel *label = [self pp_labelWithText:text font:[Styling fontRegular:PPFontBody] color:PPProviderSecondaryTextColor() lines:0];
     [row addSubview:label];
     [NSLayoutConstraint activateConstraints:@[
-        [label.topAnchor constraintEqualToAnchor:row.topAnchor constant:PPSpaceMD],
+        [label.topAnchor constraintEqualToAnchor:row.topAnchor constant:PPSpaceSM],
         [label.leadingAnchor constraintEqualToAnchor:row.leadingAnchor],
         [label.trailingAnchor constraintEqualToAnchor:row.trailingAnchor],
-        [label.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-PPSpaceMD],
+        [label.bottomAnchor constraintEqualToAnchor:row.bottomAnchor constant:-PPSpaceSM],
     ]];
     return row;
 }

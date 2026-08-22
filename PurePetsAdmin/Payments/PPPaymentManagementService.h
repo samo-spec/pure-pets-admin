@@ -1,12 +1,6 @@
 #import <Foundation/Foundation.h>
 #import "PPPaymentManagementModels.h"
 
-@import Firebase;
-@import FirebaseAuth;
-@import FirebaseMessaging;
-@import FirebaseAuth;
-@import Firebase;
-@import FirebaseAuth;
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void (^PPPaymentAdminRecordsCompletion)(NSArray<PPPaymentAdminRecord *> *records,
@@ -54,33 +48,33 @@ typedef void (^PPPaymentAdminSettingsCompletion)(PPPaymentAdminSettings * _Nulla
                                nextStatus:(NSString *)nextStatus;
 
 - (void)approveOrder:(PPPaymentAdminRecord *)record
-                note:(NSString *)note
+                note:(nullable NSString *)note
           completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)markOrderProcessing:(PPPaymentAdminRecord *)record
-                       note:(NSString *)note
+                       note:(nullable NSString *)note
                  completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)markOrderShipped:(PPPaymentAdminRecord *)record
-                    note:(NSString *)note
+                    note:(nullable NSString *)note
               completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)markOrderDelivered:(PPPaymentAdminRecord *)record
-                      note:(NSString *)note
+                      note:(nullable NSString *)note
                 completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)collectOrderPayment:(PPPaymentAdminRecord *)record
-                       note:(NSString *)note
+                       note:(nullable NSString *)note
                  completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)cancelOrder:(PPPaymentAdminRecord *)record
-               note:(NSString *)note
+               note:(nullable NSString *)note
          completion:(PPPaymentAdminRecordCompletion)completion;
 
 - (void)resolveRequest:(PPPaymentAdminSupportRequest *)request
               forOrder:(PPPaymentAdminRecord *)record
                 action:(PPPaymentAdminRequestResolution)action
-                  note:(NSString *)note
+                  note:(nullable NSString *)note
                 amount:(nullable NSNumber *)amount
             completion:(PPPaymentAdminRecordCompletion)completion;
 

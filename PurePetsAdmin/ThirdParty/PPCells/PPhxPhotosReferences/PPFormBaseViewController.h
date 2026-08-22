@@ -7,7 +7,7 @@
 
 
 // PPFormBaseViewController.h
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 
 @interface PPFormBaseViewController : XLFormViewController
 @end

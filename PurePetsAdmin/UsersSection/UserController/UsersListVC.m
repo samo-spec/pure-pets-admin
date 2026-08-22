@@ -5,6 +5,7 @@
 @import FirebaseAuth;
 #import "PPUserCell.h"
 #import "UserManagementController.h"
+#import "PurePetsAdmin-Swift.h"
 #import "RPManager.h"
 #import "FUManager.h"
 #import "Styling.h"
@@ -14,6 +15,7 @@
 #import "PPDesignTokens.h"
 #import "PPStaffAuth.h"
 #import <objc/runtime.h>
+#import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
 #define RPM [RPManager shared]
@@ -1366,7 +1368,8 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     else if (self.viewForMode == ViewForEditRoleAndPermissions) type = EditTypeUserPermisstionAndRoles;
     
     UserManagementController *vc = [[UserManagementController alloc] initWithUser:u type:type];
-    [self.navigationController pushViewController:vc animated:YES];
+    PPAdminUserManagementHostingController *hosting = [[PPAdminUserManagementHostingController alloc] initWithController:vc titleText:u.UserName ?: kLang(@"User_Details")];
+    [self.navigationController pushViewController:hosting animated:YES];
 }
 
 - (void)userCellDidTapAction:(PPUserCell *)cell user:(UserModel *)user {

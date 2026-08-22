@@ -5,8 +5,8 @@
 //  Copyright (c) 2015 The EST Group. All rights reserved.
 //
 //
-//  Language.h
-//
+#import <UIKit/UIKit.h>
+#import <Foundation/Foundation.h>
 #import <objc/message.h>
 #define kLang(key) [Language get:key alter:nil]
 #define LanguageCode @[@"en", @"ar"]

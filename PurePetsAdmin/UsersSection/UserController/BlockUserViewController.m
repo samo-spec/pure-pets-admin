@@ -4,6 +4,7 @@
 //
 
 #import "BlockUserViewController.h"
+#import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;

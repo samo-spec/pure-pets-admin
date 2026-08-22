@@ -1,19 +1,33 @@
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
+
 
 #ifndef PrimaryTextClr
-#define PrimaryTextClr AppPrimaryTextClr
+#define PrimaryTextClr (AppPrimaryTextClr ?: UIColor.labelColor)
 #endif
 
 #ifndef SeconderyTextClr
-#define SeconderyTextClr AppSecondaryTextClr
+#define SeconderyTextClr (AppSecondaryTextClr ?: UIColor.secondaryLabelColor)
+#endif
+
+#ifndef PPFontBold
+#define PPFontBold(size) ([GM boldFontWithSize:(size)] ?: [UIFont systemFontOfSize:(size) weight:UIFontWeightBold])
+#endif
+
+#ifndef PPFontMedium
+#define PPFontMedium(size) ([GM MidFontWithSize:(size)] ?: [UIFont systemFontOfSize:(size) weight:UIFontWeightMedium])
+#endif
+
+#ifndef PPFontRegular
+#define PPFontRegular(size) ([GM MidFontWithSize:(size)] ?: [UIFont systemFontOfSize:(size) weight:UIFontWeightRegular])
 #endif
 
 static UIWindow *ppAlertOverlayWindow = nil;
 static UIViewController *ppAlertRootViewController = nil;
 
-static NSString *PPAlertSanitizedText(NSString *text, NSString *fallbackKey) {
+static NSString *PPAlertSanitizedText(NSString *text, NSString *fallbackKey)
+{
     if (text.length == 0) return text ?: @"";
-    return text;
+    return kLang(fallbackKey) ?: text;
 }
 
 static NSString *PPAlertTrimmedText(NSString *value) {
@@ -70,27 +84,27 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     PPAlertAppearance *appearance = [[self alloc] init];
     switch (type) {
         case PPAlertTypeSuccess:
-            appearance.accentColor = [UIColor ppSuccess];
+            appearance.accentColor = UIColor.systemGreenColor;
             appearance.iconSystemName = @"checkmark.seal.fill";
             break;
         case PPAlertTypeError:
-            appearance.accentColor = [UIColor ppError];
+            appearance.accentColor = UIColor.systemRedColor;
             appearance.iconSystemName = @"xmark.seal.fill";
             break;
         case PPAlertTypeWarning:
-            appearance.accentColor = [UIColor ppWarning];
+            appearance.accentColor = UIColor.systemOrangeColor;
             appearance.iconSystemName = @"exclamationmark.triangle.fill";
             break;
         case PPAlertTypeInfo:
-            appearance.accentColor = AppPrimaryClr;
+            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
             appearance.iconSystemName = @"info.circle.fill";
             break;
         case PPAlertTypeConfirmation:
-            appearance.accentColor = AppPrimaryClr;
+            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
             appearance.iconSystemName = @"questionmark.circle.fill";
             break;
         case PPAlertTypeTextInput:
-            appearance.accentColor = AppPrimaryClr;
+            appearance.accentColor = AppPrimaryClr ?: UIColor.systemBlueColor;
             appearance.iconSystemName = @"square.and.pencil.circle.fill";
             break;
     }
@@ -176,7 +190,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
                  initialText:(NSString * _Nullable)initialText
                  secureEntry:(BOOL)secureEntry
                 keyboardType:(UIKeyboardType)keyboardType
-shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
+ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
     self = [super initWithFrame:CGRectZero];
     if (!self) return nil;
 
@@ -337,24 +351,24 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
     self.cardCenterYConstraint = [self.cardView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor];
 
     [NSLayoutConstraint activateConstraints:@[
-
+        
         [self.backdropView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.backdropView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         [self.backdropView.topAnchor constraintEqualToAnchor:self.topAnchor],
         [self.backdropView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-
+        
         [self.dimmingView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.dimmingView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         [self.dimmingView.topAnchor constraintEqualToAnchor:self.topAnchor],
         [self.dimmingView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
-
+        
         [dismissButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [dismissButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
         [dismissButton.topAnchor constraintEqualToAnchor:self.topAnchor],
         [dismissButton.bottomAnchor constraintEqualToAnchor:self.bottomAnchor],
 
         self.cardCenterYConstraint,
-
+        
         [self.cardView.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.safeAreaLayoutGuide.leadingAnchor constant:20.0],
         [self.cardView.trailingAnchor constraintLessThanOrEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-20.0],
         [self.cardView.topAnchor constraintGreaterThanOrEqualToAnchor:self.safeAreaLayoutGuide.topAnchor constant:20.0],
@@ -372,7 +386,7 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
         [self.badgeView.centerXAnchor constraintEqualToAnchor:self.cardView.centerXAnchor],
         [self.badgeView.widthAnchor constraintEqualToConstant:60.0],
         [self.badgeView.heightAnchor constraintEqualToConstant:60.0],
-
+        
         [self.iconView.centerXAnchor constraintEqualToAnchor:self.badgeView.centerXAnchor],
         [self.iconView.centerYAnchor constraintEqualToAnchor:self.badgeView.centerYAnchor],
         [self.iconView.widthAnchor constraintEqualToConstant:32.0],
@@ -460,7 +474,7 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
             borderColor = UIColor.clearColor;
             break;
         case PPAlertActionStyleDestructive:
-            backgroundColor = [UIColor ppError];
+            backgroundColor = UIColor.systemRedColor;
             titleColor = UIColor.whiteColor;
             borderColor = UIColor.clearColor;
             break;
@@ -758,7 +772,7 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
 
 @end
 
-@implementation AlertHelper
+@implementation PPAlertHelper
 
 + (UIViewController *)presenterForViewController:(UIViewController *)vc {
     UIViewController *presenter = vc;
@@ -830,14 +844,22 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
 }
 
 + (void)showErrorIn:(UIViewController *)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle {
+    [self showErrorIn:vc title:title subtitle:subtitle completion:nil];
+}
+
++ (void)showErrorIn:(UIViewController *)vc
+              title:(NSString *)title
+           subtitle:(NSString * _Nullable)subtitle
+         completion:(void (^ _Nullable)(void))completion {
     UIImage *icon = [self symbolImageNamed:@"xmark.seal.fill" fallbackType:PPAlertTypeError];
+    AlertCompletionBlock wrapped = completion ? ^(__unused NSString * _Nullable text, __unused BOOL didConfirm) { completion(); } : nil;
     PPAlert *alert = [[PPAlert alloc] initWithType:PPAlertTypeError
                                              title:title
                                           subtitle:subtitle ?: @""
                                               icon:icon
                                        confirmTitle:kLang(@"OK")
                                         cancelTitle:nil
-                                      confirmAction:nil
+                                      confirmAction:wrapped
                                        cancelAction:nil];
     [alert showInViewController:[self presenterForViewController:vc]];
 }
@@ -985,7 +1007,7 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
                  initialText:(NSString * _Nullable)initialText
                  confirmText:(NSString * _Nullable)confirmText
                   cancelText:(NSString * _Nullable)cancelText
-                 completion:(AlertCompletionBlock)completion {
+                  completion:(AlertCompletionBlock)completion {
     [self showTextPromptIn:vc
                      title:title
                   subtitle:subtitle
@@ -1002,31 +1024,43 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
     }];
 }
 
-#pragma mark - Backward-compatible (old AlertHelper API)
-
-+ (void)showAlertIn:(UIViewController *)vc
-              title:(NSString *)title
-           subtitle:(NSString *)subtitle {
-    [self showAlertIn:vc title:title subtitle:subtitle placeholder:nil withType:@"error"];
-}
-
-+ (void)showAlertIn:(UIViewController *)vc
-              title:(NSString *)title
-           subtitle:(NSString *)subtitle
-        placeholder:(NSString *)placeholder
-           withType:(NSString *)type {
-    if (!vc) return;
-    if ([type isEqualToString:@"success"]) {
-        [self showSuccessIn:vc title:title subtitle:subtitle];
-    } else if ([type isEqualToString:@"error"]) {
-        [self showErrorIn:vc title:title subtitle:subtitle];
-    } else if ([type isEqualToString:@"warning"]) {
-        [self showWarningIn:vc title:title subtitle:subtitle];
-    } else if ([type isEqualToString:@"info"]) {
-        [self showInfoIn:vc title:title subtitle:subtitle];
-    } else {
-        [self showInfoIn:vc title:title subtitle:subtitle];
++ (void)showDestructiveTextFieldAlertIn:(UIViewController *)vc
+                                  title:(NSString *)title
+                               subtitle:(NSString * _Nullable)subtitle
+                            placeholder:(NSString * _Nullable)placeholder
+                            initialText:(NSString * _Nullable)initialText
+                            confirmText:(NSString * _Nullable)confirmText
+                             cancelText:(NSString * _Nullable)cancelText
+                                   icon:(UIImage * _Nullable)icon
+                             completion:(AlertCompletionBlock)completion {
+    NSString *safeConfirm = confirmText.length ? confirmText : kLang(@"OK");
+    NSString *safeCancel = cancelText.length ? cancelText : kLang(@"Cancel");
+    NSMutableArray<PPAlertActionItem *> *actions = [NSMutableArray array];
+    [actions addObject:[PPAlertActionItem itemWithTitle:safeCancel
+                                                  style:PPAlertActionStyleCancel
+                                             completion:^(__unused NSString * _Nullable text, __unused BOOL didConfirm) {
+        if (completion) completion(nil, NO);
     }
+                                       simpleCompletion:nil]];
+    [actions addObject:[PPAlertActionItem itemWithTitle:safeConfirm
+                                                  style:PPAlertActionStyleDestructive
+                                             completion:^(NSString * _Nullable text, __unused BOOL didConfirm) {
+        if (completion) completion(text, YES);
+    }
+                                       simpleCompletion:nil]];
+
+    PPAlert *alert = [[PPAlert alloc] initWithType:PPAlertTypeTextInput
+                                             title:title
+                                          subtitle:subtitle ?: @""
+                                              icon:icon ?: [self symbolImageNamed:@"exclamationmark.bubble.fill"
+                                                                    fallbackType:PPAlertTypeTextInput]
+                                           actions:actions
+                                       placeholder:placeholder
+                                       initialText:initialText
+                                       secureEntry:NO
+                                      keyboardType:UIKeyboardTypeDefault
+                       shouldDismissOnBackgroundTap:NO];
+    [alert showInViewController:[self presenterForViewController:vc]];
 }
 
 + (void)showConfirmationIn:(UIViewController *)vc
@@ -1130,23 +1164,6 @@ shouldDismissOnBackgroundTap:(BOOL)shouldDismissOnBackgroundTap {
                                       keyboardType:keyboardType
                        shouldDismissOnBackgroundTap:YES];
     [alert showInViewController:[self presenterForViewController:vc]];
-}
-
-+ (void)showTextPromptIn:(UIViewController *)vc
-                   title:(NSString *)title
-             placeholder:(NSString * _Nullable)placeholder
-             initialText:(NSString * _Nullable)initialText
-              completion:(void(^)(NSString * _Nullable text))completion {
-    [self showTextPromptIn:vc
-                     title:title
-                  subtitle:nil
-               placeholder:placeholder
-               initialText:initialText
-               confirmText:nil
-                cancelText:nil
-               secureEntry:NO
-              keyboardType:UIKeyboardTypeDefault
-                completion:completion];
 }
 
 @end

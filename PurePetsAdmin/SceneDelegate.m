@@ -522,14 +522,14 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
           }
 
           self.pp_pendingPaymentOrderID = nil;
-          PPPaymentManagementViewController *paymentsVC = [PPPaymentManagementViewController new];
-          PPPaymentDetailsViewController *detailsVC = [[PPPaymentDetailsViewController alloc] initWithRecord:record];
+          AdminPaymentListHostingController *paymentsVC = [AdminPaymentListHostingController new];
+          AdminPaymentDetailHostingController *detailsVC = [[AdminPaymentDetailHostingController alloc] initWithOrderID:orderID];
 
           UIViewController *root = nav.viewControllers.firstObject;
           NSMutableArray<UIViewController *> *stack = [NSMutableArray array];
           if (root &&
-              ![root isKindOfClass:PPPaymentManagementViewController.class] &&
-              ![root isKindOfClass:PPPaymentDetailsViewController.class]) {
+              ![root isKindOfClass:AdminPaymentListHostingController.class] &&
+              ![root isKindOfClass:AdminPaymentDetailHostingController.class]) {
                [stack addObject:root];
           }
           [stack addObject:paymentsVC];

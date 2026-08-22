@@ -13,6 +13,7 @@
 #import "Language.h"
 #import "PPDesignTokens.h"
 #import "AlertHelper.h"
+#import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
 
@@ -836,12 +837,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
 }
 
 - (void)pp_presentHelp {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"HelpCenter")
-                                                                       message:kLang(@"Settings_Help_Message")
-                                                                preferredStyle:UIAlertControllerStyleAlert];
-    alert.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showInfoIn:self title:kLang(@"HelpCenter") subtitle:kLang(@"Settings_Help_Message")];
 }
 
 - (void)pp_confirmLogout {

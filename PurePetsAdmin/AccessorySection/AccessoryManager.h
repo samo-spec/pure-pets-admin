@@ -9,7 +9,11 @@
 //
 //
 //
-//
+#import <Foundation/Foundation.h>
+#import "BasicClasses/PetAccessory.h"
+
+@protocol FIRListenerRegistration;
+
 NS_ASSUME_NONNULL_BEGIN
 
 typedef void(^AccessoryArrayBlock)(NSArray<PetAccessory *> * _Nullable items, NSError * _Nullable error);

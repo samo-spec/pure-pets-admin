@@ -8,7 +8,7 @@
 
 // In PPTextFieldCell.h
 #import <UIKit/UIKit.h>
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 @class PPTextField;
 
 extern NSString * const XLFormRowDescriptorTypePPTextField;

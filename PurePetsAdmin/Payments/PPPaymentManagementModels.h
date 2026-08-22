@@ -1,11 +1,8 @@
 #import <Foundation/Foundation.h>
 
-@import Firebase;
-@import FirebaseAuth;
-@import FirebaseMessaging;
-@import FirebaseAuth;
-
 NS_ASSUME_NONNULL_BEGIN
+
+@class FIRDocumentSnapshot;
 
 typedef NS_ENUM(NSInteger, PPPaymentAdminDateRange) {
     PPPaymentAdminDateRangeAll = 0,

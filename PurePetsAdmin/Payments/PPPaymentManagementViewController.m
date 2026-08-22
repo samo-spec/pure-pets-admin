@@ -171,10 +171,15 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     [super viewDidLayoutSubviews];
 
     if (!self.searchContainer) return;
-    CGFloat width = self.tableView.bounds.size.width;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+    CGSize fitting = [self.searchContainer systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                         withHorizontalFittingPriority:UILayoutPriorityRequired
+                                               verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
     CGRect frame = self.searchContainer.frame;
-    if (fabs(frame.size.width - width) > 0.5) {
+    CGFloat targetHeight = MAX(fitting.height, 170.0);
+    if (fabs(frame.size.width - width) > 0.5 || fabs(frame.size.height - targetHeight) > 0.5) {
         frame.size.width = width;
+        frame.size.height = targetHeight;
         self.searchContainer.frame = frame;
         self.tableView.tableHeaderView = self.searchContainer;
     }
@@ -182,17 +187,68 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
 
 #pragma mark - UI
 
+- (void)pp_onBackTapped
+{
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)setupSearchHeader
 {
     CGFloat horizontal = PPScreenMargin;
     CGFloat vertical = PPSpaceXS;
     CGFloat searchHeight = MAX(PPTouchTargetMin, PPButtonHeightMD);
-    CGFloat containerHeight = vertical + searchHeight + vertical;
     CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
 
-    self.searchContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, containerHeight)];
+    self.searchContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 180.0)];
     self.searchContainer.backgroundColor = UIColor.clearColor;
 
+    // 1. Navigation Top Bar (Back Button + Refresh Button)
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [self.searchContainer addSubview:backBtn];
+
+    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    refreshBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *refreshConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [refreshBtn setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfig] forState:UIControlStateNormal];
+    refreshBtn.tintColor = [UIColor ppPrimary];
+    refreshBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    refreshBtn.layer.cornerRadius = 18.0;
+    refreshBtn.layer.masksToBounds = YES;
+    [refreshBtn addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventTouchUpInside];
+    [self.searchContainer addSubview:refreshBtn];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"PaymentMgmt_Dashboard_Title")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [self.searchContainer addSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = kLang(@"PaymentMgmt_Dashboard_Title");
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [self.searchContainer addSubview:titleLabel];
+
+    // 4. Search View
     PPS *search = [[PPS alloc] initWithFrame:CGRectZero];
     search.translatesAutoresizingMaskIntoConstraints = NO;
     search.cornerRadius = searchHeight / 2.0;
@@ -220,10 +276,31 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     [search configurePrimaryButtonWithImage:filterImage target:self action:@selector(onFilterTapped)];
     [search configureSecondaryButtonWithImage:resetImage target:self action:@selector(onResetFiltersTapped)];
     search.showsPrimaryButton = YES;
-
     [self.searchContainer addSubview:search];
+
     [NSLayoutConstraint activateConstraints:@[
-        [search.topAnchor constraintEqualToAnchor:self.searchContainer.topAnchor constant:vertical],
+        // Back Button & Refresh Button
+        [backBtn.topAnchor constraintEqualToAnchor:self.searchContainer.topAnchor constant:4],
+        [backBtn.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor constant:horizontal],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [refreshBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [refreshBtn.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor constant:-horizontal],
+        [refreshBtn.widthAnchor constraintEqualToConstant:36],
+        [refreshBtn.heightAnchor constraintEqualToConstant:36],
+
+        // Eyebrow
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor constant:horizontal],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor constant:-horizontal],
+
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor constant:horizontal],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor constant:-horizontal],
+
+        // Search Bar
+        [search.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:12],
         [search.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor constant:horizontal],
         [search.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor constant:-horizontal],
         [search.bottomAnchor constraintEqualToAnchor:self.searchContainer.bottomAnchor constant:-vertical],
@@ -469,6 +546,8 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
 
 - (NSArray<NSDictionary *> *)pp_orderActionsForRecord:(PPPaymentAdminRecord *)record
 {
+    // Fulfillment V1 actions need an exact child, expected status, and
+    // idempotency command. They are available only from Payment Details.
     if (record.fulfillmentVersion == 1) return @[];
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canApproveOrderStatus:record.rawStatus] &&

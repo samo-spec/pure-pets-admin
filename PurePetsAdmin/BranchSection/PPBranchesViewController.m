@@ -437,16 +437,70 @@ static NSString *const kBranchCellID = @"PPBranchCell";
     self.tableView.contentInset = UIEdgeInsetsMake(0.0, 0.0, 24.0, 0.0);
 }
 
+- (void)pp_onBackTapped {
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)setupHero {
-    self.heroView = [[PPBranchHeroView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 184)];
+    CGFloat width = CGRectGetWidth(self.tableView.bounds);
+    self.headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 290.0)];
+
+    // 1. Navigation Top Bar (Back Button + Add Button)
+    UIView *navRow = [[UIView alloc] initWithFrame:CGRectMake(0, 4, width, 44.0)];
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:backBtn];
+
+    if (self.canManage) {
+        UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+        addBtn.translatesAutoresizingMaskIntoConstraints = NO;
+        UIImageSymbolConfiguration *addConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+        [addBtn setImage:[UIImage systemImageNamed:@"plus" withConfiguration:addConfig] forState:UIControlStateNormal];
+        addBtn.tintColor = [UIColor ppPrimary];
+        addBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+        addBtn.layer.cornerRadius = 18.0;
+        addBtn.layer.masksToBounds = YES;
+        [addBtn addTarget:self action:@selector(didTapAdd) forControlEvents:UIControlEventTouchUpInside];
+        [navRow addSubview:addBtn];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [addBtn.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor constant:-16],
+            [addBtn.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+            [addBtn.widthAnchor constraintEqualToConstant:36],
+            [addBtn.heightAnchor constraintEqualToConstant:36]
+        ]];
+    }
+
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
+        [backBtn.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+    ]];
+
+    [self.headerContainer addSubview:navRow];
+
+    self.searchController.searchBar.frame = CGRectMake(0, 48.0, width, 56.0);
+    [self.headerContainer addSubview:self.searchController.searchBar];
+
+    self.heroView = [[PPBranchHeroView alloc] initWithFrame:CGRectMake(0, 104.0, width, 184.0)];
     self.heroView.titleLabel.text = kLang(@"Branches_Title");
     self.heroView.subtitleLabel.text = kLang(@"Branches_Subtitle");
-    CGFloat width = CGRectGetWidth(self.tableView.bounds);
-    self.headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 240.0)];
-    self.searchController.searchBar.frame = CGRectMake(0, 0, width, 56.0);
-    self.heroView.frame = CGRectMake(0, 56.0, width, 184.0);
-    [self.headerContainer addSubview:self.searchController.searchBar];
     [self.headerContainer addSubview:self.heroView];
+
     self.tableView.tableHeaderView = self.headerContainer;
     [self updateHero];
 }

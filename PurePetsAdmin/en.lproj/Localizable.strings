@@ -3194,3 +3194,22 @@
 "POS_ReceiptSummary" = "Receipt summary";
 
 "POS_ReceiptDate" = "Date";
+"PaymentMgmt_OfficialFulfillment_Title" = "Official Pure Pets fulfillment";
+"PaymentMgmt_OfficialFulfillment_Loading" = "Loading the official fulfillment…";
+"PaymentMgmt_OfficialFulfillment_Error" = "The official fulfillment could not be loaded.";
+"PaymentMgmt_OfficialFulfillment_None" = "No official Pure Pets fulfillment is linked to this order. Partner fulfillments remain managed in Fulfillment Orders.";
+"PaymentMgmt_OfficialFulfillment_Ambiguous" = "This order has more than one official fulfillment. No action was allowed.";
+"PaymentMgmt_OfficialFulfillment_NotManageable" = "This fulfillment is not an official Pure Pets order or is outside your staff scope.";
+"PaymentMgmt_OfficialFulfillment_InvalidCommand" = "Reload the order and enter a valid staff note before continuing.";
+"PaymentMgmt_OfficialFulfillment_Action_Accept" = "Accept official order";
+"PaymentMgmt_OfficialFulfillment_Action_Reject" = "Reject official order";
+"PaymentMgmt_OfficialFulfillment_Action_StartPreparing" = "Start preparation";
+"PaymentMgmt_OfficialFulfillment_Action_MarkReady" = "Mark ready for pickup";
+"PaymentMgmt_OfficialFulfillment_Action_RequestDelivery" = "Request delivery";
+"PaymentMgmt_OfficialFulfillment_Action_ConfirmHandover" = "Confirm handover";
+"PaymentMgmt_OfficialFulfillment_Action_Cancel" = "Cancel official order";
+"PaymentMgmt_OfficialFulfillment_Action_Subtitle" = "Updates the official fulfillment child and synchronizes the parent order.";
+"PaymentMgmt_OfficialFulfillment_DefaultNote" = "Payments staff action: %@";
+"PaymentMgmt_OfficialFulfillment_Prompt" = "Add a short operational note. The action is recorded in the fulfillment audit trail.";
+"PaymentMgmt_OfficialFulfillment_Confirm" = "This advances the official fulfillment through its canonical lifecycle and updates the parent order automatically.";
+"PaymentMgmt_OfficialFulfillment_Success" = "Official fulfillment updated.";

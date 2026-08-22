@@ -7,7 +7,7 @@
 //
 
 #import <UIKit/UIKit.h>
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 #import "PPImageCollection.h"
 
 NS_ASSUME_NONNULL_BEGIN

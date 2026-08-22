@@ -164,9 +164,6 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         let root = AdminCommandCenterScreenView(store: store)
         let host = UIHostingController(rootView: root)
         host.view.backgroundColor = .clear
-        if #available(iOS 16.4, *) {
-            host.safeAreaRegions = []
-        }
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -216,6 +213,15 @@ private enum AdminCommandMetric {
     static let compactRadius: CGFloat = 16
     static let iconSize: CGFloat = 44
     static let minimumActionHeight: CGFloat = 52
+}
+
+private struct V6CommandCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.72 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+    }
 }
 
 private enum AdminCommandTone {
@@ -273,65 +279,154 @@ struct AdminCommandCenterScreenView: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
-                operationalContext
-                phaseContent
+        GeometryReader { geometry in
+            let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 44)
+            ScrollView(.vertical, showsIndicators: false) {
+                LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                    operationalContext
+                    phaseContent
+                }
+                .padding(.horizontal, AdminCommandMetric.pageMargin)
+                .padding(.top, safeTop + 8)
+                .padding(.bottom, 104)
             }
-            .padding(.horizontal, AdminCommandMetric.pageMargin)
-            .padding(.top, 12)
-            .padding(.bottom, 28)
+            .background(AdminSurface.background.ignoresSafeArea())
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .ignoresSafeArea()
         .environment(\.layoutDirection, direction)
         .environment(\.locale, locale)
     }
 
     private var operationalContext: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(L10n("AdminCommandCenter_Role"))
-                        .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.secondaryText)
-                    Text(store.snapshot.roleName.isEmpty ? L10n("pp_role_admin") : store.snapshot.roleName)
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: 10) {
+            // Top Row: Profile / Identity + Language & Menu Actions
+            HStack(alignment: .center, spacing: 10) {
+                // Profile Avatar & Role Info (Tapping opens Account / Profile)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    store.onRoute?("editMyAccount")
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.12))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "person.badge.shield.checkmark.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+                        .overlay(
+                            Circle()
+                                .stroke(AdminSurface.primary.opacity(0.20), lineWidth: 1)
+                        )
+                        
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(store.snapshot.roleName.isEmpty ? L10n("pp_role_admin") : store.snapshot.roleName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(moduleCountText)
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
                 }
+                .buttonStyle(V6CommandCardButtonStyle())
 
-                Spacer(minLength: 12)
+                Spacer(minLength: 6)
 
-                Text(moduleCountText)
-                    .font(AdminType.footnoteBold)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.trailing)
+                // Trailing Controls: Language Switch Button + Actions Menu
+                HStack(spacing: 6) {
+                    // Language Switcher Button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        store.onToggleLanguage?()
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(store.localeCode == "ar" ? "EN" : "عربي")
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 9)
+                        .frame(height: 32)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                        .overlay(Capsule().stroke(AdminSurface.primary.opacity(0.18), lineWidth: 1))
+                    }
+                    .buttonStyle(V6CommandCardButtonStyle())
+                    .accessibilityLabel(L10n("Confirm_LanguageChange_Title"))
+
+                    // Actions Menu Button
+                    Menu {
+                        Button {
+                            store.onRoute?("editMyAccount")
+                        } label: {
+                            Label(L10n("EditAccount"), systemImage: "person.crop.circle")
+                        }
+                        
+                        Button {
+                            store.onRefresh?()
+                        } label: {
+                            Label(L10n("CommandCenter_Refresh"), systemImage: "arrow.clockwise")
+                        }
+
+                        Button {
+                            store.onToggleLanguage?()
+                        } label: {
+                            Label(L10n("Confirm_LanguageChange_Title"), systemImage: "globe")
+                        }
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            store.onRequestLogout?()
+                        } label: {
+                            Label(L10n("Logout"), systemImage: "power")
+                        }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.control)
+                                .frame(width: 32, height: 32)
+                                .overlay(
+                                    Circle()
+                                        .stroke(AdminSurface.hairline, lineWidth: 1)
+                                )
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+                    }
+                    .accessibilityLabel(L10n("CommandCenter_Tab_More"))
+                }
             }
 
             Divider()
 
-            HStack(spacing: 10) {
+            // Status Banner Row
+            HStack(spacing: 8) {
                 Image(systemName: readinessTone.symbol)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(readinessTone.color)
-                    .frame(width: 28, height: 28)
-                    .background(readinessTone.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .frame(width: 24, height: 24)
+                    .background(readinessTone.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
                     .accessibilityHidden(true)
 
                 Text(readinessText)
-                    .font(AdminType.callout)
+                    .font(AdminType.caption1)
                     .foregroundColor(AdminSurface.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(16)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous))
+        .padding(14)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminCommandMetric.compactRadius, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminCommandMetric.cardRadius, style: .continuous)
+            RoundedRectangle(cornerRadius: AdminCommandMetric.compactRadius, style: .continuous)
                 .stroke(AdminSurface.hairline)
         )
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder

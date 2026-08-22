@@ -324,14 +324,6 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
     private let dismissTarget: AnyObject
     private let dismissAction: Selector
     private var workflowNavigationController: AdminGlobalNavigationStackController?
-    private var globalNavigationController: PPGlobalNavigationHostingController?
-    private var globalNavigationHeightConstraint: NSLayoutConstraint?
-    private var actionItemsByIdentifier: [String: UIBarButtonItem] = [:]
-    private var overflowActionItems: [UIBarButtonItem] = []
-    private var actionItemObservations: [NSKeyValueObservation] = []
-    private nonisolated(unsafe) var navigationItemsObserver: (any NSObjectProtocol)?
-    private nonisolated(unsafe) var commandNavigationItemsObserver: (any NSObjectProtocol)?
-    private var usesCompactNavigationLayout: Bool?
     private var appliedLanguageCode: String?
 
     init(rootViewController: UIViewController,
@@ -359,118 +351,19 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         workflowNavigationController = navigationController
         PPSetCommandCenterNavigationManaged(navigationController, true)
         navigationController.delegate = self
-        commandNavigationItemsObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("PPCommandCenterNavigationItemsDidChangeNotification"),
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let changedController = notification.object as? UIViewController else { return }
-            Task { @MainActor [weak self] in
-                guard let self,
-                      self.workflowNavigationController?.topViewController === changedController else {
-                    return
-                }
-                self.refreshGlobalNavigation()
-            }
-        }
-        navigationItemsObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name("PPHomeControlNavigationItemsDidChangeNotification"),
-            object: rootViewController,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.refreshGlobalNavigation()
-            }
-        }
-        AdminConnectedRouteChrome.apply(to: rootViewController, in: navigationController, route: route)
-        if let deliveryController = rootViewController as? PPDeliveryManagementViewController {
-            deliveryController.globalNavigationStateDidChange = { [weak self] in
-                self?.refreshGlobalNavigation()
-            }
-        }
 
-        let globalNavigation = PPGlobalNavigationHostingController(
-            configuration: navigationConfiguration(for: rootViewController)
-        ) { [weak self] action in
-            self?.handleGlobalNavigationAction(action)
-        }
-        globalNavigation.onPreferredBarHeightChange = { [weak self] height in
-            guard let self,
-                  abs((self.globalNavigationHeightConstraint?.constant ?? height) - height) > 0.5 else {
-                return
-            }
-            self.globalNavigationHeightConstraint?.constant = height
-            self.view.setNeedsLayout()
-        }
-        globalNavigationController = globalNavigation
-        addChild(globalNavigation)
-        view.addSubview(globalNavigation.view)
-        globalNavigation.view.translatesAutoresizingMaskIntoConstraints = false
-        globalNavigation.view.semanticContentAttribute = view.semanticContentAttribute
-        let heightConstraint = globalNavigation.view.heightAnchor.constraint(
-            equalToConstant: globalNavigation.preferredBarHeight
-        )
-        globalNavigationHeightConstraint = heightConstraint
-        NSLayoutConstraint.activate([
-            globalNavigation.view.topAnchor.constraint(equalTo: view.topAnchor),
-            globalNavigation.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            globalNavigation.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            heightConstraint,
-        ])
-        heightConstraint.constant = globalNavigation.preferredBarHeight
-        globalNavigation.didMove(toParent: self)
+        AdminConnectedRouteChrome.apply(to: rootViewController, in: navigationController, route: route)
 
         addChild(navigationController)
         view.addSubview(navigationController.view)
         navigationController.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            navigationController.view.topAnchor.constraint(equalTo: globalNavigation.view.bottomAnchor),
+            navigationController.view.topAnchor.constraint(equalTo: view.topAnchor),
             navigationController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             navigationController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             navigationController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         navigationController.didMove(toParent: self)
-        view.bringSubviewToFront(globalNavigation.view)
-    }
-
-    deinit {
-        if let navigationItemsObserver {
-            NotificationCenter.default.removeObserver(navigationItemsObserver)
-        }
-        if let commandNavigationItemsObserver {
-            NotificationCenter.default.removeObserver(commandNavigationItemsObserver)
-        }
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        if let preferredHeight = globalNavigationController?.preferredBarHeight,
-           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
-            globalNavigationHeightConstraint?.constant = preferredHeight
-            view.setNeedsLayout()
-        }
-        let compact = shouldUseCompactNavigationLayout
-        guard usesCompactNavigationLayout != compact else { return }
-        usesCompactNavigationLayout = compact
-        refreshGlobalNavigation()
-    }
-
-    override func viewSafeAreaInsetsDidChange() {
-        super.viewSafeAreaInsetsDidChange()
-        if let preferredHeight = globalNavigationController?.preferredBarHeight,
-           abs((globalNavigationHeightConstraint?.constant ?? 0) - preferredHeight) > 0.5 {
-            globalNavigationHeightConstraint?.constant = preferredHeight
-            view.setNeedsLayout()
-        }
-    }
-
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        guard previousTraitCollection?.preferredContentSizeCategory != traitCollection.preferredContentSizeCategory else {
-            return
-        }
-        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
-        refreshGlobalNavigation()
     }
 
     func refreshLanguageIfNeeded(_ languageCode: String) {
@@ -480,7 +373,6 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
 
         let direction = Language.semanticAttributeForCurrentLanguage()
         view.semanticContentAttribute = direction
-        globalNavigationController?.view.semanticContentAttribute = direction
         workflowNavigationController?.view.semanticContentAttribute = direction
 
         guard let navigationController = workflowNavigationController,
@@ -493,261 +385,17 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
             visibleController.navigationItem.title = title
         }
         AdminConnectedRouteChrome.apply(to: visibleController, in: navigationController, route: route)
-        refreshGlobalNavigation()
-    }
-
-    private func navigationConfiguration(for viewController: UIViewController) -> PPGlobalNavigationConfiguration {
-        let isRoot = workflowNavigationController?.viewControllers.first === viewController
-        let title = resolvedTitle(for: viewController)
-        let leadingAction = isRoot ? closeAction : backAction
-
-        return PPGlobalNavigationConfiguration(
-            style: .contextDeck,
-            title: title,
-            // Route screens must use the same brand/context line as the Home
-            // shell.  Using the Operations Center title here created a second
-            // navigation hierarchy and made pushed legacy screens visibly drift
-            // from the shared Home global bar.
-            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
-            subtitle: isRoot ? Language.get(route.contextTitleKey, alter: nil) : nil,
-            context: Language.get(route.contextTitleKey, alter: nil),
-            leadingAction: leadingAction,
-            trailingActions: trailingActions(for: viewController),
-            showsContextFilament: false
-        )
-    }
-
-    private var closeAction: PPGlobalNavigationAction {
-        PPGlobalNavigationAction(
-            id: "admin-route-close",
-            kind: .close,
-            accessibilityLabel: Language.get("Close", alter: nil),
-            accessibilityHint: Language.get("CommandCenter_Close_Workflow_Hint", alter: nil)
-        )
-    }
-
-    private var backAction: PPGlobalNavigationAction {
-        PPGlobalNavigationAction(
-            id: "admin-route-back",
-            kind: .back,
-            accessibilityLabel: Language.get("Back", alter: nil)
-        )
-    }
-
-    private func resolvedTitle(for viewController: UIViewController) -> String {
-        let titles = [viewController.navigationItem.title, viewController.title]
-        if let title = titles
-            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
-            .first(where: { !$0.isEmpty }) {
-            return title
-        }
-        return Language.get(route.titleKey, alter: nil)
-    }
-
-    private func trailingActions(for viewController: UIViewController) -> [PPGlobalNavigationAction] {
-        actionItemsByIdentifier.removeAll()
-        overflowActionItems.removeAll()
-
-        let items = (viewController.navigationItem.rightBarButtonItems ?? []) +
-            (viewController.navigationItem.leftBarButtonItems ?? [])
-        observeActionItems(items)
-        var actions: [PPGlobalNavigationAction] = []
-
-        for item in items {
-            let identifier = "admin-route-action-\(actions.count + overflowActionItems.count)"
-            if actions.count >= maximumDirectActions {
-                overflowActionItems.append(item)
-                continue
-            }
-
-            let mappedIdentifier = item.accessibilityIdentifier ?? identifier
-            actionItemsByIdentifier[mappedIdentifier] = item
-            actions.append(globalNavigationAction(for: item, identifier: mappedIdentifier))
-        }
-
-        if !overflowActionItems.isEmpty {
-            actions.append(PPGlobalNavigationAction(
-                id: "admin-route-overflow",
-                kind: .more,
-                accessibilityLabel: Language.get("CommandCenter_Tab_More", alter: nil)
-            ))
-        }
-
-        return actions
-    }
-
-    private func observeActionItems(_ items: [UIBarButtonItem]) {
-        var observations: [NSKeyValueObservation] = []
-        for item in items {
-            observations.append(item.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
-                Task { @MainActor [weak self] in
-                    self?.refreshGlobalNavigation()
-                }
-            })
-            if let control = item.customView as? UIControl {
-                observations.append(control.observe(\.isEnabled, options: [.new]) { [weak self] _, _ in
-                    Task { @MainActor [weak self] in
-                        self?.refreshGlobalNavigation()
-                    }
-                })
-            }
-        }
-        actionItemObservations = observations
-    }
-
-    private var maximumDirectActions: Int {
-        shouldUseCompactNavigationLayout ? 1 : 2
-    }
-
-    private func actionIsEnabled(_ item: UIBarButtonItem) -> Bool {
-        item.isEnabled && ((item.customView as? UIControl)?.isEnabled ?? true)
-    }
-
-    private var shouldUseCompactNavigationLayout: Bool {
-        traitCollection.preferredContentSizeCategory.isAccessibilityCategory ||
-            (view.bounds.width > 0 && view.bounds.width < 350)
-    }
-
-    private func title(for item: UIBarButtonItem) -> String {
-        let customViewLabel = item.customView?.accessibilityLabel?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let candidates = [item.accessibilityLabel, item.title, customViewLabel]
-        if let title = candidates
-            .compactMap({ $0?.trimmingCharacters(in: .whitespacesAndNewlines) })
-            .first(where: { !$0.isEmpty }) {
-            return title
-        }
-        return Language.get("CommandCenter_Tab_More", alter: nil)
-    }
-
-    private func globalNavigationAction(for item: UIBarButtonItem,
-                                        identifier: String) -> PPGlobalNavigationAction {
-        let label = title(for: item)
-        switch identifier {
-        case "admin-accessory-editor-save":
-            return PPGlobalNavigationAction(
-                id: identifier,
-                kind: .confirm,
-                accessibilityLabel: label,
-                accessibilityHint: item.accessibilityHint,
-                prominence: .emphasized,
-                isEnabled: actionIsEnabled(item),
-                title: Language.get("Save", alter: nil)
-            )
-        case "admin-notification-composer-send":
-            return PPGlobalNavigationAction(
-                id: identifier,
-                kind: .confirm,
-                accessibilityLabel: label,
-                accessibilityHint: item.accessibilityHint,
-                prominence: .emphasized,
-                isEnabled: actionIsEnabled(item),
-                title: Language.get("NotificationComposer_Action_Send", alter: nil)
-            )
-        default:
-            return PPGlobalNavigationAction(
-                id: identifier,
-                kind: identifier == "admin-delivery-refresh" ? .refresh : .custom(symbol: "ellipsis.circle"),
-                accessibilityLabel: label,
-                accessibilityHint: item.accessibilityHint,
-                prominence: .standard,
-                isEnabled: actionIsEnabled(item)
-            )
-        }
-    }
-
-    private func handleGlobalNavigationAction(_ action: PPGlobalNavigationAction) {
-        switch action.id {
-        case "admin-route-close":
-            if let target = dismissTarget as? NSObject {
-                _ = target.perform(dismissAction)
-            }
-        case "admin-route-back":
-            requestBackFromVisibleController()
-        case "admin-route-overflow":
-            presentOverflowActions()
-        default:
-            guard let item = actionItemsByIdentifier[action.id] else { return }
-            perform(item)
-        }
-    }
-
-    private func requestBackFromVisibleController() {
-        guard let navigationController = workflowNavigationController,
-              let visibleController = navigationController.topViewController else {
-            return
-        }
-        let selector = NSSelectorFromString("onBack")
-        if PPCommandCenterNavigationHasCustomBackAction(visibleController) {
-            _ = visibleController.perform(selector)
-        } else {
-            navigationController.popViewController(animated: true)
-        }
-    }
-
-    private func presentOverflowActions() {
-        guard !overflowActionItems.isEmpty else { return }
-        let controller = UIAlertController(
-            title: Language.get("CommandCenter_Tab_More", alter: nil),
-            message: nil,
-            preferredStyle: .actionSheet
-        )
-        for item in overflowActionItems where actionIsEnabled(item) {
-            controller.addAction(UIAlertAction(title: title(for: item), style: .default) { [weak self] _ in
-                self?.perform(item)
-            })
-        }
-        controller.addAction(UIAlertAction(
-            title: Language.get("Cancel", alter: nil),
-            style: .cancel
-        ))
-        if let popover = controller.popoverPresentationController,
-           let sourceView = globalNavigationController?.view {
-            popover.sourceView = sourceView
-            popover.sourceRect = sourceView.bounds
-        }
-        present(controller, animated: true)
-    }
-
-    private func perform(_ item: UIBarButtonItem) {
-        guard actionIsEnabled(item) else { return }
-        if let control = item.customView as? UIControl {
-            control.sendActions(for: .touchUpInside)
-            return
-        }
-        guard let action = item.action else { return }
-        UIApplication.shared.sendAction(action, to: item.target, from: item, for: nil)
-    }
-
-    private func refreshGlobalNavigation() {
-        guard let visibleController = workflowNavigationController?.topViewController else { return }
-        globalNavigationController?.update(
-            configuration: navigationConfiguration(for: visibleController)
-        ) { [weak self] action in
-            self?.handleGlobalNavigationAction(action)
-        }
-        globalNavigationHeightConstraint?.constant = globalNavigationController?.preferredBarHeight ?? 0
     }
 
     func navigationController(_ navigationController: UINavigationController,
                               willShow viewController: UIViewController,
                               animated: Bool) {
         AdminConnectedRouteChrome.apply(to: viewController, in: navigationController, route: route)
-        refreshGlobalNavigation()
-        DispatchQueue.main.async { [weak self, weak navigationController, weak viewController] in
-            guard let self,
-                  let navigationController,
-                  let viewController,
-                  navigationController.topViewController === viewController else {
-                return
-            }
-            self.refreshGlobalNavigation()
-        }
     }
 
     func navigationController(_ navigationController: UINavigationController,
                               didShow viewController: UIViewController,
                               animated: Bool) {
-        refreshGlobalNavigation()
     }
 }
 

@@ -9,7 +9,7 @@
 // In PPItem.h
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import "XLForm.h"
+#import <XLForm/XLForm.h>
 
 NS_ASSUME_NONNULL_BEGIN
 

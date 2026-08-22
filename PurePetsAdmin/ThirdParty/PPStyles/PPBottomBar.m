@@ -213,9 +213,9 @@
     
     // Bottom constraint based on layout
     if (self.layout == BarLayoutStickToBottom) {
-        [self.bottomAnchor constraintEqualToAnchor:safeArea.bottomAnchor constant:-8].active = YES;
+        [self.bottomAnchor constraintEqualToAnchor:superview.bottomAnchor].active = YES;
     } else {
-        [self.bottomAnchor constraintEqualToAnchor:safeArea.bottomAnchor constant:-8].active = YES;
+        [self.bottomAnchor constraintEqualToAnchor:superview.bottomAnchor].active = YES;
     }
     
     if (self.centerButton) {

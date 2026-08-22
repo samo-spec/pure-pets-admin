@@ -23,11 +23,21 @@ enum AdminTab: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .command: return "command"
-        case .work: return "rectangle.stack"
-        case .operations: return "waveform.path.ecg.rectangle"
+        case .command: return "square.grid.2x2"
+        case .work: return "briefcase"
+        case .operations: return "slider.horizontal.3"
         case .customers: return "person.2"
         case .more: return "ellipsis.circle"
+        }
+    }
+
+    var selectedSymbol: String {
+        switch self {
+        case .command: return "square.grid.2x2.fill"
+        case .work: return "briefcase.fill"
+        case .operations: return "slider.horizontal.3"
+        case .customers: return "person.2.fill"
+        case .more: return "ellipsis.circle.fill"
         }
     }
 }

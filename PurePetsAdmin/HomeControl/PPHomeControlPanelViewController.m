@@ -8,6 +8,7 @@
 #import "AppManager.h"
 #import "PPHero.h"
 #import "PPFormEngine.h"
+#import "PPAlertHelper.h"
 
 typedef NS_ENUM(NSInteger, PPHomeSectionID) {
     // These raw values are the shared iOS HomeConfig contract. Do not

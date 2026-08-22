@@ -41,6 +41,7 @@
 // ===== App-wide Headers =====
 #import "AppDelegate.h"
 #import "AppManager.h"
+#import "PPAlertHelper.h"
 #import "Styling.h"
 #import "PPDesignTokens.h"
 #import "PPThemeRefresh.h"
@@ -49,7 +50,7 @@
 #import "SceneDelegate.h"
 // HXPhotoPicker removed — replaced by PPImageCollection
 #import "GSIndeterminateProgressView.h"
-#import "AlertHelper.h"
+//#import "Utilities/AlertHelper.h"
 
 
 @import Firebase;
@@ -73,11 +74,9 @@
 // ===== PP Accessories =====
 #import "PetAccessory.h"
 #import "AccessoryManager.h"
-#import "AccessoriesListViewController.h"
-#import "PetAccessory.h"
+ #import "PetAccessory.h"
 #import "AddAccessoryViewController.h"
-#import "AccessoryCell.h"
-// HXPhotoPicker removed — replaced by PPImageCollection
+ // HXPhotoPicker removed — replaced by PPImageCollection
 #import "PPCellWithButtons.h"
 // ===== PP Basic Models =====
 #import "MainKindsModel.h"
@@ -208,11 +207,6 @@
     if (err) { \
         NSString *msg = [err localizedDescription] ?: @"Unknown error"; \
         dispatch_async(dispatch_get_main_queue(), ^{ \
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Error") \
-                                                                           message:msg \
-                                                                    preferredStyle:UIAlertControllerStyleAlert]; \
-            [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil]]; \
-            \
             UIWindow *window = nil; \
             for (UIWindowScene *scene in UIApplication.sharedApplication.connectedScenes) { \
                 if (scene.activationState == UISceneActivationStateForegroundActive) { \
@@ -221,7 +215,7 @@
                 } \
             } \
             if (!window) window = UIApplication.sharedApplication.windows.firstObject; \
-            [window.rootViewController presentViewController:alert animated:YES completion:nil]; \
+            [PPAlertHelper showErrorIn:window.rootViewController title:kLang(@"Error") subtitle:msg]; \
         }); \
         DLog(@"❌ Error: %@", msg); \
     } \

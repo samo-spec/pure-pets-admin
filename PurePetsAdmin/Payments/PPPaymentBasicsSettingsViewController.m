@@ -80,8 +80,113 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
     self.tableView.estimatedSectionHeaderHeight = 32.0;
     self.tableView.estimatedSectionFooterHeight = 44.0;
 
+    [self pp_setupDossierHeader];
     [self pp_applySaveButton];
     [self pp_loadSettings];
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+
+    if (!self.tableView.tableHeaderView) return;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+    CGSize fitting = [self.tableView.tableHeaderView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                                   withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                         verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect frame = self.tableView.tableHeaderView.frame;
+    CGFloat targetHeight = MAX(fitting.height, 104.0);
+    if (fabs(frame.size.width - width) > 0.5 || fabs(frame.size.height - targetHeight) > 0.5) {
+        frame.size.width = width;
+        frame.size.height = targetHeight;
+        self.tableView.tableHeaderView.frame = frame;
+        self.tableView.tableHeaderView = self.tableView.tableHeaderView;
+    }
+}
+
+- (void)pp_onBackTapped
+{
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
+- (void)pp_setupDossierHeader
+{
+    CGFloat horizontal = PPScreenMargin;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+
+    UIView *headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 110.0)];
+    headerContainer.backgroundColor = UIColor.clearColor;
+
+    // 1. Navigation Top Bar (Back Button + Save Button / Indicator)
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:backBtn];
+
+    UIButton *saveActionBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    saveActionBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [saveActionBtn setTitle:kLang(@"Save") forState:UIControlStateNormal];
+    [saveActionBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    saveActionBtn.titleLabel.font = [Styling fontBold:13];
+    saveActionBtn.backgroundColor = [UIColor ppPrimary];
+    saveActionBtn.layer.cornerRadius = 18.0;
+    saveActionBtn.layer.masksToBounds = YES;
+    saveActionBtn.contentEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 14);
+    [saveActionBtn addTarget:self action:@selector(pp_saveButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:saveActionBtn];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"PaymentMgmt_Settings_Title")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = kLang(@"PaymentMgmt_Settings_Title");
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:titleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        // Back Button & Save Button
+        [backBtn.topAnchor constraintEqualToAnchor:headerContainer.topAnchor constant:4],
+        [backBtn.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [saveActionBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [saveActionBtn.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [saveActionBtn.heightAnchor constraintEqualToConstant:36],
+
+        // Eyebrow
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:headerContainer.bottomAnchor constant:-8]
+    ]];
+
+    self.tableView.tableHeaderView = headerContainer;
 }
 
 - (void)viewWillAppear:(BOOL)animated

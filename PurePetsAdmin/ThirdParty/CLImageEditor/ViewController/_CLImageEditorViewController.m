@@ -8,6 +8,7 @@
 #import "_CLImageEditorViewController.h"
 
 #import "CLImageToolBase.h"
+#import "PPAlertHelper.h"
 
 
 #pragma mark- _CLImageEditorViewController
@@ -780,9 +781,7 @@ static const CGFloat kMenuBarHeight = 80.0f;
     
     [self.currentTool executeWithCompletionBlock:^(UIImage *image, NSError *error, NSDictionary *userInfo) {
         if(error){
-            UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"Error" message:error.localizedDescription preferredStyle:UIAlertControllerStyleAlert];
-            [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-            [self presentViewController:alert animated:YES completion:nil];
+            [PPAlertHelper showInfoIn:self title:@"Error" subtitle:error.localizedDescription];
         }
         else if(image){
             self->_originalImage = image;

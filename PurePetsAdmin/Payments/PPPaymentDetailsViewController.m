@@ -1,5 +1,6 @@
 #import "PPPaymentDetailsViewController.h"
 #import "PPPaymentManagementService.h"
+#import "Fulfillment/PPFulfillmentService.h"
 #import "Styling.h"
 #import "Language.h"
 
@@ -10,6 +11,13 @@ typedef NS_ENUM(NSInteger, PPPaymentOrderAdminActionType) {
     PPPaymentOrderAdminActionTypeDelivered,
     PPPaymentOrderAdminActionTypeCollectPayment,
     PPPaymentOrderAdminActionTypeCancel,
+    PPPaymentOrderAdminActionTypeOfficialAccept,
+    PPPaymentOrderAdminActionTypeOfficialReject,
+    PPPaymentOrderAdminActionTypeOfficialStartPreparing,
+    PPPaymentOrderAdminActionTypeOfficialMarkReady,
+    PPPaymentOrderAdminActionTypeOfficialRequestDelivery,
+    PPPaymentOrderAdminActionTypeOfficialConfirmHandover,
+    PPPaymentOrderAdminActionTypeOfficialCancel,
 };
 
 typedef NS_ENUM(NSInteger, PPPaymentRequestAdminActionType) {
@@ -282,10 +290,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 @interface PPPaymentDetailsViewController ()
 
 @property (nonatomic, strong) PPPaymentManagementService *service;
+@property (nonatomic, strong) PPFulfillmentService *fulfillmentService;
 @property (nonatomic, strong) PPPaymentAdminRecord *record;
+@property (nonatomic, strong, nullable) PPFulfillmentRecord *officialFulfillment;
+@property (nonatomic, strong, nullable) NSError *officialFulfillmentError;
 @property (nonatomic, strong) NSArray<NSNumber *> *visibleSections;
 @property (nonatomic, strong) NSDateFormatter *dateFormatter;
 @property (nonatomic, assign) BOOL isRefreshingRecord;
+@property (nonatomic, assign) BOOL officialFulfillmentLoading;
 @property (nonatomic, assign) BOOL actionInFlight;
 
 @end
@@ -297,6 +309,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self = [super initWithStyle:UITableViewStyleInsetGrouped];
     if (self) {
         _service = [PPPaymentManagementService shared];
+        _fulfillmentService = [PPFulfillmentService shared];
         _record = record;
         _dateFormatter = [NSDateFormatter new];
         _dateFormatter.locale = [NSLocale currentLocale];
@@ -321,8 +334,114 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.refreshControl.tintColor = [UIColor ppPrimary];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
+    [self pp_setupDossierHeader];
     [self pp_rebuildSections];
     [self pp_reloadRecordShowHUD:YES];
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+
+    if (!self.tableView.tableHeaderView) return;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+    CGSize fitting = [self.tableView.tableHeaderView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                                   withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                         verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect frame = self.tableView.tableHeaderView.frame;
+    CGFloat targetHeight = MAX(fitting.height, 104.0);
+    if (fabs(frame.size.width - width) > 0.5 || fabs(frame.size.height - targetHeight) > 0.5) {
+        frame.size.width = width;
+        frame.size.height = targetHeight;
+        self.tableView.tableHeaderView.frame = frame;
+        self.tableView.tableHeaderView = self.tableView.tableHeaderView;
+    }
+}
+
+- (void)pp_onBackTapped
+{
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
+- (void)pp_setupDossierHeader
+{
+    CGFloat horizontal = PPScreenMargin;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+
+    UIView *headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 110.0)];
+    headerContainer.backgroundColor = UIColor.clearColor;
+
+    // 1. Navigation Top Bar (Back Button + Refresh Button)
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:backBtn];
+
+    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    refreshBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *refreshConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [refreshBtn setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfig] forState:UIControlStateNormal];
+    refreshBtn.tintColor = [UIColor ppPrimary];
+    refreshBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    refreshBtn.layer.cornerRadius = 18.0;
+    refreshBtn.layer.masksToBounds = YES;
+    [refreshBtn addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:refreshBtn];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"PaymentMgmt_Title_Details")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title (Order ID)
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    NSString *orderId = self.record.orderId ?: @"";
+    titleLabel.text = [orderId hasPrefix:@"#"] ? orderId : [NSString stringWithFormat:@"#%@", orderId];
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:titleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        // Back Button & Refresh Button
+        [backBtn.topAnchor constraintEqualToAnchor:headerContainer.topAnchor constant:4],
+        [backBtn.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [refreshBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [refreshBtn.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [refreshBtn.widthAnchor constraintEqualToConstant:36],
+        [refreshBtn.heightAnchor constraintEqualToConstant:36],
+
+        // Eyebrow
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:headerContainer.bottomAnchor constant:-8]
+    ]];
+
+    self.tableView.tableHeaderView = headerContainer;
 }
 
 - (void)viewWillAppear:(BOOL)animated
@@ -359,9 +478,33 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 
         if (record) {
             self.record = record;
-            [self pp_rebuildSections];
-            [self.tableView reloadData];
+            [self pp_reloadOfficialFulfillment];
         }
+    }];
+}
+
+- (void)pp_reloadOfficialFulfillment
+{
+    self.officialFulfillment = nil;
+    self.officialFulfillmentError = nil;
+    self.officialFulfillmentLoading = (self.record.fulfillmentVersion == 1);
+    [self pp_rebuildSections];
+    [self.tableView reloadData];
+    if (self.record.fulfillmentVersion != 1) return;
+
+    NSString *parentOrderID = self.record.orderId ?: @"";
+    NSArray<NSString *> *fulfillmentIDs = self.record.fulfillmentOrderIDs ?: @[];
+    __weak typeof(self) weakSelf = self;
+    [self.fulfillmentService fetchOfficialFulfillmentForParentOrderID:parentOrderID
+                                                       fulfillmentIDs:fulfillmentIDs
+                                                           completion:^(PPFulfillmentRecord * _Nullable record, NSError * _Nullable error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || ![self.record.orderId isEqualToString:parentOrderID]) return;
+        self.officialFulfillmentLoading = NO;
+        self.officialFulfillment = record;
+        self.officialFulfillmentError = error;
+        [self pp_rebuildSections];
+        [self.tableView reloadData];
     }];
 }
 
@@ -408,6 +551,27 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     }
     [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_Workflow"), @"detail": PPPaymentAdminDisplayTitleForWorkflowStatus(workflowStatus), @"tint": PPPaymentAdminDetailsStatusColor(workflowStatus)}];
     [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_OrderStatus"), @"detail": PPPaymentAdminDisplayTitleForOrderStatus(self.record.rawStatus.length > 0 ? self.record.rawStatus : @"pending")}];
+    if (self.record.fulfillmentVersion == 1) {
+        NSString *fulfillmentDetail = nil;
+        UIColor *fulfillmentTint = [UIColor ppTextSecondary];
+        if (self.officialFulfillmentLoading) {
+            fulfillmentDetail = kLang(@"PaymentMgmt_OfficialFulfillment_Loading");
+        } else if (self.officialFulfillmentError) {
+            fulfillmentDetail = self.officialFulfillmentError.localizedDescription ?: kLang(@"PaymentMgmt_OfficialFulfillment_Error");
+            fulfillmentTint = [UIColor ppError];
+        } else if (!self.officialFulfillment) {
+            fulfillmentDetail = kLang(@"PaymentMgmt_OfficialFulfillment_None");
+        } else {
+            fulfillmentDetail = [NSString stringWithFormat:@"%@ • %@",
+                                 PPPaymentAdminDisplayTitleForOrderStatus(self.officialFulfillment.status),
+                                 self.officialFulfillment.fulfillmentID];
+            fulfillmentTint = PPPaymentAdminDetailsStatusColor(self.officialFulfillment.status);
+        }
+        [rows addObject:@{@"title": kLang(@"PaymentMgmt_OfficialFulfillment_Title"),
+                          @"detail": fulfillmentDetail ?: @"--",
+                          @"tint": fulfillmentTint,
+                          @"multiline": @YES}];
+    }
     [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_Customer"), @"detail": customerName.length > 0 ? customerName : (self.record.userId.length > 0 ? self.record.userId : kLang(@"PaymentMgmt_Value_Unknown"))}];
     if (customerEmail.length > 0) {
         [rows addObject:@{@"title": kLang(@"PaymentMgmt_Field_Email"), @"detail": customerEmail}];
@@ -458,7 +622,28 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 - (NSArray<NSDictionary *> *)pp_orderActions
 {
     if (![self.service currentAdminCanManagePayments]) return @[];
-    if (self.record.fulfillmentVersion == 1) return @[];
+    if (self.record.fulfillmentVersion == 1) {
+        if (self.officialFulfillmentLoading || self.officialFulfillmentError || !self.officialFulfillment) return @[];
+        NSDictionary<NSString *, NSDictionary *> *presentation = @{
+            @"accept": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialAccept), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_Accept"), @"tint": [UIColor ppSuccess]},
+            @"reject": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialReject), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_Reject"), @"tint": [UIColor ppError]},
+            @"start_preparing": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialStartPreparing), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_StartPreparing"), @"tint": [UIColor ppInfo]},
+            @"mark_ready": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialMarkReady), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_MarkReady"), @"tint": [UIColor ppSuccess]},
+            @"request_delivery": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialRequestDelivery), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_RequestDelivery"), @"tint": [UIColor ppQuickActionCommunity]},
+            @"confirm_handover": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialConfirmHandover), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_ConfirmHandover"), @"tint": [UIColor ppInfo]},
+            @"cancel_request": @{@"type": @(PPPaymentOrderAdminActionTypeOfficialCancel), @"title": kLang(@"PaymentMgmt_OfficialFulfillment_Action_Cancel"), @"tint": [UIColor ppError]},
+        };
+        NSMutableArray<NSDictionary *> *officialRows = [NSMutableArray array];
+        for (NSString *action in [PPFulfillmentService availableOfficialActionsForStatus:self.officialFulfillment.status]) {
+            NSDictionary *base = presentation[action];
+            if (!base) continue;
+            NSMutableDictionary *row = base.mutableCopy;
+            row[@"fulfillmentAction"] = action;
+            row[@"subtitle"] = kLang(@"PaymentMgmt_OfficialFulfillment_Action_Subtitle");
+            [officialRows addObject:row.copy];
+        }
+        return officialRows.copy;
+    }
     NSMutableArray<NSDictionary *> *rows = [NSMutableArray array];
     if ([PPPaymentAdminRecord canApproveOrderStatus:self.record.rawStatus] &&
         ![[PPPaymentAdminRecord normalizedStatusString:self.record.paymentMethodId] isEqualToString:@"cash"]) {
@@ -868,6 +1053,13 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentOrderAdminActionTypeDelivered: return kLang(@"PaymentMgmt_Action_MarkDelivered_Title");
         case PPPaymentOrderAdminActionTypeCollectPayment: return kLang(@"PaymentMgmt_Action_CollectPayment_Title");
         case PPPaymentOrderAdminActionTypeCancel: return kLang(@"PaymentMgmt_Action_CancelOrder_Title");
+        case PPPaymentOrderAdminActionTypeOfficialAccept: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_Accept");
+        case PPPaymentOrderAdminActionTypeOfficialReject: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_Reject");
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_StartPreparing");
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_MarkReady");
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_RequestDelivery");
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_ConfirmHandover");
+        case PPPaymentOrderAdminActionTypeOfficialCancel: return kLang(@"PaymentMgmt_OfficialFulfillment_Action_Cancel");
     }
     return kLang(@"PaymentMgmt_Action_UpdateRequest_Title");
 }
@@ -887,6 +1079,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             return [self.record workflowStatusKey];
         case PPPaymentOrderAdminActionTypeCancel:
             return @"cancelled";
+        case PPPaymentOrderAdminActionTypeOfficialAccept:
+        case PPPaymentOrderAdminActionTypeOfficialReject:
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing:
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady:
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery:
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover:
+        case PPPaymentOrderAdminActionTypeOfficialCancel:
+            return [self.record workflowStatusKey];
     }
     return [self.record workflowStatusKey];
 }
@@ -900,6 +1100,13 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentOrderAdminActionTypeDelivered: return @"order_mark_delivered";
         case PPPaymentOrderAdminActionTypeCollectPayment: return @"order_collect_payment";
         case PPPaymentOrderAdminActionTypeCancel: return @"order_cancel";
+        case PPPaymentOrderAdminActionTypeOfficialAccept: return @"accept";
+        case PPPaymentOrderAdminActionTypeOfficialReject: return @"reject";
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing: return @"start_preparing";
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady: return @"mark_ready";
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery: return @"request_delivery";
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover: return @"confirm_handover";
+        case PPPaymentOrderAdminActionTypeOfficialCancel: return @"cancel_request";
     }
     return @"";
 }
@@ -910,6 +1117,11 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     NSString *trimmedUserNote = PPPaymentAdminDetailsTrimmedString(userNote);
     if (trimmedUserNote.length > 0) {
         return trimmedUserNote;
+    }
+
+    if (self.record.fulfillmentVersion == 1) {
+        return [NSString stringWithFormat:kLang(@"PaymentMgmt_OfficialFulfillment_DefaultNote"),
+                [self pp_titleForOrderAction:actionType]];
     }
 
     return [self.service defaultAdminNoteForOrderID:self.record.orderId
@@ -925,6 +1137,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentOrderAdminActionTypeDelivered: return kLang(@"PaymentMgmt_Prompt_OrderDeliveredNote");
         case PPPaymentOrderAdminActionTypeCollectPayment: return kLang(@"PaymentMgmt_Prompt_OrderCollectPaymentNote");
         case PPPaymentOrderAdminActionTypeCancel: return kLang(@"PaymentMgmt_Prompt_OrderCancelNote");
+        case PPPaymentOrderAdminActionTypeOfficialAccept:
+        case PPPaymentOrderAdminActionTypeOfficialReject:
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing:
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady:
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery:
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover:
+        case PPPaymentOrderAdminActionTypeOfficialCancel:
+            return kLang(@"PaymentMgmt_OfficialFulfillment_Prompt");
     }
     return kLang(@"PaymentMgmt_Prompt_RequestNote_Subtitle");
 }
@@ -938,6 +1158,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentOrderAdminActionTypeDelivered: return kLang(@"PaymentMgmt_Confirm_OrderDelivered");
         case PPPaymentOrderAdminActionTypeCollectPayment: return kLang(@"PaymentMgmt_Confirm_OrderCollectPayment");
         case PPPaymentOrderAdminActionTypeCancel: return kLang(@"PaymentMgmt_Confirm_OrderCancel");
+        case PPPaymentOrderAdminActionTypeOfficialAccept:
+        case PPPaymentOrderAdminActionTypeOfficialReject:
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing:
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady:
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery:
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover:
+        case PPPaymentOrderAdminActionTypeOfficialCancel:
+            return kLang(@"PaymentMgmt_OfficialFulfillment_Confirm");
     }
     return kLang(@"PaymentMgmt_Confirm_RequestUpdate");
 }
@@ -951,6 +1179,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         case PPPaymentOrderAdminActionTypeDelivered: return kLang(@"PaymentMgmt_Success_OrderDelivered");
         case PPPaymentOrderAdminActionTypeCollectPayment: return kLang(@"PaymentMgmt_Success_OrderCollectPayment");
         case PPPaymentOrderAdminActionTypeCancel: return kLang(@"PaymentMgmt_Success_OrderCancel");
+        case PPPaymentOrderAdminActionTypeOfficialAccept:
+        case PPPaymentOrderAdminActionTypeOfficialReject:
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing:
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady:
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery:
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover:
+        case PPPaymentOrderAdminActionTypeOfficialCancel:
+            return kLang(@"PaymentMgmt_OfficialFulfillment_Success");
     }
     return kLang(@"PaymentMgmt_Success_RequestUpdate");
 }
@@ -980,6 +1216,37 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 {
     self.actionInFlight = YES;
     [PPHUD showIndeterminateIn:self.view title:kLang(@"PaymentMgmt_Loading_Updating") subtitle:kLang(@"PaymentMgmt_Loading_OrderUpdate")];
+
+    if (self.record.fulfillmentVersion == 1) {
+        PPFulfillmentRecord *fulfillment = self.officialFulfillment;
+        NSString *action = [self pp_callableActionForOrderAction:actionType];
+        NSString *commandID = NSUUID.UUID.UUIDString;
+        if (!fulfillment || action.length == 0) {
+            self.actionInFlight = NO;
+            [PPHUD dismiss];
+            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_OfficialFulfillment_NotManageable")];
+            return;
+        }
+        __weak typeof(self) weakSelf = self;
+        [self.fulfillmentService transitionOfficialFulfillment:fulfillment
+                                                expectedStatus:fulfillment.status
+                                                         action:action
+                                                           note:note
+                                                      commandID:commandID
+                                                     completion:^(__unused NSDictionary * _Nullable result, NSError * _Nullable error) {
+            __strong typeof(weakSelf) self = weakSelf;
+            self.actionInFlight = NO;
+            [PPHUD dismiss];
+            if (error) {
+                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+                [self pp_reloadRecordShowHUD:NO];
+                return;
+            }
+            [PPHUD showSuccess:kLang(@"Updated") subtitle:[self pp_successMessageForOrderAction:actionType]];
+            [self pp_reloadRecordShowHUD:NO];
+        }];
+        return;
+    }
 
     void (^completion)(PPPaymentAdminRecord *, NSError *) = ^(PPPaymentAdminRecord *updatedRecord, NSError *error) {
         self.actionInFlight = NO;
@@ -1016,6 +1283,14 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             break;
         case PPPaymentOrderAdminActionTypeCancel:
             [self.service cancelOrder:self.record note:note completion:completion];
+            break;
+        case PPPaymentOrderAdminActionTypeOfficialAccept:
+        case PPPaymentOrderAdminActionTypeOfficialReject:
+        case PPPaymentOrderAdminActionTypeOfficialStartPreparing:
+        case PPPaymentOrderAdminActionTypeOfficialMarkReady:
+        case PPPaymentOrderAdminActionTypeOfficialRequestDelivery:
+        case PPPaymentOrderAdminActionTypeOfficialConfirmHandover:
+        case PPPaymentOrderAdminActionTypeOfficialCancel:
             break;
     }
 }
@@ -1097,7 +1372,112 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     self.refreshControl.tintColor = [UIColor ppPrimary];
     [self.refreshControl addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventValueChanged];
 
+    [self pp_setupDossierHeader];
     [self pp_reloadRequestShowHUD:YES];
+}
+
+- (void)viewDidLayoutSubviews
+{
+    [super viewDidLayoutSubviews];
+
+    if (!self.tableView.tableHeaderView) return;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+    CGSize fitting = [self.tableView.tableHeaderView systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                                   withHorizontalFittingPriority:UILayoutPriorityRequired
+                                                         verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect frame = self.tableView.tableHeaderView.frame;
+    CGFloat targetHeight = MAX(fitting.height, 104.0);
+    if (fabs(frame.size.width - width) > 0.5 || fabs(frame.size.height - targetHeight) > 0.5) {
+        frame.size.width = width;
+        frame.size.height = targetHeight;
+        self.tableView.tableHeaderView.frame = frame;
+        self.tableView.tableHeaderView = self.tableView.tableHeaderView;
+    }
+}
+
+- (void)pp_onBackTapped
+{
+    if (self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
+- (void)pp_setupDossierHeader
+{
+    CGFloat horizontal = PPScreenMargin;
+    CGFloat width = self.tableView.bounds.size.width > 0 ? self.tableView.bounds.size.width : self.view.bounds.size.width;
+
+    UIView *headerContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, width, 110.0)];
+    headerContainer.backgroundColor = UIColor.clearColor;
+
+    // 1. Navigation Top Bar (Back Button + Refresh Button)
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
+    [backBtn setImage:chevronImg forState:UIControlStateNormal];
+    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:15];
+    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:backBtn];
+
+    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
+    refreshBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImageSymbolConfiguration *refreshConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
+    [refreshBtn setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfig] forState:UIControlStateNormal];
+    refreshBtn.tintColor = [UIColor ppPrimary];
+    refreshBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
+    refreshBtn.layer.cornerRadius = 18.0;
+    refreshBtn.layer.masksToBounds = YES;
+    [refreshBtn addTarget:self action:@selector(onRefresh) forControlEvents:UIControlEventTouchUpInside];
+    [headerContainer addSubview:refreshBtn];
+
+    // 2. Eyebrow Category Breadcrumb
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [Styling fontRegular:12];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Work_Workspace"), kLang(@"PaymentMgmt_Section_Requests")];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:eyebrowLabel];
+
+    // 3. Dossier Large Title (Request Title)
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = PPPaymentAdminDisplayTitleForRequestType(self.request.type);
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    [headerContainer addSubview:titleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        // Back Button & Refresh Button
+        [backBtn.topAnchor constraintEqualToAnchor:headerContainer.topAnchor constant:4],
+        [backBtn.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [refreshBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [refreshBtn.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [refreshBtn.widthAnchor constraintEqualToConstant:36],
+        [refreshBtn.heightAnchor constraintEqualToConstant:36],
+
+        // Eyebrow
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:headerContainer.bottomAnchor constant:-8]
+    ]];
+
+    self.tableView.tableHeaderView = headerContainer;
 }
 
 - (void)viewWillAppear:(BOOL)animated

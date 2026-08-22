@@ -66,13 +66,36 @@ struct AdminLoginView: View {
 
             Spacer()
 
-            Button(action: state.toggleLanguage) {
-                Label(state.languageToggleLabel, systemImage: "globe")
-                    .font(AdminType.captionBold)
-                    .frame(minWidth: 52, minHeight: 44)
+            HStack(spacing: 8) {
+                Button(action: state.toggleLanguage) {
+                    Label(state.languageToggleLabel, systemImage: "globe")
+                        .font(AdminType.captionBold)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 36)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel(state.localized("Confirm_LanguageChange_Title"))
+
+                Menu {
+                    Button(action: state.toggleLanguage) {
+                        Label(state.localized("Confirm_LanguageChange_Title"), systemImage: "globe")
+                    }
+                    Button(action: state.resetPassword) {
+                        Label(state.localized("ForgotPassword"), systemImage: "key")
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.control)
+                            .frame(width: 36, height: 36)
+                            .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1))
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                }
+                .accessibilityLabel(state.localized("CommandCenter_Tab_More"))
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel(state.localized("Confirm_LanguageChange_Title"))
         }
     }
 

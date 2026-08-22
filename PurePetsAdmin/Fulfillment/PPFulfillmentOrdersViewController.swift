@@ -790,7 +790,9 @@ private final class PPFulfillmentOrdersViewModel: ObservableObject {
 
 private struct PPFulfillmentOrdersScreen: View {
     @ObservedObject var viewModel: PPFulfillmentOrdersViewModel
+    var onDismiss: (() -> Void)? = nil
     let onOpenRecord: (PPFulfillmentSnapshot) -> Void
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -802,7 +804,7 @@ private struct PPFulfillmentOrdersScreen: View {
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceBase) {
-                    operationalStatusBar
+                    dossierHeaderView
                     operationalPulse
                     workflowBoard
                     queueControls
@@ -825,6 +827,61 @@ private struct PPFulfillmentOrdersScreen: View {
         }
         .onAppear(perform: viewModel.startListening)
         .onDisappear(perform: viewModel.stopListening)
+    }
+
+    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+
+    private var dossierHeaderView: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack {
+                Button(action: {
+                    if let onDismiss {
+                        onDismiss()
+                    } else {
+                        dismiss()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(Language.get("Back", alter: "رجوع"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundColor(PPFulfillmentTokens.primary)
+                    .frame(minHeight: 44)
+                }
+
+                Spacer()
+
+                if viewModel.isRefreshing {
+                    ProgressView()
+                        .tint(PPFulfillmentTokens.primary)
+                } else {
+                    Button(action: { viewModel.retry() }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(PPFulfillmentTokens.primary)
+                            .frame(width: 36, height: 36)
+                            .background(PPFulfillmentTokens.primarySoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+                }
+            }
+
+            Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ") + " / " + PPFulfillmentL10n.text("Fulfillment_Title"))
+                .font(AdminType.caption1)
+                .foregroundColor(PPFulfillmentTokens.secondaryInk)
+                .padding(.top, 2)
+
+            Text(PPFulfillmentL10n.text("Fulfillment_Title"))
+                .font(AdminType.title2)
+                .foregroundColor(PPFulfillmentTokens.ink)
+
+            operationalStatusBar
+                .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var operationalStatusBar: some View {
@@ -2304,6 +2361,8 @@ private final class PPFulfillmentDetailViewModel: ObservableObject {
 
 private struct PPFulfillmentDetailScreen: View {
     @ObservedObject var viewModel: PPFulfillmentDetailViewModel
+    var onDismiss: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -2312,6 +2371,7 @@ private struct PPFulfillmentDetailScreen: View {
             PPFulfillmentTokens.canvas.ignoresSafeArea()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXL) {
+                    dossierHeaderView
                     detailCommandHeader
                     if viewModel.isLoading {
                         HStack(spacing: PPFulfillmentTokens.spaceSM) {
@@ -2352,6 +2412,57 @@ private struct PPFulfillmentDetailScreen: View {
         .environment(\.layoutDirection, PPFulfillmentL10n.layoutDirection)
         .onAppear(perform: viewModel.load)
         .onDisappear(perform: viewModel.stop)
+    }
+
+    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+
+    private var dossierHeaderView: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            HStack {
+                Button(action: {
+                    if let onDismiss {
+                        onDismiss()
+                    } else {
+                        dismiss()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(Language.get("Back", alter: "رجوع"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundColor(PPFulfillmentTokens.primary)
+                    .frame(minHeight: 44)
+                }
+
+                Spacer()
+
+                if viewModel.isLoading {
+                    ProgressView().tint(PPFulfillmentTokens.primary)
+                } else {
+                    Button(action: { viewModel.load() }) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(PPFulfillmentTokens.primary)
+                            .frame(width: 36, height: 36)
+                            .background(PPFulfillmentTokens.primarySoft, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+                }
+            }
+
+            Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ") + " / " + (viewModel.record.parentOrderNumber ?? viewModel.record.id))
+                .font(AdminType.caption1)
+                .foregroundColor(PPFulfillmentTokens.secondaryInk)
+                .padding(.top, 2)
+
+            Text(viewModel.record.displayOrder)
+                .font(AdminType.title2)
+                .foregroundColor(PPFulfillmentTokens.ink)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var detailCommandHeader: some View {
@@ -3353,10 +3464,20 @@ final class PPFulfillmentOrdersViewController: UIViewController {
         view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
 
         let host = UIHostingController(
-            rootView: PPFulfillmentOrdersScreen(viewModel: viewModel) { [weak self] record in
-                let detail = PPFulfillmentDetailViewController(seed: record)
-                self?.navigationController?.pushViewController(detail, animated: true)
-            }
+            rootView: PPFulfillmentOrdersScreen(
+                viewModel: viewModel,
+                onDismiss: { [weak self] in
+                    if let nav = self?.navigationController, nav.viewControllers.count > 1 {
+                        nav.popViewController(animated: true)
+                    } else {
+                        self?.dismiss(animated: true)
+                    }
+                },
+                onOpenRecord: { [weak self] record in
+                    let detail = PPFulfillmentDetailViewController(seed: record)
+                    self?.navigationController?.pushViewController(detail, animated: true)
+                }
+            )
         )
         host.view.backgroundColor = .clear
         addChild(host)
@@ -3401,7 +3522,18 @@ private final class PPFulfillmentDetailViewController: UIViewController {
         view.backgroundColor = .ppBackground
         view.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage()
 
-        let host = UIHostingController(rootView: PPFulfillmentDetailScreen(viewModel: viewModel))
+        let host = UIHostingController(
+            rootView: PPFulfillmentDetailScreen(
+                viewModel: viewModel,
+                onDismiss: { [weak self] in
+                    if let nav = self?.navigationController, nav.viewControllers.count > 1 {
+                        nav.popViewController(animated: true)
+                    } else {
+                        self?.dismiss(animated: true)
+                    }
+                }
+            )
+        )
         host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)

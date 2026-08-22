@@ -11,6 +11,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import "PurePetsAdmin-Swift.h"
 #import "PetAccessory.h"
+#import "PPAlertHelper.h"
 
 @class PetAccessory;
 @interface PetAccessory (TopVC)

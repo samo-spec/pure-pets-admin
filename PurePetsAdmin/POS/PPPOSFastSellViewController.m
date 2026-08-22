@@ -4,6 +4,7 @@
 #import "Styling.h"
 #import "AlertHelper.h"
 #import "PPFunc+Haptics.h"
+#import "PPAlertHelper.h"
 
 // Canonical official seller identity from Pure Pets Infra seed/migration contracts.
 static NSString * const kPPPOSOfficialOwnerID = @"PUIDPOFFICILAL20262214";
@@ -124,20 +125,14 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 }
 
 - (void)didTapScan {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"POS_ScanCode") message:kLang(@"POS_ScanCodeHint") preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *field) {
-        field.placeholder = kLang(@"POS_ScanCodePlaceholder");
-        field.keyboardType = UIKeyboardTypeASCIICapable;
-        field.semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;
-    }];
     __weak typeof(self) weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"POS_Scan") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        NSString *code = [alert.textFields.firstObject.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
-        weakSelf.searchField.text = code;
-        [weakSelf applyCatalogFilter];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showTextPromptIn:self title:kLang(@"POS_ScanCode") subtitle:kLang(@"POS_ScanCodeHint") placeholder:kLang(@"POS_ScanCodePlaceholder") initialText:nil confirmText:kLang(@"POS_Scan") cancelText:kLang(@"Cancel") completion:^(NSString * _Nullable text) {
+        if (text) {
+            NSString *code = [text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet] ?: @"";
+            weakSelf.searchField.text = code;
+            [weakSelf applyCatalogFilter];
+        }
+    }];
 }
 
 #pragma mark - Cart
