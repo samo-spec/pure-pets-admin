@@ -50,7 +50,7 @@
 #import "SceneDelegate.h"
 // HXPhotoPicker removed — replaced by PPImageCollection
 #import "GSIndeterminateProgressView.h"
-//#import "Utilities/AlertHelper.h"
+//#import "Utilities/PPAlertHelper.h"
 
 
 @import Firebase;

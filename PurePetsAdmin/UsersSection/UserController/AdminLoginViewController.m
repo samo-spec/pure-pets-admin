@@ -283,14 +283,14 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     forgotRow.action.formBlock = ^(XLFormRowDescriptor *row) {
         NSString *email = self.emailRow.value;
         if (!email.length) {
-            [AlertHelper showWarningIn:self title:kLang(@"Warning") subtitle:kLang(@"EnterEmailFirst")];
+            [PPAlertHelper showWarningIn:self title:kLang(@"Warning") subtitle:kLang(@"EnterEmailFirst")];
             return;
         }
         [[FIRAuth auth] sendPasswordResetWithEmail:email completion:^(NSError * _Nullable error) {
             if (error) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
             } else {
-                [AlertHelper showSuccessIn:self title:kLang(@"Success") subtitle:kLang(@"PasswordResetEmailSent")];
+                [PPAlertHelper showSuccessIn:self title:kLang(@"Success") subtitle:kLang(@"PasswordResetEmailSent")];
             }
         }];
     };
@@ -320,7 +320,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     NSString *password = self.passwordRow.value;
 
     if (email.length == 0 || password.length == 0) {
-        [AlertHelper showWarningIn:self title:kLang(@"Warning") subtitle:kLang(@"StatusEnterBoth")];
+        [PPAlertHelper showWarningIn:self title:kLang(@"Warning") subtitle:kLang(@"StatusEnterBoth")];
         return;
     }
     
@@ -328,7 +328,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
    
     
     
-   // [AlertHelper showInfoIn:self title:kLang(@"Please wait") subtitle:kLang(@"StatusLoggingIn")];
+   // [PPAlertHelper showInfoIn:self title:kLang(@"Please wait") subtitle:kLang(@"StatusLoggingIn")];
 
     BOOL remember = [[self.form formRowWithTag:@"rememberMe"].value boolValue];
     NSUserDefaults *ud = [NSUserDefaults standardUserDefaults];
@@ -368,7 +368,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             [PPHUD dismiss];
             if (error.code != -5) { // -5 is user cancel
                 NSString *subtitle = [self pp_authErrorSubtitle:error];
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:subtitle];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:subtitle];
             }
             return;
         }
@@ -452,7 +452,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             [PPHUD dismiss];
             PPAdminSetLoginInProgress(NO);
             NSString *subtitle = [self pp_authErrorSubtitle:error];
-            [AlertHelper showErrorIn:self title:kLang(@"Error")
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error")
                              subtitle:subtitle];
             return;
         }
@@ -484,7 +484,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             if (eDoc && ![self pp_shouldContinueAfterEnsureUserDocError:eDoc]) {
                 [PPHUD dismiss];
                 PPAdminSetLoginInProgress(NO);
-                [AlertHelper showErrorIn:self
+                [PPAlertHelper showErrorIn:self
                                    title:kLang(@"Error")
                                 subtitle:[self pp_firestoreAccessSubtitleForError:eDoc]];
                 return;
@@ -602,7 +602,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     if (uid.length == 0) {
         [PPHUD dismiss];
         PPAdminSetLoginInProgress(NO);
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"StatusUserDocError")];
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"StatusUserDocError")];
         [UsrMgr signOut];
         return;
     }
@@ -618,7 +618,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             if ([self pp_errorLooksLikeAppCheckFailure:error]) {
                 [PPHUD dismiss];
                 PPAdminSetLoginInProgress(NO);
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:[self pp_firestoreAccessSubtitleForError:error]];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:[self pp_firestoreAccessSubtitleForError:error]];
                 return;
             }
             [self pp_denyAccessWithBiometric:fromBiometric subtitle:kLang(@"StatusUserDocError")];
@@ -652,7 +652,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     }
     [PPHUD dismiss];
     PPAdminSetLoginInProgress(NO);
-    [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:subtitle];
+    [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:subtitle];
     [UsrMgr signOut];
 }
 
@@ -679,7 +679,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
             [PPHUD dismiss];
             [self.combinedReg remove];
             self.combinedReg = nil;
-            [AlertHelper showErrorIn:self
+            [PPAlertHelper showErrorIn:self
                                title:kLang(@"Error")
                             subtitle:[self pp_firestoreAccessSubtitleForError:err]];
             if (![self pp_errorLooksLikeAppCheckFailure:err]) {

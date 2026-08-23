@@ -11,7 +11,7 @@
 #import "AddUserViewController.h"
 #import "AdminService.h"
 #import "PPToast.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPDesignTokens.h"
 @import Firebase;
 @import FirebaseAuth;
@@ -1173,7 +1173,7 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 
     NSString *displayName = PPStaffMembersSafeString(user.UserName);
     NSString *subtitle = [NSString stringWithFormat:@"%@ %@", kLang(@"Service_Action_Disable"), displayName.length ? displayName : PPStaffMembersSafeString(user.UserEmail)];
-    [AlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:subtitle placeholder:nil confirmButton:kLang(@"Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
+    [PPAlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:subtitle placeholder:nil confirmButton:kLang(@"Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
         [AdminService disableStaffMember:user.uid completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
             if (error) [PPToast toast:error.localizedDescription];
             else [PPToast toast:kLang(@"Success")];

@@ -1366,6 +1366,19 @@
 /* ===================== Payment Management ===================== */
 "PaymentMgmt_Title_List" = "إدارة المدفوعات";
 "PaymentMgmt_Title_Details" = "تفاصيل الدفع";
+"PaymentDetail_Context" = "ملف قرار الدفع";
+"PaymentDetail_NextAction" = "الإجراء التالي";
+"PaymentDetail_NoAction_Title" = "لا يوجد إجراء مطلوب";
+"PaymentDetail_NoAction_Subtitle" = "لا يتوفر إجراء دفع لهذا الطلب ما دام في حالته الحالية.";
+"PaymentDetail_ReadOnly_Title" = "يلزم إذن إدارة المدفوعات";
+"PaymentDetail_ReadOnly_Subtitle" = "يمكنك مراجعة الطلب، لكن يلزم إذن payments.manage لتنفيذ إجراء دفع أو تنفيذ.";
+"PaymentDetail_Loading_Source" = "جارٍ التحقق من حالة الطلب والدفع والتنفيذ المباشرة.";
+"PaymentDetail_Refresh_Hint" = "يحدّث حالة الطلب والدفع والتنفيذ.";
+"PaymentDetail_Refresh" = "تحديث";
+"PaymentDetail_ActionPrompt_Format" = "%1$@\n\n%2$@";
+"PaymentDetail_Field_Name" = "الاسم";
+"PaymentDetail_LabelValue_Accessibility_Format" = "%1$@: %2$@";
+"PaymentDetail_Quantity_Format" = "الكمية: %@";
 "PaymentMgmt_Dashboard_Title" = "إدارة المدفوعات";
 "PaymentMgmt_Dashboard_Subtitle" = "مراجعة الطلبات والاسترجاعات والإرجاعات وسجل الدفع";
 "PaymentMgmt_Dashboard_Settings_Title" = "أساسيات الدفع";

@@ -194,16 +194,33 @@ import SwiftUI
 import UIKit
 
 @objc(PPAdminUsersListHostingController)
-public class PPAdminUsersListHostingController: UIHostingController<AnyView> {
-    @objc public init() {
-        super.init(rootView: AnyView(EmptyView()))
-        self.rootView = AnyView(AdminUsersListView(onDismiss: { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
-        }))
-    }
-    
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
+public final class PPAdminUsersListHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+
+        let host = UIHostingController(
+            rootView: AdminUsersListView(onDismiss: { [weak self] in
+                guard let self else { return }
+                if let navigationController = self.navigationController,
+                   navigationController.viewControllers.count > 1 {
+                    navigationController.popViewController(animated: true)
+                } else {
+                    self.dismiss(animated: true)
+                }
+            })
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -213,16 +230,33 @@ public class PPAdminUsersListHostingController: UIHostingController<AnyView> {
 }
 
 @objc(PPAdminChatsHostingController)
-public class PPAdminChatsHostingController: UIHostingController<AnyView> {
-    @objc public init() {
-        super.init(rootView: AnyView(EmptyView()))
-        self.rootView = AnyView(AdminChatsView(onDismiss: { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
-        }))
-    }
-    
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
+public final class PPAdminChatsHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+
+        let host = UIHostingController(
+            rootView: AdminChatsView(onDismiss: { [weak self] in
+                guard let self else { return }
+                if let navigationController = self.navigationController,
+                   navigationController.viewControllers.count > 1 {
+                    navigationController.popViewController(animated: true)
+                } else {
+                    self.dismiss(animated: true)
+                }
+            })
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -232,16 +266,53 @@ public class PPAdminChatsHostingController: UIHostingController<AnyView> {
 }
 
 @objc(PPAdminUserManagementHostingController)
-public class PPAdminUserManagementHostingController: UIHostingController<AnyView> {
-    @objc public init(controller: UIViewController, titleText: String) {
-        super.init(rootView: AnyView(EmptyView()))
-        self.rootView = AnyView(AdminUserManagementView(controllerFactory: { controller }, titleText: titleText, onDismiss: { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
-        }))
+public final class PPAdminUserManagementHostingController: UIViewController {
+    private let contentController: UIViewController
+    private let titleText: String
+
+    @objc(initWithController:titleText:)
+    public init(controller: UIViewController, titleText: String) {
+        contentController = controller
+        self.titleText = titleText
+        super.init(nibName: nil, bundle: nil)
     }
-    
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("PPAdminUserManagementHostingController must be created programmatically.")
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+
+        let controller = contentController
+        let host = UIHostingController(
+            rootView: AdminUserManagementView(
+                controllerFactory: { controller },
+                titleText: titleText,
+                onDismiss: { [weak self] in
+                    guard let self else { return }
+                    if let navigationController = self.navigationController,
+                       navigationController.viewControllers.count > 1 {
+                        navigationController.popViewController(animated: true)
+                    } else {
+                        self.dismiss(animated: true)
+                    }
+                }
+            )
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -251,16 +322,50 @@ public class PPAdminUserManagementHostingController: UIHostingController<AnyView
 }
 
 @objc(PPAdminSupportThreadHostingController)
-public class PPAdminSupportThreadHostingController: UIHostingController<AnyView> {
-    @objc public init(controller: UIViewController) {
-        super.init(rootView: AnyView(EmptyView()))
-        self.rootView = AnyView(AdminSupportThreadView(controllerFactory: { controller }, onDismiss: { [weak self] in
-            self?.navigationController?.popViewController(animated: true)
-        }))
+public final class PPAdminSupportThreadHostingController: UIViewController {
+    private let contentController: UIViewController
+
+    @objc(initWithController:)
+    public init(controller: UIViewController) {
+        contentController = controller
+        super.init(nibName: nil, bundle: nil)
     }
-    
-    @objc required dynamic init?(coder aDecoder: NSCoder) {
-        super.init(coder: aDecoder)
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("PPAdminSupportThreadHostingController must be created programmatically.")
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+
+        let controller = contentController
+        let host = UIHostingController(
+            rootView: AdminSupportThreadView(
+                controllerFactory: { controller },
+                onDismiss: { [weak self] in
+                    guard let self else { return }
+                    if let navigationController = self.navigationController,
+                       navigationController.viewControllers.count > 1 {
+                        navigationController.popViewController(animated: true)
+                    } else {
+                        self.dismiss(animated: true)
+                    }
+                }
+            )
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        host.view.backgroundColor = .clear
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {

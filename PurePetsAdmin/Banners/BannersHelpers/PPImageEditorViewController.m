@@ -160,7 +160,7 @@
         return [self pp_rotateImage90DegreesClockwise:image];
     } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
         if (error || !edited) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to rotate image")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to rotate image")];
             return;
         }
         // Crossfade to new image
@@ -191,7 +191,7 @@
             return [self pp_flipImage:image horizontal:YES vertical:NO];
         } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
             if (error || !edited) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to flip image")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to flip image")];
                 return;
             }
             [UIView transitionWithView:self.imageView
@@ -211,7 +211,7 @@
             return [self pp_flipImage:image horizontal:NO vertical:YES];
         } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
             if (error || !edited) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to flip image")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to flip image")];
                 return;
             }
             [UIView transitionWithView:self.imageView
@@ -248,7 +248,7 @@
             return [self pp_cropImage:image toAspectRatioWidth:1 height:1];
         } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
             if (error || !edited) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
                 return;
             }
             [UIView transitionWithView:self.imageView
@@ -267,7 +267,7 @@
             return [self pp_cropImage:image toAspectRatioWidth:16 height:9];
         } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
             if (error || !edited) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
                 return;
             }
             [UIView transitionWithView:self.imageView
@@ -286,7 +286,7 @@
             return [self pp_cropImage:image toAspectRatioWidth:4 height:3];
         } completion:^(UIImage * _Nullable edited, NSError * _Nullable error) {
             if (error || !edited) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Unable to crop image")];
                 return;
             }
             [UIView transitionWithView:self.imageView

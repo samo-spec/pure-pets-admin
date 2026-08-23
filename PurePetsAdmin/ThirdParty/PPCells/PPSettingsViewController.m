@@ -12,7 +12,7 @@
 #import "Styling.h"
 #import "Language.h"
 #import "PPDesignTokens.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPAlertHelper.h"
 @import Firebase;
 @import FirebaseAuth;
@@ -804,7 +804,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
     [[UISelectionFeedbackGenerator new] selectionChanged];
     UserModel *currentUser = UsrMgr.currentUser;
     if (!currentUser) {
-        [AlertHelper showInfoIn:self
+        [PPAlertHelper showInfoIn:self
                           title:kLang(@"NoSignedInUser_Title")
                        subtitle:kLang(@"NoSignedInUser_Message")];
         return;
@@ -821,7 +821,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
     [[NSNotificationCenter defaultCenter] postNotificationName:@"PPOpenLanguageSelectionNotification" object:nil];
 
     NSInteger nextLanguageValue = ([Language languageVal] == 0) ? 1 : 0;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Confirm_LanguageChange_Title")
                            subtitle:kLang(@"Confirm_LanguageChange_Msg")
                         placeholder:nil
@@ -843,7 +843,7 @@ typedef NS_ENUM(NSInteger, PPSettingsProfileState) {
 - (void)pp_confirmLogout {
     if (self.isSigningOut) return;
 
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Logout_Confirm_Title")
                            subtitle:kLang(@"Logout_Confirm_Message")
                         placeholder:nil

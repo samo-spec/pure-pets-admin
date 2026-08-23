@@ -885,23 +885,10 @@ private struct PPFulfillmentOrdersScreen: View {
     }
 
     private var operationalStatusBar: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
-                    liveStatus
-                    refreshControl
-                }
-            } else {
-                HStack(spacing: PPFulfillmentTokens.spaceSM) {
-                    liveStatus
-                    Spacer(minLength: PPFulfillmentTokens.spaceSM)
-                    refreshControl
-                }
-            }
-        }
-        .font(AdminType.caption1)
-        .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-        .accessibilityIdentifier("fulfillment.live.status")
+        liveStatus
+            .font(AdminType.caption1)
+            .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+            .accessibilityIdentifier("fulfillment.live.status")
     }
 
     private var refreshControl: some View {
@@ -1098,10 +1085,6 @@ private struct PPFulfillmentOrdersScreen: View {
             .overlay(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous).stroke(PPFulfillmentTokens.border))
 
             scopeControls
-            .font(PPFulfillmentTokens.beiruti(.bold, size: 15, relativeTo: .subheadline))
-            .foregroundStyle(PPFulfillmentTokens.primary)
-            .buttonStyle(.bordered)
-            .tint(PPFulfillmentTokens.primary)
         }
     }
 
@@ -1116,31 +1099,82 @@ private struct PPFulfillmentOrdersScreen: View {
 
     @ViewBuilder
     private var scopeControlContent: some View {
+        // ── Scope chip (All / Active / Awaiting / Completed) ──────────
         Menu {
             ForEach(PPFulfillmentStatusGroup.allCases) { group in
                 Button {
-                    viewModel.statusGroup = group
-                    viewModel.exactStatus = ""
-                    viewModel.stageFilter = nil
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        viewModel.statusGroup = group
+                        viewModel.exactStatus = ""
+                        viewModel.stageFilter = nil
+                    }
                     UISelectionFeedbackGenerator().selectionChanged()
                 } label: {
                     Label(PPFulfillmentL10n.text(group.titleKey), systemImage: symbol(for: group))
                 }
             }
         } label: {
-            Label(activeScopeTitle, systemImage: "scope")
-                .frame(maxWidth: .infinity, minHeight: PPFulfillmentTokens.minimumTarget)
+            HStack(spacing: PPFulfillmentTokens.spaceXS) {
+                Image(systemName: "scope")
+                    .font(.system(size: 14, weight: .semibold))
+                    .imageScale(.small)
+                Text(activeScopeTitle)
+                    .font(PPFulfillmentTokens.beiruti(.bold, size: 14, relativeTo: .subheadline))
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 9, weight: .bold))
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, PPFulfillmentTokens.spaceMD)
+            .frame(minHeight: 40)
+            .foregroundStyle(PPFulfillmentTokens.primary)
+            .background(PPFulfillmentTokens.primarySoft, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).strokeBorder(PPFulfillmentTokens.primary.opacity(0.18), lineWidth: 1))
+            .contentShape(Capsule())
         }
         .accessibilityIdentifier("fulfillment.scope")
+        .accessibilityLabel(activeScopeTitle)
 
+        // ── Filter chip ──────────────────────────────────────────────
         Button(action: { showsFilters = true }) {
-            Label(
-                PPFulfillmentL10n.text("Fulfillment_Filters_Title"),
-                systemImage: viewModel.hasActiveFilters
-                    ? "line.3.horizontal.decrease.circle.fill"
-                    : "line.3.horizontal.decrease.circle"
+            HStack(spacing: PPFulfillmentTokens.spaceXS) {
+                Image(systemName: viewModel.hasActiveFilters
+                      ? "line.3.horizontal.decrease.circle.fill"
+                      : "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .imageScale(.small)
+                    .symbolRenderingMode(viewModel.hasActiveFilters ? .hierarchical : .monochrome)
+                Text(PPFulfillmentL10n.text("Fulfillment_Filters_Title"))
+                    .font(PPFulfillmentTokens.beiruti(.bold, size: 14, relativeTo: .subheadline))
+                    .lineLimit(1)
+                if viewModel.hasActiveFilters {
+                    Circle()
+                        .fill(PPFulfillmentTokens.primary)
+                        .frame(width: 6, height: 6)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(.horizontal, PPFulfillmentTokens.spaceMD)
+            .frame(minHeight: 40)
+            .foregroundStyle(viewModel.hasActiveFilters ? PPFulfillmentTokens.primary : PPFulfillmentTokens.secondaryInk)
+            .background(
+                viewModel.hasActiveFilters
+                    ? PPFulfillmentTokens.primarySoft
+                    : PPFulfillmentTokens.surface,
+                in: Capsule(style: .continuous)
             )
-            .frame(maxWidth: .infinity, minHeight: PPFulfillmentTokens.minimumTarget)
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(
+                        viewModel.hasActiveFilters
+                            ? PPFulfillmentTokens.primary.opacity(0.18)
+                            : PPFulfillmentTokens.border,
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(Capsule())
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: viewModel.hasActiveFilters)
         }
         .accessibilityIdentifier("fulfillment.filters")
     }

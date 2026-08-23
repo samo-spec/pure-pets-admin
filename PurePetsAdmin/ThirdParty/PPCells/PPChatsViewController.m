@@ -10,7 +10,7 @@
 #import "PPStaffAuth.h"
 #import "Styling.h"
 #import "Language.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PurePetsAdmin-Swift.h"
 @import FirebaseAuth;
 @import FirebaseFirestore;
@@ -1267,7 +1267,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
             if (error) {
                 [self refreshStatusControl];
                 [self refreshComposerAvailability];
-                [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_StatusError")];
+                [PPAlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_StatusError")];
                 return;
             }
             NSMutableDictionary *nextThread = [self.thread mutableCopy];
@@ -1324,7 +1324,7 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
                 self.isSending = NO;
                 self.messageField.text = text;
                 [self refreshComposerAvailability];
-                [AlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
+                [PPAlertHelper showAlertIn:self title:PPChatsL(@"Error_Title") subtitle:PPChatsL(@"SupportChats_ReplyError")];
                 return;
             }
             self.isSending = NO;

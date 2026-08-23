@@ -4,7 +4,7 @@
 //
 
 #import "NotificationComposerViewController.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "Language.h"
 #import "PPPickOptionCell.h"
 #import "PPNotificationsManager.h"
@@ -667,7 +667,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
             __strong typeof(weakSelf) self = weakSelf;
             if (!self) return;
             if (error) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
                 return;
             }
             self.cachedUsers = users ?: @[];
@@ -683,7 +683,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
     (void)row;
     NSArray *options = self.cachedUsers ?: @[];
     if (options.count == 0) {
-        [AlertHelper showInfoIn:self
+        [PPAlertHelper showInfoIn:self
                            title:kLang(@"Info")
                         subtitle:kLang(@"NoUsersFound")];
         return;
@@ -867,7 +867,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
         self.dispatchOutcomeMessage = message;
         self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
         [self pp_refreshDispatchStatus];
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
         return;
     }
 
@@ -876,7 +876,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
         self.dispatchOutcomeMessage = kLang(@"NotificationComposer_Status_SelectTarget");
         self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
         [self pp_refreshDispatchStatus];
-        [AlertHelper showInfoIn:self
+        [PPAlertHelper showInfoIn:self
                           title:kLang(@"Info")
                        subtitle:kLang(@"NotificationComposer_Status_SelectTarget")];
         return;
@@ -895,7 +895,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
                 self.dispatchOutcomeMessage = kLang(@"NotificationComposer_Status_SelectRecipients");
                 self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
                 [self pp_refreshDispatchStatus];
-                [AlertHelper showInfoIn:self
+                [PPAlertHelper showInfoIn:self
                                   title:kLang(@"Info")
                                subtitle:kLang(@"NotificationComposer_Status_SelectRecipients")];
                 return;
@@ -905,7 +905,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
                 self.dispatchOutcomeMessage = message;
                 self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
                 [self pp_refreshDispatchStatus];
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
                 return;
             }
             audience = PPNotificationAudienceSpecificUsers;
@@ -951,7 +951,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
             self.dispatchOutcomeMessage = message;
             self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
             [self pp_refreshDispatchStatus];
-            [AlertHelper showErrorIn:self title:kLang(@"Failed") subtitle:message];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Failed") subtitle:message];
             return;
         }
 
@@ -965,7 +965,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
             self.dispatchOutcomeMessage = message;
             self.dispatchOutcomeState = PPNotificationComposerDispatchStateWarning;
             [self pp_refreshDispatchStatus];
-            [AlertHelper showInfoIn:self title:kLang(@"NotificationComposer_Partial_Title") subtitle:message];
+            [PPAlertHelper showInfoIn:self title:kLang(@"NotificationComposer_Partial_Title") subtitle:message];
             return;
         }
 
@@ -973,7 +973,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
         self.dispatchOutcomeMessage = message;
         self.dispatchOutcomeState = PPNotificationComposerDispatchStateSuccess;
         [self pp_refreshDispatchStatus];
-        [AlertHelper showSuccessIn:self title:kLang(@"Queued") subtitle:message];
+        [PPAlertHelper showSuccessIn:self title:kLang(@"Queued") subtitle:message];
     }];
 }
 

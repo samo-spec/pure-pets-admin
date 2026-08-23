@@ -18,7 +18,7 @@
 //    [PPHUD showError:kLang(@"Failed") subtitle:error.localizedDescription];
 //    [PPHUD dismiss];
 //
-//  If you show an alert, do: [PPHUD dismiss]; then call AlertHelper.
+//  If you show an alert, do: [PPHUD dismiss]; then call PPAlertHelper.
 //
 
 #import <UIKit/UIKit.h>

@@ -13,7 +13,7 @@
 #import "PPBannersManager.h"
 #import "MainBannerModel.h"
 #import "PPBannerViewModel.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 
 @import Photos;
 @import Firebase;
@@ -425,7 +425,7 @@ static NSString * const kPPAdminHomeTopCarouselGroupID = @"HOME_MAIN_TOP_CAROUSE
     if (editsBannerContent) {
         NSString *titleEn = PPSafeString(values[kRowTitleEn]);
         if (titleEn.length == 0) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Title required")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Title required")];
             return;
         }
     }
@@ -437,14 +437,14 @@ static NSString * const kPPAdminHomeTopCarouselGroupID = @"HOME_MAIN_TOP_CAROUSE
                                                      preserveGroupMetadata:NO];
         if (!group) {
             [PPHUD dismiss];
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Banner group is invalid")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Banner group is invalid")];
             return;
         }
 
         [[PPBannersManager sharedManager] updateBannerGroup:group completion:^(NSError * _Nullable error) {
             [PPHUD dismiss];
             if (error) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription];
                 return;
             }
             [PPHUD showSuccess:kLang(@"Saved") subtitle:kLang(@"Banner saved")];
@@ -461,7 +461,7 @@ static NSString * const kPPAdminHomeTopCarouselGroupID = @"HOME_MAIN_TOP_CAROUSE
                                                  preserveGroupMetadata:preserveGroupMetadata];
     if (!group) {
         [PPHUD dismiss];
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Banner group is invalid")];
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"Banner group is invalid")];
         return;
     }
 

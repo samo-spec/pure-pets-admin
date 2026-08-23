@@ -10,7 +10,7 @@
 #import "Payments/PPPaymentManagementViewController.h"
 #import "ThirdParty/PPStyles/PPHUD.h"
 #import "ThirdParty/PPStyles/UIViewController+PPNavBar.h"
-#import "ThirdParty/Styling/AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPStaffAuth.h"
 #import "AdminDashboardViewController.h"
 #import "HomeControl/PPHomeControlPanelViewController.h"
@@ -515,7 +515,7 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
           UIViewController *alertHost = nav.topViewController ?: nav;
           if (!record || error) {
                self.pp_pendingPaymentOrderID = nil;
-               [AlertHelper showErrorIn:alertHost
+               [PPAlertHelper showErrorIn:alertHost
                                   title:kLang(@"Error")
                                subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_OrderNotFound")];
                return;

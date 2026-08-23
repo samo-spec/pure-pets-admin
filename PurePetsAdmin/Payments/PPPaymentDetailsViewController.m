@@ -472,7 +472,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         [self.refreshControl endRefreshing];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPaymentDetails")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPaymentDetails")];
             return;
         }
 
@@ -1200,7 +1200,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         NSString *resolvedNote = [self pp_resolvedAdminNoteForOrderAction:actionType userNote:note];
         if (resolvedNote.length == 0) return;
 
-        [AlertHelper showConfirmationIn:self
+        [PPAlertHelper showConfirmationIn:self
                                   title:title
                                subtitle:[self pp_confirmationSubtitleForOrderAction:actionType]
                             placeholder:nil
@@ -1224,7 +1224,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         if (!fulfillment || action.length == 0) {
             self.actionInFlight = NO;
             [PPHUD dismiss];
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_OfficialFulfillment_NotManageable")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_OfficialFulfillment_NotManageable")];
             return;
         }
         __weak typeof(self) weakSelf = self;
@@ -1238,7 +1238,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             self.actionInFlight = NO;
             [PPHUD dismiss];
             if (error) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
                 [self pp_reloadRecordShowHUD:NO];
                 return;
             }
@@ -1252,7 +1252,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         self.actionInFlight = NO;
         [PPHUD dismiss];
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
 
@@ -1299,7 +1299,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
                               subtitle:(NSString *)subtitle
                             completion:(void (^)(NSString *note))completion
 {
-    [AlertHelper showTextPromptIn:self
+    [PPAlertHelper showTextPromptIn:self
                             title:title
                          subtitle:subtitle
                       placeholder:kLang(@"PaymentMgmt_Value_AdminNote")
@@ -1314,7 +1314,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         }
         NSString *note = PPPaymentAdminDetailsTrimmedString(text);
         if (text && note.length > 0 && note.length < 3) {
-            [AlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_NoteRequired_Title") subtitle:kLang(@"PaymentMgmt_Prompt_NoteRequired_Subtitle")];
+            [PPAlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_NoteRequired_Title") subtitle:kLang(@"PaymentMgmt_Prompt_NoteRequired_Subtitle")];
             return;
         }
         if (completion) completion(note);
@@ -1521,7 +1521,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             self.isRefreshingRequest = NO;
             [PPHUD dismiss];
             [self.refreshControl endRefreshing];
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequest")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequest")];
             return;
         }
 
@@ -1544,7 +1544,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             [self.refreshControl endRefreshing];
 
             if (eventsError) {
-                [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequestHistory")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadRequestHistory")];
                 return;
             }
 
@@ -1834,7 +1834,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
     if (self.actionInFlight) return;
 
     if (actionType == PPPaymentRequestAdminActionTypePartialRefund) {
-        [AlertHelper showTextPromptIn:self
+        [PPAlertHelper showTextPromptIn:self
                                 title:kLang(@"PaymentMgmt_Prompt_PartialRefund_Title")
                              subtitle:kLang(@"PaymentMgmt_Prompt_PartialRefund_Subtitle")
                           placeholder:kLang(@"PaymentMgmt_Value_Amount")
@@ -1847,7 +1847,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             NSString *trimmed = PPPaymentAdminDetailsTrimmedString(text);
             double amount = trimmed.doubleValue;
             if (trimmed.length == 0 || amount <= 0.0 || amount >= self.orderRecord.totalAmount) {
-                [AlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_InvalidAmount_Title") subtitle:kLang(@"PaymentMgmt_Prompt_InvalidAmount_Subtitle")];
+                [PPAlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_InvalidAmount_Title") subtitle:kLang(@"PaymentMgmt_Prompt_InvalidAmount_Subtitle")];
                 return;
             }
             [self pp_promptForNoteAndExecuteAction:actionType amount:@(amount)];
@@ -1861,7 +1861,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
 - (void)pp_promptForNoteAndExecuteAction:(PPPaymentRequestAdminActionType)actionType amount:(NSNumber *)amount
 {
     NSString *title = [self pp_titleForRequestAction:actionType];
-    [AlertHelper showTextPromptIn:self
+    [PPAlertHelper showTextPromptIn:self
                             title:title
                          subtitle:kLang(@"PaymentMgmt_Prompt_RequestNote_Subtitle")
                       placeholder:kLang(@"PaymentMgmt_Value_AdminNote")
@@ -1873,11 +1873,11 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
                        completion:^(NSString * _Nullable text) {
         NSString *note = PPPaymentAdminDetailsTrimmedString(text);
         if (text && note.length < 3) {
-            [AlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_NoteRequired_Title") subtitle:kLang(@"PaymentMgmt_Prompt_NoteRequired_Subtitle")];
+            [PPAlertHelper showWarningIn:self title:kLang(@"PaymentMgmt_Prompt_NoteRequired_Title") subtitle:kLang(@"PaymentMgmt_Prompt_NoteRequired_Subtitle")];
             return;
         }
         NSString *subtitle = [self pp_confirmationSubtitleForRequestAction:actionType amount:amount];
-        [AlertHelper showConfirmationIn:self
+        [PPAlertHelper showConfirmationIn:self
                                   title:title
                                subtitle:subtitle
                             placeholder:nil
@@ -1947,7 +1947,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
         self.actionInFlight = NO;
         [PPHUD dismiss];
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateRequest")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateRequest")];
             return;
         }
 

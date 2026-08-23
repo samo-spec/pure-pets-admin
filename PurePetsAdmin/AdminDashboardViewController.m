@@ -3577,7 +3577,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 - (void)didTapLanguage {
     [PPFunc pp_playTapEffect];
     NSInteger newLangVal = ([Language languageVal] == 0) ? 1 : 0;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Confirm_LanguageChange_Title")
                            subtitle:kLang(@"Confirm_LanguageChange_Msg")
                         placeholder:nil
@@ -3591,7 +3591,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)didTapAuthButton {
     [PPFunc pp_playTapEffect];
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Logout_Confirm_Title")
                            subtitle:kLang(@"Logout_Confirm_Message")
                         placeholder:nil

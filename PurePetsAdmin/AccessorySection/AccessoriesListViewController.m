@@ -307,7 +307,7 @@
     if (!accessory) return;
 
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Confirm Delete")
                            subtitle:kLang(@"Are you sure you want to delete this accessory?")
                          placeholder:nil

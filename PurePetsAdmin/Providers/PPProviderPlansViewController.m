@@ -3,7 +3,7 @@
 #import "PPProviderUI.h"
 #import "PPStaffAuth.h"
 #import "Language.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPFunc+Haptics.h"
 #import "PPAlertHelper.h"
 
@@ -32,6 +32,24 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
     [self pp_configureTableView];
     [self pp_buildHeader];
     [self loadData];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
+    
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+        [appearance configureWithOpaqueBackground];
+        appearance.backgroundColor = PPProviderCanvasColor();
+        appearance.titleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
+        appearance.largeTitleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
+        appearance.shadowColor = PPProviderSeparatorColor();
+        self.navigationItem.standardAppearance = appearance;
+        self.navigationItem.scrollEdgeAppearance = appearance;
+        self.navigationItem.compactAppearance = appearance;
+    }
+    self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
 }
 
 - (void)viewDidLayoutSubviews {
@@ -139,7 +157,7 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
             [self pp_updateState];
             [self.tableView reloadData];
             if (error && self.plans.count > 0) {
-                [AlertHelper showAlertIn:self title:kLang(@"Providers_Plans_LoadFailed") subtitle:kLang(@"Providers_Load_Error_Subtitle")];
+                [PPAlertHelper showAlertIn:self title:kLang(@"Providers_Plans_LoadFailed") subtitle:kLang(@"Providers_Load_Error_Subtitle")];
             }
         });
     }];
@@ -270,7 +288,7 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
         double amount = form.textFields[2].text.doubleValue;
         double commission = form.textFields[3].text.doubleValue;
         if (nameEn.length == 0 || nameAr.length == 0 || amount < 0.0 || commission < 0.0 || commission > 100.0) {
-            [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"Providers_Plans_Invalid_Form")];
+            [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"Providers_Plans_Invalid_Form")];
             return;
         }
         NSDictionary *payload = @{
@@ -309,7 +327,7 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
             self.isMutating = NO;
             self.navigationItem.rightBarButtonItem.enabled = YES;
             if (error) {
-                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 return;
             }
             (void)planID;
@@ -338,7 +356,7 @@ static NSString * const PPProviderPlanCellID = @"PPProviderPlanCell";
             self.isMutating = NO;
             self.navigationItem.rightBarButtonItem.enabled = YES;
             if (error) {
-                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 return;
             }
             [PPFunc pp_playSuccessEffect];

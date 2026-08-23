@@ -2,7 +2,7 @@
 #import "PPDeliveryService.h"
 #import "Language.h"
 #import "Styling.h"
-#import "AlertHelper.h"
+
 #import "PPFunc+Haptics.h"
 #import "PPDesignTokens.h"
 #import "UIViewController+PPNavBar.h"
@@ -1070,7 +1070,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
                     self.records = @[];
                     self.errorMessage = kLang(@"StatusNoAccess");
                 }
-                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:self.errorMessage];
+                [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:self.errorMessage];
             } else {
                 self.records = records ?: @[];
                 if (shouldShowSuccessAfterLoad) {
@@ -1236,23 +1236,9 @@ static NSString *PPDeliveryErrorText(NSError *error) {
 
 - (void)promptAssignDriver:(PPDeliveryRequestRecord *)record {
     if (self.isSubmitting) return;
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Delivery_AssignDriver")
-                                                                     message:kLang(@"Delivery_EnterDriverUID")
-                                                              preferredStyle:UIAlertControllerStyleAlert];
-    [alert addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.placeholder = kLang(@"Delivery_DriverUIDPlaceholder");
-        textField.textAlignment = [Language alignmentForCurrentLanguage];
-        textField.clearButtonMode = UITextFieldViewModeWhileEditing;
-        textField.autocapitalizationType = UITextAutocapitalizationTypeNone;
-        textField.autocorrectionType = UITextAutocorrectionTypeNo;
-        [textField addTarget:self action:@selector(pp_driverUIDChanged:) forControlEvents:UIControlEventEditingChanged];
-    }];
-
-    __weak UIAlertController *weakAlert = alert;
-    UIAlertAction *confirmAction = [UIAlertAction actionWithTitle:kLang(@"Confirm") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        NSString *driverUID = [weakAlert.textFields.firstObject.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [PPAlertHelper showTextPromptIn:self title:kLang(@"Delivery_AssignDriver") subtitle:kLang(@"Delivery_EnterDriverUID") placeholder:kLang(@"Delivery_DriverUIDPlaceholder") initialText:nil confirmText:kLang(@"Confirm") cancelText:kLang(@"Cancel") secureEntry:NO keyboardType:UIKeyboardTypeDefault completion:^(NSString * _Nullable text) {
+        NSString *driverUID = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (driverUID.length == 0) return;
-        self.pendingDriverConfirmAction = nil;
         [self pp_beginSubmitting];
         [[PPDeliveryService shared] assignDriver:record.requestID driverUID:driverUID completion:^(NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -1260,19 +1246,6 @@ static NSString *PPDeliveryErrorText(NSError *error) {
             });
         }];
     }];
-    confirmAction.enabled = NO;
-    self.pendingDriverConfirmAction = confirmAction;
-    [alert addAction:confirmAction];
-    __weak typeof(self) weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *action) {
-        weakSelf.pendingDriverConfirmAction = nil;
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-
-- (void)pp_driverUIDChanged:(UITextField *)textField {
-    NSString *value = [textField.text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-    self.pendingDriverConfirmAction.enabled = value.length > 0;
 }
 
 - (void)completeRecord:(PPDeliveryRequestRecord *)record {
@@ -1333,7 +1306,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
             [self pp_updateHeaderState];
         [self.tableView reloadData];
         NSString *message = self.permissionDenied ? kLang(@"StatusNoAccess") : PPDeliveryErrorText(error);
-        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:message];
+        [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:message];
         return;
     }
 

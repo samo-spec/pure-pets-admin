@@ -1452,18 +1452,19 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     }
     
     NSString *actionName = shouldBlock ? kLang(@"BlockUser_Action") : kLang(@"Unblock");
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Confirm") message:[NSString stringWithFormat:@"%@ %@", actionName, user.UserName] preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:^(UIAlertAction * _Nonnull action) {
+    [PPAlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:[NSString stringWithFormat:@"%@ %@", actionName, user.UserName] confirmButton:actionName cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(NSString * _Nullable text, BOOL didConfirm) {
+        if (didConfirm) {
+            [RPM setBlocked:shouldBlock forUID:user.uid reason:nil duration:nil completion:^(NSError * _Nullable error) {
+                if (error) [PPToast toast:error.localizedDescription];
+                else [PPToast toast:kLang(@"Success")];
+                if (completion) completion(error == nil);
+            }];
+        } else {
+            if (completion) completion(NO);
+        }
+    } cancelBlock:^{
         if (completion) completion(NO);
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:actionName style:UIAlertActionStyleDestructive handler:^(UIAlertAction * _Nonnull action) {
-        [RPM setBlocked:shouldBlock forUID:user.uid reason:nil duration:nil completion:^(NSError * _Nullable error) {
-            if (error) [PPToast toast:error.localizedDescription];
-            else [PPToast toast:kLang(@"Success")];
-            if (completion) completion(error == nil);
-        }];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+    }];
 }
 
 @end

@@ -924,6 +924,38 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     [alert showInViewController:[self presenterForViewController:vc]];
 }
 
+#pragma mark - Auto-typed convenience
+
++ (void)showAlertIn:(UIViewController *)vc
+              title:(NSString *)title
+           subtitle:(NSString * _Nullable)subtitle {
+    NSString *normalised = title.lowercaseString ?: @"";
+
+    // Success keywords (localised titles typically resolve to these)
+    if ([normalised containsString:@"success"] ||
+        [normalised containsString:@"نجاح"] ||
+        [normalised containsString:@"تم"]) {
+        [self showSuccessIn:vc title:title subtitle:subtitle];
+        return;
+    }
+    // Warning keywords
+    if ([normalised containsString:@"warning"] ||
+        [normalised containsString:@"تحذير"]) {
+        [self showWarningIn:vc title:title subtitle:subtitle];
+        return;
+    }
+    // Info / neutral keywords
+    if ([normalised containsString:@"info"]    ||
+        [normalised containsString:@"loaded"]  ||
+        [normalised containsString:@"default"] ||
+        [normalised containsString:@"معلوم"]) {
+        [self showInfoIn:vc title:title subtitle:subtitle];
+        return;
+    }
+    // Fallback → error (the vast majority of callers are error alerts)
+    [self showErrorIn:vc title:title subtitle:subtitle];
+}
+
 + (void)showConfirmationIn:(UIViewController *)vc
                      title:(NSString *)title
                   subtitle:(NSString *)subtitle
@@ -1107,7 +1139,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
                  cancelBlock:cancelBlock];
 }
 
-+ (void)showTextPromptIn:(UIViewController *)vc
++ (void)showTextPromptIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title
                 subtitle:(NSString * _Nullable)subtitle
              placeholder:(NSString * _Nullable)placeholder
@@ -1127,7 +1159,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
                 completion:completion];
 }
 
-+ (void)showTextPromptIn:(UIViewController *)vc
++ (void)showTextPromptIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title
                 subtitle:(NSString * _Nullable)subtitle
              placeholder:(NSString * _Nullable)placeholder

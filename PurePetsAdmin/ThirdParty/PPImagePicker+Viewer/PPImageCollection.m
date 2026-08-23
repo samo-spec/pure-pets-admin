@@ -981,16 +981,7 @@ moveItemAtIndexPath:(NSIndexPath *)sourceIndexPath
 - (void)presentSimpleAlertOn:(UIViewController *)viewController title:(NSString *)title message:(NSString *)message
 {
     if (!viewController) return;
-    NSString *finalTitle = title.length ? title : @"";
-    NSString *finalMessage = message.length ? message : @"";
-    UIAlertController *alert =
-    [UIAlertController alertControllerWithTitle:finalTitle
-                                        message:finalMessage
-                                 preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"OK")
-                                              style:UIAlertActionStyleDefault
-                                            handler:nil]];
-    [viewController presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showInfoIn:viewController title:title subtitle:message];
 }
 
 #pragma mark - QBImagePickerControllerDelegate

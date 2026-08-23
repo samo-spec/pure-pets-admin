@@ -373,7 +373,7 @@ static UIView *PPBannerMetric(NSString *caption, UILabel * __strong *valueLabel)
         if (!self) return;
         MainBannerModel *group = self.filteredBanners[currentSection];
         
-        [AlertHelper showConfirmationIn:self
+        [PPAlertHelper showConfirmationIn:self
                                   title:kLang(@"Confirm Delete")
                                subtitle:kLang(@"Delete this entire banner group?")
                             placeholder:nil
@@ -522,7 +522,7 @@ static UIView *PPBannerMetric(NSString *caption, UILabel * __strong *valueLabel)
 - (void)deleteGroup:(UIButton *)sender {
     MainBannerModel *group = self.filteredBanners[sender.tag];
     
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Confirm Delete")
                            subtitle:kLang(@"Delete this entire banner group?")
                         placeholder:nil

@@ -2,7 +2,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface PPProviderApplicationsViewController : UITableViewController
+@interface PPProviderApplicationsViewController : UIViewController
 @end
 
 NS_ASSUME_NONNULL_END

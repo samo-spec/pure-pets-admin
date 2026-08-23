@@ -908,7 +908,9 @@ static NSInteger kRestrictionCount = sizeof(kRestrictions) / sizeof(PPFeatureDef
         }];
     }
 
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+    dispatch_group_notify(group,
+ dispatch_get_main_queue(),
+ ^{
         [PPHUD dismiss];
         self->_isSaving = NO;
         [self.saveButton setTitle:kLang(@"MissionControl_UserDetail_Save") forState:UIControlStateNormal];
@@ -941,7 +943,7 @@ static NSInteger kRestrictionCount = sizeof(kRestrictions) / sizeof(PPFeatureDef
             [self.tableView reloadData];
             [PPFunc pp_playErrorEffect];
             [PPToast toast:lastError.localizedDescription style:PPToastStyleError haptic:YES duration:3.0];
-            [AlertHelper showErrorIn:self title:kLang(@"Update_Error") subtitle:lastError.localizedDescription];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Update_Error") subtitle:lastError.localizedDescription];
         } else {
             [PPFunc pp_playSuccessEffect];
             [PPToast toast:kLang(@"Update_Success") style:PPToastStyleSuccess haptic:YES duration:2.0];

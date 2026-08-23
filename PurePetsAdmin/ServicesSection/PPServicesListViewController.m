@@ -592,7 +592,7 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
     BOOL newState = !service.isDisabled;
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:(newState ? kLang(@"Service_Confirm_Disable_Title") : kLang(@"Service_Confirm_Enable_Title"))
                            subtitle:(newState ? kLang(@"Service_Confirm_Disable_Subtitle") : kLang(@"Service_Confirm_Enable_Subtitle"))
                         placeholder:nil
@@ -622,7 +622,7 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
     BOOL newState = !service.isBlocked;
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:(newState ? kLang(@"Service_Confirm_Block_Title") : kLang(@"Service_Confirm_Unblock_Title"))
                            subtitle:(newState ? kLang(@"Service_Confirm_Block_Subtitle") : kLang(@"Service_Confirm_Unblock_Subtitle"))
                         placeholder:nil
@@ -652,7 +652,7 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
     BOOL shouldArchive = !service.isDeleted;
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:(shouldArchive ? kLang(@"Service_Confirm_Archive_Title") : kLang(@"Service_Confirm_Restore_Title"))
                            subtitle:(shouldArchive ? kLang(@"Service_Confirm_Archive_Subtitle") : kLang(@"Service_Confirm_Restore_Subtitle"))
                         placeholder:nil
@@ -683,7 +683,7 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
     }
 
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Service_Confirm_Delete_Title")
                            subtitle:kLang(@"Service_Confirm_Delete_Subtitle")
                         placeholder:nil

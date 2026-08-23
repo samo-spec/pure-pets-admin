@@ -6,7 +6,7 @@
 #import "AddUserViewController.h"
 #import "Styling.h"
 #import "Language.h"
-#import "AlertHelper.h"
+ 
 #import "PPRolePermission.h"
 #import "RPManager.h"
 #import "AdminService.h"
@@ -1270,22 +1270,19 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 }
 
 - (void)pp_showNormalUserUpgradePromptForUser:(UserModel *)user {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:kLang(@"Staff_NormalUserUpgrade_Title")
-                                                                   message:kLang(@"Staff_NormalUserUpgrade_Message")
-                                                            preferredStyle:UIAlertControllerStyleAlert];
     __weak typeof(self) weakSelf = self;
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction *action) {
+    [PPAlertHelper showConfirmationIn:self title:kLang(@"Staff_NormalUserUpgrade_Title") subtitle:kLang(@"Staff_NormalUserUpgrade_Message") confirmButton:kLang(@"Staff_NormalUserUpgrade_Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(NSString * _Nullable text, BOOL didConfirm) {
+        if (didConfirm) {
+            [weakSelf pp_prepareNormalUserUpgrade:user];
+        }
+    } cancelBlock:^{
         weakSelf.selectedUser = nil;
         weakSelf.userModel = nil;
         weakSelf.editExistingStaff = NO;
         [weakSelf.assignFormView setValue:@"" forIdentifier:@"selectedUser"];
         [weakSelf pp_applyFeatureValuesForCurrentMode];
         [weakSelf pp_refreshHeroStateAnimated:YES];
-    }]];
-    [alert addAction:[UIAlertAction actionWithTitle:kLang(@"Staff_NormalUserUpgrade_Confirm") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        [weakSelf pp_prepareNormalUserUpgrade:user];
-    }]];
-    [self presentViewController:alert animated:YES completion:nil];
+    }];
 }
 
 - (void)pp_prepareNormalUserUpgrade:(UserModel *)user {

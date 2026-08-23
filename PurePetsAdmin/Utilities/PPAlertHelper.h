@@ -117,7 +117,16 @@ typedef void (^PPAlertSimpleActionBlock)(void);
           subtitle:(NSString * _Nullable)subtitle
         completion:(void (^ _Nullable)(void))completion;
 
-#pragma mark - Backward-compatible (old AlertHelper API)
+#pragma mark - Auto-typed convenience
+
+/// Convenience that auto-routes to success / error / warning / info based on
+/// the title string.  Falls back to ``showErrorIn:title:subtitle:`` when the
+/// type cannot be inferred.
++ (void)showAlertIn:(UIViewController *)vc
+              title:(NSString *)title
+           subtitle:(NSString * _Nullable)subtitle;
+
+#pragma mark - Backward-compatible (old PPAlertHelper API)
 
 + (void)showConfirmationIn:(UIViewController *)vc
                      title:(NSString *)title
@@ -138,7 +147,7 @@ typedef void (^PPAlertSimpleActionBlock)(void);
               confirmBlock:(void(^_Nullable)(void))confirmBlock
                cancelBlock:(void(^_Nullable)(void))cancelBlock;
 
-+ (void)showTextPromptIn:(UIViewController *)vc
++ (void)showTextPromptIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title
                 subtitle:(NSString * _Nullable)subtitle
              placeholder:(NSString * _Nullable)placeholder
@@ -147,7 +156,7 @@ typedef void (^PPAlertSimpleActionBlock)(void);
               cancelText:(NSString * _Nullable)cancelText
               completion:(void(^)(NSString * _Nullable text))completion;
 
-+ (void)showTextPromptIn:(UIViewController *)vc
++ (void)showTextPromptIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title
                 subtitle:(NSString * _Nullable)subtitle
              placeholder:(NSString * _Nullable)placeholder

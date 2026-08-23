@@ -3,7 +3,7 @@
 @import FirebaseAuth;
 #import "Language.h"
 #import "Styling.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPFunc+Haptics.h"
 #import "AppManager.h"
 #import "PPHero.h"
@@ -915,7 +915,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
         dispatch_async(dispatch_get_main_queue(), ^{
             weakSelf.isLoading = NO;
             if (error) {
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                [PPAlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 [weakSelf.tableView reloadData];
                 [weakSelf pp_updateNavigationItems];
                 return;
@@ -923,7 +923,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
             [weakSelf buildSectionsFromSnapshot:snapshot];
             [weakSelf pp_applyGlobalValuesFromSnapshot:snapshot];
             if (!snapshot.exists) {
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"HomeControl_DefaultLoaded_Title") subtitle:kLang(@"HomeControl_DefaultLoaded_Message")];
+                [PPAlertHelper showAlertIn:weakSelf title:kLang(@"HomeControl_DefaultLoaded_Title") subtitle:kLang(@"HomeControl_DefaultLoaded_Message")];
             }
             weakSelf.isDirty = NO;
             weakSelf.savedSections = [weakSelf pp_copySections:weakSelf.sections];
@@ -1050,7 +1050,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
 
     NSArray<PPHomeSectionState *> *sectionsToSave = [self pp_copySections:self.sections];
     if (sectionsToSave.count == 0) {
-        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"HomeControl_NoValidSections")];
+        [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"HomeControl_NoValidSections")];
         return;
     }
 
@@ -1077,13 +1077,12 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
     }
 
     if (title.length > 0 && message.length > 0) {
-        UIAlertController *confirmation = [UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];
-        [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"HomeControl_Cancel") style:UIAlertActionStyleCancel handler:nil]];
         __weak typeof(self) weakSelf = self;
-        [confirmation addAction:[UIAlertAction actionWithTitle:kLang(@"HomeControl_Continue") style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
-            [weakSelf pp_commitSaveWithSections:sectionsToSave];
-        }]];
-        [self presentViewController:confirmation animated:YES completion:nil];
+        [PPAlertHelper showConfirmationIn:self title:title subtitle:message confirmButton:kLang(@"HomeControl_Continue") cancelButton:kLang(@"HomeControl_Cancel") icon:nil confirmBlock:^(NSString * _Nullable text, BOOL didConfirm) {
+            if (didConfirm) {
+                [weakSelf pp_commitSaveWithSections:sectionsToSave];
+            }
+        } cancelBlock:nil];
         return;
     }
 
@@ -1137,7 +1136,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
             weakSelf.isSaving = NO;
             if (error) {
                 [weakSelf pp_updateNavigationItems];
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                [PPAlertHelper showAlertIn:weakSelf title:kLang(@"Error_Title") subtitle:error.localizedDescription];
             } else {
                 weakSelf.isDirty = NO;
                 weakSelf.savedSections = [weakSelf pp_copySections:sections];
@@ -1146,7 +1145,7 @@ static PPHomeSectionMeta *PPHomeSectionMetaWithValues(PPHomeSectionID sid, NSStr
                 [weakSelf pp_updateNavigationItems];
                 [weakSelf pp_updatePreview];
                 [PPFunc pp_playSuccessEffect];
-                [AlertHelper showAlertIn:weakSelf title:kLang(@"Success_Title") subtitle:kLang(@"HomeControl_Saved")];
+                [PPAlertHelper showAlertIn:weakSelf title:kLang(@"Success_Title") subtitle:kLang(@"HomeControl_Saved")];
             }
         });
     }];

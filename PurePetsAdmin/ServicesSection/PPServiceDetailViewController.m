@@ -282,7 +282,7 @@
 - (void)archiveTapped {
     __weak typeof(self) weakSelf = self;
     BOOL shouldArchive = !self.service.isDeleted;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:(shouldArchive ? kLang(@"Service_Confirm_Archive_Title") : kLang(@"Service_Confirm_Restore_Title"))
                            subtitle:(shouldArchive ? kLang(@"Service_Confirm_Archive_Subtitle") : kLang(@"Service_Confirm_Restore_Subtitle"))
                         placeholder:nil
@@ -309,7 +309,7 @@
 
 - (void)deleteTapped {
     __weak typeof(self) weakSelf = self;
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:kLang(@"Service_Confirm_Delete_Title")
                            subtitle:kLang(@"Service_Confirm_Delete_Subtitle")
                         placeholder:nil

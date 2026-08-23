@@ -348,7 +348,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     if (self.isLoading || self.isLoadingMore) return;
     if (![self.service currentAdminCanViewPayments]) {
         [self.refreshControl endRefreshing];
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_NoViewPaymentsPermission")];
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_NoViewPaymentsPermission")];
         self.hasLoadedOnce = YES;
         [self.tableView reloadData];
         return;
@@ -380,7 +380,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
 
         BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
         if (error && !isPartialRead) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
             [self.tableView reloadData];
             return;
         }
@@ -740,7 +740,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
     NSString *resolvedNote = [self pp_defaultAdminNoteForListOrderAction:actionType record:record];
     if (resolvedNote.length == 0) return;
 
-    [AlertHelper showConfirmationIn:self
+    [PPAlertHelper showConfirmationIn:self
                               title:title
                            subtitle:subtitle
                         placeholder:nil
@@ -766,7 +766,7 @@ static NSString *PPPaymentAdminListDetailsActionTitle(void)
         [self.inFlightOrderActions removeObject:orderID];
         [PPHUD dismiss];
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
         if (updatedRecord.orderId.length > 0) {

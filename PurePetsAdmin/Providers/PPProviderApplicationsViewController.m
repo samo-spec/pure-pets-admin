@@ -3,10 +3,10 @@
 #import "PPProviderUI.h"
 #import "PPStaffAuth.h"
 #import "Language.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPFunc+Haptics.h"
 #import "Styling.h"
-#import "PPAlertHelper.h"
+#import "UIViewController+PPNavBar.h"
 @import FirebaseFirestore;
 @import FirebaseFunctions;
 
@@ -758,6 +758,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 @end
 
 @interface PPProviderApplicationDetailViewController ()
+@property (nonatomic, strong) UIView *customNavBar;
 @property (nonatomic, strong) PPProviderApplication *application;
 @property (nonatomic, assign) BOOL canManage;
 @property (nonatomic, assign) BOOL isReviewing;
@@ -793,6 +794,32 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self pp_buildView];
     [self pp_rebuildContent];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    PPSetCommandCenterNavigationManaged(self.navigationController, NO);
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    self.customNavBar = [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto
+                                          button:nil
+                                           title:kLang(@"Providers_ApplicationDetail_Title")
+                                        showBack:YES];
+    if (self.customNavBar) {
+        self.scrollView.contentInset = UIEdgeInsetsMake(self.customNavBar.frame.size.height ?: 90, 0, 0, 0);
+    }
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+
+    if (self.customNavBar && self.customNavBar.frame.size.height > 0) {
+        UIEdgeInsets insets = self.scrollView.contentInset;
+        if (insets.top != self.customNavBar.frame.size.height) {
+            insets.top = self.customNavBar.frame.size.height;
+            self.scrollView.contentInset = insets;
+            self.scrollView.verticalScrollIndicatorInsets = insets;
+        }
+    }
 }
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
@@ -1404,7 +1431,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     [[UIApplication sharedApplication] openURL:URL options:@{} completionHandler:^(BOOL success) {
         if (success) return;
         dispatch_async(dispatch_get_main_queue(), ^{
-            [AlertHelper showAlertIn:self
+            [PPAlertHelper showAlertIn:self
                                title:kLang(@"Error_Title")
                             subtitle:kLang(@"Providers_ApplicationDetail_OpenURLFailed")];
         });
@@ -1501,22 +1528,20 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 - (void)pp_requestReviewDecision:(NSString *)decision {
     if (!self.canManage || self.isReviewing || ![self pp_isTransitionable]) return;
     if (!PPProviderApplicationDecisionIsAllowed(decision, [self pp_normalizedStatus])) return;
-    UIAlertController *notes = [UIAlertController alertControllerWithTitle:kLang(@"Providers_ReviewNotes")
-                                                                   message:kLang(@"Providers_ReviewNotes_Context")
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    [notes addTextFieldWithConfigurationHandler:^(UITextField *textField) {
-        textField.placeholder = kLang(@"Providers_ReviewNotesPlaceholder");
-        textField.textAlignment = Language.alignmentForCurrentLanguage;
-        textField.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-        textField.accessibilityLabel = kLang(@"Providers_ReviewNotes");
-    }];
     __weak typeof(self) weakSelf = self;
-    __weak UIAlertController *weakNotes = notes;
-    [notes addAction:[UIAlertAction actionWithTitle:kLang(@"Confirm") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
-        [weakSelf pp_submitReviewDecision:decision notes:weakNotes.textFields.firstObject.text];
-    }]];
-    [notes addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:notes animated:YES completion:nil];
+    [PPAlertHelper showTextPromptIn:self
+                              title:kLang(@"Providers_ReviewNotes")
+                           subtitle:kLang(@"Providers_ReviewNotes_Context")
+                        placeholder:kLang(@"Providers_ReviewNotesPlaceholder")
+                        initialText:nil
+                        confirmText:kLang(@"Confirm")
+                         cancelText:kLang(@"Cancel")
+                         secureEntry:NO
+                       keyboardType:UIKeyboardTypeDefault
+                         completion:^(NSString * _Nullable text) {
+        if (!text) return; // Cancelled
+        [weakSelf pp_submitReviewDecision:decision notes:text];
+    }];
 }
 
 - (void)pp_submitReviewDecision:(NSString *)decision notes:(NSString *)notes {
@@ -1538,11 +1563,11 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
             [self pp_setReviewing:NO];
             if (error) {
                 if (PPProviderApplicationIsPermissionError(error)) {
-                    [AlertHelper showAlertIn:self
+                    [PPAlertHelper showAlertIn:self
                                        title:kLang(@"CommandCenter_Permission_Denied_Title")
                                     subtitle:kLang(@"CommandCenter_Permission_Denied_Message")];
                 } else {
-                    [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                    [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 }
                 return;
             }
@@ -1589,7 +1614,10 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 
 @end
 
-@interface PPProviderApplicationsViewController () <UISearchBarDelegate>
+@interface PPProviderApplicationsViewController () <UISearchBarDelegate, UITableViewDelegate, UITableViewDataSource>
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UIView *customNavBar;
+@property (nonatomic, strong) UIRefreshControl *refreshControl;
 @property (nonatomic, strong) NSArray<PPProviderApplication *> *applications;
 @property (nonatomic, copy) NSString *statusFilter;
 @property (nonatomic, copy) NSString *searchQuery;
@@ -1616,6 +1644,15 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.view.backgroundColor = PPProviderCanvasColor();
+    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.delegate = self;
+    self.tableView.dataSource = self;
+    self.tableView.backgroundColor = UIColor.clearColor;
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    [self.view addSubview:self.tableView];
+
     self.applications = @[];
     self.statusFilter = @"all";
     self.searchQuery = @"";
@@ -1631,8 +1668,31 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     }
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    PPSetCommandCenterNavigationManaged(self.navigationController, NO);
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    self.customNavBar = [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto
+                                          button:nil
+                                           title:kLang(@"Providers_Applications_Title")
+                                        showBack:NO];
+    if (self.customNavBar) {
+        self.tableView.contentInset = UIEdgeInsetsMake(self.customNavBar.frame.size.height ?: 90, 0, 0, 0);
+    }
+}
+
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
+
+    if (self.customNavBar && self.customNavBar.frame.size.height > 0) {
+        UIEdgeInsets insets = self.tableView.contentInset;
+        if (insets.top != self.customNavBar.frame.size.height) {
+            insets.top = self.customNavBar.frame.size.height;
+            self.tableView.contentInset = insets;
+            self.tableView.verticalScrollIndicatorInsets = insets;
+        }
+    }
+
     [self pp_fitTableHeader];
 }
 
@@ -1673,6 +1733,13 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 }
 
 - (void)pp_configureTableView {
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+    ]];
+
     self.view.backgroundColor = PPProviderCanvasColor();
     self.tableView.backgroundColor = PPProviderCanvasColor();
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
@@ -1689,6 +1756,7 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
     refresh.tintColor = PPProviderBrandColor();
     [refresh addTarget:self action:@selector(loadData) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refresh;
+    self.tableView.refreshControl = refresh;
 
     self.stateView = [PPProviderApplicationStateView new];
     __weak typeof(self) weakSelf = self;
@@ -1840,11 +1908,11 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
             [self.tableView reloadData];
             if (error && self.applications.count > 0) {
                 if (PPProviderApplicationIsPermissionError(error)) {
-                    [AlertHelper showAlertIn:self
+                    [PPAlertHelper showAlertIn:self
                                        title:kLang(@"CommandCenter_Permission_Denied_Title")
                                     subtitle:kLang(@"CommandCenter_Permission_Denied_Message")];
                 } else {
-                    [AlertHelper showAlertIn:self title:kLang(@"Providers_Applications_LoadFailed") subtitle:kLang(@"Providers_Applications_ErrorSubtitle")];
+                    [PPAlertHelper showAlertIn:self title:kLang(@"Providers_Applications_LoadFailed") subtitle:kLang(@"Providers_Applications_ErrorSubtitle")];
                 }
             }
             if (completion) completion(self.applications ?: @[], error);

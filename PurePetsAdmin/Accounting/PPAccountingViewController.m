@@ -2,7 +2,7 @@
 #import "PPAccountingService.h"
 #import "Language.h"
 #import "Styling.h"
-#import "AlertHelper.h"
+
 #import "PPFunc+Haptics.h"
 #import "AppManager.h"
 #import "PPHero.h"
@@ -635,7 +635,7 @@ static NSString *PPAccountingDateString(NSDate *date) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 controller.navigationItem.rightBarButtonItem.enabled = YES;
                 if (error) {
-                    [AlertHelper showAlertIn:controller title:kLang(@"Error_Title") subtitle:error.localizedDescription];
+                    [PPAlertHelper showAlertIn:controller title:kLang(@"Error_Title") subtitle:error.localizedDescription];
                 } else {
                     [PPFunc pp_playSuccessEffect];
                     [controller dismissViewControllerAnimated:YES completion:nil];

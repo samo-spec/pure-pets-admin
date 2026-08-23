@@ -2,7 +2,8 @@
 #import "PPPOSService.h"
 #import "Language.h"
 #import "Styling.h"
-#import "AlertHelper.h"
+
+
 #import "PPFunc+Haptics.h"
 #import "PPAlertHelper.h"
 
@@ -144,7 +145,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 
 - (void)addAccessoryToCart:(PetAccessory *)accessory {
     if (![self isSellableAccessory:accessory]) {
-        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_ItemUnavailable")];
+        [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_ItemUnavailable")];
         return;
     }
 
@@ -157,7 +158,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     }
     if (existingItem) {
         if (existingItem.quantity >= accessory.quantity) {
-            [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_StockLimitReached")];
+            [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_StockLimitReached")];
             return;
         }
         existingItem.quantity += 1;
@@ -199,7 +200,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
     PetAccessory *accessory = [self accessoryForID:item.itemID];
     if (accessory) {
         if (item.quantity >= accessory.quantity) {
-            [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_StockLimitReached")];
+            [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_StockLimitReached")];
             return;
         }
     }
@@ -217,7 +218,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
 - (void)didTapCheckout {
     if (self.isSubmittingOrder) return;
     if (self.cart.count == 0) {
-        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_EmptyCart")];
+        [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_EmptyCart")];
         return;
     }
 
@@ -258,7 +259,7 @@ static BOOL PPFastSellAccessibilitySize(UITraitCollection *traits) {
             self.isSubmittingOrder = NO;
             if (error) {
                 [self refreshCartPresentation];
-                [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_OrderSubmitFailed")];
+                [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"POS_OrderSubmitFailed")];
             } else {
                 [PPFunc pp_playSuccessEffect];
                 [self stampSaleWithOrderID:orderID];

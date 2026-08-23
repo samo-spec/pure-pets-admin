@@ -9,7 +9,7 @@
 #import "PPStaffAuth.h"
 #import "AdminService.h"
 #import "PPToast.h"
-#import "AlertHelper.h"
+#import "PPAlertHelper.h"
 #import "PPRolePermission.h"
 #import "PPHero.h"
 #import "PPFormEngine.h"

@@ -1315,6 +1315,19 @@
 /* ===================== Payment Management ===================== */
 "PaymentMgmt_Title_List" = "Payment Management";
 "PaymentMgmt_Title_Details" = "Payment Details";
+"PaymentDetail_Context" = "Payment decision dossier";
+"PaymentDetail_NextAction" = "Next action";
+"PaymentDetail_NoAction_Title" = "No action required";
+"PaymentDetail_NoAction_Subtitle" = "No payment action is available while the order remains in its current state.";
+"PaymentDetail_ReadOnly_Title" = "Management permission required";
+"PaymentDetail_ReadOnly_Subtitle" = "You can review this order, but payments.manage is required to apply a payment or fulfillment action.";
+"PaymentDetail_Loading_Source" = "Verifying the live order, payment, and fulfillment state.";
+"PaymentDetail_Refresh_Hint" = "Refreshes the order, payment, and fulfillment state.";
+"PaymentDetail_Refresh" = "Refresh";
+"PaymentDetail_ActionPrompt_Format" = "%1$@\n\n%2$@";
+"PaymentDetail_Field_Name" = "Name";
+"PaymentDetail_LabelValue_Accessibility_Format" = "%1$@: %2$@";
+"PaymentDetail_Quantity_Format" = "Quantity: %@";
 "PaymentMgmt_Dashboard_Title" = "Payment Management";
 "PaymentMgmt_Dashboard_Subtitle" = "Review orders, refunds, returns, and payment history";
 "PaymentMgmt_Dashboard_Settings_Title" = "Payment Basics";

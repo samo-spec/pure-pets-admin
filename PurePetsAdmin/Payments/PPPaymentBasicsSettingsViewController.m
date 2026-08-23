@@ -382,7 +382,7 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
         [self pp_applySaveButton];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_LoadPayments")];
             return;
         }
 
@@ -398,13 +398,13 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
     NSArray<NSError *> *validationErrors = [self formValidationErrors];
     if (validationErrors.count > 0) {
         NSString *message = validationErrors.firstObject.localizedDescription ?: kLang(@"PaymentMgmt_Settings_Error_InvalidDeliveryFee");
-        [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
+        [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
         return;
     }
 
     double deliveryFee = PPPaymentBasicsDoubleValue([self.form formRowWithTag:kPPPaymentSettingsRowDeliveryFee].value);
     if (!isfinite(deliveryFee) || deliveryFee < 0.0) {
-        [AlertHelper showWarningIn:self
+        [PPAlertHelper showWarningIn:self
                              title:kLang(@"Error")
                           subtitle:kLang(@"PaymentMgmt_Settings_Error_InvalidDeliveryFee")];
         return;
@@ -413,7 +413,7 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
     BOOL cashEnabled = [[self.form formRowWithTag:kPPPaymentSettingsRowCashOnDelivery].value boolValue];
     BOOL onlineEnabled = [[self.form formRowWithTag:kPPPaymentSettingsRowOnlinePayments].value boolValue];
     if (!(cashEnabled || onlineEnabled)) {
-        [AlertHelper showWarningIn:self
+        [PPAlertHelper showWarningIn:self
                              title:kLang(@"Error")
                           subtitle:kLang(@"PaymentMgmt_Settings_Error_NoMethodEnabled")];
         return;
@@ -436,7 +436,7 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
         [self pp_applySaveButton];
 
         if (error) {
-            [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
+            [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
             return;
         }
 

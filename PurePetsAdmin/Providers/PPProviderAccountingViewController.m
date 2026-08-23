@@ -4,7 +4,7 @@
 #import "PPStaffAuth.h"
 #import "Language.h"
 #import "Styling.h"
-#import "AlertHelper.h"
+
 
 static NSString * const PPProviderAccountingCellID = @"PPProviderAccountingCell";
 static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccountingLastProviderID";
@@ -37,6 +37,24 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
     [self pp_configureTableView];
     [self pp_buildHeader];
     [self pp_updateState];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:NO animated:animated];
+    
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+        [appearance configureWithOpaqueBackground];
+        appearance.backgroundColor = PPProviderCanvasColor();
+        appearance.titleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
+        appearance.largeTitleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
+        appearance.shadowColor = PPProviderSeparatorColor();
+        self.navigationItem.standardAppearance = appearance;
+        self.navigationItem.scrollEdgeAppearance = appearance;
+        self.navigationItem.compactAppearance = appearance;
+    }
+    self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
 }
 
 - (void)viewDidLayoutSubviews {
@@ -192,7 +210,7 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
 - (void)pp_loadProviderFromField {
     NSString *providerID = [self.providerField.text stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (providerID.length == 0) {
-        [AlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"Providers_Accounting_ProviderRequired")];
+        [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:kLang(@"Providers_Accounting_ProviderRequired")];
         return;
     }
     [self.view endEditing:YES];

@@ -60,8 +60,8 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         
-        if (error) { [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription]; return; }
-        if (users.count == 0) { [AlertHelper showInfoIn:self title:kLang(@"Info") subtitle:kLang(@"NoUsersFound")]; return; }
+        if (error) { [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription]; return; }
+        if (users.count == 0) { [PPAlertHelper showInfoIn:self title:kLang(@"Info") subtitle:kLang(@"NoUsersFound")]; return; }
         self.cachedUsers = users.mutableCopy;
         
     }];
@@ -78,8 +78,8 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
         
-        if (error) { [AlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription]; return; }
-        if (users.count == 0) { [AlertHelper showInfoIn:self title:kLang(@"Info") subtitle:kLang(@"NoUsersFound")]; return; }
+        if (error) { [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription]; return; }
+        if (users.count == 0) { [PPAlertHelper showInfoIn:self title:kLang(@"Info") subtitle:kLang(@"NoUsersFound")]; return; }
         self.cachedUsers = users.mutableCopy;
         
     }];
@@ -251,12 +251,7 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
 
 #pragma mark - Helpers
 - (void)showAlert:(NSString *)title message:(NSString *)msg {
-    UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
-                                                                   message:msg
-                                                            preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *ok = [UIAlertAction actionWithTitle:kLang(@"OK") style:UIAlertActionStyleDefault handler:nil];
-    [alert addAction:ok];
-    [self presentViewController:alert animated:YES completion:nil];
+    [PPAlertHelper showAlertIn:self title:title subtitle:msg];
 }
 
 // Add this flag somewhere (property or global)

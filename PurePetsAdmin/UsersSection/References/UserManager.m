@@ -656,7 +656,7 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
                 [notificationAppDelegate pp_abortNotificationV2LogoutBarrierAndRefreshForReason:@"auth_signout_failed"];
                 UIViewController *presenter = PPAdminUserManagerTopViewController();
                 if (presenter) {
-                    [AlertHelper showErrorIn:presenter title:kLang(@"Error") subtitle:signOutError.localizedDescription];
+                    [PPAlertHelper showErrorIn:presenter title:kLang(@"Error") subtitle:signOutError.localizedDescription];
                 }
                 [strongSelf pp_finishSignOutWithError:signOutError];
                 return;
