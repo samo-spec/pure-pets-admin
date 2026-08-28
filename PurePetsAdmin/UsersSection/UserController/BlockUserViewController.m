@@ -24,23 +24,121 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
 
 @implementation BlockUserViewController
 
--(void)viewDidLoad
-{
+- (void)viewDidLoad {
     [super viewDidLoad];
+    [self setupHeaderView];
     [self cachedUsersfetching];
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.showsHorizontalScrollIndicator = NO;
+    self.tableView.backgroundColor = [UIColor ppBackground];
 }
 
-
--(void)viewWillAppear:(BOOL)animated
-{
+- (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    // Nav
-    //[self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:kLang(@"BlockUser_Title") showBack:YES];
+    if (self.navigationController) {
+        self.navigationController.navigationBarHidden = YES;
+    }
+}
+
+- (void)setupHeaderView {
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 140.0)];
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIView *navRow = [UIView new];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:navRow];
+
+    UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    backButton.tintColor = [UIColor ppPrimary];
+    backButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     
-    //UIButton *save = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
-    [self pp_navBarWithOtherButton:nil title:kLang(@"BlockUser_Title")];
+    UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevronImg = [UIImage systemImageNamed:chevronName withConfiguration:chevronConfig];
+    [backButton setImage:chevronImg forState:UIControlStateNormal];
+    [backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backButton setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backButton.titleLabel.font = [Styling fontBold:15.0];
+    backButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    backButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
+    [backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    backButton.accessibilityLabel = kLang(@"Back");
+    [navRow addSubview:backButton];
+
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    eyebrowLabel.adjustsFontForContentSizeCategory = YES;
+    eyebrowLabel.numberOfLines = 1;
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Customers_Workspace"), kLang(@"BlockUser_Title")];
+    [header addSubview:eyebrowLabel];
+
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22.0]];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    titleLabel.adjustsFontForContentSizeCategory = YES;
+    titleLabel.numberOfLines = 1;
+    titleLabel.text = kLang(@"BlockUser_Title");
+    [header addSubview:titleLabel];
+
+    UILabel *subtitleLabel = [UILabel new];
+    subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    subtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.0]];
+    subtitleLabel.textColor = [UIColor ppTextSecondary];
+    subtitleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    subtitleLabel.adjustsFontForContentSizeCategory = YES;
+    subtitleLabel.numberOfLines = 2;
+    subtitleLabel.text = kLang(@"MissionControl_Customers_Briefing");
+    [header addSubview:subtitleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [navRow.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXS],
+        [navRow.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [navRow.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+        [navRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [backButton.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [backButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:2.0],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2.0],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+
+        [subtitleLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:4.0],
+        [subtitleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPSpaceBase],
+        [subtitleLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPSpaceBase],
+        [subtitleLabel.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM],
+    ]];
+
+    CGSize size = [header systemLayoutSizeFittingSize:CGSizeMake(self.view.bounds.size.width, UILayoutFittingCompressedSize.height)
+                         withHorizontalFittingPriority:UILayoutPriorityRequired
+                               verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    CGRect frame = header.frame;
+    frame.size.height = size.height;
+    header.frame = frame;
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)didTapBack {
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController || self.navigationController.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
 }
 
 

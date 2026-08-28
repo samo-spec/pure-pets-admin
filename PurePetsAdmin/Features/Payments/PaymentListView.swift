@@ -197,7 +197,7 @@ struct AdminPaymentListView: View {
         }
         .background(AdminSurface.background)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: Binding(
+        .fullScreenCover(item: Binding(
             get: { selectedOrderID.map { OrderIDWrapper(id: $0) } },
             set: { selectedOrderID = $0?.id }
         )) { wrapper in

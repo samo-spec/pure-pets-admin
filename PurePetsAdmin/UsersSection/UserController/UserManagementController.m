@@ -292,6 +292,64 @@ static NSInteger kRestrictionCount = sizeof(kRestrictions) / sizeof(PPFeatureDef
     self.headerContainer.backgroundColor = UIColor.clearColor;
     self.headerContainer.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
+    // MARK: - 1. Top Navigation Row (Back button)
+    UIView *navRow = [UIView new];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.headerContainer addSubview:navRow];
+
+    UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    backButton.tintColor = [UIColor ppPrimary];
+    backButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevronImg = [UIImage systemImageNamed:chevronName withConfiguration:chevronConfig];
+    [backButton setImage:chevronImg forState:UIControlStateNormal];
+    [backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [backButton setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    backButton.titleLabel.font = [Styling fontBold:15.0];
+    backButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    backButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
+    [backButton addTarget:self action:@selector(dismissSelf) forControlEvents:UIControlEventTouchUpInside];
+    backButton.accessibilityLabel = kLang(@"Back");
+    [navRow addSubview:backButton];
+
+    // MARK: - 2. Eyebrow Label
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    eyebrowLabel.adjustsFontForContentSizeCategory = YES;
+    eyebrowLabel.numberOfLines = 1;
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Customers_Workspace"), kLang(@"User_Details")];
+    [self.headerContainer addSubview:eyebrowLabel];
+
+    // MARK: - 3. Screen Title Label
+    UILabel *screenTitleLabel = [UILabel new];
+    screenTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    screenTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22.0]];
+    screenTitleLabel.textColor = [UIColor ppTextPrimary];
+    screenTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    screenTitleLabel.adjustsFontForContentSizeCategory = YES;
+    screenTitleLabel.numberOfLines = 1;
+    screenTitleLabel.text = self.user.UserName.length ? self.user.UserName : kLang(@"User_Details");
+    [self.headerContainer addSubview:screenTitleLabel];
+
+    // MARK: - 4. Subtitle / Briefing Label
+    UILabel *screenSubtitleLabel = [UILabel new];
+    screenSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    screenSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.0]];
+    screenSubtitleLabel.textColor = [UIColor ppTextSecondary];
+    screenSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    screenSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    screenSubtitleLabel.numberOfLines = 2;
+    screenSubtitleLabel.text = kLang(@"MissionControl_Customers_Briefing");
+    [self.headerContainer addSubview:screenSubtitleLabel];
+
+    // MARK: - 5. Case Surface Card
     self.caseSurface = [UIView new];
     self.caseSurface.translatesAutoresizingMaskIntoConstraints = NO;
     self.caseSurface.backgroundColor = [UIColor ppElevatedSurface];
@@ -370,7 +428,33 @@ static NSInteger kRestrictionCount = sizeof(kRestrictions) / sizeof(PPFeatureDef
     preferredReadoutTop.priority = UILayoutPriorityDefaultHigh;
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.caseSurface.topAnchor constraintEqualToAnchor:self.headerContainer.topAnchor constant:PPSpaceMD],
+        // navRow
+        [navRow.topAnchor constraintEqualToAnchor:self.headerContainer.topAnchor constant:PPSpaceXS],
+        [navRow.leadingAnchor constraintEqualToAnchor:self.headerContainer.leadingAnchor constant:PPSpaceBase],
+        [navRow.trailingAnchor constraintEqualToAnchor:self.headerContainer.trailingAnchor constant:-PPSpaceBase],
+        [navRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [backButton.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [backButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        // eyebrow
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:2.0],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.headerContainer.leadingAnchor constant:PPSpaceBase],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.headerContainer.trailingAnchor constant:-PPSpaceBase],
+
+        // screenTitle
+        [screenTitleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2.0],
+        [screenTitleLabel.leadingAnchor constraintEqualToAnchor:self.headerContainer.leadingAnchor constant:PPSpaceBase],
+        [screenTitleLabel.trailingAnchor constraintEqualToAnchor:self.headerContainer.trailingAnchor constant:-PPSpaceBase],
+
+        // screenSubtitle
+        [screenSubtitleLabel.topAnchor constraintEqualToAnchor:screenTitleLabel.bottomAnchor constant:4.0],
+        [screenSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.headerContainer.leadingAnchor constant:PPSpaceBase],
+        [screenSubtitleLabel.trailingAnchor constraintEqualToAnchor:self.headerContainer.trailingAnchor constant:-PPSpaceBase],
+
+        // caseSurface
+        [self.caseSurface.topAnchor constraintEqualToAnchor:screenSubtitleLabel.bottomAnchor constant:PPSpaceMD],
         [self.caseSurface.leadingAnchor constraintEqualToAnchor:self.headerContainer.leadingAnchor constant:PPSpaceBase],
         [self.caseSurface.trailingAnchor constraintEqualToAnchor:self.headerContainer.trailingAnchor constant:-PPSpaceBase],
         [self.caseSurface.bottomAnchor constraintEqualToAnchor:self.headerContainer.bottomAnchor constant:-PPSpaceSM],
@@ -582,15 +666,19 @@ static NSInteger kRestrictionCount = sizeof(kRestrictions) / sizeof(PPFeatureDef
 }
 
 - (void)setupNavigation {
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto
-                      button:nil
-                       title:kLang(self.targetIsStaff ? @"User_Details" : @"MissionControl_UserDetail_Title")
-                    showBack:YES];
+    if (self.navigationController) {
+        self.navigationController.navigationBarHidden = YES;
+    }
 }
 
 - (void)dismissSelf {
-    [PPFunc pp_playTapEffect];
-    [self.navigationController popViewControllerAnimated:YES];
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController || self.navigationController.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
 }
 
 #pragma mark - Permissions

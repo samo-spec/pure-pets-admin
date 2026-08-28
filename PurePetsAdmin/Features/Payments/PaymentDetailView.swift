@@ -783,18 +783,15 @@ struct AdminPaymentDetailView: View {
 
     private func formatCurrency(_ value: Double, currency: String?) -> String {
         let currencyCode = currency?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let resolvedCode = currencyCode.isEmpty ? "QAR" : currencyCode
         let formatter = NumberFormatter()
-        formatter.locale = Locale.current
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
         formatter.minimumFractionDigits = 2
         formatter.maximumFractionDigits = 2
-        if currencyCode.isEmpty {
-            formatter.numberStyle = .decimal
-        } else {
-            formatter.numberStyle = .currency
-            formatter.currencyCode = currencyCode
-        }
+        formatter.numberStyle = .currency
+        formatter.currencyCode = resolvedCode
         return formatter.string(from: NSNumber(value: value))
-            ?? NumberFormatter.localizedString(from: NSNumber(value: value), number: .decimal)
+            ?? String(format: "%.2f %@", value, resolvedCode == "QAR" ? Language.get("QAR", alter: "ر.ق") : resolvedCode)
     }
 
     private func formatDate(_ date: Date?) -> String {

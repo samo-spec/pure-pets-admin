@@ -80,67 +80,80 @@ static UIFont *PPStaffManagementScaledFont(UIFont *baseFont, UIFontTextStyle tex
 #pragma mark - Build
 
 - (void)pp_buildTopBar {
-    BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
     self.topBarView = [UIView new];
     self.topBarView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.topBarView.backgroundColor = usesGlobalNavigation ? [UIColor ppBackground] : [UIColor ppSurface];
+    self.topBarView.backgroundColor = [UIColor ppBackground];
     self.topBarView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self.view addSubview:self.topBarView];
 
-    if (usesGlobalNavigation) {
-        [NSLayoutConstraint activateConstraints:@[
-            [self.topBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-            [self.topBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-            [self.topBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        ]];
-        return;
-    }
-
-    UIView *separator = [UIView new];
-    separator.backgroundColor = [UIColor ppSurfaceBorder];
-    separator.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.topBarView addSubview:separator];
-    [NSLayoutConstraint activateConstraints:@[
-        [self.topBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.topBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.topBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [separator.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor],
-        [separator.trailingAnchor constraintEqualToAnchor:self.topBarView.trailingAnchor],
-        [separator.bottomAnchor constraintEqualToAnchor:self.topBarView.bottomAnchor],
-        [separator.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale]
-    ]];
+    // MARK: - Top Nav Row
+    UIView *navRow = [UIView new];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.topBarView addSubview:navRow];
 
     self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.backButton.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
-    NSString *backImageName = [Language isRTL] ? @"arrow.right" : @"arrow.left";
-    [self.backButton setImage:[UIImage systemImageNamed:backImageName withConfiguration:backConfig] forState:UIControlStateNormal];
+    self.backButton.tintColor = [UIColor ppPrimary];
+    self.backButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevronImg = [UIImage systemImageNamed:chevronName withConfiguration:chevronConfig];
+    [self.backButton setImage:chevronImg forState:UIControlStateNormal];
+    [self.backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [self.backButton setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
+    self.backButton.titleLabel.font = [Styling fontBold:15.0];
+    self.backButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.backButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
     [self.backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
     self.backButton.accessibilityLabel = kLang(@"Back");
-    self.backButton.accessibilityHint = nil;
-    [self.topBarView addSubview:self.backButton];
+    [navRow addSubview:self.backButton];
 
+    // MARK: - Eyebrow Label
+    UILabel *eyebrowLabel = [UILabel new];
+    eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
+    eyebrowLabel.textColor = [UIColor ppTextSecondary];
+    eyebrowLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    eyebrowLabel.adjustsFontForContentSizeCategory = YES;
+    eyebrowLabel.numberOfLines = 1;
+    eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Customers_Workspace"), kLang(@"Staff_Management")];
+    [self.topBarView addSubview:eyebrowLabel];
+
+    // MARK: - Title Label
     self.titleLabel = [UILabel new];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.titleLabel.font = PPStaffManagementScaledFont([Styling fontBold:PPFontTitle3], UIFontTextStyleHeadline);
+    self.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22.0]];
     self.titleLabel.textColor = [UIColor ppTextPrimary];
     self.titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
     self.titleLabel.adjustsFontForContentSizeCategory = YES;
-    self.titleLabel.numberOfLines = 2;
+    self.titleLabel.numberOfLines = 1;
     self.titleLabel.text = kLang(@"Staff_Management");
     self.titleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
     [self.topBarView addSubview:self.titleLabel];
 
     [NSLayoutConstraint activateConstraints:@[
-        [self.backButton.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor constant:PPSpaceBase],
-        [self.backButton.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
-        [self.backButton.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
-        [self.backButton.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.topBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.topBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.topBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
 
-        [self.titleLabel.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:PPSpaceXS],
-        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:PPSpaceSM],
+        [navRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4.0],
+        [navRow.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor constant:PPSpaceBase],
+        [navRow.trailingAnchor constraintEqualToAnchor:self.topBarView.trailingAnchor constant:-PPSpaceBase],
+        [navRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [eyebrowLabel.topAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:2.0],
+        [eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor constant:PPSpaceBase],
+        [eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.topBarView.trailingAnchor constant:-PPSpaceBase],
+
+        [self.titleLabel.topAnchor constraintEqualToAnchor:eyebrowLabel.bottomAnchor constant:2.0],
+        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.topBarView.leadingAnchor constant:PPSpaceBase],
         [self.titleLabel.trailingAnchor constraintEqualToAnchor:self.topBarView.trailingAnchor constant:-PPSpaceBase],
-        [self.titleLabel.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin]
     ]];
 }
 

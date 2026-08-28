@@ -66,6 +66,22 @@ extern NSString * const kStaffPermPaymentsView;
 extern NSString * const kStaffPermPaymentsManage;
 extern NSString * const kStaffPermPaymentsRefund;
 
+// Delivery operations
+extern NSString * const kStaffPermDeliveryView;
+extern NSString * const kStaffPermDeliveryDispatch;
+extern NSString * const kStaffPermDeliveryAssign;
+extern NSString * const kStaffPermDeliveryOverride;
+extern NSString * const kStaffPermDeliveryDriverView;
+extern NSString * const kStaffPermDeliveryDriverManage;
+extern NSString * const kStaffPermDeliveryCarrierView;
+extern NSString * const kStaffPermDeliveryCarrierManage;
+extern NSString * const kStaffPermDeliveryRouteView;
+extern NSString * const kStaffPermDeliveryRouteManage;
+extern NSString * const kStaffPermDeliveryPODReview;
+extern NSString * const kStaffPermDeliveryCODView;
+extern NSString * const kStaffPermDeliveryCODReconcile;
+extern NSString * const kStaffPermDeliverySettingsManage;
+
 // POS
 extern NSString * const kStaffPermPosView;
 extern NSString * const kStaffPermPosSell;

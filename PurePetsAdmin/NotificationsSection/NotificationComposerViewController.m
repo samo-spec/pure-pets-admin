@@ -107,13 +107,19 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
     self.view.backgroundColor = [UIColor ppBackground];
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
+    if (!self.navigationSendButton) {
+        self.navigationSendButton = [self pp_ButtonWithSystemName:@"paperplane.fill" action:@selector(onSend)];
+        self.navigationSendButton.accessibilityLabel = kLang(@"NotificationComposer_Action_Send");
+        self.navigationSendButton.accessibilityIdentifier = @"admin-notification-composer-send";
+    }
+
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.showsHorizontalScrollIndicator = NO;
     self.tableView.backgroundColor = [UIColor ppBackground];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     self.tableView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceMD, 0, PPSpaceSM, 0);
+    self.baseTableContentInset = UIEdgeInsetsMake(PPSpaceSM, 0, PPSpaceSM, 0);
     self.tableView.contentInset = self.baseTableContentInset;
     [self pp_setupDispatchHeader];
     [self pp_setupSendDock];
@@ -125,13 +131,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    if (!self.navigationSendButton) {
-        self.navigationSendButton = [self pp_ButtonWithSystemName:@"paperplane.fill" action:@selector(onSend)];
-        self.navigationSendButton.accessibilityLabel = kLang(@"NotificationComposer_Action_Send");
-        self.navigationSendButton.accessibilityIdentifier = @"admin-notification-composer-send";
-    }
-    [self pp_navBarWithOtherButton:self.navigationSendButton title:kLang(@"Compose Notification")];
-    self.navigationItem.rightBarButtonItem.accessibilityIdentifier = @"admin-notification-composer-send";
+    [self.navigationController setNavigationBarHidden:YES animated:YES];
     [self pp_refreshDispatchStatus];
 }
 
@@ -142,6 +142,11 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)didTapBack {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)pp_setupDispatchHeader {
@@ -160,22 +165,54 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
     stack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:stack];
 
+    UIView *navRow = [[UIView alloc] init];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
+    [backBtn setImage:chevron forState:UIControlStateNormal];
+    [backBtn setTitle:backText forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:16];
+    [backBtn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:backBtn];
+    
+    self.navigationSendButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [navRow addSubview:self.navigationSendButton];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor],
+        [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        
+        [self.navigationSendButton.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor],
+        [self.navigationSendButton.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
+        [self.navigationSendButton.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+    ]];
+
     self.dispatchContextLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.dispatchContextLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontCaption1], UIFontTextStyleCaption1);
-    self.dispatchContextLabel.textColor = [UIColor ppPrimary];
-    self.dispatchContextLabel.text = kLang(@"NotificationComposer_Context");
+    self.dispatchContextLabel.font = [Styling fontBold:12];
+    self.dispatchContextLabel.textColor = [UIColor ppTextSecondary];
+    self.dispatchContextLabel.text = kLang(@"NotificationComposer_Eyebrow");
     self.dispatchContextLabel.adjustsFontForContentSizeCategory = YES;
     self.dispatchContextLabel.textAlignment = NSTextAlignmentNatural;
     self.dispatchContextLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     self.dispatchTitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
-    self.dispatchTitleLabel.font = PPNotificationComposerScaledFont([Styling fontBold:PPFontTitle2], UIFontTextStyleTitle2);
+    self.dispatchTitleLabel.font = [Styling fontBold:22];
     self.dispatchTitleLabel.textColor = [UIColor ppTextPrimary];
     self.dispatchTitleLabel.text = kLang(@"Compose Notification");
     self.dispatchTitleLabel.numberOfLines = 0;
     self.dispatchTitleLabel.adjustsFontForContentSizeCategory = YES;
     self.dispatchTitleLabel.textAlignment = NSTextAlignmentNatural;
     self.dispatchTitleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.dispatchTitleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
 
     self.dispatchSubtitleLabel = [[UILabel alloc] initWithFrame:CGRectZero];
     self.dispatchSubtitleLabel.font = PPNotificationComposerScaledFont([Styling fontMedium:PPFontCallout], UIFontTextStyleCallout);
@@ -229,6 +266,8 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
     [self.dispatchStateLabel setContentCompressionResistancePriority:UILayoutPriorityDefaultLow forAxis:UILayoutConstraintAxisHorizontal];
     [stateStack addArrangedSubview:self.dispatchStateLabel];
 
+    [stack addArrangedSubview:navRow];
+    [stack setCustomSpacing:PPSpaceSM afterView:navRow];
     [stack addArrangedSubview:self.dispatchContextLabel];
     [stack addArrangedSubview:self.dispatchTitleLabel];
     [stack addArrangedSubview:self.dispatchSubtitleLabel];
@@ -241,7 +280,7 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
     [rule.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale].active = YES;
 
     [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceXL],
+        [stack.topAnchor constraintEqualToAnchor:header.topAnchor constant:PPSpaceSM],
         [stack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:PPScreenMargin],
         [stack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-PPScreenMargin],
         [stack.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-PPSpaceSM]

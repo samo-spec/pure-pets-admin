@@ -415,11 +415,15 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 @property (nonatomic, strong) PPUsersSummaryHeaderView *summaryHeader;
 @property (nonatomic, strong) UIView *stickyHeaderView;
 @property (nonatomic, strong) UIView *heroCardView;
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *eyebrowLabel;
 @property (nonatomic, strong) UILabel *heroTitleLabel;
+@property (nonatomic, strong) UILabel *countBadgeLabel;
 @property (nonatomic, strong) UILabel *heroSubtitleLabel;
 @property (nonatomic, strong) UIButton *attentionButton;
 @property (nonatomic, strong) UIButton *closeButton;
 @property (nonatomic, strong) UIButton *addUserButton;
+@property (nonatomic, strong) UIActivityIndicatorView *headerLoadingSpinner;
 @property (nonatomic, strong) UIView *stateView;
 @property (nonatomic, strong) UIImageView *stateIconView;
 @property (nonatomic, strong) UILabel *stateTitleLabel;
@@ -632,8 +636,17 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     [self pp_startUsersListener];
 }
 
+- (void)didTapBackButton {
+    UIImpactFeedbackGenerator *gen = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [gen impactOccurred];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController || self.navigationController.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 - (void)setupHeaderUI {
-    BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
     BOOL customerMode = [self pp_isCustomerAccountMode];
     PPUsersPassthroughHeaderView *stickyHeader = [PPUsersPassthroughHeaderView new];
     stickyHeader.passthroughView = self.tableView;
@@ -645,67 +658,97 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 
     self.heroCardView = [UIView new];
     self.heroCardView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.heroCardView.backgroundColor = customerMode ? PPUsersListBackgroundColor() : [UIColor ppElevatedSurface];
-    self.heroCardView.layer.cornerRadius = customerMode ? 0.0 : PPCorner16;
-    self.heroCardView.layer.masksToBounds = !customerMode;
-    self.heroCardView.layer.borderWidth = customerMode ? 0.0 : 1.0 / UIScreen.mainScreen.scale;
-    self.heroCardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    self.heroCardView.backgroundColor = PPUsersListBackgroundColor();
     self.heroCardView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    if (@available(iOS 13.0, *)) {
-        self.heroCardView.layer.cornerCurve = kCACornerCurveContinuous;
-    }
     [self.stickyHeaderView addSubview:self.heroCardView];
 
-    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.3.sequence.fill"
-                                                                       withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:19.0 weight:UIImageSymbolWeightSemibold]]];
-    iconView.translatesAutoresizingMaskIntoConstraints = NO;
-    iconView.tintColor = PPUsersListPrimaryColor();
-    iconView.contentMode = UIViewContentModeScaleAspectFit;
-    iconView.isAccessibilityElement = NO;
-    iconView.hidden = customerMode;
-    [self.heroCardView addSubview:iconView];
+    // MARK: - 1. Top Navigation Row (Back button + Actions)
+    UIView *navRow = [UIView new];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.heroCardView addSubview:navRow];
 
-    if (!usesGlobalNavigation) {
-        self.closeButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        self.closeButton.translatesAutoresizingMaskIntoConstraints = NO;
-        self.closeButton.tintColor = PPUsersListPrimaryTextColor();
-        self.closeButton.backgroundColor = [UIColor ppSurface];
-        self.closeButton.layer.cornerRadius = PPCornerSmall;
-        self.closeButton.layer.masksToBounds = YES;
-        UIImage *closeImage = [UIImage systemImageNamed:[Language isRTL] ? @"arrow.right" : @"arrow.left"
-                                      withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:15.0 weight:UIImageSymbolWeightBold]];
-        [self.closeButton setImage:closeImage forState:UIControlStateNormal];
-        [self.closeButton addTarget:self action:@selector(pp_closePicker) forControlEvents:UIControlEventTouchUpInside];
-        self.closeButton.accessibilityLabel = kLang(@"Cancel");
-        [self.heroCardView addSubview:self.closeButton];
-    }
+    // Back Button (chevron + Back / رجوع)
+    self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.backButton.tintColor = PPUsersListPrimaryColor();
+    self.backButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevronImg = [UIImage systemImageNamed:chevronName withConfiguration:chevronConfig];
+    [self.backButton setImage:chevronImg forState:UIControlStateNormal];
+    [self.backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
+    [self.backButton setTitleColor:PPUsersListPrimaryColor() forState:UIControlStateNormal];
+    self.backButton.titleLabel.font = [Styling fontBold:15.0];
+    self.backButton.titleLabel.adjustsFontForContentSizeCategory = YES;
+    self.backButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
+    [self.backButton addTarget:self action:@selector(didTapBackButton) forControlEvents:UIControlEventTouchUpInside];
+    self.backButton.accessibilityLabel = kLang(@"Back");
+    [navRow addSubview:self.backButton];
 
+    // Loading Spinner
+    self.headerLoadingSpinner = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
+    self.headerLoadingSpinner.translatesAutoresizingMaskIntoConstraints = NO;
+    self.headerLoadingSpinner.color = PPUsersListPrimaryColor();
+    self.headerLoadingSpinner.hidesWhenStopped = YES;
+    [navRow addSubview:self.headerLoadingSpinner];
+
+    // Add Button (+ إضافة)
     self.addUserButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.addUserButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.addUserButton.tintColor = PPOnPrimaryColor();
+    self.addUserButton.tintColor = [UIColor whiteColor];
     self.addUserButton.backgroundColor = PPUsersListPrimaryColor();
-    self.addUserButton.layer.cornerRadius = PPCornerSmall;
+    self.addUserButton.layer.cornerRadius = 18.0;
     self.addUserButton.layer.masksToBounds = YES;
-    [self.addUserButton setImage:[UIImage systemImageNamed:@"plus"
-                                          withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightBold]]
-                         forState:UIControlStateNormal];
+    UIImageSymbolConfiguration *plusConfig = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightBold];
+    [self.addUserButton setImage:[UIImage systemImageNamed:@"plus" withConfiguration:plusConfig] forState:UIControlStateNormal];
+    [self.addUserButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Add")] forState:UIControlStateNormal];
+    [self.addUserButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    self.addUserButton.titleLabel.font = [Styling fontBold:13.0];
+    self.addUserButton.contentEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 14);
+    self.addUserButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self.addUserButton addTarget:self action:@selector(didTapAddUser) forControlEvents:UIControlEventTouchUpInside];
     self.addUserButton.accessibilityLabel = kLang(@"AddUser");
-    [self.heroCardView addSubview:self.addUserButton];
+    [navRow addSubview:self.addUserButton];
 
-    NSMutableArray<UIView *> *briefingViews = [NSMutableArray array];
-    if (!usesGlobalNavigation) {
-        self.heroTitleLabel = [UILabel new];
-        self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-        self.heroTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:21.0]];
-        self.heroTitleLabel.textColor = PPUsersListPrimaryTextColor();
-        self.heroTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
-        self.heroTitleLabel.adjustsFontForContentSizeCategory = YES;
-        self.heroTitleLabel.numberOfLines = 2;
-        self.heroTitleLabel.text = [self pp_screenTitleText];
-        [briefingViews addObject:self.heroTitleLabel];
-    }
+    // MARK: - 2. Eyebrow Label
+    self.eyebrowLabel = [UILabel new];
+    self.eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.eyebrowLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:12.0]];
+    self.eyebrowLabel.textColor = PPUsersListSecondaryTextColor();
+    self.eyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.eyebrowLabel.adjustsFontForContentSizeCategory = YES;
+    self.eyebrowLabel.numberOfLines = 1;
+    self.eyebrowLabel.text = [NSString stringWithFormat:@"%@ / %@", kLang(@"CommandCenter_Customers_Workspace"), [self pp_screenTitleText]];
+    [self.heroCardView addSubview:self.eyebrowLabel];
 
+    // MARK: - 3. Title + Total Count Row
+    UIView *titleRow = [UIView new];
+    titleRow.translatesAutoresizingMaskIntoConstraints = NO;
+    titleRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.heroCardView addSubview:titleRow];
+
+    self.heroTitleLabel = [UILabel new];
+    self.heroTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.heroTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:22.0]];
+    self.heroTitleLabel.textColor = PPUsersListPrimaryTextColor();
+    self.heroTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.heroTitleLabel.adjustsFontForContentSizeCategory = YES;
+    self.heroTitleLabel.numberOfLines = 1;
+    self.heroTitleLabel.text = [self pp_screenTitleText];
+    [titleRow addSubview:self.heroTitleLabel];
+
+    self.countBadgeLabel = [UILabel new];
+    self.countBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.countBadgeLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:13.0]];
+    self.countBadgeLabel.textColor = PPUsersListSecondaryTextColor();
+    self.countBadgeLabel.textAlignment = [Language isRTL] ? NSTextAlignmentLeft : NSTextAlignmentRight;
+    self.countBadgeLabel.adjustsFontForContentSizeCategory = YES;
+    self.countBadgeLabel.numberOfLines = 1;
+    [titleRow addSubview:self.countBadgeLabel];
+
+    // MARK: - 4. Subtitle / Briefing
     self.heroSubtitleLabel = [UILabel new];
     self.heroSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.heroSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontRegular:13.0]];
@@ -714,33 +757,28 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     self.heroSubtitleLabel.numberOfLines = 2;
     self.heroSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     self.heroSubtitleLabel.text = [self pp_screenSubtitleText];
+    [self.heroCardView addSubview:self.heroSubtitleLabel];
 
-    [briefingViews addObject:self.heroSubtitleLabel];
-    UIStackView *briefingStack = [[UIStackView alloc] initWithArrangedSubviews:briefingViews];
-    briefingStack.translatesAutoresizingMaskIntoConstraints = NO;
-    briefingStack.axis = UILayoutConstraintAxisVertical;
-    briefingStack.alignment = UIStackViewAlignmentFill;
-    briefingStack.spacing = 1.0;
-    briefingStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [self.heroCardView addSubview:briefingStack];
-
+    // Attention Signal Button
     self.attentionButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.attentionButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.attentionButton.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:11.0]];
+    self.attentionButton.titleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:12.0]];
     self.attentionButton.titleLabel.adjustsFontForContentSizeCategory = YES;
     self.attentionButton.titleLabel.numberOfLines = 2;
-    self.attentionButton.contentHorizontalAlignment = customerMode ? UIControlContentHorizontalAlignmentLeading : UIControlContentHorizontalAlignmentCenter;
+    self.attentionButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
     self.attentionButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    self.attentionButton.layer.cornerRadius = customerMode ? 0.0 : PPCornerSmall;
-    self.attentionButton.layer.masksToBounds = !customerMode;
-    self.attentionButton.contentEdgeInsets = customerMode ? UIEdgeInsetsZero : UIEdgeInsetsMake(4.0, 8.0, 4.0, 8.0);
+    self.attentionButton.layer.cornerRadius = 10.0;
+    self.attentionButton.layer.masksToBounds = YES;
+    self.attentionButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 10.0, 6.0, 10.0);
     [self.attentionButton addTarget:self action:@selector(pp_retryUsers) forControlEvents:UIControlEventTouchUpInside];
     [self.heroCardView addSubview:self.attentionButton];
 
+    // MARK: - 5. Summary Metrics Header
     self.summaryHeader = [[PPUsersSummaryHeaderView alloc] initWithCustomerCopy:[self pp_isCustomerAccountMode]];
     self.summaryHeader.translatesAutoresizingMaskIntoConstraints = NO;
     [self.heroCardView addSubview:self.summaryHeader];
 
+    // MARK: - 6. Search Bar
     PPS *search = [[PPS alloc] initWithFrame:CGRectZero];
     search.translatesAutoresizingMaskIntoConstraints = NO;
     search.delegate = self;
@@ -751,129 +789,88 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
         ? self.searchPlaceholderText
         : ([self pp_isCustomerAccountMode] ? kLang(@"MissionControl_Customers_Search_Placeholder") : kLang(@"SetPermissions_Search_Placeholder"));
     search.textField.accessibilityLabel = search.textField.placeholder;
-    search.cornerRadius = PPCornerSmall;
-    search.layer.cornerRadius = PPCornerSmall;
+    search.cornerRadius = 14.0;
+    search.layer.cornerRadius = 14.0;
     search.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     search.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
-    if (customerMode) {
-        search.textField.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:16.0]];
-        search.textField.adjustsFontForContentSizeCategory = YES;
-        search.backgroundColor = [UIColor ppSurface];
-        search.blurEnabled = NO;
-        search.shadowEnabled = NO;
-        PPApplyContinuousCorners(search, PPCornerSmall);
-    }
+    search.textField.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:15.0]];
+    search.textField.adjustsFontForContentSizeCategory = YES;
+    search.backgroundColor = [UIColor ppSurface];
+    search.blurEnabled = NO;
+    search.shadowEnabled = NO;
+    PPApplyContinuousCorners(search, 14.0);
     [self pp_configureSearchAdornmentForView:search];
     [self.heroCardView addSubview:search];
     self.searchView = search;
 
-    CGFloat heroCardHeight = [self pp_headerCardHeight];
-    CGFloat summaryHeaderHeight = [self pp_summaryHeaderHeight];
-    self.stickyHeaderHeightConstraint = [self.stickyHeaderView.heightAnchor constraintEqualToConstant:heroCardHeight + 28.0];
-    self.heroCardHeightConstraint = [self.heroCardView.heightAnchor constraintEqualToConstant:heroCardHeight];
-    self.summaryHeaderHeightConstraint = [self.summaryHeader.heightAnchor constraintEqualToConstant:summaryHeaderHeight];
-    self.attentionWidthConstraint = [self.attentionButton.widthAnchor constraintEqualToConstant:132.0];
-    NSLayoutConstraint *preferredSummaryTop = [self.summaryHeader.topAnchor constraintEqualToAnchor:self.attentionButton.bottomAnchor constant:8.0];
-    preferredSummaryTop.priority = UILayoutPriorityDefaultHigh;
     [NSLayoutConstraint activateConstraints:@[
         [self.stickyHeaderView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.stickyHeaderView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.stickyHeaderView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        self.stickyHeaderHeightConstraint,
 
-        [self.heroCardView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:(customerMode ? 2.0 : 6.0)],
+        [self.heroCardView.topAnchor constraintEqualToAnchor:self.stickyHeaderView.safeAreaLayoutGuide.topAnchor constant:4.0],
         [self.heroCardView.leadingAnchor constraintEqualToAnchor:self.stickyHeaderView.leadingAnchor constant:PPUsersListHorizontalInset],
         [self.heroCardView.trailingAnchor constraintEqualToAnchor:self.stickyHeaderView.trailingAnchor constant:-PPUsersListHorizontalInset],
-        self.heroCardHeightConstraint,
-        self.summaryHeaderHeightConstraint,
+        [self.heroCardView.bottomAnchor constraintEqualToAnchor:self.stickyHeaderView.bottomAnchor constant:-8.0],
 
-        [iconView.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:14.0],
-        [iconView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:14.0],
-        [iconView.widthAnchor constraintEqualToConstant:28.0],
-        [iconView.heightAnchor constraintEqualToConstant:28.0],
+        // navRow
+        [navRow.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor],
+        [navRow.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [navRow.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+        [navRow.heightAnchor constraintEqualToConstant:44.0],
 
-        [self.addUserButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
-        [self.addUserButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
-        [self.addUserButton.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
-        [self.addUserButton.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
+        [self.backButton.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [self.headerLoadingSpinner.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor constant:-8.0],
+        [self.headerLoadingSpinner.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+
+        [self.addUserButton.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor],
+        [self.addUserButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [self.addUserButton.heightAnchor constraintEqualToConstant:36.0],
+
+        // eyebrow
+        [self.eyebrowLabel.topAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:2.0],
+        [self.eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [self.eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+
+        // titleRow
+        [titleRow.topAnchor constraintEqualToAnchor:self.eyebrowLabel.bottomAnchor constant:2.0],
+        [titleRow.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [titleRow.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+        [titleRow.heightAnchor constraintGreaterThanOrEqualToConstant:28.0],
+
+        [self.heroTitleLabel.leadingAnchor constraintEqualToAnchor:titleRow.leadingAnchor],
+        [self.heroTitleLabel.centerYAnchor constraintEqualToAnchor:titleRow.centerYAnchor],
+        [self.heroTitleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.countBadgeLabel.leadingAnchor constant:-8.0],
+
+        [self.countBadgeLabel.trailingAnchor constraintEqualToAnchor:titleRow.trailingAnchor],
+        [self.countBadgeLabel.centerYAnchor constraintEqualToAnchor:titleRow.centerYAnchor],
+
+        // subtitle
+        [self.heroSubtitleLabel.topAnchor constraintEqualToAnchor:titleRow.bottomAnchor constant:4.0],
+        [self.heroSubtitleLabel.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [self.heroSubtitleLabel.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+
+        // attention button
+        [self.attentionButton.topAnchor constraintEqualToAnchor:self.heroSubtitleLabel.bottomAnchor constant:6.0],
+        [self.attentionButton.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [self.attentionButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.trailingAnchor],
+        [self.attentionButton.heightAnchor constraintGreaterThanOrEqualToConstant:32.0],
+
+        // summaryHeader
+        [self.summaryHeader.topAnchor constraintEqualToAnchor:self.attentionButton.bottomAnchor constant:8.0],
+        [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+
+        // searchView
+        [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:10.0],
+        [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
+        [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
+        [self.searchView.heightAnchor constraintEqualToConstant:42.0],
+        [self.searchView.bottomAnchor constraintEqualToAnchor:self.heroCardView.bottomAnchor constant:-4.0],
     ]];
-
-    if (customerMode) {
-        self.customerCompactHeaderConstraints = @[
-            [briefingStack.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:PPSpaceSM],
-            [briefingStack.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:PPSpaceXS],
-            [briefingStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.attentionButton.leadingAnchor constant:-PPSpaceSM],
-
-            [self.attentionButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:PPSpaceSM],
-            [self.attentionButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-PPSpaceXS],
-            self.attentionWidthConstraint,
-            [self.attentionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
-
-            [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-            [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:briefingStack.bottomAnchor constant:PPSpaceSM],
-            [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:self.attentionButton.bottomAnchor constant:PPSpaceSM],
-            preferredSummaryTop,
-
-            [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-            [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:PPSpaceSM],
-            [self.searchView.heightAnchor constraintEqualToConstant:PPButtonHeightMD],
-            [self.searchView.bottomAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.bottomAnchor constant:-PPSpaceSM],
-        ];
-        self.customerAccessibilityHeaderConstraints = @[
-            [briefingStack.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:PPSpaceMD],
-            [briefingStack.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [briefingStack.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-
-            [self.attentionButton.topAnchor constraintEqualToAnchor:briefingStack.bottomAnchor constant:PPSpaceSM],
-            [self.attentionButton.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [self.attentionButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.trailingAnchor],
-            [self.attentionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
-
-            [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-            [self.summaryHeader.topAnchor constraintEqualToAnchor:self.attentionButton.bottomAnchor constant:PPSpaceSM],
-
-            [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor],
-            [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor],
-            [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:PPSpaceSM],
-            [self.searchView.heightAnchor constraintEqualToConstant:PPButtonHeightLG + PPSpaceLG],
-            [self.searchView.bottomAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.bottomAnchor constant:-PPSpaceMD],
-        ];
-        [self pp_updateCustomerHeaderConstraintSet];
-    } else {
-        [NSLayoutConstraint activateConstraints:@[
-        [briefingStack.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
-        [briefingStack.leadingAnchor constraintEqualToAnchor:iconView.trailingAnchor constant:10.0],
-        [briefingStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.attentionButton.leadingAnchor constant:-8.0],
-
-        [self.attentionButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
-        [self.attentionButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
-        self.attentionWidthConstraint,
-        [self.attentionButton.heightAnchor constraintGreaterThanOrEqualToConstant:PPTouchTargetMin],
-
-        [self.summaryHeader.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:12.0],
-        [self.summaryHeader.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
-        [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:briefingStack.bottomAnchor constant:8.0],
-        [self.summaryHeader.topAnchor constraintGreaterThanOrEqualToAnchor:self.attentionButton.bottomAnchor constant:8.0],
-        preferredSummaryTop,
-
-        [self.searchView.leadingAnchor constraintEqualToAnchor:self.heroCardView.leadingAnchor constant:12.0],
-        [self.searchView.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
-        [self.searchView.topAnchor constraintEqualToAnchor:self.summaryHeader.bottomAnchor constant:8.0],
-        [self.searchView.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
-        [self.searchView.bottomAnchor constraintLessThanOrEqualToAnchor:self.heroCardView.bottomAnchor constant:-10.0],
-        ]];
-    }
-    if (self.closeButton) {
-        [NSLayoutConstraint activateConstraints:@[
-            [self.closeButton.topAnchor constraintEqualToAnchor:self.heroCardView.topAnchor constant:12.0],
-            [self.closeButton.trailingAnchor constraintEqualToAnchor:self.heroCardView.trailingAnchor constant:-12.0],
-            [self.closeButton.widthAnchor constraintEqualToConstant:PPTouchTargetMin],
-            [self.closeButton.heightAnchor constraintEqualToConstant:PPTouchTargetMin],
-        ]];
-    }
 
     [self pp_updateHeaderButtons];
     [self pp_refreshAttentionSignal];
@@ -1036,93 +1033,32 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
 }
 
 - (void)pp_updateHeaderButtons {
-    BOOL canClose = !PPCommandCenterNavigationIsManaged(self.navigationController) &&
-                    (self.viewForMode == ViewForPicker ||
-                    self.presentingViewController ||
-                    self.navigationController.presentingViewController);
-    self.closeButton.hidden = !canClose;
-    BOOL canAdd = self.viewForMode == ViewForDefault || self.viewForMode == ViewForAdminToggle;
-    self.addUserButton.hidden = canClose || !canAdd;
-    BOOL customerMode = [self pp_isCustomerAccountMode];
-    self.attentionButton.hidden = !customerMode || canClose;
-    self.attentionWidthConstraint.constant = customerMode && !canClose ? 132.0 : PPTouchTargetMin;
+    BOOL canAdd = self.viewForMode == ViewForDefault || self.viewForMode == ViewForAdminToggle || [self pp_isCustomerAccountMode];
+    self.addUserButton.hidden = !canAdd || self.isLoadingUsers;
+    if (self.isLoadingUsers) {
+        [self.headerLoadingSpinner startAnimating];
+    } else {
+        [self.headerLoadingSpinner stopAnimating];
+    }
 }
 
 - (void)pp_updateCustomerHeaderConstraintSet {
-    if (![self pp_isCustomerAccountMode] || self.customerCompactHeaderConstraints.count == 0) return;
-    BOOL accessibilityCategory = UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory);
-    if (accessibilityCategory) {
-        [NSLayoutConstraint deactivateConstraints:self.customerCompactHeaderConstraints];
-        [NSLayoutConstraint activateConstraints:self.customerAccessibilityHeaderConstraints];
-        self.attentionButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeading;
-    } else {
-        [NSLayoutConstraint deactivateConstraints:self.customerAccessibilityHeaderConstraints];
-        [NSLayoutConstraint activateConstraints:self.customerCompactHeaderConstraints];
-        self.attentionButton.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
-        self.stickyHeaderView.transform = CGAffineTransformIdentity;
-    }
-}
-
-- (CGFloat)pp_stickyHeaderHeight {
-    CGFloat safeTop = self.view.safeAreaInsets.top;
-    return safeTop + [self pp_headerCardHeight] + ([self pp_isCustomerAccountMode] ? 8.0 : 14.0);
-}
-
-- (CGFloat)pp_headerCardHeight {
-    if (@available(iOS 11.0, *)) {
-        UIContentSizeCategory category = UIApplication.sharedApplication.preferredContentSizeCategory;
-        if (UIContentSizeCategoryIsAccessibilityCategory(category)) {
-            if ([self pp_isCustomerAccountMode]) {
-                return PPCommandCenterNavigationIsManaged(self.navigationController) ? 660.0 : 820.0;
-            }
-            return 560.0;
-        }
-        if ([category isEqualToString:UIContentSizeCategoryExtraExtraLarge] ||
-            [category isEqualToString:UIContentSizeCategoryExtraExtraExtraLarge]) {
-            if ([self pp_isCustomerAccountMode]) {
-                BOOL usesGlobalNavigation = PPCommandCenterNavigationIsManaged(self.navigationController);
-                if (usesGlobalNavigation) {
-                    return [category isEqualToString:UIContentSizeCategoryExtraExtraExtraLarge] ? 232.0 : 220.0;
-                }
-                return [category isEqualToString:UIContentSizeCategoryExtraExtraExtraLarge] ? 320.0 : 300.0;
-            }
-            return 312.0;
-        }
-    }
-    if ([self pp_isCustomerAccountMode]) {
-        return PPCommandCenterNavigationIsManaged(self.navigationController) ? PPUsersListCustomerHeaderHeight : 232.0;
-    }
-    return PPUsersListHeaderCardHeight;
-}
-
-- (CGFloat)pp_summaryHeaderHeight {
-    if (@available(iOS 11.0, *)) {
-        if (UIContentSizeCategoryIsAccessibilityCategory(UIApplication.sharedApplication.preferredContentSizeCategory)) {
-            return [self pp_isCustomerAccountMode] ? 336.0 : 236.0;
-        }
-        if ([self pp_isCustomerAccountMode]) {
-            UIContentSizeCategory category = UIApplication.sharedApplication.preferredContentSizeCategory;
-            if ([category isEqualToString:UIContentSizeCategoryExtraExtraExtraLarge]) return 88.0;
-            if ([category isEqualToString:UIContentSizeCategoryExtraExtraLarge]) return 76.0;
-        }
-    }
-    return 60.0;
+    // Dynamic Auto Layout handles content size adapting smoothly
 }
 
 - (void)pp_updateStickyHeaderMetrics {
-    self.heroCardHeightConstraint.constant = [self pp_headerCardHeight];
-    self.summaryHeaderHeightConstraint.constant = [self pp_summaryHeaderHeight];
-    CGFloat headerHeight = [self pp_stickyHeaderHeight];
-    self.stickyHeaderHeightConstraint.constant = headerHeight;
+    [self.stickyHeaderView setNeedsLayout];
+    [self.stickyHeaderView layoutIfNeeded];
+    CGFloat headerHeight = CGRectGetHeight(self.stickyHeaderView.frame);
+    if (headerHeight < 50.0) {
+        CGSize targetSize = CGSizeMake(CGRectGetWidth(self.view.bounds), UILayoutFittingCompressedSize.height);
+        headerHeight = [self.stickyHeaderView systemLayoutSizeFittingSize:targetSize withHorizontalFittingPriority:UILayoutPriorityRequired verticalFittingPriority:UILayoutPriorityFittingSizeLevel].height;
+    }
 
     UIEdgeInsets inset = self.tableView.contentInset;
-    inset.top = headerHeight + 10.0;
+    inset.top = headerHeight + 8.0;
     CGFloat minimumBottomInset = self.view.safeAreaInsets.bottom + 28.0;
-    BOOL scrollsAccessibilityHeader = [self pp_isCustomerAccountMode] &&
-        UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
-    inset.bottom = scrollsAccessibilityHeader
-        ? MAX(minimumBottomInset, CGRectGetHeight(self.view.bounds))
-        : minimumBottomInset;
+    inset.bottom = minimumBottomInset;
     self.tableView.contentInset = inset;
 
     UIEdgeInsets indicatorInset = self.tableView.scrollIndicatorInsets;
@@ -1131,19 +1067,10 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     self.tableView.scrollIndicatorInsets = indicatorInset;
 
     [self.view bringSubviewToFront:self.stickyHeaderView];
-    [self scrollViewDidScroll:self.tableView];
 }
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
-    if (scrollView != self.tableView || ![self pp_isCustomerAccountMode]) return;
-    if (!UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory)) {
-        self.stickyHeaderView.transform = CGAffineTransformIdentity;
-        return;
-    }
-
-    CGFloat travel = MAX(0.0, scrollView.contentOffset.y + scrollView.contentInset.top);
-    CGFloat maximumTravel = MAX(0.0, CGRectGetHeight(self.stickyHeaderView.bounds) - self.view.safeAreaInsets.top);
-    self.stickyHeaderView.transform = CGAffineTransformMakeTranslation(0.0, -MIN(travel, maximumTravel));
+    // Top sticky header is fixed at top with Auto Layout
 }
 
 - (void)pp_refreshAttentionSignal {
@@ -1184,11 +1111,12 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     [self.attentionButton setTitle:title forState:UIControlStateNormal];
     [self.attentionButton setTitleColor:color forState:UIControlStateNormal];
     self.attentionButton.tintColor = color;
-    self.attentionButton.backgroundColor = [self pp_isCustomerAccountMode] ? UIColor.clearColor : [color colorWithAlphaComponent:0.11];
+    self.attentionButton.backgroundColor = [color colorWithAlphaComponent:0.10];
     self.attentionButton.userInteractionEnabled = recoverable;
     self.attentionButton.accessibilityLabel = title;
     self.attentionButton.accessibilityHint = recoverable ? kLang(@"MissionControl_Customers_Retry_Hint") : nil;
     self.attentionButton.accessibilityTraits = recoverable ? UIAccessibilityTraitButton : UIAccessibilityTraitStaticText;
+    [self pp_updateHeaderButtons];
 }
 
 - (void)pp_updateStateView {
@@ -1295,8 +1223,12 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     }
 
     self.attentionCount = attention;
+    self.countBadgeLabel.text = [Language isRTL]
+        ? [NSString stringWithFormat:@"%ld %@", (long)total, (self.viewForMode == ViewForEditAccount ? @"حساب" : @"مستخدم")]
+        : [NSString stringWithFormat:@"%ld %@", (long)total, (self.viewForMode == ViewForEditAccount ? @"Accounts" : @"Users")];
     [self.summaryHeader updateWithTotal:total active:active verified:verified attention:attention];
     [self pp_refreshAttentionSignal];
+    [self pp_updateStickyHeaderMetrics];
 }
 
 #pragma mark - Search delegate

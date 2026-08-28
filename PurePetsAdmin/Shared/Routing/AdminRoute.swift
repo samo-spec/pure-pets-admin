@@ -183,7 +183,9 @@ enum AdminRoute: Hashable, Identifiable {
         case .paymentOrder, .payments: return ["payments.view", "payments.manage"]
         case .paymentSettings: return ["payments.manage"]
         case .fulfillment: return ["payments.view", "payments.manage", "providers.view"]
-        case .delivery: return ["payments.manage"]
+        // `payments.manage` is an isolated official-fleet compatibility bridge.
+        // New staff grants must use the dedicated delivery permission.
+        case .delivery: return ["delivery.view", "payments.manage"]
         case .providerApplications, .providerPlans, .providerFeatures: return ["providers.view", "providers.manage"]
         case .providerAccounting: return ["payments.view", "payments.manage"]
         case .pointOfSale: return ["pos.view", "pos.sell"]

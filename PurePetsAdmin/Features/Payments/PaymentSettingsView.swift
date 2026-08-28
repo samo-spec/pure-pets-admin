@@ -230,7 +230,7 @@ struct AdminPaymentSettingsView: View {
                 .foregroundColor(AdminSurface.primaryText)
 
                 HStack(spacing: AdminSpacing.sm) {
-                    Text("SAR")
+                    Text(Language.get("QAR", alter: "ر.ق"))
                         .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.secondaryText)
                     TextField("0.00", text: $viewModel.deliveryFeeString)

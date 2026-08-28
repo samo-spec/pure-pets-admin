@@ -56,6 +56,21 @@ NSString * const kStaffPermPaymentsView   = @"payments.view";
 NSString * const kStaffPermPaymentsManage = @"payments.manage";
 NSString * const kStaffPermPaymentsRefund = @"payments.refund";
 
+NSString * const kStaffPermDeliveryView           = @"delivery.view";
+NSString * const kStaffPermDeliveryDispatch       = @"delivery.dispatch";
+NSString * const kStaffPermDeliveryAssign         = @"delivery.assign";
+NSString * const kStaffPermDeliveryOverride       = @"delivery.override";
+NSString * const kStaffPermDeliveryDriverView     = @"delivery.driver.view";
+NSString * const kStaffPermDeliveryDriverManage   = @"delivery.driver.manage";
+NSString * const kStaffPermDeliveryCarrierView    = @"delivery.carrier.view";
+NSString * const kStaffPermDeliveryCarrierManage  = @"delivery.carrier.manage";
+NSString * const kStaffPermDeliveryRouteView      = @"delivery.route.view";
+NSString * const kStaffPermDeliveryRouteManage    = @"delivery.route.manage";
+NSString * const kStaffPermDeliveryPODReview      = @"delivery.pod.review";
+NSString * const kStaffPermDeliveryCODView        = @"delivery.cod.view";
+NSString * const kStaffPermDeliveryCODReconcile   = @"delivery.cod.reconcile";
+NSString * const kStaffPermDeliverySettingsManage = @"delivery.settings.manage";
+
 NSString * const kStaffPermPosView    = @"pos.view";
 NSString * const kStaffPermPosSell    = @"pos.sell";
 NSString * const kStaffPermPosHistory = @"pos.history";
@@ -194,6 +209,14 @@ static NSArray<NSString *> *PPStaffAllPermissionKeys(void) {
             kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate, kStaffPermStockDelete,
             kStaffPermListingsView, kStaffPermListingsManage, kStaffPermListingsModerate,
             kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermPaymentsRefund,
+            kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryAssign,
+            kStaffPermDeliveryOverride,
+            kStaffPermDeliveryDriverView, kStaffPermDeliveryDriverManage,
+            kStaffPermDeliveryCarrierView, kStaffPermDeliveryCarrierManage,
+            kStaffPermDeliveryRouteView, kStaffPermDeliveryRouteManage,
+            kStaffPermDeliveryPODReview,
+            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
+            kStaffPermDeliverySettingsManage,
             kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
             kStaffPermBranchesView, kStaffPermBranchesManage,
             kStaffPermAgentsView, kStaffPermAgentsManage,
@@ -220,7 +243,8 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
     dispatch_once(&onceToken, ^{
         NSMutableArray<NSString *> *result = [NSMutableArray array];
         for (NSString *permission in PPStaffAllPermissionKeys()) {
-            if ([permission hasSuffix:@".view"]) {
+            if ([permission hasSuffix:@".view"] &&
+                ![permission isEqualToString:kStaffPermDeliveryCODView]) {
                 [result addObject:permission];
             }
         }
@@ -522,6 +546,7 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         for (NSString *permission in PPStaffAllPermissionKeys()) {
             if ([permission hasPrefix:@"staff."]) continue;
             if ([permission isEqualToString:kStaffPermAuditView]) continue;
+            if ([permission isEqualToString:kStaffPermDeliverySettingsManage]) continue;
             [permissions addObject:permission];
         }
         return permissions.copy;
@@ -541,6 +566,7 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         return @[
             kStaffPermDashboardView,
             kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermPaymentsRefund,
+            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
             kStaffPermAccountingView, kStaffPermAccountingManage,
             kStaffPermReportsView, kStaffPermReportsExport,
             kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,

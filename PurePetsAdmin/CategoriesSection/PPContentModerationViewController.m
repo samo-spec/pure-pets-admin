@@ -1,6 +1,8 @@
 #import "PPContentModerationViewController.h"
 #import "PPStaffAuth.h"
 #import "PPAlertHelper.h"
+#import "Styling.h"
+#import "Language.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseFirestore;
@@ -101,15 +103,88 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     self.tableView.estimatedRowHeight = PPSpace4XL;
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
 
-    UIView *segmentHeader = [[UIView alloc] initWithFrame:CGRectMake(0.0, 0.0, CGRectGetWidth(self.tableView.bounds), 52.0)];
-    self.segmentedControl.frame = CGRectInset(segmentHeader.bounds, PPSpaceBase, PPSpaceXS);
-    self.segmentedControl.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    [segmentHeader addSubview:self.segmentedControl];
-    self.tableView.tableHeaderView = segmentHeader;
+    [self setupV6Header];
 
     UIRefreshControl *refresh = [[UIRefreshControl alloc] init];
     [refresh addTarget:self action:@selector(refreshData) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refresh;
+}
+
+- (void)setupV6Header {
+    UIView *header = [[UIView alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
+    [backBtn setImage:chevron forState:UIControlStateNormal];
+    [backBtn setTitle:backText forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:16];
+    [backBtn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    [header addSubview:backBtn];
+
+    UILabel *eyebrow = [[UILabel alloc] init];
+    eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrow.font = [Styling fontBold:12];
+    eyebrow.textColor = [UIColor ppTextSecondary];
+    eyebrow.text = kLang(@"Moderation_Eyebrow");
+    eyebrow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:eyebrow];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = kLang(@"Moderation_Title");
+    titleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
+    titleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:titleLabel];
+    
+    self.segmentedControl.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:self.segmentedControl];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.topAnchor constraintEqualToAnchor:header.topAnchor constant:10],
+        [backBtn.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [eyebrow.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:10],
+        [eyebrow.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [eyebrow.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20],
+
+        [titleLabel.topAnchor constraintEqualToAnchor:eyebrow.bottomAnchor constant:4],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20],
+        
+        [self.segmentedControl.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:16],
+        [self.segmentedControl.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+        [self.segmentedControl.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
+        [self.segmentedControl.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-16],
+        [self.segmentedControl.heightAnchor constraintEqualToConstant:32]
+    ]];
+
+    CGFloat width = UIScreen.mainScreen.bounds.size.width;
+    CGSize size = [header systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                withHorizontalFittingPriority:UILayoutPriorityRequired
+                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    header.frame = CGRectMake(0, 0, width, size.height);
+    self.tableView.tableHeaderView = header;
+}
+
+- (void)didTapBack {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:YES];
 }
 
 - (void)evaluatePermissions {

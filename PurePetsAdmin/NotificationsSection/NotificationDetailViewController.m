@@ -57,11 +57,46 @@ static NSString *PPAdminNotificationDetailBody(NotificationModel *model)
     return self;
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:YES];
+}
+
+- (void)didTapBack {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor ppBackground];
-    self.title = kLang(@"Notification");
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIView *navRow = [[UIView alloc] init];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.backgroundColor = UIColor.clearColor;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.view addSubview:navRow];
+
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
+    [backBtn setImage:chevron forState:UIControlStateNormal];
+    [backBtn setTitle:backText forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:16];
+    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:backBtn];
+
+    UILabel *eyebrow = [[UILabel alloc] init];
+    eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrow.font = [Styling fontBold:12];
+    eyebrow.textColor = [UIColor ppTextSecondary];
+    eyebrow.text = kLang(@"NotificationDetail_Eyebrow");
+    eyebrow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [navRow addSubview:eyebrow];
 
     UIScrollView *scrollView = [[UIScrollView alloc] init];
     scrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -128,7 +163,21 @@ static NSString *PPAdminNotificationDetailBody(NotificationModel *model)
     [_cardView addSubview:_timeL];
 
     [NSLayoutConstraint activateConstraints:@[
-        [scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [navRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [navRow.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [navRow.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        
+        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
+        [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor constant:10],
+        [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:-10],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [eyebrow.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
+        [eyebrow.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:4],
+        [eyebrow.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor constant:-16],
+        [eyebrow.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:-10],
+
+        [scrollView.topAnchor constraintEqualToAnchor:navRow.bottomAnchor],
         [scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],

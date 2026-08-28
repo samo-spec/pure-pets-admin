@@ -195,8 +195,9 @@ struct AdminPOSHistoryView: View {
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "SAR"
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        formatter.currencyCode = "QAR"
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
     }
 }
 
@@ -288,8 +289,9 @@ private struct ReceiptCard: View {
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
-        formatter.currencyCode = "SAR"
-        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        formatter.currencyCode = "QAR"
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
     }
 
     private func formattedDate(_ date: Date) -> String {

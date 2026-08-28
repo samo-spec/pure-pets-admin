@@ -42,7 +42,7 @@
 
     BOOL canViewPayments = [session hasAnyPermission:@[@"payments.view", @"payments.manage"]];
     BOOL canViewFulfillment = [session hasAnyPermission:@[@"payments.view", @"payments.manage", @"providers.view"]];
-    BOOL canViewDelivery = [session hasPermission:@"payments.manage"];
+    BOOL canViewDelivery = [session hasAnyPermission:@[@"delivery.view", @"payments.manage"]];
     BOOL canViewProviders = [session hasAnyPermission:@[@"providers.view", @"providers.manage"]];
     BOOL canViewListings = [session hasAnyPermission:@[@"listings.view", @"listings.manage", @"listings.moderate"]] &&
                            [session hasPermission:@"stock.manage"];
@@ -113,19 +113,19 @@
     if (canViewDelivery) {
         [requestedAreas addObject:@"delivery"];
         dispatch_group_enter(group);
-        [[PPDeliveryService shared] fetchAllDeliveryRequestsWithCompletion:^(NSArray<PPDeliveryRequestRecord *> *records,
-                                                                              NSError *error) {
+        [[PPDeliveryService shared] fetchCommandCenterWithCompletion:^(PPDeliveryCommandCenterSnapshot *projection,
+                                                                        NSError *error) {
             if (error) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"delivery"]; }
             } else {
-                NSSet<NSString *> *activeStatuses = [NSSet setWithArray:@[
-                    @"offered", @"accepted_by_company", @"assigned_to_driver", @"picked_up", @"in_transit", @"delivered"
-                ]];
-                NSInteger count = 0;
-                for (PPDeliveryRequestRecord *record in records ?: @[]) {
-                    if ([activeStatuses containsObject:record.status.lowercaseString ?: @""]) count += 1;
+                NSDictionary *counts = [projection.projection[@"counts"] isKindOfClass:NSDictionary.class]
+                    ? projection.projection[@"counts"]
+                    : @{};
+                NSNumber *active = [counts[@"active"] isKindOfClass:NSNumber.class] ? counts[@"active"] : nil;
+                snapshot.activeDeliveryCount = active ? active.integerValue : NSNotFound;
+                if (!active) {
+                    @synchronized (partialAreas) { [partialAreas addObject:@"delivery"]; }
                 }
-                snapshot.activeDeliveryCount = count;
             }
             dispatch_group_leave(group);
         }];

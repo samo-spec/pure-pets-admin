@@ -88,6 +88,8 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> inboxListener;
 @property (nonatomic, strong, nullable) NSError *inboxError;
 @property (nonatomic, copy, nullable) NSString *lastInboxErrorSignature;
+@property (nonatomic, strong) UIView *headerRoot;
+@property (nonatomic, strong) UILabel *countBadge;
 @end
 
 @implementation NotificationsListViewController
@@ -102,19 +104,16 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
     self.isLoading = NO;
 
     [self setupTableView];
+    [self setupV6Header];
     [self setupSearchView];
     [self fetchNotificationsShowToast:YES];
-    
-    
-
 }
 
 
 -(void)viewWillAppear:(BOOL)animated
 {
     [super viewWillAppear:animated];
-    // globe  // plus
-    [self pp_navBarWithOtherButton:nil title:kLang(@"NotificationsTitle")];
+    [self.navigationController setNavigationBarHidden:YES animated:YES];
 
     NSString *currentUID = PPAdminAuthenticatedNotificationUID();
     if (![self.uid isEqualToString:currentUID] ||
@@ -170,15 +169,112 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
 
 
 
+- (void)setupV6Header {
+    UIView *header = [[UIView alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.backgroundColor = UIColor.clearColor;
+    header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
+    [backBtn setImage:chevron forState:UIControlStateNormal];
+    [backBtn setTitle:backText forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:16];
+    [backBtn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    [header addSubview:backBtn];
+
+    UILabel *eyebrow = [[UILabel alloc] init];
+    eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrow.font = [Styling fontBold:12];
+    eyebrow.textColor = [UIColor ppTextSecondary];
+    eyebrow.text = kLang(@"Notifications_Eyebrow");
+    eyebrow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:eyebrow];
+
+    UIView *titleRow = [[UIView alloc] init];
+    titleRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [header addSubview:titleRow];
+
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.text = kLang(@"NotificationsTitle");
+    titleLabel.accessibilityTraits = UIAccessibilityTraitHeader;
+    titleLabel.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [titleRow addSubview:titleLabel];
+
+    self.countBadge = [[UILabel alloc] init];
+    self.countBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    self.countBadge.font = [Styling fontBold:12];
+    self.countBadge.textColor = UIColor.whiteColor;
+    self.countBadge.backgroundColor = [UIColor ppPrimary];
+    self.countBadge.textAlignment = NSTextAlignmentCenter;
+    self.countBadge.layer.cornerRadius = 10;
+    self.countBadge.layer.masksToBounds = YES;
+    self.countBadge.hidden = YES;
+    [titleRow addSubview:self.countBadge];
+
+    UILabel *briefing = [[UILabel alloc] init];
+    briefing.translatesAutoresizingMaskIntoConstraints = NO;
+    briefing.font = [Styling fontRegular:14];
+    briefing.textColor = [UIColor ppTextSecondary];
+    briefing.text = kLang(@"NotificationsInbox_Briefing");
+    briefing.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    briefing.numberOfLines = 0;
+    [header addSubview:briefing];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [backBtn.topAnchor constraintEqualToAnchor:header.topAnchor constant:10],
+        [backBtn.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+
+        [eyebrow.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:10],
+        [eyebrow.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [eyebrow.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20],
+
+        [titleRow.topAnchor constraintEqualToAnchor:eyebrow.bottomAnchor constant:4],
+        [titleRow.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [titleRow.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20],
+
+        [titleLabel.leadingAnchor constraintEqualToAnchor:titleRow.leadingAnchor],
+        [titleLabel.topAnchor constraintEqualToAnchor:titleRow.topAnchor],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:titleRow.bottomAnchor],
+
+        [self.countBadge.leadingAnchor constraintEqualToAnchor:titleLabel.trailingAnchor constant:10],
+        [self.countBadge.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
+        [self.countBadge.heightAnchor constraintEqualToConstant:20],
+        [self.countBadge.widthAnchor constraintGreaterThanOrEqualToConstant:20],
+        [self.countBadge.trailingAnchor constraintLessThanOrEqualToAnchor:titleRow.trailingAnchor],
+
+        [briefing.topAnchor constraintEqualToAnchor:titleRow.bottomAnchor constant:4],
+        [briefing.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],
+        [briefing.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-20],
+        [briefing.bottomAnchor constraintEqualToAnchor:header.bottomAnchor constant:-10]
+    ]];
+
+    self.headerRoot = header;
+}
+
+- (void)didTapBack {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
 - (void)setupSearchView {
     // container height: padding + search height + padding
     CGFloat padding = 12.0;
     CGFloat searchHeight = 50.0;
     CGFloat containerHeight = padding + searchHeight + padding;
 
-    self.searchContainer = [[UIView alloc] initWithFrame:CGRectMake(10, 0, self.view.bounds.size.width-20, containerHeight)];
+    self.searchContainer = [[UIView alloc] initWithFrame:CGRectZero];
+    self.searchContainer.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchContainer.backgroundColor = UIColor.clearColor;
-    self.searchContainer.autoresizingMask = UIViewAutoresizingFlexibleWidth;
 
     // PPS instance
     self.searchView = [[PPS alloc] initWithFrame:CGRectZero];
@@ -219,12 +315,34 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
     [NSLayoutConstraint activateConstraints:@[
         [self.searchView.leadingAnchor constraintEqualToAnchor:self.searchContainer.leadingAnchor constant:26],
         [self.searchView.trailingAnchor constraintEqualToAnchor:self.searchContainer.trailingAnchor constant:-26],
-        [self.searchView.centerYAnchor constraintEqualToAnchor:self.searchContainer.centerYAnchor],
+        [self.searchView.topAnchor constraintEqualToAnchor:self.searchContainer.topAnchor constant:padding],
+        [self.searchView.bottomAnchor constraintEqualToAnchor:self.searchContainer.bottomAnchor constant:-padding],
         [self.searchView.heightAnchor constraintEqualToConstant:searchHeight]
     ]];
 
-    // assign as tableHeaderView (works nicely with inset grouped)
-    self.tableView.tableHeaderView = self.searchContainer;
+    // Create a combined header for tableHeaderView
+    UIView *combinedHeader = [[UIView alloc] initWithFrame:CGRectZero];
+    combinedHeader.backgroundColor = UIColor.clearColor;
+    [combinedHeader addSubview:self.headerRoot];
+    [combinedHeader addSubview:self.searchContainer];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.headerRoot.topAnchor constraintEqualToAnchor:combinedHeader.topAnchor],
+        [self.headerRoot.leadingAnchor constraintEqualToAnchor:combinedHeader.leadingAnchor],
+        [self.headerRoot.trailingAnchor constraintEqualToAnchor:combinedHeader.trailingAnchor],
+        
+        [self.searchContainer.topAnchor constraintEqualToAnchor:self.headerRoot.bottomAnchor],
+        [self.searchContainer.leadingAnchor constraintEqualToAnchor:combinedHeader.leadingAnchor],
+        [self.searchContainer.trailingAnchor constraintEqualToAnchor:combinedHeader.trailingAnchor],
+        [self.searchContainer.bottomAnchor constraintEqualToAnchor:combinedHeader.bottomAnchor]
+    ]];
+    
+    CGFloat width = UIScreen.mainScreen.bounds.size.width;
+    CGSize size = [combinedHeader systemLayoutSizeFittingSize:CGSizeMake(width, UILayoutFittingCompressedSize.height)
+                                withHorizontalFittingPriority:UILayoutPriorityRequired
+                                      verticalFittingPriority:UILayoutPriorityFittingSizeLevel];
+    combinedHeader.frame = CGRectMake(0, 0, width, size.height);
+    self.tableView.tableHeaderView = combinedHeader;
 
     // IMPORTANT: set search items now (empty array until we fetch)
     [self.searchView setSearchItems:@[] stringProvider:^NSString * _Nonnull(id item) {
@@ -385,8 +503,13 @@ static NSString *PPAdminNotificationInboxErrorSignature(NSError *error)
 
 - (void)reloadTableAnimated:(BOOL)animated {
     [self.tableView reloadData];
+    
+    NSInteger count = self.filteredNotifications.count;
+    self.countBadge.text = [NSString stringWithFormat:@" %ld ", (long)count];
+    self.countBadge.hidden = (count == 0);
 
     if (!animated) return;
+
 
     NSArray *cells = [self.tableView visibleCells];
     CGFloat delay = 0.0;

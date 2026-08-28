@@ -342,10 +342,10 @@ private enum AdminShellMetric {
     static let groupRadius: CGFloat = 22
     static let compactRadius: CGFloat = 16
     static let rowMinimumHeight: CGFloat = 68
-    static let tabBarTopInset: CGFloat = 8
-    static let tabBarHorizontalInset: CGFloat = 6
-    static let tabBarBottomInset: CGFloat = 22
-    static let tabItemMinimumHeight: CGFloat = 48
+    static let tabBarTopInset: CGFloat = 10
+    static let tabBarHorizontalInset: CGFloat = 10
+    static let tabBarBottomInset: CGFloat = 18
+    static let tabItemMinimumHeight: CGFloat = 50
 }
 
 struct V6GlobalTabBar: View {
@@ -366,8 +366,9 @@ struct V6GlobalTabBar: View {
             AdminSurface.surface
                 .overlay(alignment: .top) {
                     Rectangle()
-                        .fill(AdminSurface.hairline)
+                        .fill(AdminSurface.control)
                         .frame(height: 1.0 / UIScreen.main.scale)
+                        .opacity(0.72)
                         .accessibilityHidden(true)
                 }
                 .ignoresSafeArea(edges: .bottom)
@@ -377,7 +378,7 @@ struct V6GlobalTabBar: View {
     private func tabItem(_ tab: AdminTab) -> some View {
         let isSelected = selectedTab == tab
         let title = Language.get(tab.titleKey, alter: nil)
-        let symbol = isSelected ? tab.selectedSymbol : tab.symbol
+        let symbol = tab.symbol
 
         return Button {
             guard selectedTab != tab else { return }
@@ -390,27 +391,27 @@ struct V6GlobalTabBar: View {
                 }
             }
         } label: {
-            VStack(spacing: 3) {
-                ZStack {
-                    if isSelected {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(AdminSurface.primary.opacity(0.12))
-                            .frame(width: 44, height: 26)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                    Image(systemName: symbol)
-                        .font(.system(size: 17, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
-                }
-                .frame(height: 26)
+            VStack(spacing: 4) {
+                Capsule()
+                    .fill(isSelected ? AdminSurface.primaryPressed : Color.clear)
+                    .frame(width: 20, height: 3)
+                    .accessibilityHidden(true)
+
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundColor(isSelected ? AdminSurface.primaryPressed : AdminSurface.secondaryText)
+                    .frame(height: 22)
                 .accessibilityHidden(true)
 
                 Text(title)
                     .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
-                    .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.80)
+                    .lineLimit(2)
+                    .lineSpacing(1)
+                    .minimumScaleFactor(0.90)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, minHeight: AdminShellMetric.tabItemMinimumHeight)
             .contentShape(Rectangle())

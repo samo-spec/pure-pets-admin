@@ -664,7 +664,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 }
 
 + (NSString *)formatCurrency:(NSNumber *)amount {
-    if (!amount) return @"0 QAR";
+    if (!amount) return [NSString stringWithFormat:@"0 %@", kLang(@"QAR")];
     return [NSString stringWithFormat:@"%@ %@", amount, kLang(@"QAR")];
 }
 

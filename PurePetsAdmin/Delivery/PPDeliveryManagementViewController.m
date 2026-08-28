@@ -134,10 +134,10 @@ static BOOL PPDeliveryIsCompletedStatus(NSString *status) {
 }
 
 static BOOL PPDeliveryRecordHasAction(PPDeliveryRequestRecord *record) {
-    NSString *canonical = PPDeliveryCanonicalStatus(record.status);
-    return [canonical isEqualToString:@"accepted_by_company"] ||
-           [canonical isEqualToString:@"assigned_to_driver"] ||
-           [canonical isEqualToString:@"delivered"];
+    return [record allowedActionNamed:@"ASSIGN"] != nil ||
+           [record allowedActionNamed:@"REASSIGN"] != nil ||
+           [record allowedActionNamed:@"COMPLETE"] != nil ||
+           [record allowedActionNamed:@"CANCEL"] != nil;
 }
 
 static NSString *PPDeliveryOrderReference(PPDeliveryRequestRecord *record) {
@@ -147,30 +147,28 @@ static NSString *PPDeliveryOrderReference(PPDeliveryRequestRecord *record) {
 }
 
 static BOOL PPDeliveryIsPermissionError(NSError *error) {
-    if (!error) return NO;
-    if ([error.domain isEqualToString:@"com.firebase.functions"]) {
-        return error.code == FIRFunctionsErrorCodePermissionDenied || error.code == FIRFunctionsErrorCodeUnauthenticated;
-    }
-    return NO;
-}
-
-static BOOL PPDeliveryIsConnectivityError(NSError *error) {
-    if (!error) return NO;
-    if ([error.domain isEqualToString:NSURLErrorDomain]) {
-        return error.code == NSURLErrorNotConnectedToInternet ||
-               error.code == NSURLErrorNetworkConnectionLost ||
-               error.code == NSURLErrorTimedOut;
-    }
-    if ([error.domain isEqualToString:@"com.firebase.functions"]) {
-        return error.code == FIRFunctionsErrorCodeUnavailable || error.code == FIRFunctionsErrorCodeDeadlineExceeded;
-    }
-    return NO;
+    return [PPDeliveryService isPermissionError:error];
 }
 
 static NSString *PPDeliveryErrorText(NSError *error) {
-    if (PPDeliveryIsConnectivityError(error)) return kLang(@"StatusNetworkError");
-    if (error.localizedDescription.length > 0) return error.localizedDescription;
-    return kLang(@"StatusNetworkError");
+    NSString *code = [PPDeliveryService domainCodeForError:error];
+    NSDictionary<NSString *, NSArray<NSString *> *> *copyByCode = @{
+        @"DELIVERY_COMPANY_NOT_CONFIGURED": @[@"Delivery_Error_State_Configuration", @"Delivery_Error_Cause_Company_Not_Configured", @"Delivery_Error_Impact_Dispatch_Blocked", @"Delivery_Error_Recovery_Configure_Carrier"],
+        @"DELIVERY_COMPANY_NOT_FOUND": @[@"Delivery_Error_State_Carrier_Missing", @"Delivery_Error_Cause_Company_Not_Found", @"Delivery_Error_Impact_Carrier_Unavailable", @"Delivery_Error_Recovery_Refresh_Carrier"],
+        @"DELIVERY_REQUEST_NOT_FOUND": @[@"Delivery_Error_State_Request_Missing", @"Delivery_Error_Cause_Request_Not_Found", @"Delivery_Error_Impact_Command_Not_Applied", @"Delivery_Error_Recovery_Return_Queue"],
+        @"DELIVERY_PERMISSION_DENIED": @[@"Delivery_Error_State_Access_Denied", @"Delivery_Error_Cause_Permission", @"Delivery_Error_Impact_Action_Unavailable", @"Delivery_Error_Recovery_Request_Access"],
+        @"DELIVERY_STATE_CONFLICT": @[@"Delivery_Error_State_Changed", @"Delivery_Error_Cause_Stale_Action", @"Delivery_Error_Impact_Command_Not_Applied", @"Delivery_Error_Recovery_Refresh_Dossier"],
+        @"DELIVERY_AUTHORITY_MISMATCH": @[@"Delivery_Error_State_Authority_Mismatch", @"Delivery_Error_Cause_Fulfillment_Authority", @"Delivery_Error_Impact_Command_Not_Applied", @"Delivery_Error_Recovery_Open_Fulfillment"],
+        @"DELIVERY_COD_MISMATCH": @[@"Delivery_Error_State_COD_Attention", @"Delivery_Error_Cause_COD_Mismatch", @"Delivery_Error_Impact_Reconciliation_Blocked", @"Delivery_Error_Recovery_Verify_Custody"],
+        @"DELIVERY_POD_REQUIRED": @[@"Delivery_Error_State_POD_Incomplete", @"Delivery_Error_Cause_POD_Required", @"Delivery_Error_Impact_Completion_Blocked", @"Delivery_Error_Recovery_Collect_POD"],
+    };
+    NSArray<NSString *> *keys = copyByCode[code] ?: @[@"Delivery_Error_State_Service_Unavailable", @"Delivery_Error_Cause_Service", @"Delivery_Error_Impact_Data_Unavailable", @"Delivery_Error_Recovery_Retry"];
+    return [NSString stringWithFormat:@"%@: %@\n%@: %@\n%@: %@\n%@: %@\n%@",
+            kLang(@"Delivery_Error_Label_State"), kLang(keys[0]),
+            kLang(@"Delivery_Error_Label_Cause"), kLang(keys[1]),
+            kLang(@"Delivery_Error_Label_Impact"), kLang(keys[2]),
+            kLang(@"Delivery_Error_Label_Recovery"), kLang(keys[3]),
+            code];
 }
 
 @interface PPDeliveryBadgeLabel : UILabel
@@ -1004,7 +1002,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     // Route guards and callable enforcement remain the final access boundary.
     if (!staff) return;
 
-    BOOL allowed = [staff hasPermission:kStaffPermPaymentsManage];
+    BOOL allowed = [staff hasAnyPermission:@[kStaffPermDeliveryView, kStaffPermPaymentsManage]];
     self.permissionDenied = !allowed;
     if (self.permissionDenied) {
         if (!wasDenied) self.loadGeneration += 1;
@@ -1054,7 +1052,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     [self.tableView reloadData];
 
     __weak typeof(self) weakSelf = self;
-    [[PPDeliveryService shared] fetchDeliveryRequestsWithCompletion:^(NSArray<PPDeliveryRequestRecord *> *records, NSError *error) {
+    [[PPDeliveryService shared] fetchCommandCenterWithCompletion:^(PPDeliveryCommandCenterSnapshot *snapshot, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) self = weakSelf;
             if (!self || generation != self.loadGeneration) return;
@@ -1072,7 +1070,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
                 }
                 [PPAlertHelper showAlertIn:self title:kLang(@"Error_Title") subtitle:self.errorMessage];
             } else {
-                self.records = records ?: @[];
+                self.records = snapshot.records ?: @[];
                 if (shouldShowSuccessAfterLoad) {
                     self.successMessage = kLang(@"Success");
                     NSUInteger successGeneration = generation;
@@ -1217,13 +1215,13 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     actions.cancelTitle = kLang(@"Delivery_CancelRequest");
 
     __weak typeof(self) weakSelf = self;
-    NSString *canonical = PPDeliveryCanonicalStatus(record.status);
-    if ([canonical isEqualToString:@"accepted_by_company"]) {
+    if ([record allowedActionNamed:@"ASSIGN"] || [record allowedActionNamed:@"REASSIGN"]) {
         actions.assignAction = ^{ [weakSelf promptAssignDriver:record]; };
+    }
+    if ([record allowedActionNamed:@"CANCEL"]) {
         actions.cancelAction = ^{ [weakSelf cancelRecord:record]; };
-    } else if ([canonical isEqualToString:@"assigned_to_driver"]) {
-        actions.cancelAction = ^{ [weakSelf cancelRecord:record]; };
-    } else if ([canonical isEqualToString:@"delivered"]) {
+    }
+    if ([record allowedActionNamed:@"COMPLETE"]) {
         actions.completeAction = ^{ [weakSelf completeRecord:record]; };
     }
 
@@ -1239,8 +1237,17 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     [PPAlertHelper showTextPromptIn:self title:kLang(@"Delivery_AssignDriver") subtitle:kLang(@"Delivery_EnterDriverUID") placeholder:kLang(@"Delivery_DriverUIDPlaceholder") initialText:nil confirmText:kLang(@"Confirm") cancelText:kLang(@"Cancel") secureEntry:NO keyboardType:UIKeyboardTypeDefault completion:^(NSString * _Nullable text) {
         NSString *driverUID = [text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (driverUID.length == 0) return;
+        PPDeliveryAllowedAction *action = [record allowedActionNamed:@"ASSIGN"] ?: [record allowedActionNamed:@"REASSIGN"];
+        if (!action) return;
         [self pp_beginSubmitting];
-        [[PPDeliveryService shared] assignDriver:record.requestID driverUID:driverUID completion:^(NSError *error) {
+        NSString *commandID = [NSString stringWithFormat:@"admin-ios-%@-%@", action.action.lowercaseString, NSUUID.UUID.UUIDString];
+        [[PPDeliveryService shared] executeAllowedAction:action
+                                              requestID:record.requestID
+                                              commandID:commandID
+                                              driverUID:driverUID
+                                      handoverConfirmed:NO
+                                                 reason:nil
+                                             completion:^(__unused PPDeliveryCommandResult *result, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self pp_handleActionError:error];
             });
@@ -1250,11 +1257,20 @@ static NSString *PPDeliveryErrorText(NSError *error) {
 
 - (void)completeRecord:(PPDeliveryRequestRecord *)record {
     [self pp_confirmRecord:record
-                     title:kLang(@"Delivery_MarkCompleted")
+                    title:kLang(@"Delivery_MarkCompleted")
                 destructive:NO
                     handler:^{
+        PPDeliveryAllowedAction *action = [record allowedActionNamed:@"COMPLETE"];
+        if (!action) return;
         [self pp_beginSubmitting];
-        [[PPDeliveryService shared] completeRequest:record.requestID completion:^(NSError *error) {
+        NSString *commandID = [NSString stringWithFormat:@"admin-ios-complete-%@", NSUUID.UUID.UUIDString];
+        [[PPDeliveryService shared] executeAllowedAction:action
+                                              requestID:record.requestID
+                                              commandID:commandID
+                                              driverUID:nil
+                                      handoverConfirmed:NO
+                                                 reason:nil
+                                             completion:^(__unused PPDeliveryCommandResult *result, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self pp_handleActionError:error];
             });
@@ -1267,8 +1283,17 @@ static NSString *PPDeliveryErrorText(NSError *error) {
                      title:kLang(@"Delivery_CancelRequest")
                 destructive:YES
                     handler:^{
+        PPDeliveryAllowedAction *action = [record allowedActionNamed:@"CANCEL"];
+        if (!action) return;
         [self pp_beginSubmitting];
-        [[PPDeliveryService shared] cancelRequest:record.requestID completion:^(NSError *error) {
+        NSString *commandID = [NSString stringWithFormat:@"admin-ios-cancel-%@", NSUUID.UUID.UUIDString];
+        [[PPDeliveryService shared] executeAllowedAction:action
+                                              requestID:record.requestID
+                                              commandID:commandID
+                                              driverUID:nil
+                                      handoverConfirmed:NO
+                                                 reason:@"ADMIN_CANCELLED"
+                                             completion:^(__unused PPDeliveryCommandResult *result, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self pp_handleActionError:error];
             });

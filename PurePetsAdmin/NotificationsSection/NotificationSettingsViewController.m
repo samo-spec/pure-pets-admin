@@ -237,6 +237,7 @@ static NSString * const PPNotificationCategoryLastKey = @"last";
 @property (nonatomic, strong) UIImageView *summaryIconView;
 @property (nonatomic, strong) UIView *summarySurfaceView;
 @property (nonatomic, assign) BOOL isSizingHeader;
+@property (nonatomic, strong) UIView *v6NavRow;
 
 - (void)pp_buildForm;
 - (void)pp_buildHeader;
@@ -276,15 +277,65 @@ static NSString * const PPNotificationCategoryLastKey = @"last";
 
     [self pp_buildHeader];
     [self pp_updateSummary];
+    [self pp_setupV6NavRow];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:NO animated:NO];
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto
-                      button:nil
-                       title:kLang(@"Notification Settings")
-                    showBack:YES];
+    [self.navigationController setNavigationBarHidden:YES animated:YES];
+}
+
+- (void)didTapBack {
+    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)pp_setupV6NavRow {
+    if (self.v6NavRow) return;
+
+    UIView *navRow = [[UIView alloc] init];
+    navRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navRow.backgroundColor = UIColor.clearColor;
+    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    
+    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
+    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
+    [backBtn setImage:chevron forState:UIControlStateNormal];
+    [backBtn setTitle:backText forState:UIControlStateNormal];
+    backBtn.tintColor = [UIColor ppPrimary];
+    backBtn.titleLabel.font = [Styling fontBold:16];
+    [backBtn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    [navRow addSubview:backBtn];
+    
+    [self.view addSubview:navRow];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [navRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [navRow.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [navRow.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        
+        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
+        [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor constant:10],
+        [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:-10],
+        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+    ]];
+    
+    self.v6NavRow = navRow;
+    
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    for (NSLayoutConstraint *c in self.view.constraints) {
+        if ((c.firstItem == self.tableView && c.firstAttribute == NSLayoutAttributeTop) ||
+            (c.secondItem == self.tableView && c.secondAttribute == NSLayoutAttributeTop)) {
+            [self.view removeConstraint:c];
+            break;
+        }
+    }
+    [self.tableView.topAnchor constraintEqualToAnchor:navRow.bottomAnchor].active = YES;
+    [self.view bringSubviewToFront:navRow];
 }
 
 - (void)viewDidLayoutSubviews {

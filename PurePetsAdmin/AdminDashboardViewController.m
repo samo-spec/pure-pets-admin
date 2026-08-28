@@ -2834,7 +2834,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
     if ([self pp_commandAllowsTag:@"delivery"]) {
         __weak typeof(self) weakSelf = self;
-        [[PPDeliveryService shared] fetchDeliveryRequestsWithCompletion:^(NSArray<PPDeliveryRequestRecord *> *records, NSError *error) {
+        [[PPDeliveryService shared] fetchCommandCenterWithCompletion:^(PPDeliveryCommandCenterSnapshot *projection, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
                     generation != weakSelf.pp_priorityOneShotGeneration) return;
@@ -2844,7 +2844,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                     [weakSelf pp_refreshCommandOrbitSnapshot];
                     return;
                 }
-                weakSelf.pp_deliveryPriorityRecords = records ?: @[];
+                weakSelf.pp_deliveryPriorityRecords = projection.records ?: @[];
                 [weakSelf pp_refreshCommandOrbitSnapshot];
             });
         }];
@@ -3223,11 +3223,11 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                                    items:items]];
         actionCount += items.count;
     }
-    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermPaymentsView, kStaffPermPaymentsManage]]) {
+    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermDeliveryView, kStaffPermPaymentsManage]]) {
         NSArray *items = @[[self pp_itemWithTag:@"delivery"
                                        titleKey:@"Delivery_Title"
                                     subtitleKey:@"Delivery_Subtitle"
-                                       iconName:@"truck"]];
+                                       iconName:@"truck.box"]];
         [sections addObject:[self pp_sectionWithTitleKey:@"Delivery_Title"
                                           descriptionKey:@"Delivery_Subtitle"
                                                    items:items]];
