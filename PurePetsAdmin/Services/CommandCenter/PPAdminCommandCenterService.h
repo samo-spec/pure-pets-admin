@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 NS_SWIFT_SENDABLE
 @interface PPAdminCommandSnapshot : NSObject
 
+@property (nonatomic, copy) NSString *diagnosticTraceID;
 @property (nonatomic, strong) NSDate *generatedAt;
 @property (nonatomic, assign) NSInteger activeOrdersCount;
 @property (nonatomic, assign) NSInteger awaitingFulfillmentCount;

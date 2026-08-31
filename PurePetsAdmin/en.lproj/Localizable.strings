@@ -3205,6 +3205,9 @@
 "AdminCommandCenter_LiveSystem" = "Live system";
 "AdminCommandCenter_NoAttention" = "No attention required";
 "AdminCommandCenter_AccessScope" = "Access scope";
+"AdminCommandCenter_ActiveLoad" = "Active workload";
+"AdminCommandCenter_Load_Distribution" = "Priority distribution";
+"AdminCommandCenter_TierCount_Format" = "%1$@: %2$@";
 "AdminCommandCenter_LastConfirmed_Format" = "Confirmed %@";
 "AdminCommandCenter_SourceLedger" = "Source ledger";
 "AdminCommandCenter_SourceLedger_Detail" = "Live source readiness, kept separate from route access.";
@@ -3245,13 +3248,25 @@
 
 /* ===================== Quick Actions Grid ===================== */
 "AdminQuickActions_SectionTitle" = "Quick Actions";
+"AdminQuickActions_SectionDetail" = "High-velocity operational launchpad";
+"AdminQuickActions_LivePill" = "Live Deck";
 "AdminQuickActions_Payments" = "Payments";
+"AdminQuickActions_Payments_Subtitle" = "QIB & Ledger";
 "AdminQuickActions_Fulfillment" = "Fulfillment";
-"AdminQuickActions_Delivery" = "Delivery";
-"AdminQuickActions_Inventory" = "Inventory";
+"AdminQuickActions_Fulfillment_Subtitle" = "Pack & Prepare";
+"AdminQuickActions_Delivery" = "Delivery Fleet";
+"AdminQuickActions_Delivery_Subtitle" = "Live Dispatch";
+"AdminQuickActions_Inventory" = "Stock & Items";
+"AdminQuickActions_Inventory_Subtitle" = "Catalog Levels";
 "AdminQuickActions_Users" = "Users";
+"AdminQuickActions_Users_Subtitle" = "Accounts & Roles";
 "AdminQuickActions_POS" = "Point of Sale";
+"AdminQuickActions_POS_Subtitle" = "Instant Sell";
 "AdminQuickActions_Notifications" = "Notifications";
+"AdminQuickActions_Broadcast" = "Broadcast";
+"AdminQuickActions_Broadcast_Subtitle" = "Push Alert";
+"AdminQuickActions_Chats" = "Support Chats";
+"AdminQuickActions_Chats_Subtitle" = "Live Messages";
 "AdminQuickActions_Moderation" = "Moderation";
 
 /* ===================== Currency ===================== */
@@ -3478,3 +3493,129 @@
 "Delivery_Value_COD_ATTENTION" = "COD attention";
 "Delivery_Value_SYSTEM_ERROR" = "System incident";
 "Delivery_Value_ASSIGNED_DRIVER_RECORD_MISSING" = "Assigned driver record missing";
+
+
+"POS_SelectExactUnit" = "Select animal record";
+"POS_ExactUnitEmpty" = "No available animal records";
+"POS_ExactUnitLoadFailed" = "Couldn’t load available animal records.";
+"POS_ExactUnitAlreadySelected" = "Already selected";
+"POS_ExactUnitRefreshNeeded" = "One or more selected animals changed or are no longer available. Select the animal records again.";
+
+/* ===================== POS Exact-Animal Multi-Select (Console parity) ===================== */
+"POS_ExactAnimalTitle" = "Select exact animals";
+"POS_ExactAnimalHint" = "Choose the available ring or tag records that will be sold. The server verifies every selection again at checkout.";
+"POS_ExactAnimalIndividualTracking" = "Individual tracking";
+"POS_ExactAnimalSelectedCount" = "Selected animals";
+"POS_ExactAnimalAvailableCount" = "Available animals";
+"POS_ExactAnimalRequired" = "Select at least one available animal before adding this live pet to the cart.";
+"POS_ExactAnimalPriceRequired" = "This animal needs selling-price reconciliation before it can be selected.";
+"POS_ExactAnimalChanged" = "Available animal records changed. Review the exact selection before checkout.";
+"POS_ExactAnimalConfirm" = "Add selected animals";
+"POS_ExactAnimalLoadMore" = "Load more animals";
+"POS_ExactAnimalRingOrTag" = "Ring / tag";
+
+/* ===================== POS Catalog Footer Container (Console parity) ===================== */
+"POS_CatalogTypeAll" = "All";
+"POS_CatalogTypeAccessories" = "Accessories";
+"POS_CatalogTypeFood" = "Food";
+"POS_CatalogTypeMedicine" = "Pet Medicines";
+"POS_CatalogTypeLivePets" = "Live Pets";
+"POS_CatalogFilterRail" = "Catalog filters";
+"POS_CatalogQuickAdd" = "Quick add catalog";
+
+"POS_ExactUnits" = "Animal records";
+
+"Out of stock" = "Out of stock";
+"Only" = "Only";
+"leftInStock" = "left in stock";
+"inStock" = "In stock";
+"Check out this pet accessory!" = "Check out this pet accessory!";
+"Category" = "Category";
+"Subcategory" = "Subcategory";
+"Availability" = "Availability";
+"Not specified" = "Not specified";
+"Unknown" = "Unknown";
+
+/* Official delivery company — Pro parity surface */
+"DeliveryCompany_NavTitle" = "Company deliveries";
+"DeliveryCompany_Official_Name" = "Pure Pets Deliveries";
+"DeliveryCompany_Official_Badge" = "Official Pure Pets fleet";
+"DeliveryCompany_Dashboard_Eyebrow" = "Live fleet operations";
+"DeliveryCompany_Dashboard_OfficialSubtitle" = "Official fleet • Admin operations";
+"DeliveryCompany_Dashboard_Requests" = "Requests";
+"DeliveryCompany_Dashboard_MembersShortcutSubtitle" = "Open the team, driver availability, and fleet controls.";
+"DeliveryCompany_Tab_New" = "New requests";
+"DeliveryCompany_Tab_Accepted" = "Accepted";
+"DeliveryCompany_Tab_Assigned" = "Assigned";
+"DeliveryCompany_Tab_InProgress" = "In progress";
+"DeliveryCompany_Tab_Delivered" = "Delivered";
+"DeliveryCompany_Tab_Completed" = "Completed";
+"DeliveryCompany_Tab_Closed" = "Cancelled / rejected";
+"DeliveryCompany_Tab_Members" = "Drivers / members";
+"DeliveryCompany_Empty_Title" = "No deliveries in this view";
+"DeliveryCompany_Empty_Subtitle" = "Pull to refresh or choose another status.";
+"DeliveryCompany_Order_Format" = "Order %@";
+"DeliveryCompany_Pickup" = "Pickup";
+"DeliveryCompany_Dropoff" = "Drop-off";
+"DeliveryCompany_Pickup_Format" = "Pickup • %@";
+"DeliveryCompany_Dropoff_Format" = "Drop-off • %@";
+"DeliveryCompany_Driver_Format" = "Driver • %@";
+"DeliveryCompany_Unassigned" = "Unassigned";
+"DeliveryCompany_Dates_Format" = "Created %@ • updated %@";
+"DeliveryCompany_Detail_NavTitle" = "Delivery details";
+"DeliveryCompany_Detail_Updated_Format" = "Updated %@";
+"DeliveryCompany_Detail_Route" = "Route";
+"DeliveryCompany_Detail_Assignment" = "Assignment";
+"DeliveryCompany_Detail_AssignedDriver" = "Assigned company driver";
+"DeliveryCompany_Detail_AssignmentPending" = "Waiting for a driver assignment";
+"DeliveryCompany_Detail_Actions" = "Available actions";
+"DeliveryCompany_Members_Phone_Format" = "Phone • %@";
+"DeliveryCompany_Members_Available" = "Available";
+"DeliveryCompany_Members_Unavailable" = "Unavailable";
+"DeliveryCompany_Members_ActiveCount_Format" = "%ld active";
+"DeliveryCompany_SelectDriver" = "Choose an active, server-eligible driver for this delivery.";
+"DeliveryCompany_NoDrivers_Title" = "No drivers available";
+"DeliveryCompany_NoDrivers_Subtitle" = "An active and eligible official-fleet driver is required for assignment.";
+"DeliveryCompany_Confirm_Accept_Title" = "Accept this request?";
+"DeliveryCompany_Confirm_Accept_Message" = "The request will move into the official fleet queue and can then be assigned to a driver.";
+"DeliveryCompany_Confirm_Reject_Title" = "Reject this request?";
+"DeliveryCompany_Confirm_Complete_Title" = "Complete this delivery?";
+"DeliveryCompany_Confirm_Complete_Message" = "Use this action only after the server confirms the delivery evidence and driver state.";
+"DeliveryCompany_Confirm_Cancel_Title" = "Cancel this request?";
+"Delivery_Status_Expired" = "Expired";
+"Delivery_Driver_Loading_Members" = "Loading official-fleet driver profiles…";
+"Delivery_Driver_Management_Title" = "Driver management";
+"Delivery_Driver_Management_Subtitle" = "Availability, workload, membership, and assignment readiness for the official Pure Pets fleet.";
+"Delivery_Driver_Invite" = "Add driver";
+"Delivery_Driver_Invite_Hint" = "Invite a Pure Pets user to the official fleet as a driver.";
+"Delivery_Driver_Total" = "All drivers";
+"Delivery_Driver_Active" = "Active";
+"Delivery_Driver_Open_Profile" = "Open driver profile";
+"Delivery_Driver_Open_Profile_Hint" = "Shows identity, workload, contact, and authorized management actions.";
+"Delivery_Driver_Profile_Title" = "Driver profile";
+"Delivery_Driver_Role" = "Official-fleet driver";
+"Delivery_Driver_Identity_Title" = "Identity and contact";
+"Delivery_Driver_UID" = "User ID";
+"Delivery_Driver_Phone" = "Phone";
+"Delivery_Driver_Email" = "Email";
+"Delivery_Driver_Last_Seen" = "Last seen";
+"Delivery_Driver_Call" = "Call driver";
+"Delivery_Driver_Management_Actions" = "Driver controls";
+"Delivery_Driver_Disable_Membership" = "Disable fleet membership";
+"Delivery_Driver_Disable_Confirm_Title" = "Disable this driver?";
+"Delivery_Driver_Disable_Confirm_Message" = "The driver will stop receiving assignments and their official-fleet membership will be disabled. Existing delivery records remain intact.";
+"Delivery_Driver_Invite_Title" = "Add an official-fleet driver";
+"Delivery_Driver_Invite_Subtitle" = "Link an existing Pure Pets account to the official delivery fleet. The server verifies identity and permission before saving.";
+"Delivery_Driver_Invite_Identity_Title" = "Find the Pure Pets account";
+"Delivery_Driver_Invite_Placeholder" = "User ID, email, or mobile number";
+"Delivery_Driver_Invite_Identity_Help" = "Use an exact user ID when an email or mobile number could match more than one account.";
+"Delivery_Driver_Invite_Role_Title" = "Assigned role";
+"Delivery_Driver_Invite_Action" = "Add to official fleet";
+"Delivery_Driver_Invite_Success" = "The driver was added to the official fleet.";
+"Delivery_Driver_Disable_Success" = "The driver’s fleet membership was disabled.";
+"Delivery_Driver_Command_Success" = "The driver’s operational state was updated.";
+"Delivery_Driver_Error_Invalid_Identifier" = "Enter a valid user ID, email, or mobile number.";
+"Delivery_Driver_Error_User_Not_Found" = "No Pure Pets account matched that identity.";
+"Delivery_Driver_Error_Already_Member" = "This account is already a member of the official delivery fleet.";
+"Delivery_Driver_Error_Conflict" = "The driver membership changed. Refresh and review the latest state before trying again.";
+"Delivery_Driver_Error_Service" = "Driver membership could not be updated. Retry when the delivery service is available.";

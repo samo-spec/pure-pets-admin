@@ -1,8 +1,14 @@
 import Combine
 import Foundation
+import OSLog
 
 @MainActor
 final class CommandCenterState: ObservableObject {
+    private static let diagnosticLog = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "com.purepets.admin",
+        category: "CommandCenterState"
+    )
+
     enum Phase: Equatable {
         case idle
         case loading
@@ -45,17 +51,22 @@ final class CommandCenterState: ObservableObject {
     }
 
     func refresh() {
-        guard !isRefreshing else { return }
+        guard !isRefreshing else {
+            Self.diagnosticLog.info("event=refresh.skip reason=in_flight request=\(self.requestID.uuidString, privacy: .public)")
+            return
+        }
         load(retainingContent: snapshot != nil)
     }
 
     func cancel() {
         guard isRefreshing else { return }
+        let cancelledRequestID = requestID
         requestID = UUID()
         isRefreshing = false
         if case .loading = phase {
             phase = .idle
         }
+        Self.diagnosticLog.notice("event=refresh.cancel request=\(cancelledRequestID.uuidString, privacy: .public)")
     }
 
     func updateSession(_ session: AdminSession) {
@@ -70,10 +81,20 @@ final class CommandCenterState: ObservableObject {
         requestID = currentRequestID
         isRefreshing = true
         if !retainingContent { phase = .loading }
+        Self.diagnosticLog.info(
+            "event=refresh.start request=\(currentRequestID.uuidString, privacy: .public) retainingContent=\(retainingContent, privacy: .public) permissionCount=\(self.session.permissions.count, privacy: .public)"
+        )
 
         PPAdminCommandCenterService.shared().loadSnapshot(for: session.source) { [weak self] rawSnapshot in
             Task { @MainActor in
-                guard let self, self.requestID == currentRequestID else { return }
+                guard let self else {
+                    Self.diagnosticLog.notice("event=refresh.discard request=\(currentRequestID.uuidString, privacy: .public) reason=state_released trace=\(rawSnapshot.diagnosticTraceID, privacy: .public)")
+                    return
+                }
+                guard self.requestID == currentRequestID else {
+                    Self.diagnosticLog.notice("event=refresh.discard request=\(currentRequestID.uuidString, privacy: .public) reason=stale_callback trace=\(rawSnapshot.diagnosticTraceID, privacy: .public)")
+                    return
+                }
                 let mapped = self.map(rawSnapshot)
                 let allRequestedAreasFailed = !rawSnapshot.requestedAreas.isEmpty &&
                     rawSnapshot.requestedAreas.allSatisfy { rawSnapshot.failedAreas.contains($0) }
@@ -85,7 +106,24 @@ final class CommandCenterState: ObservableObject {
                     self.phase = .loaded(mapped)
                 }
                 self.isRefreshing = false
+                let requested = rawSnapshot.requestedAreas.joined(separator: ",")
+                let failed = rawSnapshot.failedAreas.joined(separator: ",")
+                let partial = rawSnapshot.partialAreas.joined(separator: ",")
+                Self.diagnosticLog.log(
+                    level: rawSnapshot.failedAreas.isEmpty ? .info : .error,
+                    "event=refresh.finish request=\(currentRequestID.uuidString, privacy: .public) trace=\(rawSnapshot.diagnosticTraceID, privacy: .public) phase=\(self.diagnosticPhaseName, privacy: .public) requested=\(requested, privacy: .public) failed=\(failed, privacy: .public) partial=\(partial, privacy: .public)"
+                )
             }
+        }
+    }
+
+    private var diagnosticPhaseName: String {
+        switch phase {
+        case .idle: return "idle"
+        case .loading: return "loading"
+        case .loaded: return "loaded"
+        case .empty: return "empty"
+        case .failed: return "failed"
         }
     }
 

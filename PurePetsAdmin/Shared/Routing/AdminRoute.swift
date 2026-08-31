@@ -188,7 +188,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .delivery: return ["delivery.view", "payments.manage"]
         case .providerApplications, .providerPlans, .providerFeatures: return ["providers.view", "providers.manage"]
         case .providerAccounting: return ["payments.view", "payments.manage"]
-        case .pointOfSale: return ["pos.view", "pos.sell"]
+        case .pointOfSale: return ["pos.sell"]
         case .pointOfSaleHistory: return ["pos.view", "pos.sell", "pos.history"]
         case .users: return ["users.view", "users.manage", "users.block", "users.features.view", "users.features.manage", "users.subscriptions.view", "users.subscriptions.manage", "users.restrictions.view", "users.restrictions.manage"]
         case .staff: return ["staff.view", "staff.manage"]

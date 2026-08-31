@@ -426,6 +426,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _storeName = dict[@"storeName"] ?: @"";
         _ownerType = [dict[@"ownerType"] isKindOfClass:NSString.class] ? dict[@"ownerType"] : nil;
         _source = [dict[@"source"] isKindOfClass:NSString.class] ? dict[@"source"] : nil;
+        _inventoryMode = [dict[@"inventoryMode"] isKindOfClass:NSString.class]
+            ? [dict[@"inventoryMode"] uppercaseString]
+            : nil;
+        _inventorySchemaVersion = [dict[@"inventorySchemaVersion"] integerValue];
         _blurHash = PPAccessoryTrimmedString(dict[@"blurHash"]);
         
         _accessKindType = ({
@@ -503,6 +507,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.storeName = [source.storeName copy];
     copy.ownerType = [source.ownerType copy];
     copy.source = [source.source copy];
+    copy.inventoryMode = [source.inventoryMode copy];
+    copy.inventorySchemaVersion = source.inventorySchemaVersion;
     copy.createdAt = [source.createdAt copy];
     copy.expiryDate = [source.expiryDate copy];
     copy.quantity = source.quantity;

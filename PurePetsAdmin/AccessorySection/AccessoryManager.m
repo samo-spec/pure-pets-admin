@@ -52,11 +52,16 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
 #pragma mark - Private Helpers
 
 - (FIRQuery *)_queryForKind:(AccessKindType)kind {
-    AccessKindType normalizedKind = AccessTypeAccessory;
-    if (kind == AccessTypeFood) normalizedKind = AccessTypeFood;
-    else if (kind == AccessTypeLivePets) normalizedKind = AccessTypeLivePets;
-    
-    return [[self col] queryWhereField:kFieldAccessKindType isEqualTo:@(normalizedKind)];
+    switch (kind) {
+        case AccessTypeAccessory:
+        case AccessTypeFood:
+        case AccessTypeLivePets:
+        case AccessTypePetMedicine:
+            return [[self col] queryWhereField:kFieldAccessKindType isEqualTo:@(kind)];
+    }
+
+    // Fail closed: an invalid kind must never expose the accessory catalog.
+    return [[self col] queryWhereField:kFieldAccessKindType isEqualTo:@(NSIntegerMin)];
 }
 
 - (FIRQuery *)_queryForStoreID:(NSString *)storeID kind:(AccessKindType)kind {

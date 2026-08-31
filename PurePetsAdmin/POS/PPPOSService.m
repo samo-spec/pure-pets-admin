@@ -1,7 +1,27 @@
 #import "PPPOSService.h"
+#import "PPFirebaseCompat.h"
+@import Firebase;
 @import FirebaseFirestore;
-@import FirebaseAuth;
 @import FirebaseFunctions;
+
+static NSString * const PPPOSServiceErrorDomain = @"pp.pos.service";
+static NSString * const PPPOSIndividualInventoryMode = @"INDIVIDUAL_TRACKED";
+
+static NSError *PPPOSServiceError(NSInteger code, NSString *message) {
+    return [NSError errorWithDomain:PPPOSServiceErrorDomain
+                               code:code
+                           userInfo:@{NSLocalizedDescriptionKey: message ?: @"Invalid POS response."}];
+}
+
+static NSArray<NSString *> *PPPOSStringArray(id value) {
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSString *> *result = [NSMutableArray array];
+    for (id item in (NSArray *)value) {
+        NSString *string = PPSafeString(item);
+        if (string.length > 0) [result addObject:string];
+    }
+    return result.copy;
+}
 
 @implementation PPPOSCartItem
 - (instancetype)initWithDictionary:(NSDictionary *)dict {
@@ -11,9 +31,31 @@
         _name = PPSafeString(dict[@"name"]);
         _price = PPSafeDouble(dict[@"unitPrice"] ?: dict[@"price"]);
         _quantity = MAX(1, [PPSafeNumber(dict[@"quantity"]) integerValue]);
+        _lineTotal = dict[@"lineTotal"] == nil
+            ? _price * _quantity
+            : PPSafeDouble(dict[@"lineTotal"]);
+        _inventoryMode = PPSafeString(dict[@"inventoryMode"]);
+        _unitIDs = PPPOSStringArray(dict[@"unitIds"]);
+        _unitRingTags = PPPOSStringArray(dict[@"unitRingTags"]);
+        _unitPrices = [dict[@"unitPrices"] isKindOfClass:NSArray.class] ? dict[@"unitPrices"] : @[];
     }
     return self;
 }
+@end
+
+@implementation PPPOSInventoryUnit
+- (instancetype)initWithDictionary:(NSDictionary *)dict {
+    self = [super init];
+    if (self) {
+        _unitID = PPSafeString(dict[@"unitId"] ?: dict[@"id"]);
+        _ringTag = PPSafeString(dict[@"ringTag"]);
+        _sellingPrice = PPSafeDouble(dict[@"sellingPrice"]);
+    }
+    return self;
+}
+@end
+
+@implementation PPPOSSubmitResult
 @end
 
 @implementation PPPOSReceipt
@@ -23,6 +65,8 @@
         _receiptID = docID ?: @"";
         _total = PPSafeDouble(dict[@"total"]);
         _paymentMethod = PPSafeString(dict[@"paymentMethod"]);
+        _currency = PPSafeString(dict[@"currency"]);
+        _schemaVersion = [PPSafeNumber(dict[@"posSchemaVersion"]) integerValue];
         NSArray *rawItems = PPSafeArray(dict[@"items"]);
         NSMutableArray *parsedItems = [NSMutableArray array];
         for (NSDictionary *raw in rawItems) {
@@ -31,8 +75,8 @@
             }
         }
         _items = parsedItems.copy;
-        id ca = dict[@"createdAt"];
-        if ([ca isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)ca dateValue];
+        id createdAt = dict[@"createdAt"];
+        if ([createdAt isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)createdAt dateValue];
     }
     return self;
 }
@@ -47,54 +91,175 @@
     return instance;
 }
 
-- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items total:(double)total paymentMethod:(NSString *)paymentMethod completion:(void(^)(NSString *, NSError *))completion {
-    FIRFunctions *functions = [FIRFunctions functions];
-    
++ (BOOL)isExactUnitSelectionConflictError:(NSError *)error {
+    if (!error) return NO;
+    if (![error.domain isEqualToString:FIRFunctionsErrorDomain] &&
+        ![error.domain isEqualToString:@"com.firebase.functions"]) return NO;
+    NSDictionary *details = [self exactUnitConflictDetailsForError:error];
+    NSString *domainCode = [PPSafeString(details[@"domainCode"]) uppercaseString];
+    if ([domainCode hasPrefix:@"POS_INVENTORY_UNIT_"] ||
+        [domainCode isEqualToString:@"POS_PRODUCT_NOT_FOUND"] ||
+        [domainCode isEqualToString:@"POS_INSUFFICIENT_STOCK"]) {
+        return YES;
+    }
+    if (error.code == FIRFunctionsErrorCodeNotFound) return YES;
+    if (error.code != FIRFunctionsErrorCodeFailedPrecondition) return NO;
+
+    NSString *message = [error.localizedDescription lowercaseString];
+    return [message containsString:@"inventory unit"] ||
+        [message containsString:@"animal"] ||
+        [message containsString:@"no longer available"] ||
+        [message containsString:@"product is unavailable"] ||
+        [message containsString:@"insufficient stock"];
+}
+
++ (NSDictionary<NSString *, id> *)exactUnitConflictDetailsForError:(NSError *)error {
+    if (!error || ![error.userInfo isKindOfClass:NSDictionary.class]) return @{};
+    id details = error.userInfo[FIRFunctionsErrorDetailsKey] ?: error.userInfo[@"details"];
+    return [details isKindOfClass:NSDictionary.class] ? (NSDictionary<NSString *, id> *)details : @{};
+}
+
+- (void)listAvailableUnitsForProductID:(NSString *)productID
+                               cursor:(NSString *)cursor
+                           completion:(void(^)(NSArray<PPPOSInventoryUnit *> *, NSString *, BOOL, NSError *))completion {
+    NSString *trimmedProductID = [productID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedProductID.length == 0) {
+        if (completion) completion(nil, nil, NO, PPPOSServiceError(400, @"productId is required."));
+        return;
+    }
+
+    NSMutableDictionary *payload = [@{
+        @"productId": trimmedProductID,
+        @"includeHistory": @NO,
+        @"status": @"AVAILABLE",
+        @"pageSize": @(50),
+    } mutableCopy];
+    if (cursor.length > 0) payload[@"cursor"] = cursor;
+
+    [[[FIRFunctions functions] HTTPSCallableWithName:@"listLivePetInventoryUnits"]
+     callWithObject:payload
+     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(nil, nil, NO, error);
+            return;
+        }
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        if (![response[@"ok"] boolValue] ||
+            ![PPSafeString(response[@"inventoryMode"]) isEqualToString:PPPOSIndividualInventoryMode]) {
+            if (completion) completion(nil, nil, NO, PPPOSServiceError(502, @"Invalid exact-unit response."));
+            return;
+        }
+        NSMutableArray<PPPOSInventoryUnit *> *units = [NSMutableArray array];
+        for (NSDictionary *rawUnit in PPSafeArray(response[@"units"])) {
+            if (![rawUnit isKindOfClass:NSDictionary.class]) continue;
+            PPPOSInventoryUnit *unit = [[PPPOSInventoryUnit alloc] initWithDictionary:rawUnit];
+            if (unit.unitID.length > 0) [units addObject:unit];
+        }
+        if (completion) {
+            completion(units.copy,
+                       PPSafeString(response[@"nextCursor"]),
+                       [response[@"hasMore"] boolValue],
+                       nil);
+        }
+    }];
+}
+
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                      commandID:(NSString *)commandID
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
     NSMutableArray *mappedItems = [NSMutableArray array];
     for (NSDictionary *item in items) {
-        [mappedItems addObject:@{
-            @"productId": item[@"itemID"] ?: item[@"itemId"] ?: @"",
+        NSString *productID = PPSafeString(item[@"itemID"] ?: item[@"itemId"] ?: item[@"productId"]);
+        NSString *inventoryMode = PPSafeString(item[@"inventoryMode"]);
+        NSMutableDictionary *mapped = [@{
+            @"productId": productID,
             @"quantity": item[@"quantity"] ?: @(1),
-            @"unitPrice": item[@"price"] ?: @(0)
-        }];
+        } mutableCopy];
+        if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
+            mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
+            mapped[@"unitIds"] = [item[@"unitIds"] isKindOfClass:NSArray.class] ? item[@"unitIds"] : @[];
+            mapped[@"unitPrices"] = [item[@"unitPrices"] isKindOfClass:NSArray.class] ? item[@"unitPrices"] : @[];
+        } else {
+            mapped[@"unitPrice"] = item[@"price"] ?: item[@"unitPrice"] ?: @(0);
+        }
+        [mappedItems addObject:mapped];
     }
-    
-    NSString *commandId = [[NSUUID UUID] UUIDString];
-    
+
     NSDictionary *data = @{
         @"action": @"create",
-        @"commandId": commandId,
+        @"commandId": commandID ?: @"",
         @"payload": @{
             @"items": mappedItems,
             @"paymentMethod": paymentMethod ?: @"cash",
             @"status": @"completed",
             @"subtotal": @(total),
             @"total": @(total),
-            @"cashReceived": [paymentMethod isEqualToString:@"cash"] ? @(total) : @(0)
+            @"cashReceived": [paymentMethod isEqualToString:@"cash"] ? @(total) : @(0),
+            @"currency": @"QAR",
+            @"source": @"admin_ios",
         }
     };
-    
-    [[functions HTTPSCallableWithName:@"processTransaction"] callWithObject:data completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+
+    [[[FIRFunctions functions] HTTPSCallableWithName:@"processTransaction"]
+     callWithObject:data
+     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         if (error) {
             if (completion) completion(nil, error);
-        } else {
-            NSString *docId = [result.data isKindOfClass:[NSDictionary class]] ? result.data[@"transactionId"] : nil;
-            if (completion) completion(docId ?: commandId, nil);
+            return;
         }
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        NSString *transactionID = PPSafeString(response[@"transactionId"]);
+        NSString *currency = PPSafeString(response[@"currency"]);
+        if (![response[@"ok"] boolValue] || transactionID.length == 0 || currency.length == 0) {
+            if (completion) completion(nil, PPPOSServiceError(502, @"Invalid transaction response."));
+            return;
+        }
+        PPPOSSubmitResult *submitResult = [PPPOSSubmitResult new];
+        submitResult.transactionID = transactionID;
+        submitResult.total = PPSafeDouble(response[@"total"]);
+        submitResult.currency = currency;
+        submitResult.idempotent = [response[@"idempotent"] boolValue];
+        if (completion) completion(submitResult, nil);
     }];
 }
 
 - (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> *, NSError *))completion {
-    FIRFirestore *db = [FIRFirestore firestore];
-    [[[[db collectionWithPath:@"transactions"] queryWhereField:@"posSchemaVersion" isEqualTo:@(2)] queryOrderedByField:@"createdAt" descending:YES]
-     getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
-        if (error) { if (completion) completion(@[], error); return; }
-        NSMutableArray *receipts = [NSMutableArray array];
-        for (FIRDocumentSnapshot *doc in snapshot.documents) {
-            [receipts addObject:[[PPPOSReceipt alloc] initWithDictionary:doc.data documentID:doc.documentID]];
+    FIRCollectionReference *transactions = [[FIRFirestore firestore] collectionWithPath:@"transactions"];
+    dispatch_group_t group = dispatch_group_create();
+    NSMutableArray<PPPOSReceipt *> *receipts = [NSMutableArray array];
+    __block NSError *firstError = nil;
+
+    for (NSNumber *schemaVersion in @[@(2), @(3)]) {
+        dispatch_group_enter(group);
+        [[[transactions queryWhereField:@"posSchemaVersion" isEqualTo:schemaVersion]
+           queryOrderedByField:@"createdAt" descending:YES]
+          getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+            @synchronized (receipts) {
+                if (error && !firstError) firstError = error;
+                if (!error) {
+                    for (FIRDocumentSnapshot *doc in snapshot.documents) {
+                        [receipts addObject:[[PPPOSReceipt alloc] initWithDictionary:doc.data documentID:doc.documentID]];
+                    }
+                }
+            }
+            dispatch_group_leave(group);
+        }];
+    }
+
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        if (firstError) {
+            if (completion) completion(@[], firstError);
+            return;
         }
-        if (completion) completion(receipts, nil);
-    }];
+        [receipts sortUsingComparator:^NSComparisonResult(PPPOSReceipt *left, PPPOSReceipt *right) {
+            NSDate *leftDate = left.createdAt ?: NSDate.distantPast;
+            NSDate *rightDate = right.createdAt ?: NSDate.distantPast;
+            return [rightDate compare:leftDate];
+        }];
+        if (completion) completion(receipts.copy, nil);
+    });
 }
 
 @end

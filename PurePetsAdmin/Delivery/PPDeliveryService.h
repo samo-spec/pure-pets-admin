@@ -63,6 +63,24 @@ FOUNDATION_EXPORT NSString * const PPDeliveryServiceErrorDomain;
 - (instancetype)initWithDictionary:(NSDictionary *)dictionary;
 @end
 
+/// Callable-backed delivery-company membership projection. Admin uses this
+/// only for the official Pure Pets fleet selected by the command center.
+@interface PPDeliveryCompanyMemberRecord : NSObject
+@property (nonatomic, copy) NSString *uid;
+@property (nonatomic, copy) NSString *displayName;
+@property (nonatomic, copy) NSString *phone;
+@property (nonatomic, copy) NSString *email;
+@property (nonatomic, copy) NSString *photoURL;
+@property (nonatomic, copy) NSString *role;
+@property (nonatomic, copy) NSString *status;
+@property (nonatomic, assign) BOOL online;
+@property (nonatomic, assign) BOOL available;
+@property (nonatomic, assign) BOOL canReceiveAssignments;
+@property (nonatomic, assign) NSInteger activeDeliveryCount;
+@property (nonatomic, copy, nullable) NSDate *lastSeenAt;
+- (instancetype)initWithDictionary:(NSDictionary *)dictionary;
+@end
+
 @interface PPDeliveryVehicleRecord : NSObject
 @property (nonatomic, copy) NSString *vehicleID;
 @property (nonatomic, copy) NSString *label;
@@ -233,6 +251,21 @@ FOUNDATION_EXPORT NSString * const PPDeliveryServiceErrorDomain;
                   commandID:(NSString *)commandID
                  completion:(void(^)(NSError * _Nullable error))completion
     NS_SWIFT_NAME(executeDriver(action:driverUID:expectedRevision:commandID:completion:));
+
+/// Existing Infra membership callables. Company ID must come from the current
+/// command-center carrier projection; callers may not select an arbitrary fleet.
+- (void)fetchCompanyMembersForCompanyID:(NSString *)companyID
+                              completion:(void(^)(NSArray<PPDeliveryCompanyMemberRecord *> * _Nullable members,
+                                                   NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchCompanyMembers(companyID:completion:));
+- (void)inviteDriverIdentifier:(NSString *)identifier
+                     companyID:(NSString *)companyID
+                    completion:(void(^)(NSError * _Nullable error))completion
+    NS_SWIFT_NAME(inviteDriver(identifier:companyID:completion:));
+- (void)disableDriverUID:(NSString *)driverUID
+               companyID:(NSString *)companyID
+              completion:(void(^)(NSError * _Nullable error))completion
+    NS_SWIFT_NAME(disableDriver(driverUID:companyID:completion:));
 
 /// Structured Firebase Functions errors are the only source for entity-specific
 /// business classification. A generic Firebase `not-found` remains a service

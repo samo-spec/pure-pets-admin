@@ -216,11 +216,9 @@
 		F2A24AF83003C4D3003AB79D /* PPProviderApplicationsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF03003C4D3003AB79D /* PPProviderApplicationsViewController.m */; };
 		F2A24AF93003C4D3003AB79D /* PPPOSService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AEB3003C4D3003AB79D /* PPPOSService.m */; };
 		F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */; };
-		F2A24AFB3003C4D3003AB79D /* PPPOSHistoryViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE93003C4D3003AB79D /* PPPOSHistoryViewController.m */; };
 		F2A24AFC3003C4D3003AB79D /* PPProviderPlansViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF43003C4D3003AB79D /* PPProviderPlansViewController.m */; };
 		F2A24AFD3003C4D3003AB79D /* PPFulfillmentService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */; };
 		F2A24AFE3003C4D3003AB79D /* PPAccountingViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24ADA3003C4D3003AB79D /* PPAccountingViewController.m */; };
-		F2A24AFF3003C4D3003AB79D /* PPPOSFastSellViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AE73003C4D3003AB79D /* PPPOSFastSellViewController.m */; };
 		F2A24B003003C4D3003AB79D /* PPDeliveryManagementViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24ADD3003C4D3003AB79D /* PPDeliveryManagementViewController.m */; };
 		F2A24B013003C4D3003AB79D /* PPDeliveryService.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24ADF3003C4D3003AB79D /* PPDeliveryService.m */; };
 		F2A24B023003C4D3003AB79D /* PPProviderFeatureAccessViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2A24AF23003C4D3003AB79D /* PPProviderFeatureAccessViewController.m */; };
@@ -270,7 +268,6 @@
 		F2D542F92E5AABF0004F6B9F /* PPSelectOptionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542F82E5AABC9004F6B9F /* PPSelectOptionViewController.m */; };
 		F2D542FC2E5ABB5D004F6B9F /* PPOptionCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D542FB2E5ABB5D004F6B9F /* PPOptionCell.m */; };
 		F2D543022E5AD22A004F6B9F /* PPButtonHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2D543012E5AD22A004F6B9F /* PPButtonHelper.m */; };
-		F2DFC963303966C8009B75FF /* FILE_HELPER_USAGE.md in Resources */ = {isa = PBXBuildFile; fileRef = F2DFC95D303966C8009B75FF /* FILE_HELPER_USAGE.md */; };
 		F2DFC964303966C8009B75FF /* PPAlertHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2DFC95F303966C8009B75FF /* PPAlertHelper.m */; };
 		F2DFC965303966C8009B75FF /* PPFileHelper.m in Sources */ = {isa = PBXBuildFile; fileRef = F2DFC961303966C8009B75FF /* PPFileHelper.m */; };
 		F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */ = {isa = PBXBuildFile; fileRef = F2E33F2A30055AD6005E31C6 /* PPThemeRefresh.m */; };
@@ -702,10 +699,6 @@
 		F2A24AE23003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPFulfillmentOrdersViewController.swift; sourceTree = "<group>"; };
 		F2A24AE33003C4D3003AB79D /* PPFulfillmentService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFulfillmentService.h; sourceTree = "<group>"; };
 		F2A24AE43003C4D3003AB79D /* PPFulfillmentService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFulfillmentService.m; sourceTree = "<group>"; };
-		F2A24AE63003C4D3003AB79D /* PPPOSFastSellViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPOSFastSellViewController.h; sourceTree = "<group>"; };
-		F2A24AE73003C4D3003AB79D /* PPPOSFastSellViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPOSFastSellViewController.m; sourceTree = "<group>"; };
-		F2A24AE83003C4D3003AB79D /* PPPOSHistoryViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPOSHistoryViewController.h; sourceTree = "<group>"; };
-		F2A24AE93003C4D3003AB79D /* PPPOSHistoryViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPOSHistoryViewController.m; sourceTree = "<group>"; };
 		F2A24AEA3003C4D3003AB79D /* PPPOSService.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPPOSService.h; sourceTree = "<group>"; };
 		F2A24AEB3003C4D3003AB79D /* PPPOSService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPPOSService.m; sourceTree = "<group>"; };
 		F2A24AED3003C4D3003AB79D /* PPProviderAccountingViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProviderAccountingViewController.h; sourceTree = "<group>"; };
@@ -804,7 +797,6 @@
 		F2D542FB2E5ABB5D004F6B9F /* PPOptionCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPOptionCell.m; sourceTree = "<group>"; };
 		F2D543002E5AD21E004F6B9F /* PPButtonHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPButtonHelper.h; sourceTree = "<group>"; };
 		F2D543012E5AD22A004F6B9F /* PPButtonHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPButtonHelper.m; sourceTree = "<group>"; };
-		F2DFC95D303966C8009B75FF /* FILE_HELPER_USAGE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = FILE_HELPER_USAGE.md; sourceTree = "<group>"; };
 		F2DFC95E303966C8009B75FF /* PPAlertHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAlertHelper.h; sourceTree = "<group>"; };
 		F2DFC95F303966C8009B75FF /* PPAlertHelper.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAlertHelper.m; sourceTree = "<group>"; };
 		F2DFC960303966C8009B75FF /* PPFileHelper.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFileHelper.h; sourceTree = "<group>"; };
@@ -1645,10 +1637,6 @@
 		F2A24AEC3003C4D3003AB79D /* POS */ = {
 			isa = PBXGroup;
 			children = (
-				F2A24AE63003C4D3003AB79D /* PPPOSFastSellViewController.h */,
-				F2A24AE73003C4D3003AB79D /* PPPOSFastSellViewController.m */,
-				F2A24AE83003C4D3003AB79D /* PPPOSHistoryViewController.h */,
-				F2A24AE93003C4D3003AB79D /* PPPOSHistoryViewController.m */,
 				F2A24AEA3003C4D3003AB79D /* PPPOSService.h */,
 				F2A24AEB3003C4D3003AB79D /* PPPOSService.m */,
 			);
@@ -1876,7 +1864,6 @@
 		F2DFC962303966C8009B75FF /* Utilities */ = {
 			isa = PBXGroup;
 			children = (
-				F2DFC95D303966C8009B75FF /* FILE_HELPER_USAGE.md */,
 				F2DFC95E303966C8009B75FF /* PPAlertHelper.h */,
 				F2DFC95F303966C8009B75FF /* PPAlertHelper.m */,
 				F2DFC960303966C8009B75FF /* PPFileHelper.h */,
@@ -2071,7 +2058,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F2DFC963303966C8009B75FF /* FILE_HELPER_USAGE.md in Resources */,
 				533CBA5E149AA91874136710 /* QBImagePicker.storyboard in Resources */,
 				F28AE2702E56D5D5007279F5 /* Beiruti-Regular.ttf in Resources */,
 				F28AE2712E56D5D5007279F5 /* Beiruti-Bold.ttf in Resources */,
@@ -2366,11 +2352,9 @@
 				F2A24AF83003C4D3003AB79D /* PPProviderApplicationsViewController.m in Sources */,
 				F2A24AF93003C4D3003AB79D /* PPPOSService.m in Sources */,
 				F2A24AFA3003C4D3003AB79D /* PPFulfillmentOrdersViewController.swift in Sources */,
-				F2A24AFB3003C4D3003AB79D /* PPPOSHistoryViewController.m in Sources */,
 				F2A24AFC3003C4D3003AB79D /* PPProviderPlansViewController.m in Sources */,
 				F2A24AFD3003C4D3003AB79D /* PPFulfillmentService.m in Sources */,
 				F2A24AFE3003C4D3003AB79D /* PPAccountingViewController.m in Sources */,
-				F2A24AFF3003C4D3003AB79D /* PPPOSFastSellViewController.m in Sources */,
 				F2A24B003003C4D3003AB79D /* PPDeliveryManagementViewController.m in Sources */,
 				F2A24B013003C4D3003AB79D /* PPDeliveryService.m in Sources */,
 				F2A24B023003C4D3003AB79D /* PPProviderFeatureAccessViewController.m in Sources */,

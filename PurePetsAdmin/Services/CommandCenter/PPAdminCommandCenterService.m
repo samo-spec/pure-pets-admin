@@ -5,8 +5,142 @@
 #import "Fulfillment/PPFulfillmentService.h"
 #import "Delivery/PPDeliveryService.h"
 #import "Providers/PPProviderService.h"
+#import "UsersSection/SecFil/PPStaffAuth.h"
+
+#import <os/log.h>
 
 @import FirebaseFirestore;
+
+#pragma mark - Privacy-safe source diagnostics
+
+// Public fields below are bounded technical metadata. Actor IDs, entity IDs,
+// document payloads, and userInfo values are intentionally never emitted.
+static os_log_t PPAdminCommandCenterDiagnosticLog(void) {
+    static os_log_t log;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        log = os_log_create("com.purepets.admin", "CommandCenterSource");
+    });
+    return log;
+}
+
+static NSInteger PPAdminCommandCenterElapsedMilliseconds(NSDate *startedAt) {
+    if (!startedAt) return 0;
+    return MAX(0, (NSInteger)(-[startedAt timeIntervalSinceNow] * 1000.0));
+}
+
+static NSString *PPAdminCommandCenterPublicList(NSArray<NSString *> *values) {
+    NSMutableOrderedSet<NSString *> *safeValues = [NSMutableOrderedSet orderedSet];
+    for (id value in values ?: @[]) {
+        if (![value isKindOfClass:NSString.class]) continue;
+        NSString *trimmed = [(NSString *)value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (trimmed.length > 0) [safeValues addObject:trimmed];
+    }
+    return safeValues.count > 0 ? [safeValues.array componentsJoinedByString:@","] : @"none";
+}
+
+static NSString *PPAdminCommandCenterErrorUserInfoKeys(NSError *error) {
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    for (id key in error.userInfo.allKeys ?: @[]) {
+        if ([key isKindOfClass:NSString.class] && [(NSString *)key length] > 0) {
+            [keys addObject:key];
+        }
+    }
+    [keys sortUsingSelector:@selector(compare:)];
+    return PPAdminCommandCenterPublicList(keys);
+}
+
+static NSUInteger PPAdminCommandCenterScopeCount(NSDictionary<NSString *, id> *scope, NSString *key) {
+    id value = [scope isKindOfClass:NSDictionary.class] ? scope[key] : nil;
+    return [value isKindOfClass:NSArray.class] ? [(NSArray *)value count] : 0;
+}
+
+static NSString *PPAdminCommandCenterFulfillmentClassification(NSError *error, BOOL partial) {
+    if (partial) return @"partial_read";
+    if (![error.domain isEqualToString:@"PPFulfillmentService"]) return @"firestore_query_failure";
+    switch (error.code) {
+        case 410: return @"permission_denied";
+        case 411: return @"missing_read_scope";
+        case 412: return @"session_changed";
+        case 413: return @"partial_read";
+        default: return @"fulfillment_read_failure";
+    }
+}
+
+static void PPAdminCommandCenterLogSourceStart(NSString *traceID,
+                                               NSString *source,
+                                               NSString *authority) {
+    os_log_with_type(PPAdminCommandCenterDiagnosticLog(), OS_LOG_TYPE_INFO,
+                     "trace=%{public}@ event=source.start source=%{public}@ authority=%{public}@",
+                     traceID, source, authority);
+}
+
+static void PPAdminCommandCenterLogSourceSkip(NSString *traceID, NSString *source) {
+    os_log_with_type(PPAdminCommandCenterDiagnosticLog(), OS_LOG_TYPE_INFO,
+                     "trace=%{public}@ event=source.skip source=%{public}@ reason=permission_gate",
+                     traceID, source);
+}
+
+static void PPAdminCommandCenterLogSourceResult(NSString *traceID,
+                                                NSString *source,
+                                                NSString *outcome,
+                                                NSDate *startedAt,
+                                                NSInteger recordCount,
+                                                NSInteger actionableCount,
+                                                NSString *metadata) {
+    os_log_with_type(PPAdminCommandCenterDiagnosticLog(),
+                     [outcome isEqualToString:@"success"] ? OS_LOG_TYPE_INFO : OS_LOG_TYPE_DEFAULT,
+                     "trace=%{public}@ event=source.finish source=%{public}@ outcome=%{public}@ durationMs=%{public}ld records=%{public}ld actionable=%{public}ld metadata=%{public}@",
+                     traceID, source, outcome,
+                     (long)PPAdminCommandCenterElapsedMilliseconds(startedAt),
+                     (long)recordCount, (long)actionableCount, metadata ?: @"none");
+}
+
+static void PPAdminCommandCenterLogSourceError(NSString *traceID,
+                                               NSString *source,
+                                               NSString *classification,
+                                               NSDate *startedAt,
+                                               NSError *error) {
+    NSDictionary<NSString *, id> *details = [PPDeliveryService domainDetailsForError:error];
+    NSString *domainCode = [details[@"domainCode"] isKindOfClass:NSString.class] ? details[@"domainCode"] : @"none";
+    NSString *entityType = [details[@"entityType"] isKindOfClass:NSString.class] ? details[@"entityType"] : @"none";
+    NSString *reasonCodes = [details[@"reasons"] isKindOfClass:NSArray.class]
+        ? PPAdminCommandCenterPublicList(details[@"reasons"])
+        : @"none";
+    NSInteger retryable = [details[@"retryable"] isKindOfClass:NSNumber.class]
+        ? [details[@"retryable"] boolValue]
+        : -1;
+    NSInteger successfulQueries = [error.userInfo[@"successfulQueryCount"] isKindOfClass:NSNumber.class]
+        ? [error.userInfo[@"successfulQueryCount"] integerValue]
+        : -1;
+    NSInteger queryCount = [error.userInfo[@"queryCount"] isKindOfClass:NSNumber.class]
+        ? [error.userInfo[@"queryCount"] integerValue]
+        : -1;
+
+    NSError *currentError = error;
+    NSUInteger depth = 0;
+    while (currentError && depth < 4) {
+        os_log_with_type(PPAdminCommandCenterDiagnosticLog(), OS_LOG_TYPE_ERROR,
+                         "trace=%{public}@ event=source.error source=%{public}@ classification=%{public}@ durationMs=%{public}ld depth=%{public}lu domain=%{public}@ code=%{public}ld domainCode=%{public}@ entityType=%{public}@ retryable=%{public}ld reasons=%{public}@ successfulQueries=%{public}ld queryCount=%{public}ld userInfoKeys=%{public}@ description=%{private}@ failureReason=%{private}@ recovery=%{private}@",
+                         traceID, source, classification,
+                         (long)PPAdminCommandCenterElapsedMilliseconds(startedAt),
+                         (unsigned long)depth,
+                         currentError.domain ?: @"none", (long)currentError.code,
+                         depth == 0 ? domainCode : @"none",
+                         depth == 0 ? entityType : @"none",
+                         depth == 0 ? (long)retryable : -1L,
+                         depth == 0 ? reasonCodes : @"none",
+                         depth == 0 ? (long)successfulQueries : -1L,
+                         depth == 0 ? (long)queryCount : -1L,
+                         PPAdminCommandCenterErrorUserInfoKeys(currentError),
+                         currentError.localizedDescription ?: @"",
+                         currentError.localizedFailureReason ?: @"",
+                         currentError.localizedRecoverySuggestion ?: @"");
+        id underlying = currentError.userInfo[NSUnderlyingErrorKey];
+        currentError = [underlying isKindOfClass:NSError.class] ? underlying : nil;
+        depth += 1;
+    }
+}
 
 @implementation PPAdminCommandSnapshot
 @end
@@ -24,7 +158,10 @@
 
 - (void)loadSnapshotForSession:(PPAdminSessionSnapshot *)session
                     completion:(PPAdminCommandSnapshotCompletion)completion {
+    NSString *traceID = NSUUID.UUID.UUIDString.lowercaseString;
+    NSDate *snapshotStartedAt = [NSDate date];
     PPAdminCommandSnapshot *snapshot = [PPAdminCommandSnapshot new];
+    snapshot.diagnosticTraceID = traceID;
     snapshot.generatedAt = [NSDate date];
     snapshot.activeOrdersCount = NSNotFound;
     snapshot.awaitingFulfillmentCount = NSNotFound;
@@ -49,8 +186,30 @@
     BOOL canViewUsers = [session hasAnyPermission:@[@"users.view", @"users.manage"]];
     BOOL canViewStock = [session hasAnyPermission:@[@"stock.view", @"stock.manage"]];
 
+    PPStaffDoc *cachedStaff = [PPStaffAuth shared].cachedCurrentStaff;
+    BOOL cachedStaffMatchesSession = cachedStaff.uid.length > 0 && session.uid.length > 0 &&
+                                     [cachedStaff.uid isEqualToString:session.uid];
+    BOOL cachedPermissionsMatchSession = cachedStaff != nil &&
+        [[NSSet setWithArray:cachedStaff.permissions ?: @[]] isEqualToSet:[NSSet setWithArray:session.permissions ?: @[]]];
+    os_log_with_type(PPAdminCommandCenterDiagnosticLog(), OS_LOG_TYPE_INFO,
+                     "trace=%{public}@ event=snapshot.start role=%{private}@ sessionPermissions=%{public}lu grantsAll=%{public}d globalScope=%{public}d branchScopes=%{public}lu regionScopes=%{public}lu cachedStaffPresent=%{public}d cachedStaffActive=%{public}d cachedStaffMatchesSession=%{public}d cachedPermissionsMatchSession=%{public}d cachedStaffPermissions=%{public}lu cachedGlobalScope=%{public}d cachedBranchScopes=%{public}lu cachedRegionScopes=%{public}lu gates=payments:%{public}d,fulfillment:%{public}d,delivery:%{public}d,providers:%{public}d,listings:%{public}d,users:%{public}d,stock:%{public}d",
+                     traceID, session.roleIdentifier ?: @"",
+                     (unsigned long)session.permissions.count,
+                     session.grantsAllPermissions, session.hasGlobalScope,
+                     (unsigned long)PPAdminCommandCenterScopeCount(session.scope, @"branchIds"),
+                     (unsigned long)PPAdminCommandCenterScopeCount(session.scope, @"regionIds"),
+                     cachedStaff != nil, cachedStaff.isActive, cachedStaffMatchesSession, cachedPermissionsMatchSession,
+                     (unsigned long)cachedStaff.permissions.count,
+                     cachedStaff.hasGlobalScope,
+                     (unsigned long)PPAdminCommandCenterScopeCount(cachedStaff.scope, @"branchIds"),
+                     (unsigned long)PPAdminCommandCenterScopeCount(cachedStaff.scope, @"regionIds"),
+                     canViewPayments, canViewFulfillment, canViewDelivery, canViewProviders,
+                     canViewListings, canViewUsers, canViewStock);
+
     if (canViewPayments) {
         [requestedAreas addObject:@"payments"];
+        PPAdminCommandCenterLogSourceStart(traceID, @"payments", @"service:PPPaymentManagementService pageSize=100");
+        NSDate *sourceStartedAt = [NSDate date];
         dispatch_group_enter(group);
         [[PPPaymentManagementService shared] fetchOrdersWithFilters:[PPPaymentManagementFilters defaultFilters]
                                                             pageSize:100
@@ -62,6 +221,7 @@
             BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
             if (error && !isPartialRead) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"payments"]; }
+                PPAdminCommandCenterLogSourceError(traceID, @"payments", @"payment_read_failure", sourceStartedAt, error);
             } else {
                 if (isPartialRead) {
                     @synchronized (partialAreas) { [partialAreas addObject:@"payments"]; }
@@ -79,19 +239,33 @@
                     }
                 }
                 snapshot.activeOrdersCount = active;
+                PPAdminCommandCenterLogSourceResult(traceID, @"payments",
+                                                     isPartialRead ? @"partial" : @"success",
+                                                     sourceStartedAt, records.count, active,
+                                                     nextCursor ? @"nextPage=yes" : @"nextPage=no");
+                if (isPartialRead) {
+                    PPAdminCommandCenterLogSourceError(traceID, @"payments", @"partial_read", sourceStartedAt, error);
+                }
             }
             dispatch_group_leave(group);
         }];
+    } else {
+        PPAdminCommandCenterLogSourceSkip(traceID, @"payments");
     }
 
     if (canViewFulfillment) {
         [requestedAreas addObject:@"fulfillment"];
+        PPAdminCommandCenterLogSourceStart(traceID, @"fulfillment", @"firestore:FulfillmentOrders scoped limit=100");
+        NSDate *sourceStartedAt = [NSDate date];
         dispatch_group_enter(group);
         [[PPFulfillmentService shared] fetchFulfillmentsWithCompletion:^(NSArray<PPFulfillmentRecord *> *records,
                                                                          NSError * _Nullable error) {
             BOOL isPartialRead = [PPFulfillmentService isPartialReadError:error];
             if (error && !isPartialRead) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"fulfillment"]; }
+                PPAdminCommandCenterLogSourceError(traceID, @"fulfillment",
+                                                   PPAdminCommandCenterFulfillmentClassification(error, NO),
+                                                   sourceStartedAt, error);
             } else {
                 if (isPartialRead) {
                     @synchronized (partialAreas) { [partialAreas addObject:@"fulfillment"]; }
@@ -105,18 +279,32 @@
                     if ([awaiting containsObject:status]) count += 1;
                 }
                 snapshot.awaitingFulfillmentCount = count;
+                PPAdminCommandCenterLogSourceResult(traceID, @"fulfillment",
+                                                     isPartialRead ? @"partial" : @"success",
+                                                     sourceStartedAt, records.count, count,
+                                                     @"statuses=new_request|accepted|preparing|ready_for_pickup|delivery_assigned");
+                if (isPartialRead) {
+                    PPAdminCommandCenterLogSourceError(traceID, @"fulfillment", @"partial_read", sourceStartedAt, error);
+                }
             }
             dispatch_group_leave(group);
         }];
+    } else {
+        PPAdminCommandCenterLogSourceSkip(traceID, @"fulfillment");
     }
 
     if (canViewDelivery) {
         [requestedAreas addObject:@"delivery"];
+        PPAdminCommandCenterLogSourceStart(traceID, @"delivery", @"callable:getDeliveryCommandCenter pageSize=100");
+        NSDate *sourceStartedAt = [NSDate date];
         dispatch_group_enter(group);
         [[PPDeliveryService shared] fetchCommandCenterWithCompletion:^(PPDeliveryCommandCenterSnapshot *projection,
                                                                         NSError *error) {
             if (error) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"delivery"]; }
+                PPAdminCommandCenterLogSourceError(traceID, @"delivery",
+                                                   [PPDeliveryService domainCodeForError:error],
+                                                   sourceStartedAt, error);
             } else {
                 NSDictionary *counts = [projection.projection[@"counts"] isKindOfClass:NSDictionary.class]
                     ? projection.projection[@"counts"]
@@ -126,18 +314,31 @@
                 if (!active) {
                     @synchronized (partialAreas) { [partialAreas addObject:@"delivery"]; }
                 }
+                NSString *metadata = [NSString stringWithFormat:@"permissionSource=%@ projectionKeys=%@",
+                                      projection.permissionSource.length > 0 ? projection.permissionSource : @"none",
+                                      PPAdminCommandCenterPublicList(projection.projection.allKeys)];
+                PPAdminCommandCenterLogSourceResult(traceID, @"delivery",
+                                                     active ? @"success" : @"partial",
+                                                     sourceStartedAt, projection.records.count,
+                                                     active ? active.integerValue : -1,
+                                                     metadata);
             }
             dispatch_group_leave(group);
         }];
+    } else {
+        PPAdminCommandCenterLogSourceSkip(traceID, @"delivery");
     }
 
     if (canViewProviders) {
         [requestedAreas addObject:@"providers"];
+        PPAdminCommandCenterLogSourceStart(traceID, @"providers", @"service:PPProviderService applications");
+        NSDate *sourceStartedAt = [NSDate date];
         dispatch_group_enter(group);
         [[PPProviderService shared] fetchApplicationsWithCompletion:^(NSArray<PPProviderApplication *> *apps,
                                                                        NSError *error) {
             if (error) {
                 @synchronized (failedAreas) { [failedAreas addObject:@"providers"]; }
+                PPAdminCommandCenterLogSourceError(traceID, @"providers", @"provider_read_failure", sourceStartedAt, error);
             } else {
                 NSInteger count = 0;
                 for (PPProviderApplication *application in apps ?: @[]) {
@@ -147,9 +348,14 @@
                     }
                 }
                 snapshot.pendingProviderApplicationCount = count;
+                PPAdminCommandCenterLogSourceResult(traceID, @"providers", @"success",
+                                                     sourceStartedAt, apps.count, count,
+                                                     @"statuses=pending|under_review|empty");
             }
             dispatch_group_leave(group);
         }];
+    } else {
+        PPAdminCommandCenterLogSourceSkip(traceID, @"providers");
     }
 
     [self pp_fetchCountForCollection:@"pet_ads"
@@ -158,30 +364,43 @@
                                    db:db
                                 group:group
                            failedAreas:failedAreas
+                                traceID:traceID
                            assignment:^(NSInteger count) { snapshot.adsCount = count; }];
     if (canViewListings) [requestedAreas addObject:@"listings"];
+    else PPAdminCommandCenterLogSourceSkip(traceID, @"listings");
     [self pp_fetchCountForCollection:@"UsersCol"
                              allowed:canViewUsers
                                   key:@"users"
                                    db:db
                                 group:group
                            failedAreas:failedAreas
+                                traceID:traceID
                            assignment:^(NSInteger count) { snapshot.usersCount = count; }];
     if (canViewUsers) [requestedAreas addObject:@"users"];
+    else PPAdminCommandCenterLogSourceSkip(traceID, @"users");
     [self pp_fetchCountForCollection:@"petAccessories"
                              allowed:canViewStock
                                   key:@"stock"
                                    db:db
                                 group:group
                            failedAreas:failedAreas
+                                traceID:traceID
                            assignment:^(NSInteger count) { snapshot.accessoriesCount = count; }];
     if (canViewStock) [requestedAreas addObject:@"stock"];
+    else PPAdminCommandCenterLogSourceSkip(traceID, @"stock");
 
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{
         snapshot.requestedAreas = requestedAreas.array ?: @[];
         snapshot.failedAreas = failedAreas.array ?: @[];
         snapshot.partialAreas = partialAreas.array ?: @[];
         snapshot.generatedAt = [NSDate date];
+        os_log_with_type(PPAdminCommandCenterDiagnosticLog(),
+                         snapshot.failedAreas.count > 0 ? OS_LOG_TYPE_ERROR : OS_LOG_TYPE_INFO,
+                         "trace=%{public}@ event=snapshot.finish durationMs=%{public}ld requested=%{public}@ failed=%{public}@ partial=%{public}@",
+                         traceID, (long)PPAdminCommandCenterElapsedMilliseconds(snapshotStartedAt),
+                         PPAdminCommandCenterPublicList(snapshot.requestedAreas),
+                         PPAdminCommandCenterPublicList(snapshot.failedAreas),
+                         PPAdminCommandCenterPublicList(snapshot.partialAreas));
         if (completion) completion(snapshot);
     });
 }
@@ -192,15 +411,23 @@
                                  db:(FIRFirestore *)db
                               group:(dispatch_group_t)group
                         failedAreas:(NSMutableOrderedSet<NSString *> *)failedAreas
+                            traceID:(NSString *)traceID
                          assignment:(void (^)(NSInteger count))assignment {
     if (!allowed) return;
+    PPAdminCommandCenterLogSourceStart(traceID, key,
+                                       [NSString stringWithFormat:@"firestore:%@ unfiltered count", collection]);
+    NSDate *sourceStartedAt = [NSDate date];
     dispatch_group_enter(group);
     [[db collectionWithPath:collection] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable result,
                                                                       NSError * _Nullable error) {
         if (error) {
             @synchronized (failedAreas) { [failedAreas addObject:key]; }
+            PPAdminCommandCenterLogSourceError(traceID, key, @"firestore_collection_read_failure", sourceStartedAt, error);
         } else if (assignment) {
             assignment(result.documents.count);
+            PPAdminCommandCenterLogSourceResult(traceID, key, @"success", sourceStartedAt,
+                                                 result.documents.count, result.documents.count,
+                                                 [NSString stringWithFormat:@"collection=%@", collection]);
         }
         dispatch_group_leave(group);
     }];

@@ -53,6 +53,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *storeName;
 @property (nonatomic, strong, nullable) NSString *ownerType;
 @property (nonatomic, strong, nullable) NSString *source;
+@property (nonatomic, copy, nullable) NSString *inventoryMode;
+@property (nonatomic, assign) NSInteger inventorySchemaVersion;
 @property (nonatomic, assign) AccessKindType accessKindType;
 @property (nonatomic, assign) AccessConditions condition;
 @property (nonatomic, assign) NSInteger quantity; // how many in stock

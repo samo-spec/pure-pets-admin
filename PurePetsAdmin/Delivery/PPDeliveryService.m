@@ -1,4 +1,5 @@
 #import "PPDeliveryService.h"
+#import "PPFirebaseCompat.h"
 
 NSString * const PPDeliveryServiceErrorDomain = @"PPDeliveryService";
 
@@ -157,6 +158,32 @@ static NSError *PPDeliveryInvalidResponseError(void) {
         _eligible = [eligibility[@"eligible"] boolValue];
         _eligibilityReasonCodes = PPDeliveryStringArray(eligibility[@"reasonCodes"]);
         _eligibilityEvidence = [PPDeliveryDictionary(eligibility[@"evidence"]) copy];
+    }
+    return self;
+}
+
+@end
+
+
+@implementation PPDeliveryCompanyMemberRecord
+
+- (instancetype)initWithDictionary:(NSDictionary *)dictionary {
+    if ((self = [super init])) {
+        NSDictionary *source = PPDeliveryDictionary(dictionary);
+        _uid = PPDeliveryString(source[@"uid"]);
+        _displayName = PPDeliveryString(source[@"displayName"]);
+        if (_displayName.length == 0) _displayName = _uid;
+        _phone = PPDeliveryString(source[@"phone"]);
+        _email = PPDeliveryString(source[@"email"]);
+        _photoURL = PPDeliveryString(source[@"photoURL"]);
+        if (_photoURL.length == 0) _photoURL = PPDeliveryString(source[@"UserImageUrl"]);
+        _role = [PPDeliveryString(source[@"role"]) lowercaseString];
+        _status = [PPDeliveryString(source[@"status"]) lowercaseString];
+        _online = [source[@"isOnline"] boolValue];
+        _available = source[@"isAvailable"] == nil ? YES : [source[@"isAvailable"] boolValue];
+        _canReceiveAssignments = [source[@"canReceiveAssignments"] boolValue];
+        _activeDeliveryCount = MAX(0, [source[@"activeDeliveryCount"] integerValue]);
+        _lastSeenAt = PPDeliveryDate(source[@"lastSeenAt"]);
     }
     return self;
 }
@@ -498,9 +525,9 @@ static NSError *PPDeliveryInvalidResponseError(void) {
 }
 
 + (NSDictionary<NSString *,id> *)domainDetailsForError:(NSError *)error {
-    if (!error) return @{};
-    id details = error.userInfo[FIRFunctionsErrorDetailsKey];
-    return [details isKindOfClass:NSDictionary.class] ? details : @{};
+    if (!error || ![error.userInfo isKindOfClass:NSDictionary.class]) return @{};
+    id details = error.userInfo[FIRFunctionsErrorDetailsKey] ?: error.userInfo[@"details"];
+    return [details isKindOfClass:NSDictionary.class] ? (NSDictionary<NSString *, id> *)details : @{};
 }
 
 + (NSString *)domainCodeForError:(NSError *)error {
@@ -623,6 +650,77 @@ static NSError *PPDeliveryInvalidResponseError(void) {
                     @"expectedRevision": @(expectedRevision),
                     @"commandId": safeCommandID,
                 }
+            completion:^(__unused id result, NSError *error) {
+        if (completion) completion(error);
+    }];
+}
+
+- (void)fetchCompanyMembersForCompanyID:(NSString *)companyID
+                              completion:(void(^)(NSArray<PPDeliveryCompanyMemberRecord *> *, NSError *))completion {
+    NSString *safeCompanyID = [companyID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeCompanyID.length == 0) {
+        if (completion) completion(nil, PPDeliveryInvalidResponseError());
+        return;
+    }
+    [self callFunction:@"listCompanyMembers"
+                params:@{@"companyId": safeCompanyID}
+            completion:^(id result, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *source = PPDeliveryDictionary(result);
+        NSMutableArray<PPDeliveryCompanyMemberRecord *> *members = [NSMutableArray array];
+        for (id rawMember in PPDeliveryArray(source[@"members"])) {
+            if (![rawMember isKindOfClass:NSDictionary.class]) continue;
+            PPDeliveryCompanyMemberRecord *member = [[PPDeliveryCompanyMemberRecord alloc] initWithDictionary:rawMember];
+            if (member.uid.length > 0) [members addObject:member];
+        }
+        [members sortUsingComparator:^NSComparisonResult(PPDeliveryCompanyMemberRecord *left,
+                                                         PPDeliveryCompanyMemberRecord *right) {
+            BOOL leftActiveDriver = [left.role isEqualToString:@"driver"] &&
+                [left.status isEqualToString:@"active"] && left.canReceiveAssignments && left.available;
+            BOOL rightActiveDriver = [right.role isEqualToString:@"driver"] &&
+                [right.status isEqualToString:@"active"] && right.canReceiveAssignments && right.available;
+            if (leftActiveDriver != rightActiveDriver) return leftActiveDriver ? NSOrderedAscending : NSOrderedDescending;
+            return [left.displayName localizedCaseInsensitiveCompare:right.displayName];
+        }];
+        if (completion) completion(members.copy, nil);
+    }];
+}
+
+- (void)inviteDriverIdentifier:(NSString *)identifier
+                     companyID:(NSString *)companyID
+                    completion:(void(^)(NSError *))completion {
+    NSString *safeIdentifier = [identifier stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeCompanyID = [companyID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeIdentifier.length == 0 || safeCompanyID.length == 0) {
+        if (completion) completion(PPDeliveryInvalidResponseError());
+        return;
+    }
+    [self callFunction:@"inviteDeliveryCompanyMember"
+                params:@{
+                    @"companyId": safeCompanyID,
+                    @"targetIdentifier": safeIdentifier,
+                    @"targetUid": safeIdentifier,
+                    @"role": @"driver",
+                }
+            completion:^(__unused id result, NSError *error) {
+        if (completion) completion(error);
+    }];
+}
+
+- (void)disableDriverUID:(NSString *)driverUID
+               companyID:(NSString *)companyID
+              completion:(void(^)(NSError *))completion {
+    NSString *safeDriverUID = [driverUID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeCompanyID = [companyID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeDriverUID.length == 0 || safeCompanyID.length == 0) {
+        if (completion) completion(PPDeliveryInvalidResponseError());
+        return;
+    }
+    [self callFunction:@"disableDeliveryCompanyMember"
+                params:@{@"companyId": safeCompanyID, @"targetUid": safeDriverUID}
             completion:^(__unused id result, NSError *error) {
         if (completion) completion(error);
     }];

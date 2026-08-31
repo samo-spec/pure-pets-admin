@@ -46,7 +46,6 @@
 #import "Payments/PPPaymentManagementModels.h"
 #import "Payments/PPPaymentManagementViewController.h"
 #import "Payments/PPPaymentBasicsSettingsViewController.h"
-#import "POS/PPPOSFastSellViewController.h"
 #import "AccessorySection/AccessoryManager.h"
 #import "BasicClasses/PetAccessory.h"
 // PP_ADMIN_COMMAND_SPINE_IMPORTS_END
@@ -3480,10 +3479,14 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPProviderAccountingViewController new];
     }
     if ([tag isEqualToString:@"pos"]) {
-        return [PPPOSFastSellViewController new];
+        UIViewController *vc = [AdminPOSFastSellHostingController new];
+        vc.hidesBottomBarWhenPushed = YES;
+        return vc;
     }
     if ([tag isEqualToString:@"posHistory"]) {
-        return [AdminPOSHistoryHostingController new];
+        UIViewController *vc = [AdminPOSHistoryHostingController new];
+        vc.hidesBottomBarWhenPushed = YES;
+        return vc;
     }
     if ([tag isEqualToString:@"audit"]) {
         return [PPAuditLogViewController new];

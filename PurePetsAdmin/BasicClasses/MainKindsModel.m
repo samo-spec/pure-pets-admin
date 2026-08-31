@@ -282,7 +282,7 @@
         case 4: return [UIColor ppQuickActionCommunity];
         case 5: return [UIColor ppQuickActionAdoption];
         case 6: return [UIColor ppPremiumAccent];
-        case 7: return [UIColor ppCareAccent];
+        case 7: return [UIColor colorWithHexString:@"#0077BE"]; // Sea Blue (Fish)
         case 8: return [UIColor ppDiscount];
         case 9: return [UIColor ppPrimary];
         case 10: return [UIColor ppMineralBeige];

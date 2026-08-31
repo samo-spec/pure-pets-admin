@@ -2761,7 +2761,7 @@
 "SupportChats_HeroSubtitleView" = "متابعة محادثات الدعم الرسمية بصلاحية عرض فقط.";
 "SupportChats_HeroMetricUnread" = "غير مقروء";
 "SupportChats_HeroMetricActive" = "مفتوح";
-"SupportChats_SearchPlaceholder" = "ابحث في محادثات الدعم… (⌘F)";
+"SupportChats_SearchPlaceholder" = "ابحث في محادثات الدعم…";
 "SupportChats_Loading" = "جارٍ تحميل محادثات الدعم…";
 "SupportChats_NoAccess" = "ليست لديك صلاحية لعرض محادثات الدعم.";
 "SupportChats_NoAccess_Subtitle" = "اطلب من المالك منح صلاحية support.view أو support.manage.";
@@ -3256,6 +3256,9 @@
 "AdminCommandCenter_LiveSystem" = "النظام الحي";
 "AdminCommandCenter_NoAttention" = "لا يتطلب انتباهاً";
 "AdminCommandCenter_AccessScope" = "نطاق الوصول";
+"AdminCommandCenter_ActiveLoad" = "حجم العمل النشط";
+"AdminCommandCenter_Load_Distribution" = "توزيع الأولويات";
+"AdminCommandCenter_TierCount_Format" = "%1$@: %2$@";
 "AdminCommandCenter_LastConfirmed_Format" = "تم التأكيد %@";
 "AdminCommandCenter_SourceLedger" = "سجل المصادر";
 "AdminCommandCenter_SourceLedger_Detail" = "جاهزية المصادر الحية معزولة عن صلاحية فتح المسارات.";
@@ -3264,6 +3267,29 @@
 "AdminCommandCenter_Priority_A11y_Format" = "%1$@. %2$@. %3$@ عناصر.";
 "AdminCommandCenter_AccountHint" = "يفتح حساب الإدارة الحالي.";
 "AdminCommandCenter_PrimaryAction_Format" = "فتح %@";
+
+/* ===================== Quick Actions Grid ===================== */
+"AdminQuickActions_SectionTitle" = "إجراءات سريعة";
+"AdminQuickActions_SectionDetail" = "منصة إطلاق فورية للعمليات الميدانية";
+"AdminQuickActions_LivePill" = "المنصة الحية";
+"AdminQuickActions_Payments" = "المدفوعات";
+"AdminQuickActions_Payments_Subtitle" = "المعاملات والتسويات";
+"AdminQuickActions_Fulfillment" = "تجهيز الطلبات";
+"AdminQuickActions_Fulfillment_Subtitle" = "معالجة وتحضير";
+"AdminQuickActions_Delivery" = "أسطول التوصيل";
+"AdminQuickActions_Delivery_Subtitle" = "إسناد ومتابعة";
+"AdminQuickActions_Inventory" = "المخزون والمنتجات";
+"AdminQuickActions_Inventory_Subtitle" = "إدارة الكميات";
+"AdminQuickActions_Users" = "المستخدمين";
+"AdminQuickActions_Users_Subtitle" = "الحسابات والصلاحيات";
+"AdminQuickActions_POS" = "نقطة البيع";
+"AdminQuickActions_POS_Subtitle" = "بيع فوري وكاشير";
+"AdminQuickActions_Notifications" = "الإشعارات";
+"AdminQuickActions_Broadcast" = "إرسال إشعار";
+"AdminQuickActions_Broadcast_Subtitle" = "بث فوري للجميع";
+"AdminQuickActions_Chats" = "المحادثات";
+"AdminQuickActions_Chats_Subtitle" = "خدمة العملاء";
+"AdminQuickActions_Moderation" = "الرقابة والمراجعة";
 
 "POS_CatalogLoadFailed" = "تعذر تحميل المنتجات. حاول مرة أخرى.";
 
@@ -3529,3 +3555,129 @@
 "Delivery_Value_COD_ATTENTION" = "التحصيل يحتاج متابعة";
 "Delivery_Value_SYSTEM_ERROR" = "حادثة في النظام";
 "Delivery_Value_ASSIGNED_DRIVER_RECORD_MISSING" = "سجل السائق المعيّن مفقود";
+
+
+"POS_SelectExactUnit" = "اختر سجل الحيوان";
+"POS_ExactUnitEmpty" = "لا توجد سجلات حيوانات متاحة";
+"POS_ExactUnitLoadFailed" = "تعذر تحميل سجلات الحيوانات المتاحة.";
+"POS_ExactUnitAlreadySelected" = "تم اختياره بالفعل";
+"POS_ExactUnitRefreshNeeded" = "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى.";
+
+/* ===================== POS Exact-Animal Multi-Select (Console parity) ===================== */
+"POS_ExactAnimalTitle" = "اختيار الحيوانات المحددة";
+"POS_ExactAnimalHint" = "اختر سجلات الحلقة أو الوسم المتاحة التي سيتم بيعها. يتحقق الخادم من كل اختيار مرة أخرى عند الدفع.";
+"POS_ExactAnimalIndividualTracking" = "تتبع فردي";
+"POS_ExactAnimalSelectedCount" = "الحيوانات المختارة";
+"POS_ExactAnimalAvailableCount" = "الحيوانات المتاحة";
+"POS_ExactAnimalRequired" = "اختر حيواناً متاحاً واحداً على الأقل قبل إضافة هذا النوع إلى السلة.";
+"POS_ExactAnimalPriceRequired" = "يحتاج هذا الحيوان إلى تسوية سعر البيع قبل اختياره.";
+"POS_ExactAnimalChanged" = "تغيرت سجلات الحيوانات المتاحة. راجع الاختيار المحدد قبل الدفع.";
+"POS_ExactAnimalConfirm" = "إضافة الحيوانات المختارة";
+"POS_ExactAnimalLoadMore" = "تحميل المزيد من الحيوانات";
+"POS_ExactAnimalRingOrTag" = "الحلقة / الوسم";
+
+/* ===================== POS Catalog Footer Container (Console parity) ===================== */
+"POS_CatalogTypeAll" = "الكل";
+"POS_CatalogTypeAccessories" = "إكسسوارات";
+"POS_CatalogTypeFood" = "طعام";
+"POS_CatalogTypeMedicine" = "أدوية الحيوانات";
+"POS_CatalogTypeLivePets" = "حيوانات حية";
+"POS_CatalogFilterRail" = "فلاتر الكتالوج";
+"POS_CatalogQuickAdd" = "إضافة سريعة من الكتالوج";
+
+"POS_ExactUnits" = "سجلات الحيوانات";
+
+"Out of stock" = "نفد من المخزون";
+"Only" = "متبقي فقط";
+"leftInStock" = "في المخزون";
+"inStock" = "متوفر في المخزون";
+"Check out this pet accessory!" = "اطّلع على إكسسوار الحيوانات الأليفة هذا!";
+"Category" = "الفئة";
+"Subcategory" = "الفئة الفرعية";
+"Availability" = "التوفر";
+"Not specified" = "غير محدد";
+"Unknown" = "غير معروف";
+
+/* شركة التوصيل الرسمية — توافق واجهات Pro */
+"DeliveryCompany_NavTitle" = "توصيلات الشركة";
+"DeliveryCompany_Official_Name" = "توصيلات بيور بتس الرسمية";
+"DeliveryCompany_Official_Badge" = "أسطول بيور بتس الرسمي";
+"DeliveryCompany_Dashboard_Eyebrow" = "عمليات الأسطول المباشرة";
+"DeliveryCompany_Dashboard_OfficialSubtitle" = "الأسطول الرسمي • عمليات الإدارة";
+"DeliveryCompany_Dashboard_Requests" = "الطلبات";
+"DeliveryCompany_Dashboard_MembersShortcutSubtitle" = "افتح الفريق وتوفر السائقين وأدوات الأسطول.";
+"DeliveryCompany_Tab_New" = "طلبات جديدة";
+"DeliveryCompany_Tab_Accepted" = "مقبولة";
+"DeliveryCompany_Tab_Assigned" = "مُعيّنة";
+"DeliveryCompany_Tab_InProgress" = "قيد التنفيذ";
+"DeliveryCompany_Tab_Delivered" = "تم التوصيل";
+"DeliveryCompany_Tab_Completed" = "مكتملة";
+"DeliveryCompany_Tab_Closed" = "ملغاة / مرفوضة";
+"DeliveryCompany_Tab_Members" = "السائقون / الأعضاء";
+"DeliveryCompany_Empty_Title" = "لا توجد توصيلات في هذا العرض";
+"DeliveryCompany_Empty_Subtitle" = "اسحب للتحديث أو اختر حالة أخرى.";
+"DeliveryCompany_Order_Format" = "الطلب %@";
+"DeliveryCompany_Pickup" = "الاستلام";
+"DeliveryCompany_Dropoff" = "التسليم";
+"DeliveryCompany_Pickup_Format" = "الاستلام • %@";
+"DeliveryCompany_Dropoff_Format" = "التسليم • %@";
+"DeliveryCompany_Driver_Format" = "السائق • %@";
+"DeliveryCompany_Unassigned" = "غير معيّن";
+"DeliveryCompany_Dates_Format" = "الإنشاء %@ • التحديث %@";
+"DeliveryCompany_Detail_NavTitle" = "تفاصيل التوصيل";
+"DeliveryCompany_Detail_Updated_Format" = "آخر تحديث %@";
+"DeliveryCompany_Detail_Route" = "المسار";
+"DeliveryCompany_Detail_Assignment" = "التعيين";
+"DeliveryCompany_Detail_AssignedDriver" = "سائق الشركة المعيّن";
+"DeliveryCompany_Detail_AssignmentPending" = "بانتظار تعيين سائق";
+"DeliveryCompany_Detail_Actions" = "الإجراءات المتاحة";
+"DeliveryCompany_Members_Phone_Format" = "الهاتف • %@";
+"DeliveryCompany_Members_Available" = "متاح";
+"DeliveryCompany_Members_Unavailable" = "غير متاح";
+"DeliveryCompany_Members_ActiveCount_Format" = "%ld توصيل نشط";
+"DeliveryCompany_SelectDriver" = "اختر سائقًا نشطًا يؤكد الخادم أهليته لهذا التوصيل.";
+"DeliveryCompany_NoDrivers_Title" = "لا يوجد سائقون متاحون";
+"DeliveryCompany_NoDrivers_Subtitle" = "يلزم سائق نشط ومؤهل ضمن الأسطول الرسمي لإتمام التعيين.";
+"DeliveryCompany_Confirm_Accept_Title" = "قبول هذا الطلب؟";
+"DeliveryCompany_Confirm_Accept_Message" = "سينتقل الطلب إلى قائمة الأسطول الرسمي ويمكن بعدها تعيينه لسائق.";
+"DeliveryCompany_Confirm_Reject_Title" = "رفض هذا الطلب؟";
+"DeliveryCompany_Confirm_Complete_Title" = "إكمال هذا التوصيل؟";
+"DeliveryCompany_Confirm_Complete_Message" = "استخدم هذا الإجراء فقط بعد أن يؤكد الخادم أدلة التسليم وحالة السائق.";
+"DeliveryCompany_Confirm_Cancel_Title" = "إلغاء هذا الطلب؟";
+"Delivery_Status_Expired" = "منتهي";
+"Delivery_Driver_Loading_Members" = "جارٍ تحميل ملفات سائقي الأسطول الرسمي…";
+"Delivery_Driver_Management_Title" = "إدارة السائقين";
+"Delivery_Driver_Management_Subtitle" = "التوفر وعبء العمل والعضوية وجاهزية التعيين لأسطول بيوربتس الرسمي.";
+"Delivery_Driver_Invite" = "إضافة سائق";
+"Delivery_Driver_Invite_Hint" = "دعوة مستخدم بيوربتس إلى الأسطول الرسمي بصفة سائق.";
+"Delivery_Driver_Total" = "كل السائقين";
+"Delivery_Driver_Active" = "نشط";
+"Delivery_Driver_Open_Profile" = "فتح ملف السائق";
+"Delivery_Driver_Open_Profile_Hint" = "يعرض الهوية وعبء العمل وبيانات التواصل وإجراءات الإدارة المصرح بها.";
+"Delivery_Driver_Profile_Title" = "ملف السائق";
+"Delivery_Driver_Role" = "سائق الأسطول الرسمي";
+"Delivery_Driver_Identity_Title" = "الهوية والتواصل";
+"Delivery_Driver_UID" = "معرّف المستخدم";
+"Delivery_Driver_Phone" = "الهاتف";
+"Delivery_Driver_Email" = "البريد الإلكتروني";
+"Delivery_Driver_Last_Seen" = "آخر ظهور";
+"Delivery_Driver_Call" = "الاتصال بالسائق";
+"Delivery_Driver_Management_Actions" = "أدوات تحكم السائق";
+"Delivery_Driver_Disable_Membership" = "تعطيل عضوية الأسطول";
+"Delivery_Driver_Disable_Confirm_Title" = "تعطيل هذا السائق؟";
+"Delivery_Driver_Disable_Confirm_Message" = "سيتوقف السائق عن استقبال التعيينات وستُعطّل عضويته في الأسطول الرسمي، مع بقاء سجلات التوصيل الحالية محفوظة.";
+"Delivery_Driver_Invite_Title" = "إضافة سائق للأسطول الرسمي";
+"Delivery_Driver_Invite_Subtitle" = "اربط حساب بيوربتس قائمًا بأسطول التوصيل الرسمي. يتحقق الخادم من الهوية والصلاحية قبل الحفظ.";
+"Delivery_Driver_Invite_Identity_Title" = "العثور على حساب بيوربتس";
+"Delivery_Driver_Invite_Placeholder" = "معرّف المستخدم أو البريد أو رقم الجوال";
+"Delivery_Driver_Invite_Identity_Help" = "استخدم معرّف المستخدم الدقيق إذا كان البريد أو رقم الجوال قد يطابق أكثر من حساب.";
+"Delivery_Driver_Invite_Role_Title" = "الدور المعيّن";
+"Delivery_Driver_Invite_Action" = "إضافة إلى الأسطول الرسمي";
+"Delivery_Driver_Invite_Success" = "تمت إضافة السائق إلى الأسطول الرسمي.";
+"Delivery_Driver_Disable_Success" = "تم تعطيل عضوية السائق في الأسطول.";
+"Delivery_Driver_Command_Success" = "تم تحديث الحالة التشغيلية للسائق.";
+"Delivery_Driver_Error_Invalid_Identifier" = "أدخل معرّف مستخدم أو بريدًا أو رقم جوال صالحًا.";
+"Delivery_Driver_Error_User_Not_Found" = "لم يتم العثور على حساب بيوربتس يطابق هذه البيانات.";
+"Delivery_Driver_Error_Already_Member" = "هذا الحساب عضو بالفعل في أسطول التوصيل الرسمي.";
+"Delivery_Driver_Error_Conflict" = "تغيّرت عضوية السائق. حدّث البيانات وراجع الحالة الأخيرة قبل المحاولة مجددًا.";
+"Delivery_Driver_Error_Service" = "تعذر تحديث عضوية السائق. أعد المحاولة عند توفر خدمة التوصيل.";
