@@ -26,6 +26,7 @@
 		5B00D05CF67F4901B423F27F /* Features/POS/POSFastSellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 531A64F9262D40A8806B6478 /* Features/POS/POSFastSellView.swift */; };
 		A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */; };
 		A7C91D03FBE74D56A8101003 /* Features/POS/POSReservedLivePetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */; };
+		A7C91D05FBE74D56A8101005 /* Features/POS/POSCustomerPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D06FBE74D56A8101006 /* Features/POS/POSCustomerPickerSheet.swift */; };
 		643F43D0DC3447FB834531FE /* Features/Inventory/InventoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3305C321078444DA3DF3D16 /* Features/Inventory/InventoryView.swift */; };
 		66213DB3EE11415A8153A6AA /* PPAddEditVetViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C97DB99BC4542DD8F31D494 /* PPAddEditVetViewController.m */; };
 		6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 35927158F3DE4461BAA4F526 /* PPVetManager.m */; };
@@ -372,6 +373,7 @@
 		531A64F9262D40A8806B6478 /* Features/POS/POSFastSellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSFastSellView.swift; sourceTree = "<group>"; };
 		A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReceiptDocument.swift; sourceTree = "<group>"; };
 		A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReservedLivePetsView.swift; sourceTree = "<group>"; };
+		A7C91D06FBE74D56A8101006 /* Features/POS/POSCustomerPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCustomerPickerSheet.swift; sourceTree = "<group>"; };
 		5B1CA1A1E76443509AB78D14 /* Features/Fulfillment/FulfillmentListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Fulfillment/FulfillmentListView.swift; sourceTree = "<group>"; };
 		5F43E8492E564639B8A1D187 /* Features/Operations/ServicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/ServicesView.swift; sourceTree = "<group>"; };
 		63514318000226D7F46DE080 /* QBAlbumsViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBAlbumsViewController.m; sourceTree = "<group>"; };
@@ -1218,6 +1220,7 @@
 				531A64F9262D40A8806B6478 /* Features/POS/POSFastSellView.swift */,
 				A7C91D02FBE74D56A8101002 /* Features/POS/POSReceiptDocument.swift */,
 				A7C91D04FBE74D56A8101004 /* Features/POS/POSReservedLivePetsView.swift */,
+				A7C91D06FBE74D56A8101006 /* Features/POS/POSCustomerPickerSheet.swift */,
 				4FBD3394272B482F8C2B898E /* Features/POS/POSHistoryView.swift */,
 				A3305C321078444DA3DF3D16 /* Features/Inventory/InventoryView.swift */,
 				D509F65530B14AD38C2F4FB7 /* Features/Customers/UsersListView.swift */,
@@ -2400,6 +2403,7 @@
 				5B00D05CF67F4901B423F27F /* Features/POS/POSFastSellView.swift in Sources */,
 				A7C91D01FBE74D56A8101001 /* Features/POS/POSReceiptDocument.swift in Sources */,
 				A7C91D03FBE74D56A8101003 /* Features/POS/POSReservedLivePetsView.swift in Sources */,
+				A7C91D05FBE74D56A8101005 /* Features/POS/POSCustomerPickerSheet.swift in Sources */,
 				6E66355C629845A1A238D102 /* Features/POS/POSHistoryView.swift in Sources */,
 				643F43D0DC3447FB834531FE /* Features/Inventory/InventoryView.swift in Sources */,
 				856578A2515F4223930349C4 /* Features/Customers/UsersListView.swift in Sources */,

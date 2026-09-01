@@ -2,9 +2,10 @@
 //  POSReservedLivePetsView.swift
 //  PurePetsAdmin
 //
-//  Flagship Beyond-FAANG Reserved Live Pets Operations & Details Horizon.
-//  Reimagined from first principles for instant cashier handoff, hold management,
-//  urgency tracking, telemetry horizons, and deep animal dossiers.
+//  Beyond-FAANG · Category-Defining · Reserved Live Pets Operations Horizon
+//  Reimagined from absolute first principles — spatial depth, urgency telemetry,
+//  physics-based spring interactions, frosted-glass card system, live countdown
+//  arcs, hero dossier parallax, and Arabic-RTL-first information architecture.
 //
 
 import SwiftUI
@@ -14,7 +15,7 @@ import FirebaseFunctions
 
 // MARK: - Models & Projections
 
-public struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
+struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
     public let id: String
     public let reservationID: String
     public let productID: String
@@ -35,23 +36,31 @@ public struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
     public let supplier: String
     public let purchaseCost: Double?
 
-    public var isExpired: Bool {
+    var isExpired: Bool {
         guard let validUntil else { return false }
         return validUntil < Date()
     }
 
-    public var isExpiringSoon: Bool {
+    var isExpiringSoon: Bool {
         guard let validUntil, !isExpired else { return false }
         return validUntil.timeIntervalSinceNow < (24 * 60 * 60)
     }
 
-    public var remainingHours: Int {
+    var remainingHours: Int {
         guard let validUntil else { return 0 }
         let interval = validUntil.timeIntervalSinceNow
         return max(0, Int(interval / 3600))
     }
 
-    public var remainingTimeDescription: String {
+    var urgencyFraction: Double {
+        guard let validUntil, let createdAt else { return 1.0 }
+        let total = validUntil.timeIntervalSince(createdAt)
+        let remaining = max(0, validUntil.timeIntervalSinceNow)
+        guard total > 0 else { return 0 }
+        return min(1.0, remaining / total)
+    }
+
+    var remainingTimeDescription: String {
         guard let validUntil else {
             return Language.get("LivePet_NoExpiry", alter: "بدون مهلة")
         }
@@ -62,6 +71,7 @@ public struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
         let interval = validUntil.timeIntervalSince(now)
         let days = Int(interval / (24 * 3600))
         let hours = Int((interval.truncatingRemainder(dividingBy: 24 * 3600)) / 3600)
+        let mins  = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
 
         if days > 0 {
             let format = Language.get("LivePet_RemainingDays_Format", alter: "متبقي %d يوم")
@@ -70,34 +80,44 @@ public struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
             let format = Language.get("LivePet_RemainingHours_Format", alter: "متبقي %d ساعة")
             return String(format: format, hours)
         } else {
-            return Language.get("LivePet_ExpiringNow", alter: "ينتهي خلال أقل من ساعة")
+            let format = Language.get("LivePet_RemainingMins_Format", alter: "متبقي %d دقيقة")
+            return String(format: format, max(1, mins))
         }
     }
 }
 
-public enum POSReservationFilter: String, CaseIterable, Identifiable {
+enum POSReservationFilter: String, CaseIterable, Identifiable {
     case all
     case active
     case expiringSoon
     case expired
 
-    public var id: String { rawValue }
+    var id: String { rawValue }
 
-    public var title: String {
+    var title: String {
         switch self {
-        case .all: return Language.get("POS_Filter_All", alter: "الكل")
-        case .active: return Language.get("POS_Filter_Active", alter: "نشط ومؤكد")
+        case .all:          return Language.get("POS_Filter_All",          alter: "الكل")
+        case .active:       return Language.get("POS_Filter_Active",       alter: "نشط")
         case .expiringSoon: return Language.get("POS_Filter_ExpiringSoon", alter: "ينتهي قريباً")
-        case .expired: return Language.get("POS_Filter_Expired", alter: "منتهي الصلاحية")
+        case .expired:      return Language.get("POS_Filter_Expired",      alter: "منتهي")
         }
     }
 
-    public var icon: String {
+    var icon: String {
         switch self {
-        case .all: return "square.grid.2x2.fill"
-        case .active: return "checkmark.seal.fill"
+        case .all:          return "square.grid.2x2.fill"
+        case .active:       return "checkmark.seal.fill"
         case .expiringSoon: return "clock.badge.exclamationmark.fill"
-        case .expired: return "exclamationmark.octagon.fill"
+        case .expired:      return "exclamationmark.octagon.fill"
+        }
+    }
+
+    var urgencyColor: Color {
+        switch self {
+        case .all:          return Color(uiColor: .ppPrimary)
+        case .active:       return Color(uiColor: .ppSuccess)
+        case .expiringSoon: return Color(uiColor: .ppWarning)
+        case .expired:      return Color(uiColor: .ppError)
         }
     }
 }
@@ -105,79 +125,58 @@ public enum POSReservationFilter: String, CaseIterable, Identifiable {
 // MARK: - ViewModel
 
 @MainActor
-public final class POSReservedLivePetsViewModel: ObservableObject {
-    @Published public var items: [POSReservedPetCardModel] = []
-    @Published public var isLoading: Bool = false
-    @Published public var isRefreshing: Bool = false
-    @Published public var errorMessage: String? = nil
-    @Published public var searchText: String = ""
-    @Published public var activeFilter: POSReservationFilter = .all
-    @Published public var selectedBranchID: String = ""
-    @Published public var branches: [PPInventoryBranchOption] = []
-    @Published public var activeDossierItem: POSReservedPetCardModel? = nil
-    @Published public var extendingItem: POSReservedPetCardModel? = nil
-    @Published public var releasingItem: POSReservedPetCardModel? = nil
-    @Published public var operationSuccessNotice: String? = nil
+final class POSReservedLivePetsViewModel: ObservableObject {
+    @Published var items: [POSReservedPetCardModel] = []
+    @Published var isLoading: Bool = false
+    @Published var isRefreshing: Bool = false
+    @Published var errorMessage: String? = nil
+    @Published var searchText: String = ""
+    @Published var activeFilter: POSReservationFilter = .all
+    @Published var selectedBranchID: String = ""
+    @Published var branches: [PPInventoryBranchOption] = []
+    @Published var activeDossierItem: POSReservedPetCardModel? = nil
+    @Published var extendingItem: POSReservedPetCardModel? = nil
+    @Published var releasingItem: POSReservedPetCardModel? = nil
+    @Published var operationSuccessNotice: String? = nil
 
     private var accessoriesByID: [String: PetAccessory] = [:]
     private var branchesByID: [String: String] = [:]
 
-    public init(accessories: [PetAccessory] = []) {
+    init(accessories: [PetAccessory] = []) {
         updateAccessories(accessories)
     }
 
-    public func updateAccessories(_ accessories: [PetAccessory]) {
+    func updateAccessories(_ accessories: [PetAccessory]) {
         for acc in accessories {
             accessoriesByID[acc.accessoryID] = acc
         }
     }
 
-    // Telemetry computations
-    public var totalCount: Int { items.count }
-
-    public var activeCount: Int {
-        items.filter { !$0.isExpired }.count
-    }
-
-    public var expiringSoonCount: Int {
-        items.filter { $0.isExpiringSoon }.count
-    }
-
-    public var expiredCount: Int {
-        items.filter { $0.isExpired }.count
-    }
-
-    public var totalHeldValue: Double {
-        items.reduce(0) { $0 + $1.sellingPrice }
-    }
-
-    public var uniqueCustomersCount: Int {
+    // Telemetry
+    var totalCount: Int { items.count }
+    var activeCount: Int { items.filter { !$0.isExpired }.count }
+    var expiringSoonCount: Int { items.filter { $0.isExpiringSoon }.count }
+    var expiredCount: Int { items.filter { $0.isExpired }.count }
+    var totalHeldValue: Double { items.reduce(0) { $0 + $1.sellingPrice } }
+    var uniqueCustomersCount: Int {
         Set(items.map { $0.customerPhone.isEmpty ? $0.customerName : $0.customerPhone }).count
     }
+    var urgencyPressure: Double {
+        guard totalCount > 0 else { return 0 }
+        return Double(expiringSoonCount + expiredCount) / Double(totalCount)
+    }
 
-    public var filteredItems: [POSReservedPetCardModel] {
+    var filteredItems: [POSReservedPetCardModel] {
         items.filter { item in
-            // Filter by branch if selected
-            if !selectedBranchID.isEmpty && item.branchID != selectedBranchID {
-                return false
-            }
-
-            // Filter by tab
+            if !selectedBranchID.isEmpty && item.branchID != selectedBranchID { return false }
             switch activeFilter {
-            case .all:
-                break
-            case .active:
-                if item.isExpired { return false }
-            case .expiringSoon:
-                if !item.isExpiringSoon { return false }
-            case .expired:
-                if !item.isExpired { return false }
+            case .all: break
+            case .active: if item.isExpired { return false }
+            case .expiringSoon: if !item.isExpiringSoon { return false }
+            case .expired: if !item.isExpired { return false }
             }
-
-            // Search query filter
             let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             if q.isEmpty { return true }
-
             return item.animalName.lowercased().contains(q)
                 || item.ringTag.lowercased().contains(q)
                 || item.customerName.lowercased().contains(q)
@@ -189,7 +188,7 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
 
     // MARK: - Data Loading
 
-    public func loadData() async {
+    func loadData() async {
         isLoading = items.isEmpty
         isRefreshing = !items.isEmpty
         errorMessage = nil
@@ -203,7 +202,7 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
             self.branches = branchList
             self.branchesByID = branchList.reduce(into: [:]) { $0[$1.id] = $1.name }
             self.items = loadedUnits.sorted {
-                let left = $0.validUntil ?? Date.distantFuture
+                let left  = $0.validUntil ?? Date.distantFuture
                 let right = $1.validUntil ?? Date.distantFuture
                 return left < right
             }
@@ -219,54 +218,36 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
         var cardModels: [POSReservedPetCardModel] = []
         var seenKeys = Set<String>()
 
-        // 1. Fetch live pet reservations via canonical backend callable
         do {
             let reservations = try await PPLivePetInventoryService.listReservations(productID: "")
             for res in reservations {
                 let branchTitle = branchesByID[res.branchID] ?? res.branchID
                 for item in res.items {
                     let accessory = accessoriesByID[item.productID]
-                    let petName = accessory?.name ?? Language.get("LiveAnimal", alter: "حيوان حي")
-                    let photo = accessory?.pictures.firstObject as? String ?? ""
-                    let stdPrice = accessory?.pos_canonicalUnitPrice ?? res.total
+                    let petName   = accessory?.name ?? Language.get("LiveAnimal", alter: "حيوان حي")
+                    let photo     = accessory?.imageURLsArray.first ?? ""
+                    let stdPrice  = accessory?.pos_canonicalUnitPrice ?? res.total
 
                     for (index, unitID) in item.unitIDs.enumerated() {
                         let ring = index < item.ringTags.count ? item.ringTags[index] : unitID
                         let unitKey = "\(item.productID)_\(unitID)"
                         if seenKeys.contains(unitKey) { continue }
                         seenKeys.insert(unitKey)
-
-                        cardModels.append(
-                            POSReservedPetCardModel(
-                                id: unitKey,
-                                reservationID: res.id,
-                                productID: item.productID,
-                                unitID: unitID,
-                                ringTag: ring,
-                                animalName: petName,
-                                photoURL: photo,
-                                sellingPrice: stdPrice,
-                                standardPrice: stdPrice,
-                                customerName: res.customerName,
-                                customerPhone: res.customerPhone,
-                                customerSource: res.customerSource,
-                                branchID: res.branchID,
-                                branchName: branchTitle,
-                                validUntil: res.validUntil,
-                                createdAt: nil,
-                                notes: "",
-                                supplier: "",
-                                purchaseCost: nil
-                            )
-                        )
+                        cardModels.append(POSReservedPetCardModel(
+                            id: unitKey, reservationID: res.id,
+                            productID: item.productID, unitID: unitID,
+                            ringTag: ring, animalName: petName, photoURL: photo,
+                            sellingPrice: stdPrice, standardPrice: stdPrice,
+                            customerName: res.customerName, customerPhone: res.customerPhone,
+                            customerSource: res.customerSource, branchID: res.branchID,
+                            branchName: branchTitle, validUntil: res.validUntil,
+                            createdAt: nil, notes: "", supplier: "", purchaseCost: nil
+                        ))
                     }
                 }
             }
-        } catch {
-            // Fallback to Firestore inspection if callable reports scope or truncation
-        }
+        } catch { /* fallback below */ }
 
-        // 2. Direct Firestore fallback query on live-pet accessories with RESERVED units
         if cardModels.isEmpty {
             let snapshot = try await Firestore.firestore()
                 .collection("petAccessories")
@@ -276,10 +257,10 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
             for doc in snapshot.documents {
                 let pData = doc.data()
                 let productID = doc.documentID
-                let petName = PPLivePetInventoryService.string(pData["name"])
-                let pictures = pData["pictures"] as? [String] ?? []
-                let photo = pictures.first ?? ""
-                let stdPrice = PPLivePetInventoryService.optionalNumber(pData["price"]) ?? 0
+                let petName   = PPLivePetInventoryService.string(pData["name"])
+                let pictures  = (pData["imageURLsArray"] as? [String]) ?? (pData["pictures"] as? [String]) ?? []
+                let photo     = pictures.first ?? ""
+                let stdPrice  = PPLivePetInventoryService.optionalNumber(pData["price"]) ?? 0
 
                 let unitsSnap = try await doc.reference
                     .collection("inventoryUnits")
@@ -291,31 +272,20 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
                     let unitKey = "\(productID)_\(u.id)"
                     if seenKeys.contains(unitKey) { continue }
                     seenKeys.insert(unitKey)
-
                     let branchTitle = branchesByID[u.currentBranchID] ?? u.currentBranchID
-                    cardModels.append(
-                        POSReservedPetCardModel(
-                            id: unitKey,
-                            reservationID: u.reservationTransactionID,
-                            productID: productID,
-                            unitID: u.id,
-                            ringTag: u.ringTag.isEmpty ? u.id : u.ringTag,
-                            animalName: petName,
-                            photoURL: photo,
-                            sellingPrice: u.sellingPrice ?? stdPrice,
-                            standardPrice: stdPrice,
-                            customerName: u.reservationCustomerName,
-                            customerPhone: u.reservationCustomerPhone,
-                            customerSource: "directory",
-                            branchID: u.currentBranchID,
-                            branchName: branchTitle,
-                            validUntil: u.reservationValidUntil,
-                            createdAt: nil,
-                            notes: u.notes,
-                            supplier: u.supplier,
-                            purchaseCost: u.purchaseCost
-                        )
-                    )
+                    cardModels.append(POSReservedPetCardModel(
+                        id: unitKey, reservationID: u.reservationTransactionID,
+                        productID: productID, unitID: u.id,
+                        ringTag: u.ringTag.isEmpty ? u.id : u.ringTag,
+                        animalName: petName, photoURL: photo,
+                        sellingPrice: u.sellingPrice ?? stdPrice, standardPrice: stdPrice,
+                        customerName: u.reservationCustomerName,
+                        customerPhone: u.reservationCustomerPhone,
+                        customerSource: "directory", branchID: u.currentBranchID,
+                        branchName: branchTitle, validUntil: u.reservationValidUntil,
+                        createdAt: nil, notes: u.notes, supplier: u.supplier,
+                        purchaseCost: u.purchaseCost
+                    ))
                 }
             }
         }
@@ -325,9 +295,8 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
 
     // MARK: - Actions
 
-    public func extendHold(for item: POSReservedPetCardModel, newValidUntil: Date, reason: String) async -> Bool {
+    func extendHold(for item: POSReservedPetCardModel, newValidUntil: Date, reason: String) async -> Bool {
         do {
-            // Update transaction validUntil
             if !item.reservationID.isEmpty {
                 try await Firestore.firestore()
                     .collection("transactions")
@@ -338,19 +307,14 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
                         "reservationExtendReason": reason,
                     ])
             }
-
-            // Update unit validUntil
             try await Firestore.firestore()
-                .collection("petAccessories")
-                .document(item.productID)
-                .collection("inventoryUnits")
-                .document(item.unitID)
+                .collection("petAccessories").document(item.productID)
+                .collection("inventoryUnits").document(item.unitID)
                 .updateData([
                     "reservationValidUntil": Timestamp(date: newValidUntil),
                     "lastModified": FieldValue.serverTimestamp(),
                 ])
-
-            self.operationSuccessNotice = Language.get("POS_Reservation_Extended_Success", alter: "تم تمديد فترة الحجز بنجاح")
+            self.operationSuccessNotice = Language.get("POS_Reservation_Extended_Success", alter: "تم تمديد فترة الحجز بنجاح ✓")
             await loadData()
             return true
         } catch {
@@ -359,9 +323,8 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
         }
     }
 
-    public func releaseHold(for item: POSReservedPetCardModel, reason: String) async -> Bool {
+    func releaseHold(for item: POSReservedPetCardModel, reason: String) async -> Bool {
         do {
-            // Cancel transaction if present
             if !item.reservationID.isEmpty {
                 _ = try await PPLivePetInventoryService.callTransaction([
                     "action": "cancel",
@@ -372,7 +335,6 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
                     "currency": "QAR",
                 ])
             } else {
-                // Direct release via audited inventory change
                 _ = try await PPLivePetInventoryService.callInventory(
                     action: "releaseReservation",
                     productID: item.productID,
@@ -383,8 +345,7 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
                     ]
                 )
             }
-
-            self.operationSuccessNotice = Language.get("POS_Reservation_Released_Success", alter: "تم إلغاء الحجز وإعادة الحيوان للمخزون المتاح")
+            self.operationSuccessNotice = Language.get("POS_Reservation_Released_Success", alter: "تم إلغاء الحجز وإعادة الحيوان للمخزون ✓")
             await loadData()
             return true
         } catch {
@@ -394,19 +355,24 @@ public final class POSReservedLivePetsViewModel: ObservableObject {
     }
 }
 
-// MARK: - Main Screen View
+// MARK: - Main Screen — Spatial Horizon Architecture
 
-public struct POSReservedLivePetsView: View {
+@available(iOS 16.0, *)
+struct POSReservedLivePetsView: View {
     let session: AdminSession
     var allAccessories: [PetAccessory] = []
     var onCompleteSale: ((POSReservedPetCardModel) -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var viewModel: POSReservedLivePetsViewModel
-    @State private var isSearchFocused: Bool = false
-    @State private var isSpinning: Bool = false
+    @StateObject private var vm: POSReservedLivePetsViewModel
+    @State private var searchFocused: Bool = false
+    @State private var headerCollapsed: Bool = false
+    @State private var scrollOffset: CGFloat = 0
+    @State private var refreshSpinAngle: Double = 0
+    @State private var isRefreshSpinning: Bool = false
+    @Namespace private var filterNS
 
-    public init(
+    init(
         session: AdminSession,
         allAccessories: [PetAccessory] = [],
         onCompleteSale: ((POSReservedPetCardModel) -> Void)? = nil
@@ -414,461 +380,558 @@ public struct POSReservedLivePetsView: View {
         self.session = session
         self.allAccessories = allAccessories
         self.onCompleteSale = onCompleteSale
-        _viewModel = StateObject(wrappedValue: POSReservedLivePetsViewModel(accessories: allAccessories))
+        _vm = StateObject(wrappedValue: POSReservedLivePetsViewModel(accessories: allAccessories))
     }
 
-    public var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+    var body: some View {
+        ZStack(alignment: .top) {
+            // Deep background gradient — spatial depth
+            LinearGradient(
+                colors: [
+                    Color(uiColor: .systemBackground),
+                    Color(uiColor: .secondarySystemBackground).opacity(0.6),
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                appHeader
-                telemetryDeck
-                filterTabs
-                searchAndBranchBar
-                contentList
+                morphicHeader
+                filterOrb
+                scrollContent
             }
 
-            if let notice = viewModel.operationSuccessNotice {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.white)
-                        Text(notice)
-                            .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .body))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color(uiColor: .ppSuccess), in: Capsule())
-                    .shadow(color: Color.black.opacity(0.15), radius: 10, y: 4)
-                    .padding(.bottom, 24)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.operationSuccessNotice)
-                .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                        viewModel.operationSuccessNotice = nil
-                    }
-                }
-            }
+            // Floating success toast
+            toastOverlay
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task {
-            viewModel.updateAccessories(allAccessories)
-            await viewModel.loadData()
+            vm.updateAccessories(allAccessories)
+            await vm.loadData()
         }
-        .sheet(item: $viewModel.activeDossierItem) { item in
+        .sheet(item: $vm.activeDossierItem) { item in
             POSReservedPetDossierSheet(item: item)
         }
-        .sheet(item: $viewModel.extendingItem) { item in
-            POSExtendReservationSheet(item: item, viewModel: viewModel)
+        .sheet(item: $vm.extendingItem) { item in
+            POSExtendReservationSheet(item: item, viewModel: vm)
         }
-        .sheet(item: $viewModel.releasingItem) { item in
-            POSReleaseReservationSheet(item: item, viewModel: viewModel)
+        .sheet(item: $vm.releasingItem) { item in
+            POSReleaseReservationSheet(item: item, viewModel: vm)
         }
         .alert(
             Language.get("Error", alter: "تنبيه"),
-            isPresented: Binding(
-                get: { viewModel.errorMessage != nil },
-                set: { if !$0 { viewModel.errorMessage = nil } }
-            )
+            isPresented: Binding(get: { vm.errorMessage != nil }, set: { if !$0 { vm.errorMessage = nil } })
         ) {
             Button(Language.get("OK", alter: "موافق")) {}
         } message: {
-            Text(viewModel.errorMessage ?? "")
+            Text(vm.errorMessage ?? "")
         }
     }
 
-    // MARK: - App Header
+    // MARK: - Morphic Header (Collapses on scroll)
 
-    private var appHeader: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: 38, height: 38)
-                    .background(AdminSurface.control, in: Circle())
-            }
-            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
-
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(Language.get("POS_LivePets_Desk", alter: "نقطة البيع • وحدة الحجوزات"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 6, height: 6)
+    private var morphicHeader: some View {
+        VStack(spacing: 0) {
+            // Title Bar
+            HStack(spacing: AdminSpacing.sm) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(width: 36, height: 36)
+                        .background(.thinMaterial, in: Circle())
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
                 }
+                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
 
-                Text(Language.get("POS_ReservedLivePets_Title", alter: "الحيوانات المحجوزة"))
-                    .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 5) {
+                        Text(Language.get("POS_LivePets_Desk", alter: "نقطة البيع · حجوزات الحيوانات"))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        // Live pulse dot
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 5, height: 5)
+                            .scaleEffect(isRefreshSpinning ? 1.6 : 1.0)
+                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isRefreshSpinning)
+                    }
+                    Text(Language.get("POS_ReservedLivePets_Title", alter: "الحيوانات المحجوزة"))
+                        .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    isSpinning = true
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                        isRefreshSpinning = true
+                        refreshSpinAngle += 360
+                    }
+                    Task {
+                        await vm.loadData()
+                        isRefreshSpinning = false
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .rotationEffect(.degrees(refreshSpinAngle))
+                        .animation(.spring(response: 0.6, dampingFraction: 0.5), value: refreshSpinAngle)
+                        .frame(width: 36, height: 36)
+                        .background(.thinMaterial, in: Circle())
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
                 }
-                Task {
-                    await viewModel.loadData()
-                    isSpinning = false
-                }
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .rotationEffect(.degrees(isSpinning ? 360 : 0))
-                    .frame(width: 38, height: 38)
-                    .background(AdminSurface.control, in: Circle())
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
-            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, AdminSpacing.md)
+            .padding(.bottom, AdminSpacing.sm)
+
+            // Telemetry Orbit Strip
+            if !vm.isLoading || !vm.items.isEmpty {
+                telemetryOrbit
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.bottom, AdminSpacing.sm)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.vertical, AdminSpacing.xs)
-        .background(AdminSurface.surface.opacity(0.95))
+        .background(.ultraThinMaterial)
         .overlay(
-            Divider().background(AdminSurface.hairline),
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: AdminStroke.thin),
             alignment: .bottom
         )
     }
 
-    // MARK: - Telemetry Deck (Bento Grid)
+    // MARK: - Telemetry Orbit (4 Live Counters in a flowing row)
 
-    private var telemetryDeck: some View {
+    private var telemetryOrbit: some View {
         HStack(spacing: 8) {
-            bentoTile(
-                title: Language.get("POS_Metric_TotalReserved", alter: "إجمالي المحجوزات"),
-                value: "\(viewModel.totalCount)",
-                unit: Language.get("POS_Metric_Animals", alter: "حيوان"),
+            telemetryPill(
                 icon: "pawprint.fill",
-                accent: AdminSurface.primary
+                value: "\(vm.totalCount)",
+                label: Language.get("POS_Metric_Animals", alter: "حيوان"),
+                accent: AdminSurface.primary,
+                glow: false
             )
-
-            bentoTile(
-                title: Language.get("POS_Metric_ExpiringSoon", alter: "تنتهي خلال ٢٤س"),
-                value: "\(viewModel.expiringSoonCount)",
-                unit: Language.get("POS_Metric_Urgent", alter: "عاجل"),
+            telemetryPill(
+                icon: "person.2.fill",
+                value: "\(vm.uniqueCustomersCount)",
+                label: Language.get("POS_Metric_Customers", alter: "عميل"),
+                accent: Color(uiColor: .ppSuccess),
+                glow: false
+            )
+            telemetryPill(
                 icon: "clock.badge.exclamationmark.fill",
-                accent: viewModel.expiringSoonCount > 0 ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText,
-                pulse: viewModel.expiringSoonCount > 0
+                value: "\(vm.expiringSoonCount)",
+                label: Language.get("POS_Metric_Urgent", alter: "عاجل"),
+                accent: Color(uiColor: .ppWarning),
+                glow: vm.expiringSoonCount > 0
             )
-
-            bentoTile(
-                title: Language.get("POS_Metric_LockedValue", alter: "القيمة المحجوزة"),
-                value: String(format: "%.0f", viewModel.totalHeldValue),
-                unit: "ر.ق",
+            telemetryPill(
                 icon: "banknote.fill",
-                accent: AdminSurface.primary
+                value: String(format: "%.0f", vm.totalHeldValue),
+                label: "ر.ق",
+                accent: AdminSurface.primary,
+                glow: false
             )
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
     }
 
-    private func bentoTile(
-        title: String,
-        value: String,
-        unit: String,
+    private func telemetryPill(
         icon: String,
+        value: String,
+        label: String,
         accent: Color,
-        pulse: Bool = false
+        glow: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(title)
-                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(1)
-                Spacer()
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(accent)
-            }
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(accent)
 
-            HStack(alignment: .lastTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                    .foregroundColor(pulse ? Color(uiColor: .ppWarning) : AdminSurface.primaryText)
-                    .monospacedDigit()
+            Text(value)
+                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .callout))
+                .foregroundStyle(glow ? accent : AdminSurface.primaryText)
+                .monospacedDigit()
 
-                Text(unit)
-                    .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
+            Text(label)
+                .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(pulse ? accent.opacity(0.4) : AdminSurface.hairline, lineWidth: 1)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
+        .background(
+            glow
+                ? accent.opacity(0.12)
+                : Color(uiColor: .secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                .stroke(glow ? accent.opacity(0.35) : AdminSurface.hairline, lineWidth: glow ? 1 : AdminStroke.thin)
+        )
+        .scaleEffect(glow ? 1.02 : 1.0)
+        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: glow)
     }
 
-    // MARK: - Filter Tabs
+    // MARK: - Filter Orb Rail
 
-    private var filterTabs: some View {
+    private var filterOrb: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                // Search pill
+                searchPill
+
+                Divider()
+                    .frame(height: 20)
+                    .padding(.horizontal, 2)
+
                 ForEach(POSReservationFilter.allCases) { filter in
-                    let isSelected = viewModel.activeFilter == filter
+                    let isSelected = vm.activeFilter == filter
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            viewModel.activeFilter = filter
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                            vm.activeFilter = filter
                         }
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Image(systemName: filter.icon)
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 10, weight: .semibold))
                             Text(filter.title)
                                 .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Regular", size: 12, relativeTo: .caption))
 
                             let count = countForFilter(filter)
-                            Text("\(count)")
-                                .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(
-                                    isSelected ? Color.white.opacity(0.25) : AdminSurface.control,
-                                    in: Capsule()
-                                )
+                            if count > 0 {
+                                Text("\(count)")
+                                    .font(Font.custom("Beiruti-Bold", size: 9, relativeTo: .caption2))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        isSelected ? Color.white.opacity(0.3) : filter.urgencyColor.opacity(0.12),
+                                        in: Capsule()
+                                    )
+                                    .foregroundStyle(isSelected ? .white : filter.urgencyColor)
+                            }
                         }
-                        .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                        .padding(.horizontal, 12)
+                        .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
+                        .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                         .background(
-                            isSelected ? AdminSurface.primary : AdminSurface.surface,
+                            isSelected
+                                ? filter.urgencyColor
+                                : Color(uiColor: .secondarySystemBackground),
                             in: Capsule()
                         )
                         .overlay(
-                            Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
+                            Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                        )
+                        .shadow(
+                            color: isSelected ? filter.urgencyColor.opacity(0.3) : .clear,
+                            radius: 6, y: 2
                         )
                     }
+                    .scaleEffect(isSelected ? 1.03 : 1.0)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isSelected)
+                }
+
+                // Branch picker
+                if !vm.branches.isEmpty {
+                    branchPicker
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.vertical, 6)
+            .padding(.vertical, AdminSpacing.sm)
         }
+        .background(.ultraThinMaterial)
+    }
+
+    private var searchPill: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            TextField(
+                Language.get("POS_SearchReserved_Placeholder", alter: "بحث..."),
+                text: $vm.searchText
+            )
+            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+            .frame(width: vm.searchText.isEmpty ? 60 : 120)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: vm.searchText.isEmpty)
+
+            if !vm.searchText.isEmpty {
+                Button { vm.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+        .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
+    }
+
+    private var branchPicker: some View {
+        Menu {
+            Button {
+                vm.selectedBranchID = ""
+            } label: {
+                Label(Language.get("POS_AllBranches", alter: "كافة الفروع"),
+                      systemImage: vm.selectedBranchID.isEmpty ? "checkmark" : "building.2")
+            }
+            Divider()
+            ForEach(vm.branches) { branch in
+                Button {
+                    vm.selectedBranchID = branch.id
+                } label: {
+                    Label(branch.name,
+                          systemImage: vm.selectedBranchID == branch.id ? "checkmark" : "mappin.circle")
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "building.2.crop.circle")
+                    .font(.system(size: 11))
+                Text(selectedBranchLabel)
+                    .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .bold))
+            }
+            .foregroundStyle(vm.selectedBranchID.isEmpty ? AdminSurface.primaryText : AdminSurface.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(
+                vm.selectedBranchID.isEmpty
+                    ? Color(uiColor: .secondarySystemBackground)
+                    : AdminSurface.primary.opacity(0.1),
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().stroke(
+                    vm.selectedBranchID.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.4),
+                    lineWidth: AdminStroke.thin
+                )
+            )
+        }
+    }
+
+    private var selectedBranchLabel: String {
+        if vm.selectedBranchID.isEmpty {
+            return Language.get("POS_Branch_All", alter: "الفروع")
+        }
+        return vm.branches.first(where: { $0.id == vm.selectedBranchID })?.name ?? vm.selectedBranchID
     }
 
     private func countForFilter(_ filter: POSReservationFilter) -> Int {
         switch filter {
-        case .all: return viewModel.totalCount
-        case .active: return viewModel.activeCount
-        case .expiringSoon: return viewModel.expiringSoonCount
-        case .expired: return viewModel.expiredCount
+        case .all:          return vm.totalCount
+        case .active:       return vm.activeCount
+        case .expiringSoon: return vm.expiringSoonCount
+        case .expired:      return vm.expiredCount
         }
     }
 
-    // MARK: - Search & Branch Bar
+    // MARK: - Scroll Content
 
-    private var searchAndBranchBar: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(AdminSurface.secondaryText)
-
-                TextField(Language.get("POS_SearchReserved_Placeholder", alter: "ابحث بالرقم، العميل، الهاتف، أو السلالة..."), text: $viewModel.searchText)
-                    .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-
-                if !viewModel.searchText.isEmpty {
-                    Button {
-                        viewModel.searchText = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 13))
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                }
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(AdminSurface.hairline, lineWidth: 1)
-            )
-
-            if !viewModel.branches.isEmpty {
-                Menu {
-                    Button {
-                        viewModel.selectedBranchID = ""
-                    } label: {
-                        HStack {
-                            Text(Language.get("POS_AllBranches", alter: "كافة الفروع"))
-                            if viewModel.selectedBranchID.isEmpty {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-
-                    ForEach(viewModel.branches) { branch in
-                        Button {
-                            viewModel.selectedBranchID = branch.id
-                        } label: {
-                            HStack {
-                                Text(branch.name)
-                                if viewModel.selectedBranchID == branch.id {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "building.2.crop.circle")
-                            .font(.system(size: 13))
-                        Text(selectedBranchLabel)
-                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(viewModel.selectedBranchID.isEmpty ? AdminSurface.primaryText : AdminSurface.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(viewModel.selectedBranchID.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.4), lineWidth: 1)
-                    )
-                }
-            }
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.bottom, 6)
-    }
-
-    private var selectedBranchLabel: String {
-        if viewModel.selectedBranchID.isEmpty {
-            return Language.get("POS_Branch_All", alter: "كل الفروع")
-        }
-        return viewModel.branches.first(where: { $0.id == viewModel.selectedBranchID })?.name ?? viewModel.selectedBranchID
-    }
-
-    // MARK: - Content List
-
-    private var contentList: some View {
+    private var scrollContent: some View {
         ScrollView {
-            LazyVStack(spacing: 12) {
-                if viewModel.isLoading {
-                    ForEach(0..<4, id: \.self) { _ in
-                        skeletonCard
-                    }
-                } else if viewModel.filteredItems.isEmpty {
-                    emptyStateView
+            LazyVStack(spacing: 0) {
+                if vm.isLoading {
+                    skeletonStack
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.md)
+                } else if vm.filteredItems.isEmpty {
+                    emptyHorizon
+                        .padding(.top, AdminSpacing.xxl)
                 } else {
-                    ForEach(viewModel.filteredItems) { item in
+                    // Section header
+                    HStack {
+                        Text(Language.get("POS_SectionTitle_Reserved", alter: "الحجوزات النشطة"))
+                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Spacer()
+                        Text("\(vm.filteredItems.count)")
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.md)
+                    .padding(.bottom, AdminSpacing.xs)
+
+                    ForEach(Array(vm.filteredItems.enumerated()), id: \.element.id) { index, item in
                         POSReservedPetCard(
                             item: item,
+                            index: index,
                             onCompleteSale: {
                                 UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                                 onCompleteSale?(item)
                                 dismiss()
                             },
                             onExtend: {
-                                viewModel.extendingItem = item
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                vm.extendingItem = item
                             },
                             onRelease: {
-                                viewModel.releasingItem = item
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                vm.releasingItem = item
                             },
                             onInspectDossier: {
-                                viewModel.activeDossierItem = item
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                vm.activeDossierItem = item
                             }
                         )
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.bottom, 10)
+                    }
+
+                    Color.clear.frame(height: 40)
+                }
+            }
+        }
+        .refreshable {
+            await vm.loadData()
+        }
+    }
+
+    // MARK: - Skeleton Loading
+
+    private var skeletonStack: some View {
+        VStack(spacing: 10) {
+            ForEach(0..<3, id: \.self) { i in
+                RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+                    .frame(height: 160)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                    )
+                    .opacity(0.5 + Double(2 - i) * 0.15)
+                    .shimmer()
+            }
+        }
+    }
+
+    // MARK: - Empty State Horizon
+
+    private var emptyHorizon: some View {
+        VStack(spacing: AdminSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.06))
+                    .frame(width: 88, height: 88)
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.04))
+                    .frame(width: 64, height: 64)
+                Image(systemName: "pawprint.circle")
+                    .font(.system(size: 34, weight: .light))
+                    .foregroundStyle(AdminSurface.primary.opacity(0.5))
+            }
+
+            VStack(spacing: 6) {
+                Text(Language.get("POS_NoReservedLivePets_Title", alter: "لا توجد حجوزات"))
+                    .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("POS_NoReservedLivePets_Subtitle", alter: "جميع الحيوانات الحية متاحة للبيع المباشر في الكتالوج حالياً."))
+                    .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AdminSpacing.xl)
+            }
+
+            Button {
+                Task { await vm.loadData() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(Language.get("Refresh", alter: "تحديث"))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, AdminSpacing.md)
+                .padding(.vertical, AdminSpacing.sm)
+                .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Toast Overlay
+
+    private var toastOverlay: some View {
+        VStack {
+            Spacer()
+            if let notice = vm.operationSuccessNotice {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(notice)
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 13)
+                .background(Color(uiColor: .ppSuccess), in: Capsule())
+                .shadow(color: Color(uiColor: .ppSuccess).opacity(0.35), radius: 12, y: 4)
+                .padding(.bottom, AdminSpacing.xxl)
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)),
+                    removal: .move(edge: .bottom).combined(with: .opacity)
+                ))
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            vm.operationSuccessNotice = nil
+                        }
                     }
                 }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, 4)
-            .padding(.bottom, 36)
         }
-        .refreshable {
-            await viewModel.loadData()
-        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.78), value: vm.operationSuccessNotice)
+        .allowsHitTesting(false)
     }
+}
 
-    // MARK: - Skeletons & Empty State
+// MARK: - Shimmer Modifier
 
-    private var skeletonCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AdminSurface.control)
-                    .frame(width: 54, height: 54)
+extension View {
+    func shimmer() -> some View {
+        self.modifier(ShimmerModifier())
+    }
+}
 
-                VStack(alignment: .leading, spacing: 6) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AdminSurface.control)
-                        .frame(width: 140, height: 14)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(AdminSurface.control)
-                        .frame(width: 90, height: 12)
+private struct ShimmerModifier: ViewModifier {
+    @State private var phase: CGFloat = -1
+    func body(content: Content) -> some View {
+        content
+            .overlay(
+                GeometryReader { geo in
+                    LinearGradient(
+                        colors: [.clear, Color.white.opacity(0.15), .clear],
+                        startPoint: .init(x: phase, y: 0.5),
+                        endPoint: .init(x: phase + 0.5, y: 0.5)
+                    )
+                    .blendMode(.plusLighter)
                 }
-                Spacer()
+            )
+            .onAppear {
+                withAnimation(.linear(duration: 1.4).repeatForever(autoreverses: false)) {
+                    phase = 1.5
+                }
             }
-            Divider().background(AdminSurface.hairline)
-            HStack {
-                RoundedRectangle(cornerRadius: 4)
-                    .fill(AdminSurface.control)
-                    .frame(width: 100, height: 14)
-                Spacer()
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(AdminSurface.control)
-                    .frame(width: 110, height: 32)
-            }
-        }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
-        )
-        .opacity(0.6)
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "pawprint.circle")
-                .font(.system(size: 48, weight: .light))
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 40)
-
-            Text(Language.get("POS_NoReservedLivePets_Title", alter: "لا توجد حيوانات محجوزة تطابق المعايير"))
-                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                .foregroundColor(AdminSurface.primaryText)
-
-            Text(Language.get("POS_NoReservedLivePets_Subtitle", alter: "جميع الحيوانات الحية متاحة حالياً للبيع المباشر في الكتالوج."))
-                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
-                .foregroundColor(AdminSurface.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-
-            Button {
-                Task { await viewModel.loadData() }
-            } label: {
-                Text(Language.get("Refresh", alter: "تحديث السجلات"))
-                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
-                    .foregroundColor(AdminSurface.primary)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
-                    .background(AdminSurface.control, in: Capsule())
-            }
-            .padding(.top, 6)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
     }
 }
 
@@ -876,253 +939,277 @@ public struct POSReservedLivePetsView: View {
 
 private struct POSReservedPetCard: View {
     let item: POSReservedPetCardModel
+    let index: Int
     let onCompleteSale: () -> Void
     let onExtend: () -> Void
     let onRelease: () -> Void
     let onInspectDossier: () -> Void
 
+    @State private var isPressed: Bool = false
+    @State private var appeared: Bool = false
+
+    private var urgencyColor: Color {
+        if item.isExpired      { return Color(uiColor: .ppError) }
+        if item.isExpiringSoon { return Color(uiColor: .ppWarning) }
+        return Color(uiColor: .ppSuccess)
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header Row: Avatar, Breed, Ring Tag, Urgency
-            HStack(spacing: 12) {
-                petAvatar
+        VStack(spacing: 0) {
+            // ─── Top strip: urgency indicator bar ─────────────────────
+            UrgencyArcBar(fraction: item.urgencyFraction, color: urgencyColor)
+                .frame(height: 3)
+                .clipShape(RoundedRectangle(cornerRadius: 99, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(item.animalName)
-                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
+            VStack(spacing: 12) {
+                // ─── Row 1: Avatar + Identity + Urgency Badge ──────────
+                HStack(spacing: 12) {
+                    PetAvatarView(url: item.photoURL, size: 56, cornerRadius: 16)
 
-                        Spacer()
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .center, spacing: 6) {
+                            Text(item.animalName)
+                                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
 
-                        urgencyBadge
-                    }
+                            Spacer()
 
-                    HStack(spacing: 6) {
-                        // Ring Tag Badge
-                        HStack(spacing: 3) {
-                            Image(systemName: "number.circle.fill")
-                                .font(.system(size: 9))
-                            Text(item.ringTag)
-                                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
-                                .monospaced()
+                            urgencyTimeBadge
                         }
-                        .foregroundColor(AdminSurface.primary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(AdminSurface.control, in: Capsule())
 
-                        if !item.branchName.isEmpty {
-                            HStack(spacing: 3) {
-                                Image(systemName: "mappin.and.ellipse")
-                                    .font(.system(size: 8))
-                                Text(item.branchName)
-                                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                                    .lineLimit(1)
-                            }
-                            .foregroundColor(AdminSurface.secondaryText)
+                        HStack(spacing: 6) {
+                            ringTagBadge
+                            if !item.branchName.isEmpty { branchBadge }
                         }
                     }
                 }
+
+                // ─── Divider ───────────────────────────────────────────
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(height: AdminStroke.thin)
+
+                // ─── Row 2: Customer + Price ───────────────────────────
+                HStack(alignment: .center, spacing: 0) {
+                    customerSection
+                    Spacer()
+                    priceSection
+                }
+
+                // ─── Row 3: Action Suite ───────────────────────────────
+                actionSuite
             }
-
-            Divider().background(AdminSurface.hairline)
-
-            // Customer & Financial Matrix
-            HStack(alignment: .center, spacing: 12) {
-                // Customer section with direct actions
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(Language.get("POS_Customer", alter: "العميل"))
-                        .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    HStack(spacing: 6) {
-                        Text(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "عميل بدون اسم") : item.customerName)
-                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        if !item.customerPhone.isEmpty {
-                            quickCallButton(phone: item.customerPhone)
-                            quickWhatsAppButton(phone: item.customerPhone)
-                        }
-                    }
-
-                    if !item.customerPhone.isEmpty {
-                        Text(item.customerPhone)
-                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .monospacedDigit()
-                    }
-                }
-
-                Spacer()
-
-                // Price section
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(Language.get("POS_LockedPrice", alter: "السعر المحجوز"))
-                        .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(String(format: "%.0f", item.sellingPrice))
-                            .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                            .foregroundColor(AdminSurface.primary)
-                            .monospacedDigit()
-
-                        Text("ر.ق")
-                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                            .foregroundColor(AdminSurface.primary)
-                    }
-                }
-            }
-
-            // Quick Operational Buttons
-            HStack(spacing: 8) {
-                // Primary Action: Complete Sale In POS
-                Button {
-                    onCompleteSale()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(Language.get("POS_Action_CompleteSale", alter: "إكمال البيع في الكاشير"))
-                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
-                            .lineLimit(1)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 6, y: 2)
-                }
-
-                // Extend Hold
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onExtend()
-                } label: {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 36, height: 36)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .accessibilityLabel(Language.get("POS_Action_Extend", alter: "تمديد الحجز"))
-
-                // Release Hold
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onRelease()
-                } label: {
-                    Image(systemName: "lock.open.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(uiColor: .ppError))
-                        .frame(width: 36, height: 36)
-                        .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .accessibilityLabel(Language.get("POS_Action_Release", alter: "إلغاء الحجز"))
-
-                // Dossier Info
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onInspectDossier()
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .frame(width: 36, height: 36)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                }
-                .accessibilityLabel(Language.get("POS_Action_Dossier", alter: "سجل الحيوان"))
-            }
-            .padding(.top, 2)
+            .padding(.horizontal, AdminSpacing.cardPadding)
+            .padding(.vertical, 14)
         }
-        .padding(14)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(item.isExpiringSoon ? Color(uiColor: .ppWarning).opacity(0.4) : AdminSurface.hairline, lineWidth: 1)
+        .background(
+            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                .fill(Color(uiColor: .systemBackground))
+                .shadow(
+                    color: item.isExpiringSoon
+                        ? urgencyColor.opacity(0.18)
+                        : Color.black.opacity(0.06),
+                    radius: item.isExpiringSoon ? 12 : 8,
+                    y: item.isExpiringSoon ? 4 : 2
+                )
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, y: 3)
-    }
-
-    private var petAvatar: some View {
-        ZStack {
-            if let url = URL(string: item.photoURL), !item.photoURL.isEmpty {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    default:
-                        avatarPlaceholder
-                    }
-                }
-            } else {
-                avatarPlaceholder
-            }
-        }
-        .frame(width: 52, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                .stroke(
+                    item.isExpiringSoon
+                        ? urgencyColor.opacity(0.35)
+                        : AdminSurface.hairline,
+                    lineWidth: item.isExpiringSoon ? 1.0 : AdminStroke.thin
+                )
         )
+        .scaleEffect(isPressed ? 0.985 : 1.0)
+        .opacity(appeared ? 1 : 0)
+        .offset(y: appeared ? 0 : 12)
+        .animation(
+            .spring(response: 0.4, dampingFraction: 0.75)
+                .delay(Double(index) * 0.04),
+            value: appeared
+        )
+        .onAppear { appeared = true }
     }
 
-    private var avatarPlaceholder: some View {
-        ZStack {
-            AdminSurface.control
-            Image(systemName: "pawprint.fill")
-                .font(.system(size: 20))
-                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
-        }
-    }
+    // MARK: Urgency Time Badge
 
-    private var urgencyBadge: some View {
+    private var urgencyTimeBadge: some View {
         HStack(spacing: 3) {
-            Circle()
-                .fill(urgencyColor)
-                .frame(width: 6, height: 6)
-
+            if item.isExpired {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 9, weight: .bold))
+            } else if item.isExpiringSoon {
+                Image(systemName: "clock.badge.exclamationmark.fill")
+                    .font(.system(size: 9, weight: .bold))
+            } else {
+                Circle()
+                    .fill(urgencyColor)
+                    .frame(width: 5, height: 5)
+            }
             Text(item.remainingTimeDescription)
                 .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                .foregroundColor(urgencyColor)
         }
+        .foregroundStyle(urgencyColor)
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(urgencyColor.opacity(0.1), in: Capsule())
+        .overlay(Capsule().stroke(urgencyColor.opacity(0.2), lineWidth: AdminStroke.thin))
     }
 
-    private var urgencyColor: Color {
-        if item.isExpired {
-            return Color(uiColor: .ppError)
-        } else if item.isExpiringSoon {
-            return Color(uiColor: .ppWarning)
-        } else {
-            return Color(uiColor: .ppSuccess)
+    private var ringTagBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "number.circle.fill")
+                .font(.system(size: 9))
+            Text(item.ringTag)
+                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+        }
+        .foregroundStyle(AdminSurface.primary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 2)
+        .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+    }
+
+    private var branchBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 8))
+            Text(item.branchName)
+                .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                .lineLimit(1)
+        }
+        .foregroundStyle(AdminSurface.secondaryText)
+    }
+
+    // MARK: Customer Section
+
+    private var customerSection: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(Language.get("POS_Customer", alter: "العميل"))
+                .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            HStack(spacing: 5) {
+                // Avatar monogram
+                let initials = item.customerName.prefix(1).uppercased()
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.12))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Text(initials.isEmpty ? "؟" : initials)
+                            .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
+                            .foregroundStyle(AdminSurface.primary)
+                    )
+
+                Text(item.customerName.isEmpty
+                     ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم")
+                     : item.customerName)
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                if !item.customerPhone.isEmpty {
+                    quickCallButton(phone: item.customerPhone)
+                    quickWhatsAppButton(phone: item.customerPhone)
+                }
+            }
+
+            if !item.customerPhone.isEmpty {
+                Text(item.customerPhone)
+                    .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .monospacedDigit()
+            }
         }
     }
 
+    // MARK: Price Section
+
+    private var priceSection: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(Language.get("POS_LockedPrice", alter: "سعر الحجز"))
+                .font(Font.custom("Beiruti-Regular", size: 9, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(String(format: "%.0f", item.sellingPrice))
+                    .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
+                    .foregroundStyle(AdminSurface.primary)
+                    .monospacedDigit()
+                Text("ر.ق")
+                    .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
+                    .foregroundStyle(AdminSurface.primary.opacity(0.7))
+            }
+        }
+    }
+
+    // MARK: Action Suite — horizontal adaptive pill strip
+
+    private var actionSuite: some View {
+        HStack(spacing: 6) {
+            // Primary: Complete Sale
+            Button {
+                onCompleteSale()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(Language.get("POS_Action_CompleteSale", alter: "إتمام البيع"))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
+            }
+
+            // Extend Hold
+            ActionIconButton(
+                systemImage: "calendar.badge.clock",
+                tint: AdminSurface.primaryText,
+                bg: Color(uiColor: .secondarySystemBackground),
+                action: onExtend,
+                label: Language.get("POS_Action_Extend", alter: "تمديد الحجز")
+            )
+
+            // Release Hold
+            ActionIconButton(
+                systemImage: "lock.open.fill",
+                tint: Color(uiColor: .ppError),
+                bg: Color(uiColor: .ppError).opacity(0.08),
+                action: onRelease,
+                label: Language.get("POS_Action_Release", alter: "إلغاء الحجز")
+            )
+
+            // Dossier
+            ActionIconButton(
+                systemImage: "doc.text.magnifyingglass",
+                tint: AdminSurface.secondaryText,
+                bg: Color(uiColor: .secondarySystemBackground),
+                action: onInspectDossier,
+                label: Language.get("POS_Action_Dossier", alter: "السجل الكامل")
+            )
+        }
+    }
+
+    // MARK: Inline Action Helpers
+
     private func quickCallButton(phone: String) -> some View {
         Button {
-            guard let url = URL(string: "tel://\(phone.replacingOccurrences(of: " ", with: ""))") else { return }
+            guard let url = URL(string: "tel://\(phone.filter { "0123456789+".contains($0) })") else { return }
             UIApplication.shared.open(url)
         } label: {
             Image(systemName: "phone.fill")
                 .font(.system(size: 9))
-                .foregroundColor(Color(uiColor: .ppSuccess))
-                .padding(5)
+                .foregroundStyle(Color(uiColor: .ppSuccess))
+                .padding(4)
                 .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
         }
+        .accessibilityLabel(Language.get("Call", alter: "اتصال"))
     }
 
     private func quickWhatsAppButton(phone: String) -> some View {
@@ -1133,151 +1220,391 @@ private struct POSReservedPetCard: View {
         } label: {
             Image(systemName: "message.fill")
                 .font(.system(size: 9))
-                .foregroundColor(Color(uiColor: .ppSuccess))
-                .padding(5)
+                .foregroundStyle(Color(uiColor: .ppSuccess))
+                .padding(4)
                 .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
+        }
+        .accessibilityLabel(Language.get("WhatsApp", alter: "واتساب"))
+    }
+}
+
+// MARK: - Urgency Arc Bar
+
+private struct UrgencyArcBar: View {
+    let fraction: Double
+    let color: Color
+    @State private var animFraction: Double = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(color.opacity(0.12))
+                Capsule()
+                    .fill(color)
+                    .frame(width: geo.size.width * animFraction)
+                    .animation(.spring(response: 0.6, dampingFraction: 0.8), value: animFraction)
+            }
+        }
+        .onAppear { animFraction = max(0.02, fraction) }
+        .onChange(of: fraction) { animFraction = max(0.02, $0) }
+    }
+}
+
+// MARK: - Pet Avatar View
+
+private struct PetAvatarView: View {
+    let url: String
+    let size: CGFloat
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        ZStack {
+            if let imageURL = URL(string: url), !url.isEmpty {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        placeholderView
+                    }
+                }
+            } else {
+                placeholderView
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+        )
+    }
+
+    private var placeholderView: some View {
+        ZStack {
+            Color(uiColor: .secondarySystemBackground)
+            Image(systemName: "pawprint.fill")
+                .font(.system(size: size * 0.35))
+                .foregroundStyle(AdminSurface.secondaryText.opacity(0.4))
         }
     }
 }
 
-// MARK: - Deep Animal Dossier Sheet
+// MARK: - Action Icon Button
 
-public struct POSReservedPetDossierSheet: View {
+private struct ActionIconButton: View {
+    let systemImage: String
+    let tint: Color
+    let bg: Color
+    let action: () -> Void
+    let label: String
+
+    @State private var pressed = false
+
+    var body: some View {
+        Button {
+            action()
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 40, height: 40)
+                .background(bg, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                )
+                .scaleEffect(pressed ? 0.92 : 1.0)
+                .animation(.spring(response: 0.2, dampingFraction: 0.65), value: pressed)
+        }
+        .buttonStyle(PressButtonStyle(pressed: $pressed))
+        .accessibilityLabel(label)
+    }
+}
+
+private struct PressButtonStyle: ButtonStyle {
+    @Binding var pressed: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .onChange(of: configuration.isPressed) { pressed = $0 }
+    }
+}
+
+// MARK: - Deep Animal Dossier Sheet (Full-Bleed Hero)
+
+struct POSReservedPetDossierSheet: View {
     let item: POSReservedPetCardModel
     @Environment(\.dismiss) private var dismiss
 
-    public var body: some View {
+    @State private var heroScale: CGFloat = 1.05
+    @State private var appeared: Bool = false
+
+    private var urgencyColor: Color {
+        if item.isExpired      { return Color(uiColor: .ppError) }
+        if item.isExpiringSoon { return Color(uiColor: .ppWarning) }
+        return Color(uiColor: .ppSuccess)
+    }
+
+    var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
-                    // Pet Hero Section
-                    VStack(spacing: 8) {
-                        ZStack {
-                            if let url = URL(string: item.photoURL), !item.photoURL.isEmpty {
-                                AsyncImage(url: url) { phase in
-                                    switch phase {
-                                    case .success(let img): img.resizable().scaledToFill()
-                                    default: dossierPlaceholder
-                                    }
-                                }
-                            } else {
-                                dossierPlaceholder
+                VStack(spacing: 0) {
+                    // Full-bleed hero
+                    ZStack(alignment: .bottom) {
+                        heroImage
+                            .frame(height: 260)
+                            .clipped()
+
+                        // Gradient scrim
+                        LinearGradient(
+                            colors: [.clear, Color(uiColor: .systemBackground).opacity(0.9)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                        .frame(height: 120)
+
+                        // Hero identity overlay
+                        VStack(spacing: 6) {
+                            Text(item.animalName)
+                                .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            HStack(spacing: 8) {
+                                Label("#\(item.ringTag)", systemImage: "number.circle.fill")
+                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(.thinMaterial, in: Capsule())
+
+                                Text(item.remainingTimeDescription)
+                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                                    .foregroundStyle(urgencyColor)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(urgencyColor.opacity(0.1), in: Capsule())
+                                    .overlay(Capsule().stroke(urgencyColor.opacity(0.25), lineWidth: 1))
                             }
                         }
-                        .frame(width: 84, height: 84)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                .stroke(AdminSurface.hairline, lineWidth: 1)
-                        )
-
-                        Text(item.animalName)
-                            .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .title3))
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        HStack(spacing: 8) {
-                            Text("#\(item.ringTag)")
-                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 3)
-                                .background(AdminSurface.control, in: Capsule())
-
-                            Text(item.remainingTimeDescription)
-                                .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                .foregroundColor(item.isExpired ? Color(uiColor: .ppError) : Color(uiColor: .ppWarning))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 3)
-                                .background(AdminSurface.control, in: Capsule())
-                        }
+                        .padding(.bottom, 18)
+                        .opacity(appeared ? 1 : 0)
+                        .offset(y: appeared ? 0 : 8)
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: appeared)
                     }
-                    .padding(.top, 12)
+
+                    // Urgency bar
+                    UrgencyArcBar(fraction: item.urgencyFraction, color: urgencyColor)
+                        .frame(height: 4)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.vertical, AdminSpacing.sm)
 
                     // Dossier Matrix
-                    VStack(spacing: 10) {
-                        dossierRow(title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"), value: "#\(item.reservationID)")
-                        dossierRow(title: Language.get("POS_Customer", alter: "اسم العميل"), value: item.customerName.isEmpty ? "—" : item.customerName)
-                        dossierRow(title: Language.get("POS_Phone", alter: "هاتف العميل"), value: item.customerPhone.isEmpty ? "—" : item.customerPhone)
-                        dossierRow(title: Language.get("POS_Branch", alter: "الفرع"), value: item.branchName.isEmpty ? "—" : item.branchName)
-                        dossierRow(title: Language.get("POS_LockedPrice", alter: "سعر الحجز المعتمد"), value: "\(String(format: "%.2f", item.sellingPrice)) ر.ق")
-                        dossierRow(title: Language.get("POS_UnitID", alter: "معرف السجل"), value: item.unitID)
-
-                        if let valid = item.validUntil {
-                            dossierRow(title: Language.get("POS_ValidUntil", alter: "صالح حتى"), value: POSReceiptFormat.date(valid))
-                        }
-
-                        if !item.supplier.isEmpty {
-                            dossierRow(title: Language.get("LivePet_Supplier", alter: "المورد"), value: item.supplier)
-                        }
-
-                        if let cost = item.purchaseCost, cost > 0 {
-                            dossierRow(title: Language.get("LivePet_PurchaseCost", alter: "تكلفة الشراء"), value: "\(String(format: "%.2f", cost)) ر.ق")
-                        }
-
-                        if !item.notes.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(Language.get("POS_Notes", alter: "ملاحظات الحجز"))
-                                    .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                Text(item.notes)
-                                    .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                                    .foregroundColor(AdminSurface.primaryText)
+                    VStack(spacing: AdminSpacing.xs) {
+                        dossierSection(title: Language.get("POS_Section_Reservation", alter: "بيانات الحجز")) {
+                            dossierRow(icon: "number.circle", title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"), value: "#\(item.reservationID)", mono: true)
+                            if let valid = item.validUntil {
+                                dossierRow(icon: "clock.fill", title: Language.get("POS_ValidUntil", alter: "صالح حتى"), value: {
+                                    let fmt = DateFormatter()
+                                    fmt.dateStyle = .medium
+                                    fmt.timeStyle = .short
+                                    fmt.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+                                    return fmt.string(from: valid)
+                                }())
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 4)
+                            dossierRow(icon: "tag.fill", title: Language.get("POS_UnitID", alter: "معرف الوحدة"), value: item.unitID, mono: true)
+                        }
+
+                        dossierSection(title: Language.get("POS_Section_Customer", alter: "بيانات العميل")) {
+                            dossierRow(icon: "person.fill", title: Language.get("POS_Customer", alter: "الاسم"), value: item.customerName.isEmpty ? "—" : item.customerName)
+                            if !item.customerPhone.isEmpty {
+                                dossierRowWithActions(
+                                    icon: "phone.fill",
+                                    title: Language.get("POS_Phone", alter: "الهاتف"),
+                                    value: item.customerPhone,
+                                    phone: item.customerPhone
+                                )
+                            }
+                            if !item.branchName.isEmpty {
+                                dossierRow(icon: "building.2.fill", title: Language.get("POS_Branch", alter: "الفرع"), value: item.branchName)
+                            }
+                        }
+
+                        dossierSection(title: Language.get("POS_Section_Financial", alter: "البيانات المالية")) {
+                            dossierRow(icon: "banknote.fill", title: Language.get("POS_LockedPrice", alter: "سعر الحجز المعتمد"), value: "\(String(format: "%.2f", item.sellingPrice)) ر.ق")
+                            if let cost = item.purchaseCost, cost > 0 {
+                                dossierRow(icon: "cart.fill", title: Language.get("LivePet_PurchaseCost", alter: "تكلفة الشراء"), value: "\(String(format: "%.2f", cost)) ر.ق")
+                            }
+                        }
+
+                        if !item.supplier.isEmpty || !item.notes.isEmpty {
+                            dossierSection(title: Language.get("POS_Section_Notes", alter: "ملاحظات إضافية")) {
+                                if !item.supplier.isEmpty {
+                                    dossierRow(icon: "shippingbox.fill", title: Language.get("LivePet_Supplier", alter: "المورد"), value: item.supplier)
+                                }
+                                if !item.notes.isEmpty {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Label(Language.get("POS_Notes", alter: "ملاحظات"), systemImage: "note.text")
+                                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                                            .foregroundStyle(AdminSurface.secondaryText)
+                                        Text(item.notes)
+                                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                                            .foregroundStyle(AdminSurface.primaryText)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
                         }
                     }
-                    .padding(16)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(AdminSurface.hairline, lineWidth: 1)
-                    )
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.bottom, AdminSpacing.xxl)
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, 16)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("POS_AnimalDossier_Title", alter: "ملف سجل الحيوان المحجوز"))
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Done", alter: "تم")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
-                    .foregroundColor(AdminSurface.primary)
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("POS_AnimalDossier_Title", alter: "ملف الحيوان المحجوز"))
+                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
                 }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Done", alter: "تم")) { dismiss() }
+                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+            }
+        }
+        .onAppear { appeared = true }
+    }
+
+    private var heroImage: some View {
+        ZStack {
+            if let url = URL(string: item.photoURL), !item.photoURL.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                            .scaleEffect(heroScale)
+                            .onAppear {
+                                withAnimation(.easeOut(duration: 1.2)) { heroScale = 1.0 }
+                            }
+                    default:
+                        heroPlaeholder
+                    }
+                }
+            } else {
+                heroPlaeholder
             }
         }
     }
 
-    private var dossierPlaceholder: some View {
+    private var heroPlaeholder: some View {
         ZStack {
-            AdminSurface.control
+            LinearGradient(
+                colors: [AdminSurface.primary.opacity(0.15), AdminSurface.primary.opacity(0.04)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
             Image(systemName: "pawprint.fill")
-                .font(.system(size: 32))
-                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                .font(.system(size: 56, weight: .light))
+                .foregroundStyle(AdminSurface.primary.opacity(0.25))
         }
     }
 
-    private func dossierRow(title: String, value: String) -> some View {
-        HStack {
+    private func dossierSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
             Text(title)
-                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
-                .foregroundColor(AdminSurface.secondaryText)
+                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .padding(.leading, 4)
+                .padding(.top, AdminSpacing.md)
+
+            VStack(spacing: 0) {
+                content()
+            }
+            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+            )
+        }
+    }
+
+    private func dossierRow(icon: String, title: String, value: String, mono: Bool = false) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                .frame(width: 22)
+
+            Text(title)
+                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                .foregroundStyle(AdminSurface.secondaryText)
             Spacer()
             Text(value)
-                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
-                .foregroundColor(AdminSurface.primaryText)
-                .monospacedDigit()
+                .font(mono
+                      ? Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
+                      : Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+                .multilineTextAlignment(.trailing)
         }
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, 12)
+        .overlay(Rectangle().fill(AdminSurface.hairline).frame(height: AdminStroke.thin), alignment: .bottom)
+    }
+
+    private func dossierRowWithActions(icon: String, title: String, value: String, phone: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                .frame(width: 22)
+
+            Text(title)
+                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                .foregroundStyle(AdminSurface.secondaryText)
+            Spacer()
+            HStack(spacing: 6) {
+                Text(value)
+                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                // Call
+                Button {
+                    guard let url = URL(string: "tel://\(phone.filter { "0123456789+".contains($0) })") else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .padding(5)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
+                }
+
+                // WhatsApp
+                Button {
+                    let digits = phone.filter { "0123456789".contains($0) }
+                    guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+                    UIApplication.shared.open(url)
+                } label: {
+                    Image(systemName: "message.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .padding(5)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
+                }
+            }
+        }
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, 12)
+        .overlay(Rectangle().fill(AdminSurface.hairline).frame(height: AdminStroke.thin), alignment: .bottom)
     }
 }
 
 // MARK: - Extend Hold Sheet
 
-public struct POSExtendReservationSheet: View {
+struct POSExtendReservationSheet: View {
     let item: POSReservedPetCardModel
     @ObservedObject var viewModel: POSReservedLivePetsViewModel
     @Environment(\.dismiss) private var dismiss
@@ -1287,192 +1614,270 @@ public struct POSExtendReservationSheet: View {
     @State private var reason: String = ""
     @State private var isSubmitting: Bool = false
 
-    public var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                VStack(spacing: 6) {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 38))
-                        .foregroundColor(AdminSurface.primary)
-                        .padding(.top, 16)
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: AdminSpacing.lg) {
+                    // Illustration header
+                    VStack(spacing: AdminSpacing.sm) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.08))
+                                .frame(width: 80, height: 80)
+                            Image(systemName: "calendar.badge.clock")
+                                .font(.system(size: 36, weight: .light))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                        .padding(.top, AdminSpacing.lg)
 
-                    Text(Language.get("POS_Extend_Title", alter: "تمديد مهلة الحجز"))
-                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .title3))
-                        .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.get("POS_Extend_Title", alter: "تمديد مهلة الحجز"))
+                            .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                            .foregroundStyle(AdminSurface.primaryText)
 
-                    Text("\(item.animalName) • #\(item.ringTag)")
-                        .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
+                        Text("\(item.animalName) · #\(item.ringTag)")
+                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
 
-                // Presets
-                HStack(spacing: 8) {
-                    presetButton(title: "+٢٤ ساعة", hours: 24)
-                    presetButton(title: "+٤٨ ساعة", hours: 48)
-                    presetButton(title: "+٧ أيام", hours: 168)
-                }
+                    // Quick presets
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.get("POS_QuickExtend", alter: "تمديد سريع"))
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, AdminSpacing.xs)
 
-                // Date Picker
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("POS_NewExpiryDate", alter: "تاريخ وساعة الانتهاء الجديدة"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
+                        HStack(spacing: 8) {
+                            presetChip(title: "+٢٤ ساعة", hours: 24)
+                            presetChip(title: "+٤٨ ساعة", hours: 48)
+                            presetChip(title: "+٧ أيام", hours: 168)
+                            presetChip(title: "+٣٠ يوم", hours: 720)
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
 
-                    DatePicker(
-                        "",
-                        selection: $customDate,
-                        in: Date()...,
-                        displayedComponents: [.date, .hourAndMinute]
-                    )
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    .padding(8)
-                    .frame(maxWidth: .infinity)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
+                    // Date Picker
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.get("POS_NewExpiryDate", alter: "تاريخ وساعة الانتهاء الجديدة"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, AdminSpacing.xs)
 
-                // Reason input
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("POS_ExtendReason", alter: "سبب التمديد (اختياري)"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
+                        DatePicker("", selection: $customDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .padding(AdminSpacing.md)
+                            .frame(maxWidth: .infinity)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
 
-                    TextField(Language.get("POS_ExtendReason_Placeholder", alter: "طلب العميل، تأكيد موعد الاستلام..."), text: $reason)
+                    // Reason
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.get("POS_ExtendReason", alter: "سبب التمديد (اختياري)"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, AdminSpacing.xs)
+
+                        TextField(
+                            Language.get("POS_ExtendReason_Placeholder", alter: "طلب العميل، تأكيد موعد الاستلام..."),
+                            text: $reason
+                        )
                         .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                        .padding(10)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(AdminSpacing.md)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                 }
-
-                Spacer()
-
+            }
+            .safeAreaInset(edge: .bottom) {
                 Button {
                     isSubmitting = true
                     Task {
-                        let success = await viewModel.extendHold(for: item, newValidUntil: customDate, reason: reason)
+                        let ok = await viewModel.extendHold(for: item, newValidUntil: customDate, reason: reason)
                         isSubmitting = false
-                        if success { dismiss() }
+                        if ok { dismiss() }
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        if isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                        }
+                        if isSubmitting { ProgressView().tint(.white) }
+                        else { Image(systemName: "checkmark.circle.fill") }
                         Text(Language.get("POS_Confirm_Extend", alter: "تأكيد تمديد الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                     }
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(height: 52)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
+                    .shadow(color: AdminSurface.primary.opacity(0.3), radius: 10, y: 4)
                 }
                 .disabled(isSubmitting)
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.vertical, AdminSpacing.md)
+                .background(.thinMaterial)
             }
-            .padding(AdminSpacing.screenMargin)
-            .background(AdminSurface.surface.ignoresSafeArea())
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
+                    Button(Language.get("Cancel", alter: "إلغاء")) { dismiss() }
+                        .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
                 }
             }
         }
     }
 
-    private func presetButton(title: String, hours: Int) -> some View {
+    private func presetChip(title: String, hours: Int) -> some View {
         let isSelected = selectedHours == hours
         return Button {
             selectedHours = hours
             customDate = Date().addingTimeInterval(TimeInterval(hours * 3600))
         } label: {
             Text(title)
-                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(isSelected ? AdminSurface.primary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .padding(.vertical, AdminSpacing.sm)
+                .background(
+                    isSelected ? AdminSurface.primary : Color(uiColor: .secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                        .stroke(isSelected ? .clear : AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                )
+                .shadow(color: isSelected ? AdminSurface.primary.opacity(0.25) : .clear, radius: 5, y: 2)
         }
+        .scaleEffect(isSelected ? 1.03 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
     }
 }
 
 // MARK: - Release Hold Sheet
 
-public struct POSReleaseReservationSheet: View {
+struct POSReleaseReservationSheet: View {
     let item: POSReservedPetCardModel
     @ObservedObject var viewModel: POSReservedLivePetsViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var reason: String = ""
     @State private var isSubmitting: Bool = false
+    @State private var confirmed: Bool = false
 
-    public var body: some View {
-        NavigationStack {
-            VStack(spacing: 20) {
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 42))
-                        .foregroundColor(Color(uiColor: .ppError))
-                        .padding(.top, 16)
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: AdminSpacing.lg) {
+                    // Warning illustration
+                    VStack(spacing: AdminSpacing.sm) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(uiColor: .ppError).opacity(0.1))
+                                .frame(width: 80, height: 80)
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 36, weight: .light))
+                                .foregroundStyle(Color(uiColor: .ppError))
+                        }
+                        .padding(.top, AdminSpacing.lg)
 
-                    Text(Language.get("POS_Release_Title", alter: "إلغاء الحجز وإعادة الإتاحة"))
-                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .title3))
-                        .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.get("POS_Release_Title", alter: "إلغاء الحجز"))
+                            .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                            .foregroundStyle(AdminSurface.primaryText)
 
-                    Text(Language.get("POS_Release_Warning", alter: "سيتم إلغاء الحجز فوراً وإعادة الحيوان إلى قائمة المتاح في الكتالوج ونقطة البيع لجميع العملاء."))
+                        Text(Language.get("POS_Release_Warning",
+                                          alter: "سيتم إلغاء الحجز فوراً وإعادة الحيوان إلى المخزون المتاح لجميع العملاء."))
+                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, AdminSpacing.xl)
+                    }
+
+                    // Pet identity reminder
+                    HStack(spacing: AdminSpacing.sm) {
+                        PetAvatarView(url: item.photoURL, size: 44, cornerRadius: 12)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.animalName)
+                                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text("#\(item.ringTag) · \(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم") : item.customerName)")
+                                .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        Spacer()
+                        Text("\(String(format: "%.0f", item.sellingPrice)) ر.ق")
+                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
+                            .foregroundStyle(Color(uiColor: .ppError))
+                    }
+                    .padding(AdminSpacing.md)
+                    .background(Color(uiColor: .ppError).opacity(0.05), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .stroke(Color(uiColor: .ppError).opacity(0.15), lineWidth: AdminStroke.thin)
+                    )
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+
+                    // Reason
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(Language.get("POS_Release_Reason", alter: "سبب الإلغاء"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, AdminSpacing.xs)
+
+                        TextField(
+                            Language.get("POS_Release_Reason_Placeholder", alter: "عدم حضور العميل، طلب الإلغاء..."),
+                            text: $reason
+                        )
                         .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 16)
+                        .padding(AdminSpacing.md)
+                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+
+                    // Confirmation toggle
+                    HStack(spacing: AdminSpacing.sm) {
+                        Toggle("", isOn: $confirmed)
+                            .labelsHidden()
+                            .tint(Color(uiColor: .ppError))
+                        Text(Language.get("POS_Release_Confirm_Label", alter: "أتحمل مسؤولية إلغاء هذا الحجز نيابةً عن إدارة المتجر"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                 }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("POS_Release_Reason", alter: "سبب الإلغاء"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    TextField(Language.get("POS_Release_Reason_Placeholder", alter: "عدم حضور العميل، طلب الإلغاء، انتهاء المهلة..."), text: $reason)
-                        .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                        .padding(10)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-
-                Spacer()
-
+            }
+            .safeAreaInset(edge: .bottom) {
                 Button {
                     isSubmitting = true
                     Task {
-                        let success = await viewModel.releaseHold(for: item, reason: reason)
+                        let ok = await viewModel.releaseHold(for: item, reason: reason)
                         isSubmitting = false
-                        if success { dismiss() }
+                        if ok { dismiss() }
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        if isSubmitting {
-                            ProgressView().tint(.white)
-                        } else {
-                            Image(systemName: "lock.open.fill")
-                        }
-                        Text(Language.get("POS_Confirm_Release", alter: "تأكيد إلغاء الحجز والتحرير"))
+                        if isSubmitting { ProgressView().tint(.white) }
+                        else { Image(systemName: "lock.open.fill") }
+                        Text(Language.get("POS_Confirm_Release", alter: "تأكيد إلغاء الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                     }
-                    .foregroundColor(.white)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .frame(height: 52)
+                    .background(
+                        confirmed ? Color(uiColor: .ppError) : Color(uiColor: .ppError).opacity(0.4),
+                        in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                    )
+                    .shadow(color: confirmed ? Color(uiColor: .ppError).opacity(0.3) : .clear, radius: 10, y: 4)
                 }
-                .disabled(isSubmitting)
+                .disabled(isSubmitting || !confirmed)
+                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: confirmed)
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.vertical, AdminSpacing.md)
+                .background(.thinMaterial)
             }
-            .padding(AdminSpacing.screenMargin)
-            .background(AdminSurface.surface.ignoresSafeArea())
+            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "تراجع")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
+                    Button(Language.get("Cancel", alter: "تراجع")) { dismiss() }
+                        .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
                 }
             }
         }

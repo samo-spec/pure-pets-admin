@@ -79,7 +79,9 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         currency: String,
         paymentMethod: String,
         cashReceived: Double,
-        cartItems: [POSCartItem]
+        cartItems: [POSCartItem],
+        customerName: String = "",
+        customerPhone: String = ""
     ) {
         self.transactionID = transactionID
         createdAt = Date()
@@ -101,8 +103,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         self.paymentMethod = paymentMethod
         self.currency = currency.isEmpty ? "QAR" : currency
         status = "completed"
-        customerName = ""
-        customerPhone = ""
+        self.customerName = customerName
+        self.customerPhone = customerPhone
         note = ""
         isAuthoritative = false
     }
@@ -558,7 +560,7 @@ struct POSCompletedReceiptSheet: View {
 // MARK: - Localized Formatting
 
 @MainActor
-private enum POSReceiptFormat {
+enum POSReceiptFormat {
     static func currency(_ value: Double, code: String) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency

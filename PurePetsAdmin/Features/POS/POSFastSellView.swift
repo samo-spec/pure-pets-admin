@@ -318,6 +318,13 @@ final class POSFastSellViewModel: ObservableObject {
     @Published var catalogFilter: POSCatalogFilter = .accessories
     @Published var catalogSearchText: String = ""
 
+    @Published var selectedCustomer: POSCustomerRecord? = nil
+
+    func clearSelectedCustomer() {
+        selectedCustomer = nil
+        invalidateSubmissionCommand()
+    }
+
     private var listener: AnyObject?
     /// Retained across an uncertain callable response so retrying the same
     /// checkout cannot create a second transaction. Any cart/payment change
@@ -440,6 +447,35 @@ final class POSFastSellViewModel: ObservableObject {
         invalidateSubmissionCommand()
     }
 
+    func addReservedUnitToCart(
+        accessory: PetAccessory,
+        unitID: String,
+        ringTag: String,
+        agreedPrice: Double
+    ) {
+        invalidateSubmissionCommand()
+        if let idx = cartItems.firstIndex(where: { $0.accessory.accessoryID == accessory.accessoryID && $0.isIndividuallyTracked }) {
+            var existing = cartItems[idx]
+            if !existing.unitIDs.contains(unitID) {
+                existing.unitIDs.append(unitID)
+                existing.unitRingTags.append(ringTag)
+                existing.unitPrices.append(["unitId": unitID, "unitPrice": agreedPrice])
+                existing.quantity = existing.unitIDs.count
+                cartItems[idx] = existing
+            }
+        } else {
+            let item = POSCartItem(
+                accessory: accessory,
+                quantity: 1,
+                inventoryMode: kPOSIndividualInventoryMode,
+                unitIDs: [unitID],
+                unitRingTags: [ringTag],
+                unitPrices: [["unitId": unitID, "unitPrice": agreedPrice]]
+            )
+            cartItems.append(item)
+        }
+    }
+
     func increaseQuantity(_ item: POSCartItem) {
         guard let idx = cartItems.firstIndex(where: { $0.id == item.id }) else { return }
         guard !cartItems[idx].isIndividuallyTracked else { return }
@@ -514,12 +550,19 @@ final class POSFastSellViewModel: ObservableObject {
             return payload
         }
 
+        let customerName = selectedCustomer?.name
+        let customerPhone = selectedCustomer?.phone
+        let posCustomerID = selectedCustomer?.id
+
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
             total: cartTotal,
             paymentMethod: selectedPaymentMethod,
             cashReceived: selectedPaymentMethod == "cash" ? NSNumber(value: acceptedCash) : nil,
-            commandID: commandID
+            commandID: commandID,
+            customerName: customerName,
+            customerPhone: customerPhone,
+            posCustomerID: posCustomerID
         ) { [weak self] result, error in
             // Project ObjC/Foundation values before crossing into MainActor.
             let transactionID = result?.transactionID ?? ""
@@ -560,7 +603,9 @@ final class POSFastSellViewModel: ObservableObject {
                     currency: serverCurrency,
                     paymentMethod: self.selectedPaymentMethod,
                     cashReceived: acceptedCash,
-                    cartItems: self.cartItems
+                    cartItems: self.cartItems,
+                    customerName: customerName ?? "",
+                    customerPhone: customerPhone ?? ""
                 )
                 self.invalidateSubmissionCommand()
                 self.isSubmitting = false
@@ -694,7 +739,8 @@ struct AdminPOSFastSellView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
-    @State private var showsItemPicker = false
+    @State private var showsReservedLivePets = false
+    @State private var showsCustomerPicker = false
     @State private var animalSearchQuery = ""
 
     // Fly-to-cart choreography
@@ -714,6 +760,7 @@ struct AdminPOSFastSellView: View {
 
             VStack(spacing: 0) {
                 dossierHeaderView
+                customerBarView
                 filterRail
                 catalogGrid
             }
@@ -747,8 +794,28 @@ struct AdminPOSFastSellView: View {
         .ignoresSafeArea(.all, edges: .bottom)
         .coordinateSpace(name: POSFastSellSpace.root)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(isPresented: $showsItemPicker) {
-            itemPickerSheet
+        .sheet(isPresented: $showsCustomerPicker) {
+            POSCustomerPickerSheet(currentSelected: viewModel.selectedCustomer) { customer in
+                viewModel.selectedCustomer = customer
+                showsCustomerPicker = false
+            }
+        }
+        .sheet(isPresented: $showsReservedLivePets) {
+            POSReservedLivePetsView(
+                session: session,
+                allAccessories: viewModel.allAccessories,
+                onCompleteSale: { card in
+                    showsReservedLivePets = false
+                    if let acc = viewModel.allAccessories.first(where: { $0.accessoryID == card.productID }) {
+                        viewModel.addReservedUnitToCart(
+                            accessory: acc,
+                            unitID: card.unitID,
+                            ringTag: card.ringTag,
+                            agreedPrice: card.sellingPrice
+                        )
+                    }
+                }
+            )
         }
         .sheet(isPresented: Binding(
             get: { unitPicker.isPresented },
@@ -811,21 +878,33 @@ struct AdminPOSFastSellView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
             Button {
-                showsItemPicker = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showsReservedLivePets = true
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: "plus")
+                    Image(systemName: "pawprint.circle.fill")
                         .font(.system(size: 13, weight: .bold))
-                    Text(Language.get("Add", alter: "إضافة منتج"))
-                        .font(AdminType.captionBold)
+                    Text(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                         .lineLimit(1)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .frame(minHeight: 38)
-                .background(AdminSurface.primary, in: Capsule())
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.88)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.2), radius: 4, y: 1)
             }
-            .accessibilityLabel(Language.get("Add", alter: "إضافة منتج"))
+            .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
         }
         .padding(.horizontal, AdminSpacing.sm)
         .padding(.vertical, AdminSpacing.sm)
@@ -834,6 +913,105 @@ struct AdminPOSFastSellView: View {
         .overlay(Capsule().stroke(AdminSurface.hairline))
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.top, AdminSpacing.xs)
+    }
+
+    // MARK: - Customer Affordance Bar
+
+    private var customerBarView: some View {
+        HStack(spacing: 8) {
+            if let customer = viewModel.selectedCustomer {
+                // Active Attached Customer Card
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(customer.avatarColor)
+                            .frame(width: 28, height: 28)
+                        Text(customer.initials)
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 4) {
+                            Text(customer.name)
+                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.green)
+                        }
+                        Text(customer.phone)
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .monospacedDigit()
+                    }
+
+                    Spacer(minLength: 4)
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showsCustomerPicker = true
+                    } label: {
+                        Text(Language.get("Change", alter: "تغيير"))
+                            .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                    }
+                    .accessibilityLabel(Language.get("Change", alter: "تغيير"))
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(AdminAnimation.fast) {
+                            viewModel.clearSelectedCustomer()
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    }
+                    .accessibilityLabel(Language.get("Remove", alter: "إلغاء التحديد"))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AdminSurface.primary.opacity(0.35), lineWidth: 1.2)
+                )
+            } else {
+                // No Customer Selected: Quick Pick/Add Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsCustomerPicker = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                        Text(Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة"))
+                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.primaryText)
+                        Spacer()
+                        Image(systemName: "chevron.backward")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 6)
     }
 
     // MARK: - Category Filter Rail
