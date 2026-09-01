@@ -34,9 +34,19 @@ NS_ASSUME_NONNULL_BEGIN
 @interface PPPOSReceipt : NSObject
 @property (nonatomic, copy) NSString *receiptID;
 @property (nonatomic, strong) NSArray<PPPOSCartItem *> *items;
+@property (nonatomic, assign) double subtotal;
+@property (nonatomic, assign) double discount;
 @property (nonatomic, assign) double total;
+@property (nonatomic, assign) double cashReceived;
+@property (nonatomic, assign) double changeDue;
 @property (nonatomic, copy) NSString *paymentMethod;
 @property (nonatomic, copy) NSString *currency;
+@property (nonatomic, copy) NSString *status;
+@property (nonatomic, copy) NSString *customerName;
+@property (nonatomic, copy) NSString *customerPhone;
+@property (nonatomic, copy) NSString *note;
+@property (nonatomic, copy) NSString *source;
+@property (nonatomic, copy) NSString *operatorID;
 @property (nonatomic, assign) NSInteger schemaVersion;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
@@ -55,11 +65,25 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
                           total:(double)total
                   paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
                       commandID:(NSString *)commandID
+                     completion:(void(^)(PPPOSSubmitResult * _Nullable result,
+                                         NSError * _Nullable error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(nullable NSString *)customerName
+                  customerPhone:(nullable NSString *)customerPhone
+                  posCustomerID:(nullable NSString *)posCustomerID
                      completion:(void(^)(PPPOSSubmitResult * _Nullable result,
                                          NSError * _Nullable error))completion;
 - (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts,
                                                 NSError * _Nullable error))completion;
+- (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
+                             completion:(void(^)(PPPOSReceipt * _Nullable receipt,
+                                                 NSError * _Nullable error))completion;
 @end
 
 NS_ASSUME_NONNULL_END

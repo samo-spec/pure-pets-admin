@@ -656,7 +656,10 @@ static NSString *PPStaffRolesLocalizedDictionaryValue(NSDictionary *localizedVal
 
     StaffRoleTemplate *role = self.customRoles[indexPath.row];
     UIContextualAction *deleteAction = [UIContextualAction contextualActionWithStyle:UIContextualActionStyleDestructive title:kLang(@"Delete") handler:^(__unused UIContextualAction * _Nonnull action, __unused __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
-        [PPAlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:kLang(@"confirmDeleteRole") placeholder:nil confirmButton:kLang(@"Delete") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
+        NSString *roleName = PPStaffRolesLocalizedDictionaryValue(role.name);
+        if (roleName.length == 0) roleName = kLang(@"Staff_Role_Effective");
+        NSString *message = [NSString stringWithFormat:kLang(@"Staff_Role_Delete_Confirm_Message_Format"), roleName];
+        [PPAlertHelper showConfirmationIn:self title:kLang(@"Staff_Role_Delete_Confirm_Title") subtitle:message placeholder:nil confirmButton:kLang(@"Delete") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
             [[RPManager shared] deleteStaffRole:role.id completion:^(NSError * _Nullable error) {
                 if (error) [PPToast toast:error.localizedDescription];
                 completionHandler(error == nil);

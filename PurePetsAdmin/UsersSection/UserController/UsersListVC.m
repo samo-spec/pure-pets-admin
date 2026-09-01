@@ -1384,7 +1384,11 @@ static NSString *PPUsersLocalizedCount(NSInteger count) {
     }
     
     NSString *actionName = shouldBlock ? kLang(@"BlockUser_Action") : kLang(@"Unblock");
-    [PPAlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:[NSString stringWithFormat:@"%@ %@", actionName, user.UserName] confirmButton:actionName cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(NSString * _Nullable text, BOOL didConfirm) {
+    NSString *displayName = user.UserName.length > 0 ? user.UserName : kLang(@"User");
+    NSString *titleKey = shouldBlock ? @"Users_Block_Confirm_Title" : @"Users_Unblock_Confirm_Title";
+    NSString *messageKey = shouldBlock ? @"Users_Block_Confirm_Message_Format" : @"Users_Unblock_Confirm_Message_Format";
+    NSString *message = [NSString stringWithFormat:kLang(messageKey), displayName];
+    [PPAlertHelper showConfirmationIn:self title:kLang(titleKey) subtitle:message confirmButton:actionName cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^(NSString * _Nullable text, BOOL didConfirm) {
         if (didConfirm) {
             [RPM setBlocked:shouldBlock forUID:user.uid reason:nil duration:nil completion:^(NSError * _Nullable error) {
                 if (error) [PPToast toast:error.localizedDescription];

@@ -127,6 +127,24 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      // The Command Center owns the authenticated root in every normal build.
      // The legacy root remains an explicit compile-time rollback seam only.
      {
+          NSDictionary *coldStartPayload = connectionOptions.notificationResponse.notification.request.content.userInfo;
+          NSString *pendingOrderID = [AppDelegate pp_isNotificationPayloadRoutable:coldStartPayload]
+               ? PPAdminNotificationOrderIDFromUserInfo(coldStartPayload)
+               : @"";
+
+          NSLog(@"\n"
+                @"=========================================================================\n"
+                @"🎬 [PPADMIN SCENE] Scene Connecting to Session\n"
+                @"=========================================================================\n"
+                @"   📱 Window Scene    : Configured & Key\n"
+                @"   👑 Root Controller : AdminAppRootHostingController (NextGen Command Center)\n"
+                @"   🔔 Cold Start Push : %@\n"
+                @"   📦 Pending Route   : %@\n"
+                @"=========================================================================",
+                coldStartPayload ? @"Detected" : @"None",
+                pendingOrderID.length > 0 ? [NSString stringWithFormat:@"Order ID: %@", pendingOrderID] : @"Direct Launch"
+          );
+
           AdminAppRootHostingController *adminRoot = [AdminAppRootHostingController new];
           self.window.rootViewController = adminRoot;
           [self.window makeKeyAndVisible];
@@ -134,10 +152,6 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
                                                    selector:@selector(pp_handlePaymentOrderRouteNotification:)
                                                        name:PPAdminRouteToPaymentOrderNotification
                                                      object:nil];
-          NSDictionary *coldStartPayload = connectionOptions.notificationResponse.notification.request.content.userInfo;
-          NSString *pendingOrderID = [AppDelegate pp_isNotificationPayloadRoutable:coldStartPayload]
-               ? PPAdminNotificationOrderIDFromUserInfo(coldStartPayload)
-               : @"";
           if (pendingOrderID.length > 0) {
                [adminRoot routeToPaymentOrderID:pendingOrderID];
            }

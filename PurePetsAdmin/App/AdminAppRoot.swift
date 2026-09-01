@@ -112,10 +112,13 @@ final class AdminSessionStore: ObservableObject {
                     return
                 }
                 guard let snapshot else {
+                    NSLog("🛡️  [PPADMIN COMMAND CENTER] Root State: Unauthenticated (Presenting Login Screen)")
                     self.state = .unauthenticated
                     return
                 }
                 let session = AdminSession(source: snapshot)
+                NSLog("🛡️  [PPADMIN COMMAND CENTER] Root State: Authenticated -> User: %@ | Role: %@ | Perms: %ld",
+                      session.displayName, session.roleIdentifier, session.permissions.count)
                 self.state = .authenticated(session)
                 self.startStaffObservation(for: session.uid)
             }

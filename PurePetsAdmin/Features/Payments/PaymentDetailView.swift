@@ -1,9 +1,9 @@
 import SwiftUI
 
-// MARK: - Admin Payment Detail View
+// MARK: - Admin Payment Detail View (NextGen V6 Reimagined)
 
-/// Native status dossier for one live order. Routing, authorization, data loading,
-/// and mutations remain owned by the existing Admin route and payment services.
+/// Flagship native dossier for order management, payment settlement, customer profile,
+/// and live operational commands in PurePets Admin.
 struct AdminPaymentDetailView: View {
     let orderID: String
     let session: AdminSession?
@@ -11,6 +11,8 @@ struct AdminPaymentDetailView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: PaymentDetailViewModel
+    @State private var copiedToastMessage: String? = nil
+    @State private var toastTask: Task<Void, Never>? = nil
 
     init(orderID: String, session: AdminSession? = nil, onDismiss: (() -> Void)? = nil) {
         self.orderID = orderID
@@ -20,11 +22,12 @@ struct AdminPaymentDetailView: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
+            // Ambient Atmospheric Background
             LinearGradient(
                 colors: [
                     AdminSurface.background,
-                    AdminSurface.primarySoft.opacity(0.16),
+                    AdminSurface.primarySoft.opacity(0.14),
                     AdminSurface.background,
                 ],
                 startPoint: .topLeading,
@@ -35,6 +38,29 @@ struct AdminPaymentDetailView: View {
             VStack(spacing: 0) {
                 dossierHeader
                 detailContent
+            }
+
+            // Floating Copy Notification Toast
+            if let message = copiedToastMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(Color(UIColor.ppSuccess))
+                        Text(message)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.85), in: Capsule(style: .continuous))
+                    .shadow(color: Color.black.opacity(0.18), radius: 12, y: 4)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, AdminSpacing.xl)
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: copiedToastMessage)
+                .zIndex(100)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -64,13 +90,18 @@ struct AdminPaymentDetailView: View {
 
     private var loadingState: some View {
         VStack(spacing: AdminSpacing.base) {
-            ProgressView()
-                .scaleEffect(1.12)
-                .tint(AdminSurface.primary)
-            Text(Language.get("PaymentMgmt_Loading_PaymentDetails", alter: ""))
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.10))
+                    .frame(width: 64, height: 64)
+                ProgressView()
+                    .scaleEffect(1.3)
+                    .tint(AdminSurface.primary)
+            }
+            Text(Language.get("PaymentMgmt_Loading_PaymentDetails", alter: "جارٍ تحميل تفاصيل الطلب..."))
                 .font(AdminType.headline)
                 .foregroundColor(AdminSurface.primaryText)
-            Text(Language.get("PaymentDetail_Loading_Source", alter: ""))
+            Text(Language.get("PaymentDetail_Loading_Source", alter: "مزامنة السجلات المباشرة مع الخادم"))
                 .font(AdminType.subheadline)
                 .foregroundColor(AdminSurface.secondaryText)
                 .multilineTextAlignment(.center)
@@ -82,11 +113,16 @@ struct AdminPaymentDetailView: View {
 
     private func errorState(message: String) -> some View {
         VStack(spacing: AdminSpacing.base) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: AdminIconSize.xl, weight: .semibold))
-                .foregroundColor(Color(UIColor.ppError))
-                .accessibilityHidden(true)
-            Text(Language.get("Error", alter: ""))
+            ZStack {
+                Circle()
+                    .fill(Color(UIColor.ppError).opacity(0.12))
+                    .frame(width: 68, height: 68)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundColor(Color(UIColor.ppError))
+                    .accessibilityHidden(true)
+            }
+            Text(Language.get("Error", alter: "حدث خطأ"))
                 .font(AdminType.title3)
                 .foregroundColor(AdminSurface.primaryText)
             Text(message)
@@ -96,9 +132,9 @@ struct AdminPaymentDetailView: View {
             Button {
                 viewModel.loadData()
             } label: {
-                Label(Language.get("Retry", alter: ""), systemImage: "arrow.clockwise")
+                Label(Language.get("Retry", alter: "إعادة المحاولة"), systemImage: "arrow.clockwise")
                     .font(AdminType.calloutBold)
-                    .frame(minWidth: 132, minHeight: AdminTouchTarget.comfortable)
+                    .frame(minWidth: 140, minHeight: AdminTouchTarget.comfortable)
             }
             .buttonStyle(.borderedProminent)
             .tint(AdminSurface.primary)
@@ -112,84 +148,90 @@ struct AdminPaymentDetailView: View {
     // MARK: - Dossier Header
 
     private var dossierHeader: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack(spacing: AdminSpacing.md) {
-                Button(action: closeScreen) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: ""))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: AdminTouchTarget.minimum)
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: AdminSpacing.md) {
+            // Tactile Back Button
+            Button(action: closeScreen) {
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(AdminSurface.surface, in: Circle())
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1.0))
+                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+            }
+            .buttonStyle(NextGenScaleButtonStyle())
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
 
-                Spacer(minLength: AdminSpacing.base)
-
-                Button {
-                    viewModel.loadData()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.primary.opacity(0.10))
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                        if viewModel.isBusy {
-                            ProgressView().tint(AdminSurface.primary)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(AdminSurface.primary)
-                        }
-                    }
+            // Title & Scope
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("PaymentMgmt_Title_Details", alter: "ملف الطلب والمدفوعات"))
+                    .font(AdminType.title3)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color(UIColor.ppSuccess))
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("PaymentDetail_LiveFeed", alter: "بث تشغيلي مباشر"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
                 }
-                .buttonStyle(.plain)
-                .disabled(viewModel.isBusy)
-                .accessibilityLabel(Language.get("PaymentDetail_Refresh", alter: ""))
-                .accessibilityHint(Language.get("PaymentDetail_Refresh_Hint", alter: ""))
             }
 
-            Text(
-                Language.get("PaymentMgmt_Title_List", alter: "")
-                    + " / "
-                    + Language.get("PaymentMgmt_Title_Details", alter: "")
-            )
-            .font(AdminType.caption1)
-            .foregroundColor(AdminSurface.secondaryText)
+            Spacer(minLength: 0)
 
-            Text(Language.get("PaymentMgmt_Title_Details", alter: ""))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-                .accessibilityAddTraits(.isHeader)
+            // Refresh Action
+            Button {
+                triggerHaptic()
+                viewModel.loadData()
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.surface)
+                        .frame(width: 44, height: 44)
+                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1.0))
+                        .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+                    if viewModel.isBusy {
+                        ProgressView().tint(AdminSurface.primary)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                }
+            }
+            .buttonStyle(NextGenScaleButtonStyle())
+            .disabled(viewModel.isBusy)
+            .accessibilityLabel(Language.get("PaymentDetail_Refresh", alter: "تحديث"))
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.top, AdminSpacing.xs)
         .padding(.bottom, AdminSpacing.sm)
-        .background(AdminSurface.background.opacity(0.96))
+        .background(AdminSurface.background.opacity(0.94))
     }
 
     private func closeScreen() {
+        triggerHaptic()
         if let onDismiss { onDismiss() } else { dismiss() }
     }
 
     // MARK: - Live Order Content
 
     private func orderContent(_ record: PPPaymentAdminRecord) -> some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             LazyVStack(spacing: AdminSpacing.base) {
                 briefingSection(record)
 
                 if viewModel.isPerformingAction || viewModel.officialActionInFlight {
                     PaymentDetailFeedbackBanner(
-                        message: Language.get("PaymentMgmt_Loading_OrderUpdate", alter: ""),
+                        message: Language.get("PaymentMgmt_Loading_OrderUpdate", alter: "جارٍ تنفيذ العملية وتحديث السجل..."),
                         tint: AdminSurface.primary,
                         symbol: "arrow.triangle.2.circlepath",
                         showsProgress: true
                     )
                 } else if viewModel.isLoading {
                     PaymentDetailFeedbackBanner(
-                        message: Language.get("PaymentMgmt_Loading_PaymentDetails", alter: ""),
+                        message: Language.get("PaymentMgmt_Loading_PaymentDetails", alter: "جارٍ مزامنة تفاصيل الطلب..."),
                         tint: AdminSurface.primary,
                         symbol: "arrow.clockwise",
                         showsProgress: true
@@ -199,7 +241,7 @@ struct AdminPaymentDetailView: View {
                         message: error,
                         tint: Color(UIColor.ppError),
                         symbol: "exclamationmark.triangle.fill",
-                        actionTitle: Language.get("Retry", alter: ""),
+                        actionTitle: Language.get("Retry", alter: "إعادة المحاولة"),
                         action: { viewModel.loadData() }
                     )
                 } else if let success = viewModel.lastSuccessMessage {
@@ -217,204 +259,396 @@ struct AdminPaymentDetailView: View {
                 itemsSection(record)
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, AdminSpacing.sm)
-            .padding(.bottom, AdminSpacing.xxl)
+            .padding(.top, AdminSpacing.xs)
+            .padding(.bottom, AdminSpacing.xxl + 20)
         }
         .refreshable { viewModel.loadData() }
     }
 
-    // MARK: - Decision Briefing
+    // MARK: - 1. Executive Decision Apex (Crown Briefing Chamber)
 
     private func briefingSection(_ record: PPPaymentAdminRecord) -> some View {
         let status = statusPresentation(for: record)
         let decision = nextDecision(for: record)
         let reference = record.displayOrderReference() as String? ?? orderID
 
-        return ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .fill(AdminSurface.control)
-            Capsule()
-                .fill(status.tint)
-                .frame(width: AdminSpacing.xs)
-                .padding(.vertical, AdminSpacing.md)
-
-            VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                HStack(alignment: .center, spacing: AdminSpacing.md) {
-                    Image(systemName: "creditcard.and.123")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundColor(status.tint)
-                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                        .background(
-                            status.tint.opacity(0.10),
-                            in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                        )
-                        .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                        Text(Language.get("PaymentDetail_Context", alter: ""))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.secondaryText)
+        return VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            // Top Row: Ref & Live Status Pill
+            HStack(alignment: .center, spacing: AdminSpacing.sm) {
+                // Order Reference Pill with Copy
+                Button {
+                    copyToClipboard(text: reference, label: Language.get("PaymentMgmt_Field_OrderReference", alter: "رقم الطلب"))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
                         Text("#\(reference)")
-                        .font(AdminType.title2)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .textSelection(.enabled)
-                        .environment(\.layoutDirection, .leftToRight)
-                        Text(paymentMethodTitle(record))
-                            .font(AdminType.subheadline)
+                            .font(.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
+                            .foregroundColor(AdminSurface.primaryText)
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11, weight: .medium))
                             .foregroundColor(AdminSurface.secondaryText)
                     }
-                    Spacer(minLength: AdminSpacing.sm)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.primary.opacity(0.08), in: Capsule(style: .continuous))
+                    .overlay(Capsule(style: .continuous).stroke(AdminSurface.primary.opacity(0.20), lineWidth: 1.0))
                 }
+                .buttonStyle(NextGenScaleButtonStyle())
 
-                HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+                Spacer(minLength: 0)
+
+                // Live Status Radar Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(status.tint)
+                        .frame(width: 8, height: 8)
+                        .shadow(color: status.tint.opacity(0.6), radius: 3)
                     Text(status.title)
-                        .font(AdminType.subheadlineBold)
-                        .foregroundColor(status.tint)
-                    Spacer(minLength: AdminSpacing.sm)
-                    Text(formatCurrency(record.totalAmount, currency: record.currency as String?))
-                        .font(AdminType.title3)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
-                }
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(minHeight: AdminTouchTarget.minimum)
-                .background(
-                    status.tint.opacity(0.09),
-                    in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                )
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(labelValueAccessibility(
-                    label: Language.get("PaymentMgmt_Field_Status", alter: ""),
-                    value: status.title
-                ))
-
-                Divider().background(AdminSurface.hairline)
-
-                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                    Text(Language.get("PaymentDetail_NextAction", alter: ""))
                         .font(AdminType.captionBold)
+                        .foregroundColor(status.tint)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(status.tint.opacity(0.12), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).stroke(status.tint.opacity(0.3), lineWidth: 1.0))
+            }
+
+            // Financial & Method Horizon
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("PaymentMgmt_Field_Total", alter: "المبلغ الإجمالي"))
+                        .font(AdminType.caption2)
                         .foregroundColor(AdminSurface.secondaryText)
-                    HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                    Text(formatCurrency(record.totalAmount, currency: record.currency as String?))
+                        .font(.custom("Beiruti-Bold", size: 28, relativeTo: .largeTitle))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+
+                Spacer(minLength: AdminSpacing.sm)
+
+                // Payment Method Badge
+                HStack(spacing: 5) {
+                    Image(systemName: paymentMethodIcon(record))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                    Text(paymentMethodTitle(record))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1.0))
+            }
+
+            // Next Authorized Operational Move
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: "arrow.triangle.turn.up.right.diamond.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(decision.tint)
+                    Text(Language.get("PaymentDetail_NextAction", alter: "الإجراء التشغيلي الموصى به"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(decision.tint)
+                }
+
+                HStack(alignment: .center, spacing: AdminSpacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(decision.tint.opacity(0.14))
+                            .frame(width: 38, height: 38)
                         Image(systemName: decision.symbol)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundColor(decision.tint)
-                            .padding(.top, 3)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                            Text(decision.title)
-                                .font(AdminType.calloutBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                            Text(decision.subtitle)
-                                .font(AdminType.subheadline)
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(decision.title)
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(decision.subtitle)
+                            .font(AdminType.caption1)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(AdminSpacing.md)
+            .background(decision.tint.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(decision.tint.opacity(0.20), lineWidth: 1.0))
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(
+            ZStack {
+                AdminSurface.surface
+                RadialGradient(
+                    colors: [status.tint.opacity(0.08), Color.clear],
+                    center: .topTrailing,
+                    startRadius: 0,
+                    endRadius: 260
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1.0)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 14, y: 4)
+    }
+
+    // MARK: - 2. Overview Section (Reimagined Bento Chrono Grid)
+
+    private func overviewSection(_ record: PPPaymentAdminRecord) -> some View {
+        let reference = record.displayOrderReference() as String? ?? orderID
+        let statusTitle = PPPaymentAdminDisplayTitleForOrderStatus(record.rawStatus as String? ?? "")
+
+        return PaymentDetailSection(
+            title: Language.get("PaymentMgmt_Section_Overview", alter: "نظرة عامة والبيانات الزمنية"),
+            symbol: "doc.text.fill"
+        ) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                // Tile 1: Order Reference
+                BentoInfoCard(
+                    title: Language.get("PaymentMgmt_Field_OrderReference", alter: "رقم الطلب"),
+                    value: reference,
+                    symbol: "number.square.fill",
+                    tint: AdminSurface.primary,
+                    onTap: {
+                        copyToClipboard(text: reference, label: Language.get("PaymentMgmt_Field_OrderReference", alter: "رقم الطلب"))
+                    }
+                )
+
+                // Tile 2: Order Status
+                BentoInfoCard(
+                    title: Language.get("PaymentMgmt_Field_OrderStatus", alter: "حالة الطلب"),
+                    value: statusTitle,
+                    symbol: "bolt.ring.closed",
+                    tint: statusPresentation(for: record).tint
+                )
+
+                // Tile 3: Created Date
+                BentoInfoCard(
+                    title: Language.get("PaymentMgmt_Field_Created", alter: "تاريخ الإنشاء"),
+                    value: formatDate(record.createdAt as Date?),
+                    symbol: "calendar.badge.clock",
+                    tint: Color(UIColor.ppInfo)
+                )
+
+                // Tile 4: Last Updated
+                BentoInfoCard(
+                    title: Language.get("PaymentMgmt_Field_Updated", alter: "آخر تحديث"),
+                    value: formatDate(record.updatedAt as Date?),
+                    symbol: "arrow.triangle.2.circlepath.circle.fill",
+                    tint: Color(UIColor.ppQuickActionCommunity)
+                )
+            }
+        }
+    }
+
+    // MARK: - 3. Customer Section (VIP Passport Chamber)
+
+    private func customerSection(_ record: PPPaymentAdminRecord) -> some View {
+        let name = valueOrUnavailable(record.userDisplayName as String?)
+        let email = valueOrUnavailable(record.userEmail as String?)
+        let initials = userInitials(from: name)
+
+        return PaymentDetailSection(
+            title: Language.get("PaymentMgmt_Field_Customer", alter: "ملف العميل والاتصال"),
+            symbol: "person.crop.circle.fill"
+        ) {
+            VStack(spacing: AdminSpacing.md) {
+                HStack(alignment: .center, spacing: AdminSpacing.md) {
+                    // Customer Initials Monogram Avatar
+                    ZStack(alignment: .bottomTrailing) {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.8)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 54, height: 54)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                            .shadow(color: AdminSurface.primary.opacity(0.22), radius: 6, y: 2)
+
+                        Text(initials)
+                            .font(.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
+                            .foregroundColor(.white)
+
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(Color(UIColor.ppSuccess))
+                            .background(Color.white, in: Circle())
+                            .offset(x: 2, y: 2)
+                    }
+
+                    // Customer Details
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(name)
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        Text(email)
+                            .font(AdminType.caption1)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                // Customer Actions Bar
+                HStack(spacing: AdminSpacing.sm) {
+                    Button {
+                        copyToClipboard(text: email, label: Language.get("PaymentMgmt_Field_Email", alter: "البريد الإلكتروني"))
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.on.doc.fill")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Copy", alter: "نسخ البريد"))
+                                .font(AdminType.captionBold)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .foregroundColor(AdminSurface.primary)
+                        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(NextGenScaleButtonStyle())
+                }
+            }
+        }
+    }
+
+    // MARK: - 4. Payments Section (Luxury Settlement Ledger)
+
+    private func paymentSection(_ record: PPPaymentAdminRecord) -> some View {
+        let total = formatCurrency(record.totalAmount, currency: record.currency as String?)
+        let method = paymentMethodTitle(record)
+        let methodIcon = paymentMethodIcon(record)
+        let payStatus = record.paymentStatus as String? ?? ""
+        let verification = record.verificationStatus as String? ?? ""
+        let txId = record.transactionId as String? ?? ""
+
+        return PaymentDetailSection(
+            title: Language.get("PaymentMgmt_Section_Payments", alter: "المدفوعات والتسوية المالية"),
+            symbol: "creditcard.fill"
+        ) {
+            VStack(spacing: AdminSpacing.md) {
+                // Hero Settlement Card
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("PaymentMgmt_Field_Total", alter: "المبلغ الإجمالي المسجل"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(total)
+                            .font(.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    // Payment Method Chip
+                    HStack(spacing: 6) {
+                        Image(systemName: methodIcon)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                        Text(method)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.09), in: Capsule(style: .continuous))
+                }
+                .padding(AdminSpacing.md)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1.0))
+
+                // Verification & Transaction Details (if available)
+                if !payStatus.isEmpty || !verification.isEmpty || !txId.isEmpty {
+                    VStack(spacing: 8) {
+                        if !payStatus.isEmpty {
+                            DetailAttributeRow(
+                                label: Language.get("PaymentMgmt_Field_PaymentStatus", alter: "حالة الدفع"),
+                                value: PPPaymentAdminDisplayTitleForOrderStatus(payStatus),
+                                icon: "checkmark.seal"
+                            )
+                        }
+                        if !verification.isEmpty {
+                            DetailAttributeRow(
+                                label: Language.get("PaymentMgmt_Field_Verification", alter: "التحقق والاعتماد"),
+                                value: PPPaymentAdminDisplayTitleForVerificationStatus(verification),
+                                icon: "shield.lefthalf.filled.badge.checkmark"
+                            )
+                        }
+                        if !txId.isEmpty {
+                            DetailAttributeRow(
+                                label: Language.get("PaymentMgmt_Field_Transaction", alter: "رقم المعاملة"),
+                                value: txId,
+                                icon: "barcode.viewfinder",
+                                onCopy: {
+                                    copyToClipboard(text: txId, label: Language.get("PaymentMgmt_Field_Transaction", alter: "رقم المعاملة"))
+                                }
+                            )
                         }
                     }
                 }
             }
-            .padding(.vertical, AdminSpacing.md)
-            .padding(.leading, AdminSpacing.lg)
-            .padding(.trailing, AdminSpacing.md)
         }
-        .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
-        }
-        .accessibilityElement(children: .contain)
     }
 
-    private func statusPresentation(for record: PPPaymentAdminRecord) -> PaymentDetailStatusPresentation {
-        let rawStatus = record.rawStatus as String? ?? ""
-        let title = PPPaymentAdminDisplayTitleForOrderStatus(rawStatus)
-        if PPPaymentAdminRecord.isFailureLikeStatus(rawStatus)
-            || PPPaymentAdminRecord.isCancelledLikeStatus(rawStatus) {
-            return .init(title: title, tint: Color(UIColor.ppError))
+    // MARK: - 5. Items Section (Package Manifest Gallery)
+
+    private func itemsSection(_ record: PPPaymentAdminRecord) -> some View {
+        let items = record.items as? [[String: Any]] ?? []
+
+        return PaymentDetailSection(
+            title: Language.get("PaymentMgmt_Section_Items", alter: "بيان الأصناف والطرود"),
+            symbol: "bag.fill"
+        ) {
+            if items.isEmpty {
+                PaymentDetailInlineState(
+                    title: Language.get("PaymentMgmt_Placeholder_NoItemsTitle", alter: "لا توجد أصناف مرفقة"),
+                    subtitle: Language.get("PaymentMgmt_Placeholder_NoItemsSubtitle", alter: "لم يتم تسجيل عناصر تفصيلية في بيانات هذا الطلب."),
+                    symbol: "bag.badge.minus",
+                    tint: AdminSurface.secondaryText
+                )
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                        PaymentDetailItemRow(
+                            name: valueOrUnavailable(item["name"] as? String),
+                            quantity: quantityText(item["quantity"]),
+                            index: index + 1
+                        )
+                    }
+                }
+            }
         }
-        if PPPaymentAdminRecord.isDeliveredLikeStatus(rawStatus)
-            || PPPaymentAdminRecord.isPaidLikeStatus(rawStatus) {
-            return .init(title: title, tint: Color(UIColor.ppSuccess))
-        }
-        if PPPaymentAdminRecord.isShippedLikeStatus(rawStatus) {
-            return .init(title: title, tint: Color(UIColor.ppQuickActionCommunity))
-        }
-        if PPPaymentAdminRecord.isProcessingLikeStatus(rawStatus) {
-            return .init(title: title, tint: Color(UIColor.ppInfo))
-        }
-        if PPPaymentAdminRecord.canApproveOrderStatus(rawStatus) {
-            return .init(title: title, tint: Color(UIColor.ppWarning))
-        }
-        return .init(title: title, tint: AdminSurface.primary)
     }
 
-    private func nextDecision(for record: PPPaymentAdminRecord) -> PaymentDetailDecision {
-        guard canManagePayments else {
-            return .init(
-                title: Language.get("PaymentDetail_ReadOnly_Title", alter: ""),
-                subtitle: Language.get("PaymentDetail_ReadOnly_Subtitle", alter: ""),
-                symbol: "lock.shield.fill",
-                tint: Color(UIColor.ppWarning)
-            )
-        }
-        if record.fulfillmentVersion == 1 {
-            if viewModel.officialFulfillmentLoading {
-                return .init(
-                    title: Language.get("PaymentMgmt_OfficialFulfillment_Loading", alter: ""),
-                    subtitle: Language.get("PaymentDetail_Loading_Source", alter: ""),
-                    symbol: "arrow.triangle.2.circlepath",
-                    tint: AdminSurface.primary
-                )
-            }
-            if let error = viewModel.officialFulfillmentError {
-                return .init(
-                    title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: ""),
-                    subtitle: error,
-                    symbol: "exclamationmark.triangle.fill",
-                    tint: Color(UIColor.ppError)
-                )
-            }
-            if let first = viewModel.officialActions.first {
-                return .init(
-                    title: officialActionTitle(first),
-                    subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Action_Subtitle", alter: ""),
-                    symbol: officialActionSymbol(first),
-                    tint: officialActionColor(first)
-                )
-            }
-        } else {
-            let actions = legacyActions(for: record)
-            if let first = actions.first(where: { !$0.isDestructive }) ?? actions.first {
-                return .init(
-                    title: first.title,
-                    subtitle: first.subtitle,
-                    symbol: first.symbol,
-                    tint: first.tint
-                )
-            }
-        }
-        return .init(
-            title: Language.get("PaymentDetail_NoAction_Title", alter: ""),
-            subtitle: Language.get("PaymentDetail_NoAction_Subtitle", alter: ""),
-            symbol: "checkmark.seal.fill",
-            tint: Color(UIColor.ppSuccess)
-        )
-    }
-
-    // MARK: - Actions
+    // MARK: - 6. Actions Section (Command Dock)
 
     private func actionsSection(_ record: PPPaymentAdminRecord) -> some View {
         PaymentDetailSection(
             title: record.fulfillmentVersion == 1
-                ? Language.get("PaymentMgmt_OfficialFulfillment_Title", alter: "")
-                : Language.get("PaymentMgmt_Section_AdminActions", alter: ""),
+                ? Language.get("PaymentMgmt_OfficialFulfillment_Title", alter: "أوامر التنفيذ والشحن")
+                : Language.get("PaymentMgmt_Section_AdminActions", alter: "إجراءات الإدارة والتنفيذ"),
             symbol: record.fulfillmentVersion == 1
                 ? "shippingbox.and.arrow.backward"
                 : "bolt.shield.fill"
         ) {
             if !canManagePayments {
                 PaymentDetailInlineState(
-                    title: Language.get("PaymentDetail_ReadOnly_Title", alter: ""),
-                    subtitle: Language.get("PaymentDetail_ReadOnly_Subtitle", alter: ""),
+                    title: Language.get("PaymentDetail_ReadOnly_Title", alter: "وضع العرض فقط"),
+                    subtitle: Language.get("PaymentDetail_ReadOnly_Subtitle", alter: "لا يملك حساب الموظف صلاحية payments.manage لتنفيذ عمليات التغيير."),
                     symbol: "lock.shield.fill",
                     tint: Color(UIColor.ppWarning)
                 )
@@ -431,23 +665,23 @@ struct AdminPaymentDetailView: View {
         if viewModel.officialFulfillmentLoading {
             HStack(spacing: AdminSpacing.sm) {
                 ProgressView().tint(AdminSurface.primary)
-                Text(Language.get("PaymentMgmt_OfficialFulfillment_Loading", alter: ""))
+                Text(Language.get("PaymentMgmt_OfficialFulfillment_Loading", alter: "جارٍ تحميل إشارات التنفيذ..."))
                     .font(AdminType.subheadline)
                     .foregroundColor(AdminSurface.secondaryText)
             }
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .center)
         } else if let error = viewModel.officialFulfillmentError {
             PaymentDetailInlineState(
-                title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: ""),
+                title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: "تعذر إدارة مرحلة التنفيذ"),
                 subtitle: error,
                 symbol: "exclamationmark.triangle.fill",
                 tint: Color(UIColor.ppError),
-                actionTitle: Language.get("Retry", alter: ""),
+                actionTitle: Language.get("Retry", alter: "إعادة المحاولة"),
                 action: { viewModel.reloadOfficialFulfillment() }
             )
         } else if let fulfillment = viewModel.officialFulfillment {
             PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_OrderStatus", alter: ""),
+                label: Language.get("PaymentMgmt_Field_OrderStatus", alter: "حالة التنفيذ الحالية"),
                 value: PPPaymentAdminDisplayTitleForOrderStatus(fulfillment.status)
             )
             if !viewModel.officialActions.isEmpty {
@@ -456,7 +690,7 @@ struct AdminPaymentDetailView: View {
             ForEach(Array(viewModel.officialActions.enumerated()), id: \.element) { index, action in
                 PaymentDetailActionButton(
                     title: officialActionTitle(action),
-                    subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Action_Subtitle", alter: ""),
+                    subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Action_Subtitle", alter: "تحديث الحالة المعتمدة لهذا الطلب"),
                     symbol: officialActionSymbol(action),
                     tint: officialActionColor(action),
                     isPrimary: index == 0,
@@ -465,8 +699,8 @@ struct AdminPaymentDetailView: View {
             }
         } else {
             PaymentDetailInlineState(
-                title: Language.get("PaymentDetail_NoAction_Title", alter: ""),
-                subtitle: Language.get("PaymentMgmt_OfficialFulfillment_None", alter: ""),
+                title: Language.get("PaymentDetail_NoAction_Title", alter: "لا توجد إجراءات متاحة"),
+                subtitle: Language.get("PaymentMgmt_OfficialFulfillment_None", alter: "سجل التنفيذ مكتمل ومستقر."),
                 symbol: "checkmark.seal.fill",
                 tint: Color(UIColor.ppSuccess)
             )
@@ -478,8 +712,8 @@ struct AdminPaymentDetailView: View {
         let actions = legacyActions(for: record)
         if actions.isEmpty {
             PaymentDetailInlineState(
-                title: Language.get("PaymentDetail_NoAction_Title", alter: ""),
-                subtitle: Language.get("PaymentDetail_NoAction_Subtitle", alter: ""),
+                title: Language.get("PaymentDetail_NoAction_Title", alter: "لا توجد إجراءات متاحة"),
+                subtitle: Language.get("PaymentDetail_NoAction_Subtitle", alter: "هذا الطلب وصل إلى حالته النهائية."),
                 symbol: "checkmark.seal.fill",
                 tint: Color(UIColor.ppSuccess)
             )
@@ -523,7 +757,7 @@ struct AdminPaymentDetailView: View {
     }
 
     private var canManagePayments: Bool {
-        session?.hasPermission("payments.manage") == true
+        PPPaymentManagementService.shared().currentAdminCanManagePayments()
     }
 
     private func requestLegacyAction(_ action: PaymentDetailLegacyAction) {
@@ -539,10 +773,10 @@ struct AdminPaymentDetailView: View {
         let title = officialActionTitle(action)
         presentActionPrompt(
             title: title,
-            confirmation: Language.get("PaymentMgmt_OfficialFulfillment_Confirm", alter: ""),
-            prompt: Language.get("PaymentMgmt_OfficialFulfillment_Prompt", alter: ""),
+            confirmation: Language.get("PaymentMgmt_OfficialFulfillment_Confirm", alter: "تأكيد تنفيذ الإجراء"),
+            prompt: Language.get("PaymentMgmt_OfficialFulfillment_Prompt", alter: "يرجى كتابة الملاحظة الإدارية لتسجيلها في مسار التدقيق."),
             defaultNote: String(
-                format: Language.get("PaymentMgmt_OfficialFulfillment_DefaultNote", alter: ""),
+                format: Language.get("PaymentMgmt_OfficialFulfillment_DefaultNote", alter: "إجراء إداري: %@"),
                 title
             )
         ) { note in viewModel.transitionOfficialFulfillment(action: action, note: note) }
@@ -556,7 +790,7 @@ struct AdminPaymentDetailView: View {
         action: @escaping (String) -> Void
     ) {
         let subtitle = String(
-            format: Language.get("PaymentDetail_ActionPrompt_Format", alter: ""),
+            format: Language.get("PaymentDetail_ActionPrompt_Format", alter: "%@\n%@"),
             confirmation,
             prompt
         )
@@ -564,10 +798,10 @@ struct AdminPaymentDetailView: View {
             in: nil,
             title: title,
             subtitle: subtitle,
-            placeholder: Language.get("PaymentMgmt_Value_AdminNote", alter: ""),
+            placeholder: Language.get("PaymentMgmt_Value_AdminNote", alter: "الملاحظة الإدارية (مطلوبة)"),
             initialText: nil,
-            confirmText: Language.get("Confirm", alter: ""),
-            cancelText: Language.get("Cancel", alter: ""),
+            confirmText: Language.get("Confirm", alter: "تأكيد"),
+            cancelText: Language.get("Cancel", alter: "إلغاء"),
             secureEntry: false,
             keyboardType: .default
         ) { text in
@@ -575,14 +809,14 @@ struct AdminPaymentDetailView: View {
             let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty, trimmed.count < 3 {
                 viewModel.showValidationError(
-                    Language.get("PaymentMgmt_Prompt_NoteRequired_Subtitle", alter: "")
+                    Language.get("PaymentMgmt_Prompt_NoteRequired_Subtitle", alter: "يجب ألا تقل الملاحظة عن 3 أحرف.")
                 )
                 return
             }
             let resolvedNote = trimmed.isEmpty ? defaultNote : trimmed
             guard resolvedNote.count >= 3 else {
                 viewModel.showValidationError(
-                    Language.get("PaymentMgmt_Error_AdminNoteRequired", alter: "")
+                    Language.get("PaymentMgmt_Error_AdminNoteRequired", alter: "الملاحظة الإدارية مطلوبة لتوثيق الإجراء.")
                 )
                 return
             }
@@ -601,9 +835,9 @@ struct AdminPaymentDetailView: View {
             "cancel_request": "PaymentMgmt_OfficialFulfillment_Action_Cancel",
         ]
         guard let action, let key = keys[action] else {
-            return Language.get("PaymentMgmt_OfficialFulfillment_Title", alter: "")
+            return Language.get("PaymentMgmt_OfficialFulfillment_Title", alter: "إجراء رسمي")
         }
-        return Language.get(key, alter: "")
+        return Language.get(key, alter: action)
     }
 
     private func officialActionColor(_ action: String) -> Color {
@@ -628,130 +862,115 @@ struct AdminPaymentDetailView: View {
         }
     }
 
-    // MARK: - Information Sections
-
-    private func overviewSection(_ record: PPPaymentAdminRecord) -> some View {
-        PaymentDetailSection(
-            title: Language.get("PaymentMgmt_Section_Overview", alter: ""),
-            symbol: "doc.text.fill"
-        ) {
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_OrderStatus", alter: ""),
-                value: PPPaymentAdminDisplayTitleForOrderStatus(record.rawStatus as String? ?? "")
-            )
-            Divider().background(AdminSurface.hairline)
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_OrderReference", alter: ""),
-                value: record.displayOrderReference() as String? ?? orderID,
-                technical: true
-            )
-            Divider().background(AdminSurface.hairline)
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_Created", alter: ""),
-                value: formatDate(record.createdAt as Date?),
-                technical: true
-            )
-            Divider().background(AdminSurface.hairline)
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_Updated", alter: ""),
-                value: formatDate(record.updatedAt as Date?),
-                technical: true
-            )
+    private func statusPresentation(for record: PPPaymentAdminRecord) -> PaymentDetailStatusPresentation {
+        let rawStatus = record.rawStatus as String? ?? ""
+        let title = PPPaymentAdminDisplayTitleForOrderStatus(rawStatus)
+        if PPPaymentAdminRecord.isFailureLikeStatus(rawStatus)
+            || PPPaymentAdminRecord.isCancelledLikeStatus(rawStatus) {
+            return .init(title: title, tint: Color(UIColor.ppError))
         }
+        if PPPaymentAdminRecord.isDeliveredLikeStatus(rawStatus)
+            || PPPaymentAdminRecord.isPaidLikeStatus(rawStatus) {
+            return .init(title: title, tint: Color(UIColor.ppSuccess))
+        }
+        if PPPaymentAdminRecord.isShippedLikeStatus(rawStatus) {
+            return .init(title: title, tint: Color(UIColor.ppQuickActionCommunity))
+        }
+        if PPPaymentAdminRecord.isProcessingLikeStatus(rawStatus) {
+            return .init(title: title, tint: Color(UIColor.ppInfo))
+        }
+        if PPPaymentAdminRecord.canApproveOrderStatus(rawStatus) {
+            return .init(title: title, tint: Color(UIColor.ppWarning))
+        }
+        return .init(title: title, tint: AdminSurface.primary)
     }
 
-    private func customerSection(_ record: PPPaymentAdminRecord) -> some View {
-        PaymentDetailSection(
-            title: Language.get("PaymentMgmt_Field_Customer", alter: ""),
-            symbol: "person.crop.circle.fill"
-        ) {
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentDetail_Field_Name", alter: ""),
-                value: valueOrUnavailable(record.userDisplayName as String?)
-            )
-            Divider().background(AdminSurface.hairline)
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_Email", alter: ""),
-                value: valueOrUnavailable(record.userEmail as String?),
-                technical: true
+    private func nextDecision(for record: PPPaymentAdminRecord) -> PaymentDetailDecision {
+        guard canManagePayments else {
+            return .init(
+                title: Language.get("PaymentDetail_ReadOnly_Title", alter: "وضع العرض فقط"),
+                subtitle: Language.get("PaymentDetail_ReadOnly_Subtitle", alter: "الصلاحية مقيدة لحسابك"),
+                symbol: "lock.shield.fill",
+                tint: Color(UIColor.ppWarning)
             )
         }
-    }
-
-    private func paymentSection(_ record: PPPaymentAdminRecord) -> some View {
-        PaymentDetailSection(
-            title: Language.get("PaymentMgmt_Section_Payments", alter: ""),
-            symbol: "creditcard.fill"
-        ) {
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_Total", alter: ""),
-                value: formatCurrency(record.totalAmount, currency: record.currency as String?),
-                technical: true,
-                emphasized: true
-            )
-            Divider().background(AdminSurface.hairline)
-            PaymentDetailFieldRow(
-                label: Language.get("PaymentMgmt_Field_PaymentMethod", alter: ""),
-                value: paymentMethodTitle(record)
-            )
-            if !(record.paymentStatus as String? ?? "").isEmpty {
-                Divider().background(AdminSurface.hairline)
-                PaymentDetailFieldRow(
-                    label: Language.get("PaymentMgmt_Field_PaymentStatus", alter: ""),
-                    value: PPPaymentAdminDisplayTitleForOrderStatus(record.paymentStatus)
+        if record.fulfillmentVersion == 1 {
+            if viewModel.officialFulfillmentLoading {
+                return .init(
+                    title: Language.get("PaymentMgmt_OfficialFulfillment_Loading", alter: "مزامنة التنفيذ..."),
+                    subtitle: Language.get("PaymentDetail_Loading_Source", alter: "جلب إشارات الخادم"),
+                    symbol: "arrow.triangle.2.circlepath",
+                    tint: AdminSurface.primary
                 )
             }
-            if !(record.verificationStatus as String? ?? "").isEmpty {
-                Divider().background(AdminSurface.hairline)
-                PaymentDetailFieldRow(
-                    label: Language.get("PaymentMgmt_Field_Verification", alter: ""),
-                    value: PPPaymentAdminDisplayTitleForVerificationStatus(record.verificationStatus)
+            if let error = viewModel.officialFulfillmentError {
+                return .init(
+                    title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: "خطأ بالتنفيذ"),
+                    subtitle: error,
+                    symbol: "exclamationmark.triangle.fill",
+                    tint: Color(UIColor.ppError)
                 )
             }
-            if !(record.transactionId as String? ?? "").isEmpty {
-                Divider().background(AdminSurface.hairline)
-                PaymentDetailFieldRow(
-                    label: Language.get("PaymentMgmt_Field_Transaction", alter: ""),
-                    value: record.transactionId,
-                    technical: true
+            if let first = viewModel.officialActions.first {
+                return .init(
+                    title: officialActionTitle(first),
+                    subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Action_Subtitle", alter: "الخطوة التالية المعتمدة"),
+                    symbol: officialActionSymbol(first),
+                    tint: officialActionColor(first)
+                )
+            }
+        } else {
+            let actions = legacyActions(for: record)
+            if let first = actions.first(where: { !$0.isDestructive }) ?? actions.first {
+                return .init(
+                    title: first.title,
+                    subtitle: first.subtitle,
+                    symbol: first.symbol,
+                    tint: first.tint
                 )
             }
         }
+        return .init(
+            title: Language.get("PaymentDetail_NoAction_Title", alter: "الطلب مستقر"),
+            subtitle: Language.get("PaymentDetail_NoAction_Subtitle", alter: "لا توجد إجراءات إضافية مطلوبة"),
+            symbol: "checkmark.seal.fill",
+            tint: Color(UIColor.ppSuccess)
+        )
     }
 
-    private func itemsSection(_ record: PPPaymentAdminRecord) -> some View {
-        let items = record.items as? [[String: Any]] ?? []
-        return PaymentDetailSection(
-            title: Language.get("PaymentMgmt_Section_Items", alter: ""),
-            symbol: "bag.fill"
-        ) {
-            if items.isEmpty {
-                PaymentDetailInlineState(
-                    title: Language.get("PaymentMgmt_Placeholder_NoItemsTitle", alter: ""),
-                    subtitle: Language.get("PaymentMgmt_Placeholder_NoItemsSubtitle", alter: ""),
-                    symbol: "bag.badge.minus",
-                    tint: AdminSurface.secondaryText
-                )
-            } else {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    PaymentDetailItemRow(
-                        name: valueOrUnavailable(item["name"] as? String),
-                        quantity: quantityText(item["quantity"])
-                    )
-                    if index < items.count - 1 {
-                        Divider().background(AdminSurface.hairline)
-                    }
-                }
-            }
+    // MARK: - Helpers & Formatters
+
+    private func copyToClipboard(text: String, label: String) {
+        UIPasteboard.general.string = text
+        triggerHaptic()
+        toastTask?.cancel()
+        copiedToastMessage = String(format: Language.get("CopiedFormat", alter: "تم نسخ %@ بنجاح"), label)
+        toastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            copiedToastMessage = nil
         }
     }
 
-    // MARK: - Formatting
+    private func triggerHaptic() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+
+    private func userInitials(from name: String) -> String {
+        let parts = name.split(separator: " ")
+        if let first = parts.first?.prefix(1), let second = parts.dropFirst().first?.prefix(1) {
+            return "\(first)\(second)".uppercased()
+        } else if !name.isEmpty {
+            return String(name.prefix(2)).uppercased()
+        }
+        return "PP"
+    }
 
     private func valueOrUnavailable(_ value: String?) -> String {
         let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty
-            ? Language.get("PaymentMgmt_Value_NotAvailable", alter: "")
+            ? Language.get("PaymentMgmt_Value_NotAvailable", alter: "غير متوفر")
             : trimmed
     }
 
@@ -767,7 +986,21 @@ struct AdminPaymentDetailView: View {
                 return PPPaymentAdminDisplayTitleForPaymentMethod(method)
             }
         }
-        return Language.get("PaymentMgmt_Value_NotAvailable", alter: "")
+        return Language.get("PaymentMgmt_Value_NotAvailable", alter: "نقدًا")
+    }
+
+    private func paymentMethodIcon(_ record: PPPaymentAdminRecord) -> String {
+        let raw = (record.paymentMethodId as String? ?? record.paymentProvider as String? ?? "").lowercased()
+        if raw.contains("cash") || raw.contains("cod") {
+            return "banknote.fill"
+        }
+        if raw.contains("apple") {
+            return "applelogo"
+        }
+        if raw.contains("qib") || raw.contains("card") || raw.contains("credit") {
+            return "creditcard.fill"
+        }
+        return "creditcard.fill"
     }
 
     private func quantityText(_ value: Any?) -> String {
@@ -778,7 +1011,7 @@ struct AdminPaymentDetailView: View {
            !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return string
         }
-        return Language.get("PaymentMgmt_Value_NotAvailable", alter: "")
+        return "1"
     }
 
     private func formatCurrency(_ value: Double, currency: String?) -> String {
@@ -796,7 +1029,7 @@ struct AdminPaymentDetailView: View {
 
     private func formatDate(_ date: Date?) -> String {
         guard let date else {
-            return Language.get("PaymentMgmt_Value_NotAvailable", alter: "")
+            return Language.get("PaymentMgmt_Value_NotAvailable", alter: "غير مسجل")
         }
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
@@ -806,17 +1039,375 @@ struct AdminPaymentDetailView: View {
         )
         return formatter.string(from: date)
     }
+}
 
-    private func labelValueAccessibility(label: String, value: String) -> String {
-        String(
-            format: Language.get("PaymentDetail_LabelValue_Accessibility_Format", alter: ""),
-            label,
-            value
-        )
+// MARK: - Bento Info Card
+
+private struct BentoInfoCard: View {
+    let title: String
+    let value: String
+    let symbol: String
+    let tint: Color
+    var onTap: (() -> Void)? = nil
+
+    var body: some View {
+        Button(action: { onTap?() }) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: symbol)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(tint)
+                    Text(title)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    if onTap != nil {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                    }
+                }
+
+                Text(value)
+                    .font(.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 74, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 1.0)
+            )
+        }
+        .buttonStyle(NextGenScaleButtonStyle())
+        .disabled(onTap == nil)
     }
 }
 
-// MARK: - Presentation Models
+// MARK: - Detail Attribute Row
+
+private struct DetailAttributeRow: View {
+    let label: String
+    let value: String
+    let icon: String
+    var onCopy: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AdminSurface.primary)
+                .frame(width: 28, height: 28)
+                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            Text(label)
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            Spacer(minLength: AdminSpacing.sm)
+
+            Text(value)
+                .font(AdminType.body)
+                .foregroundColor(AdminSurface.primaryText)
+                .lineLimit(1)
+
+            if let onCopy {
+                Button(action: onCopy) {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .buttonStyle(NextGenScaleButtonStyle())
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Detail Components
+
+private struct PaymentDetailSection<Content: View>: View {
+    let title: String
+    let symbol: String
+    let content: Content
+
+    init(title: String, symbol: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.symbol = symbol
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            // Section Header
+            HStack(spacing: 8) {
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 32, height: 32)
+                    .background(
+                        AdminSurface.primary.opacity(0.09),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                    .accessibilityHidden(true)
+
+                Text(title)
+                    .font(AdminType.title3)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer(minLength: 0)
+            }
+
+            content
+        }
+        .padding(AdminSpacing.cardPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            AdminSurface.surface,
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1.0)
+        }
+        .shadow(color: Color.black.opacity(0.03), radius: 10, y: 3)
+    }
+}
+
+private struct PaymentDetailFieldRow: View {
+    let label: String
+    let value: String
+    var technical = false
+    var emphasized = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Text(label)
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+            Text(value)
+                .font(emphasized ? AdminType.title3 : AdminType.body)
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
+                .environment(
+                    \.layoutDirection,
+                    technical ? .leftToRight : (Language.isRTL() ? .rightToLeft : .leftToRight)
+                )
+                .frame(
+                    maxWidth: .infinity,
+                    alignment: technical && Language.isRTL() ? .trailing : .leading
+                )
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+    }
+}
+
+private struct PaymentDetailItemRow: View {
+    let name: String
+    let quantity: String
+    var index: Int = 1
+
+    var body: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.08))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(AdminType.body)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+            }
+
+            Spacer(minLength: 0)
+
+            // Quantity Capsule
+            HStack(spacing: 3) {
+                Text("×")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                Text(quantity)
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(AdminSurface.control, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1.0))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+private struct PaymentDetailActionButton: View {
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let tint: Color
+    let isPrimary: Bool
+    let isBusy: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: AdminSpacing.md) {
+                Image(systemName: symbol)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(isPrimary ? .white : tint)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        isPrimary ? Color.white.opacity(0.18) : tint.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(isPrimary ? .white : AdminSurface.primaryText)
+                    Text(subtitle)
+                        .font(AdminType.caption1)
+                        .foregroundColor(isPrimary ? Color.white.opacity(0.85) : AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: AdminSpacing.sm)
+
+                Image(systemName: "chevron.backward")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(isPrimary ? Color.white.opacity(0.85) : tint)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, AdminSpacing.sm)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(
+                isPrimary
+                    ? LinearGradient(colors: [tint, tint.opacity(0.88)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    : LinearGradient(colors: [tint.opacity(0.07), tint.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isPrimary ? Color.clear : tint.opacity(0.24), lineWidth: 1.0)
+            }
+            .shadow(color: isPrimary ? tint.opacity(0.25) : Color.clear, radius: 8, y: 3)
+        }
+        .buttonStyle(NextGenScaleButtonStyle())
+        .disabled(isBusy)
+        .opacity(isBusy ? AdminOpacity.disabled : 1)
+    }
+}
+
+private struct PaymentDetailFeedbackBanner: View {
+    let message: String
+    let tint: Color
+    let symbol: String
+    var showsProgress = false
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.sm) {
+            if showsProgress {
+                ProgressView().tint(tint)
+            } else {
+                Image(systemName: symbol)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(tint)
+                    .accessibilityHidden(true)
+            }
+            Text(message)
+                .font(AdminType.subheadline)
+                .foregroundColor(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: AdminSpacing.sm)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .font(AdminType.captionBold)
+                    .foregroundColor(tint)
+                    .frame(minHeight: AdminTouchTarget.minimum)
+            }
+        }
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.sm)
+        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .leading)
+        .background(
+            tint.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1.0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PaymentDetailInlineState: View {
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let tint: Color
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(spacing: AdminSpacing.sm) {
+            Image(systemName: symbol)
+                .font(.system(size: 28, weight: .bold))
+                .foregroundColor(tint)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(AdminType.calloutBold)
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.center)
+            Text(subtitle)
+                .font(AdminType.subheadline)
+                .foregroundColor(AdminSurface.secondaryText)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(tint)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, AdminSpacing.md)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - NextGen Scale Button Style
+
+private struct NextGenScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.72), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Presentation Models & Enums
 
 private struct PaymentDetailStatusPresentation {
     let title: String
@@ -932,263 +1523,6 @@ fileprivate enum PaymentDetailLegacyAction: String, Identifiable {
         case .collectPayment: return "PaymentMgmt_Success_OrderCollectPayment"
         case .cancel: return "PaymentMgmt_Success_OrderCancel"
         }
-    }
-}
-
-// MARK: - Detail Components
-
-private struct PaymentDetailSection<Content: View>: View {
-    let title: String
-    let symbol: String
-    let content: Content
-
-    init(title: String, symbol: String, @ViewBuilder content: () -> Content) {
-        self.title = title
-        self.symbol = symbol
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.md) {
-            HStack(spacing: AdminSpacing.sm) {
-                Image(systemName: symbol)
-                    .font(.system(size: AdminIconSize.medium, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                    .background(
-                        AdminSurface.primary.opacity(0.09),
-                        in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                    )
-                    .accessibilityHidden(true)
-                Text(title)
-                    .font(AdminType.title3)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .accessibilityAddTraits(.isHeader)
-            }
-            content
-        }
-        .padding(AdminSpacing.cardPadding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            AdminSurface.surface,
-            in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
-        }
-    }
-}
-
-private struct PaymentDetailFieldRow: View {
-    let label: String
-    let value: String
-    var technical = false
-    var emphasized = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            Text(label)
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-            Text(value)
-                .font(emphasized ? AdminType.title3 : AdminType.body)
-                .foregroundColor(AdminSurface.primaryText)
-                .multilineTextAlignment(.leading)
-                .environment(
-                    \.layoutDirection,
-                    technical ? .leftToRight : (Language.isRTL() ? .rightToLeft : .leftToRight)
-                )
-                .frame(
-                    maxWidth: .infinity,
-                    alignment: technical && Language.isRTL() ? .trailing : .leading
-                )
-                .textSelection(.enabled)
-        }
-        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            String(
-                format: Language.get("PaymentDetail_LabelValue_Accessibility_Format", alter: ""),
-                label,
-                value
-            )
-        )
-    }
-}
-
-private struct PaymentDetailItemRow: View {
-    let name: String
-    let quantity: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: AdminSpacing.md) {
-            Image(systemName: "shippingbox.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 36, height: 36)
-                .background(
-                    AdminSurface.primary.opacity(0.08),
-                    in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
-                )
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                Text(name)
-                    .font(AdminType.body)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(
-                    String(
-                        format: Language.get("PaymentDetail_Quantity_Format", alter: ""),
-                        quantity
-                    )
-                )
-                .font(AdminType.subheadline)
-                .foregroundColor(AdminSurface.secondaryText)
-                .monospacedDigit()
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct PaymentDetailActionButton: View {
-    let title: String
-    let subtitle: String
-    let symbol: String
-    let tint: Color
-    let isPrimary: Bool
-    let isBusy: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(alignment: .center, spacing: AdminSpacing.md) {
-                Image(systemName: symbol)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(isPrimary ? .white : tint)
-                    .frame(width: 36, height: 36)
-                    .background(
-                        isPrimary ? Color.white.opacity(0.16) : tint.opacity(0.10),
-                        in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
-                    )
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                    Text(title)
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(isPrimary ? .white : AdminSurface.primaryText)
-                    Text(subtitle)
-                        .font(AdminType.caption1)
-                        .foregroundColor(isPrimary ? Color.white.opacity(0.84) : AdminSurface.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: AdminSpacing.sm)
-                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(isPrimary ? Color.white.opacity(0.84) : tint)
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, AdminSpacing.md)
-            .padding(.vertical, AdminSpacing.sm)
-            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
-            .background(
-                isPrimary ? tint : tint.opacity(0.055),
-                in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
-                    .stroke(isPrimary ? Color.clear : tint.opacity(0.26), lineWidth: AdminStroke.thin)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(isBusy)
-        .opacity(isBusy ? AdminOpacity.disabled : 1)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(subtitle)
-    }
-}
-
-private struct PaymentDetailFeedbackBanner: View {
-    let message: String
-    let tint: Color
-    let symbol: String
-    var showsProgress = false
-    var actionTitle: String? = nil
-    var action: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(alignment: .center, spacing: AdminSpacing.sm) {
-            if showsProgress {
-                ProgressView().tint(tint)
-            } else {
-                Image(systemName: symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(tint)
-                    .accessibilityHidden(true)
-            }
-            Text(message)
-                .font(AdminType.subheadline)
-                .foregroundColor(AdminSurface.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: AdminSpacing.sm)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .font(AdminType.captionBold)
-                    .foregroundColor(tint)
-                    .frame(minHeight: AdminTouchTarget.minimum)
-            }
-        }
-        .padding(.horizontal, AdminSpacing.md)
-        .padding(.vertical, AdminSpacing.sm)
-        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .leading)
-        .background(
-            tint.opacity(0.08),
-            in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                .stroke(tint.opacity(0.20), lineWidth: AdminStroke.thin)
-        }
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct PaymentDetailInlineState: View {
-    let title: String
-    let subtitle: String
-    let symbol: String
-    let tint: Color
-    var actionTitle: String? = nil
-    var action: (() -> Void)? = nil
-
-    var body: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            Image(systemName: symbol)
-                .font(.system(size: AdminIconSize.large, weight: .semibold))
-                .foregroundColor(tint)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(AdminType.calloutBold)
-                .foregroundColor(AdminSurface.primaryText)
-                .multilineTextAlignment(.center)
-            Text(subtitle)
-                .font(AdminType.subheadline)
-                .foregroundColor(AdminSurface.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(tint)
-                    .frame(minHeight: AdminTouchTarget.minimum)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, AdminSpacing.md)
-        .accessibilityElement(children: .combine)
     }
 }
 

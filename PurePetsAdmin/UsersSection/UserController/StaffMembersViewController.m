@@ -1172,8 +1172,14 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
     }
 
     NSString *displayName = PPStaffMembersSafeString(user.UserName);
-    NSString *subtitle = [NSString stringWithFormat:@"%@ %@", kLang(@"Service_Action_Disable"), displayName.length ? displayName : PPStaffMembersSafeString(user.UserEmail)];
-    [PPAlertHelper showConfirmationIn:self title:kLang(@"Confirm") subtitle:subtitle placeholder:nil confirmButton:kLang(@"Confirm") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
+    if (displayName.length == 0) {
+        displayName = PPStaffMembersSafeString(user.UserEmail);
+    }
+    if (displayName.length == 0) {
+        displayName = kLang(@"User");
+    }
+    NSString *subtitle = [NSString stringWithFormat:kLang(@"Staff_Disable_Confirm_Message_Format"), displayName];
+    [PPAlertHelper showConfirmationIn:self title:kLang(@"Staff_Disable_Confirm_Title") subtitle:subtitle placeholder:nil confirmButton:kLang(@"Service_Action_Disable") cancelButton:kLang(@"Cancel") icon:nil confirmBlock:^{
         [AdminService disableStaffMember:user.uid completion:^(NSDictionary * _Nullable result, NSError * _Nullable error) {
             if (error) [PPToast toast:error.localizedDescription];
             else [PPToast toast:kLang(@"Success")];

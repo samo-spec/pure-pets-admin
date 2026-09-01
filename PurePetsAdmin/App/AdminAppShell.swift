@@ -335,86 +335,132 @@ private final class AdminCommandOrbitNavigationController: UINavigationControlle
     }
 }
 
-// MARK: - V6 Global Tab Bar
+// MARK: - NextGen V6 Floating Morphic Command Dock
 
 private enum AdminShellMetric {
     static let pageMargin: CGFloat = 20
     static let groupRadius: CGFloat = 22
     static let compactRadius: CGFloat = 16
     static let rowMinimumHeight: CGFloat = 68
-    static let tabBarTopInset: CGFloat = 10
-    static let tabBarHorizontalInset: CGFloat = 10
-    static let tabBarBottomInset: CGFloat = 18
-    static let tabItemMinimumHeight: CGFloat = 50
+    static let dockCornerRadius: CGFloat = 28
+    static let dockItemRadius: CGFloat = 20
 }
 
 struct V6GlobalTabBar: View {
     @Binding var selectedTab: AdminTab
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var tabAnimationNamespace
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(alignment: .center, spacing: 0) {
+        HStack(alignment: .center, spacing: 4) {
             ForEach(AdminTab.allCases) { tab in
                 tabItem(tab)
-                    .frame(maxWidth: .infinity)
             }
         }
-        .padding(.horizontal, AdminShellMetric.tabBarHorizontalInset)
-        .padding(.top, AdminShellMetric.tabBarTopInset)
-        .padding(.bottom, AdminShellMetric.tabBarBottomInset)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(height: 60)
         .background(
-            AdminSurface.surface
-                .overlay(alignment: .top) {
-                    Rectangle()
-                        .fill(AdminSurface.control)
-                        .frame(height: 1.0 / UIScreen.main.scale)
-                        .opacity(0.72)
-                        .accessibilityHidden(true)
-                }
-                .ignoresSafeArea(edges: .bottom)
+            ZStack {
+                // Glassmorphic Base
+                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
+                    .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.90 : 0.95))
+
+                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
+                    .fill(Material.ultraThinMaterial)
+
+                // Specular Border Highlight
+                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(colorScheme == .dark ? 0.22 : 0.60),
+                                Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18),
+                                AdminSurface.hairline.opacity(0.4)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.0
+                    )
+            }
         )
+        .clipShape(RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous))
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.08), radius: 18, x: 0, y: 8)
+        .shadow(color: AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 10, x: 0, y: 4)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 16)
     }
 
     private func tabItem(_ tab: AdminTab) -> some View {
         let isSelected = selectedTab == tab
         let title = Language.get(tab.titleKey, alter: nil)
-        let symbol = tab.symbol
+        let symbol = isSelected ? tab.selectedSymbol : tab.symbol
 
         return Button {
             guard selectedTab != tab else { return }
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             if reduceMotion {
                 selectedTab = tab
             } else {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
                     selectedTab = tab
                 }
             }
         } label: {
-            VStack(spacing: 4) {
-                Capsule()
-                    .fill(isSelected ? AdminSurface.primaryPressed : Color.clear)
-                    .frame(width: 20, height: 3)
-                    .accessibilityHidden(true)
+            ZStack {
+                if isSelected {
+                    // Fluid Matched-Geometry Active Capsule
+                    RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.12),
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.15 : 0.06)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
+                        )
+                        .matchedGeometryEffect(id: "ActiveTabIndicator", in: tabAnimationNamespace)
+                }
 
-                Image(systemName: symbol)
-                    .font(.system(size: 17, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundColor(isSelected ? AdminSurface.primaryPressed : AdminSurface.secondaryText)
-                    .frame(height: 22)
-                .accessibilityHidden(true)
+                VStack(spacing: 2) {
+                    // Micro-Beacon Dot for Active State
+                    Circle()
+                        .fill(isSelected ? AdminSurface.primary : Color.clear)
+                        .frame(width: 4, height: 4)
+                        .opacity(isSelected ? 1.0 : 0.0)
+                        .scaleEffect(isSelected ? 1.0 : 0.2)
+                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+                        .accessibilityHidden(true)
 
-                Text(title)
-                    .font(isSelected ? AdminType.caption2Bold : AdminType.caption2)
-                    .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                    .lineSpacing(1)
-                    .minimumScaleFactor(0.90)
-                    .fixedSize(horizontal: false, vertical: true)
+                    Image(systemName: symbol)
+                        .font(.system(size: isSelected ? 17 : 16, weight: isSelected ? .semibold : .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.80))
+                        .frame(height: 19)
+                        .scaleEffect(isSelected ? 1.06 : 1.0)
+                        .accessibilityHidden(true)
+
+                    Text(title)
+                        .font(isSelected ? Font.custom("Beiruti-Bold", size: 11.5) : Font.custom("Beiruti-Medium", size: 11))
+                        .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.80))
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 3)
             }
-            .frame(maxWidth: .infinity, minHeight: AdminShellMetric.tabItemMinimumHeight)
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .contentShape(RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous))
         }
         .buttonStyle(V6TabButtonStyle())
         .accessibilityLabel(title)

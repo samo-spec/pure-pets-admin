@@ -7,6 +7,7 @@
 #import "PPFunc+Haptics.h"
 #import "Styling.h"
 #import "UIViewController+PPNavBar.h"
+#import "PurePetsAdmin-Swift.h"
 @import FirebaseFirestore;
 @import FirebaseFunctions;
 
@@ -1645,27 +1646,18 @@ static BOOL PPProviderApplicationDecisionIsAllowed(NSString *decision, NSString 
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = PPProviderCanvasColor();
-    self.tableView = [[UITableView alloc] initWithFrame:self.view.bounds style:UITableViewStylePlain];
-    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    self.tableView.backgroundColor = UIColor.clearColor;
-    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
-    [self.view addSubview:self.tableView];
-
-    self.applications = @[];
-    self.statusFilter = @"all";
-    self.searchQuery = @"";
-    self.animatedApplicationIDs = [NSMutableSet set];
-    [self pp_configureNavigation];
-    [self pp_configureTableView];
-    [self pp_buildHeader];
-    [self pp_evaluatePermissions];
-    if (!self.permissionDenied) {
-        [self loadData];
-    } else {
-        [self pp_updateState];
-    }
+    
+    PPProviderApplicationsHostingController *hosting = [PPProviderApplicationsHostingController new];
+    [self addChildViewController:hosting];
+    [self.view addSubview:hosting.view];
+    hosting.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [hosting.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [hosting.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [hosting.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [hosting.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+    ]];
+    [hosting didMoveToParentViewController:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

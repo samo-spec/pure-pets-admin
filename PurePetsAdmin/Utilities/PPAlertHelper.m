@@ -24,16 +24,150 @@
 static UIWindow *ppAlertOverlayWindow = nil;
 static UIViewController *ppAlertRootViewController = nil;
 
-static NSString *PPAlertSanitizedText(NSString *text, NSString *fallbackKey)
-{
-    if (text.length == 0) return text ?: @"";
-    return kLang(fallbackKey) ?: text;
-}
-
 static NSString *PPAlertTrimmedText(NSString *value) {
     return [value isKindOfClass:NSString.class]
         ? [value stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
         : @"";
+}
+
+static BOOL PPAlertLooksLikeUnresolvedLocalizationKey(NSString *value) {
+    NSString *text = PPAlertTrimmedText(value);
+    if (text.length == 0) return NO;
+    if ([text containsString:@"_"]) return YES;
+
+    // Catch legacy camel-case sentinels such as `SomethingWentWrong` without
+    // treating normal multi-word feedback as a resource key.
+    if ([text rangeOfCharacterFromSet:NSCharacterSet.whitespaceAndNewlineCharacterSet].location != NSNotFound) {
+        return NO;
+    }
+    NSCharacterSet *lowercase = NSCharacterSet.lowercaseLetterCharacterSet;
+    NSCharacterSet *uppercase = NSCharacterSet.uppercaseLetterCharacterSet;
+    for (NSUInteger index = 1; index < text.length; index += 1) {
+        unichar previous = [text characterAtIndex:index - 1];
+        unichar current = [text characterAtIndex:index];
+        if ([lowercase characterIsMember:previous] && [uppercase characterIsMember:current]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+/// Resolves either a localization key or already-localized caller text.
+/// Missing/blank resource identifiers fail closed to a localized, helpful
+/// fallback instead of ever appearing verbatim in the alert.
+static NSString *PPAlertResolvedText(NSString *value, NSString *fallbackKey) {
+    NSString *text = PPAlertTrimmedText(value);
+    NSString *fallback = PPAlertTrimmedText(kLang(fallbackKey));
+    if (text.length == 0) return fallback;
+
+    NSString *localized = PPAlertTrimmedText(kLang(text));
+    if (localized.length > 0 && ![localized isEqualToString:text]) {
+        return localized;
+    }
+    if (PPAlertLooksLikeUnresolvedLocalizationKey(text)) {
+        return fallback;
+    }
+    return text;
+}
+
+static NSString *PPAlertDefaultMessageKey(PPAlertType type);
+
+static BOOL PPAlertContainsArabicText(NSString *value) {
+    NSString *text = PPAlertTrimmedText(value);
+    for (NSUInteger index = 0; index < text.length; index += 1) {
+        unichar character = [text characterAtIndex:index];
+        if ((character >= 0x0600 && character <= 0x06FF) ||
+            (character >= 0x0750 && character <= 0x077F) ||
+            (character >= 0x08A0 && character <= 0x08FF)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static NSString *PPAlertHelpfulErrorFallback(NSString *value) {
+    NSString *message = PPAlertTrimmedText(value);
+    NSString *lowercase = message.lowercaseString;
+    if ([lowercase containsString:@"permission"] ||
+        [lowercase containsString:@"not authorized"] ||
+        [lowercase containsString:@"access denied"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_Permission_Message");
+    }
+    if ([lowercase containsString:@"unauthenticated"] ||
+        [lowercase containsString:@"sign in"] ||
+        [lowercase containsString:@"session"] ||
+        [lowercase containsString:@"token"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_Session_Message");
+    }
+    if ([lowercase containsString:@"network"] ||
+        [lowercase containsString:@"offline"] ||
+        [lowercase containsString:@"unavailable"] ||
+        [lowercase containsString:@"timed out"] ||
+        [lowercase containsString:@"timeout"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_Network_Message");
+    }
+    if ([lowercase containsString:@"not found"] ||
+        [lowercase containsString:@"no longer exists"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_NotFound_Message");
+    }
+    if ([lowercase containsString:@"already exists"] ||
+        [lowercase containsString:@"conflict"] ||
+        [lowercase containsString:@"failed precondition"] ||
+        [lowercase containsString:@"state changed"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_Conflict_Message");
+    }
+    if ([lowercase containsString:@"invalid"] ||
+        [lowercase containsString:@"missing"] ||
+        [lowercase containsString:@"required"]) {
+        return PPAlertResolvedText(nil, @"PPAlert_Error_InvalidInput_Message");
+    }
+    return PPAlertResolvedText(nil, @"PPAlert_Default_Error_Message");
+}
+
+static NSString *PPAlertResolvedMessage(NSString *value, PPAlertType type) {
+    NSString *fallbackKey = PPAlertDefaultMessageKey(type);
+    NSString *message = PPAlertResolvedText(value, fallbackKey);
+    if (type != PPAlertTypeError || message.length == 0) return message;
+
+    // Firebase/NSError descriptions are commonly English or technical even
+    // when the app is Arabic. Replace only those unlocalized error bodies with
+    // a localized, actionable category message; preserve localized server copy.
+    if ([Language isRTL] && !PPAlertContainsArabicText(message)) {
+        return PPAlertHelpfulErrorFallback(message);
+    }
+
+    NSString *lowercase = message.lowercaseString;
+    BOOL looksTechnical = [lowercase containsString:@"firebase"] ||
+        [lowercase containsString:@"errordomain"] ||
+        [lowercase containsString:@"domain="] ||
+        [lowercase containsString:@"code="] ||
+        [lowercase containsString:@"operation couldn’t be completed"] ||
+        [lowercase containsString:@"operation couldn't be completed"];
+    return looksTechnical ? PPAlertHelpfulErrorFallback(message) : message;
+}
+
+static NSString *PPAlertDefaultTitleKey(PPAlertType type) {
+    switch (type) {
+        case PPAlertTypeSuccess: return @"PPAlert_Default_Success_Title";
+        case PPAlertTypeError: return @"PPAlert_Default_Error_Title";
+        case PPAlertTypeWarning: return @"PPAlert_Default_Warning_Title";
+        case PPAlertTypeInfo: return @"PPAlert_Default_Info_Title";
+        case PPAlertTypeConfirmation: return @"PPAlert_Default_Confirmation_Title";
+        case PPAlertTypeTextInput: return @"PPAlert_Default_Input_Title";
+    }
+    return @"PPAlert_Default_Info_Title";
+}
+
+static NSString *PPAlertDefaultMessageKey(PPAlertType type) {
+    switch (type) {
+        case PPAlertTypeSuccess: return @"PPAlert_Default_Success_Message";
+        case PPAlertTypeError: return @"PPAlert_Default_Error_Message";
+        case PPAlertTypeWarning: return @"PPAlert_Default_Warning_Message";
+        case PPAlertTypeInfo: return @"PPAlert_Default_Info_Message";
+        case PPAlertTypeConfirmation: return @"PPAlert_Default_Confirmation_Message";
+        case PPAlertTypeTextInput: return @"PPAlert_Default_Input_Message";
+    }
+    return @"PPAlert_Default_Info_Message";
 }
 
 typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
@@ -61,7 +195,9 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
                    completion:(AlertCompletionBlock _Nullable)completion
              simpleCompletion:(PPAlertSimpleActionBlock _Nullable)simpleCompletion {
     PPAlertActionItem *item = [[self alloc] init];
-    item.title = title ?: @"";
+    NSString *fallbackKey = style == PPAlertActionStyleCancel ? @"Cancel" :
+        (style == PPAlertActionStyleSecondary ? @"OK" : @"Confirm");
+    item.title = PPAlertResolvedText(title, fallbackKey);
     item.style = style;
     item.completion = completion;
     item.simpleCompletion = simpleCompletion;
@@ -195,14 +331,14 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     if (!self) return nil;
 
     _type = type;
-    NSString *titleFallbackKey = type == PPAlertTypeError ? @"Error" :
-        (type == PPAlertTypeWarning ? @"alert_eyebrow_warning" : @"Info");
-    _alertTitle = PPAlertSanitizedText(title, titleFallbackKey);
-    _alertSubtitle = PPAlertSanitizedText(subtitle, @"SomethingWentWrong");
+    _alertTitle = PPAlertResolvedText(title, PPAlertDefaultTitleKey(type));
+    _alertSubtitle = PPAlertResolvedMessage(subtitle, type);
     _appearance = [PPAlertAppearance appearanceForType:type];
     _iconImage = icon ?: [UIImage systemImageNamed:_appearance.iconSystemName];
     _actionItems = actions ?: @[];
-    _textPlaceholder = placeholder;
+    _textPlaceholder = type == PPAlertTypeTextInput
+        ? PPAlertResolvedText(placeholder, @"PPAlert_Default_Input_Placeholder")
+        : nil;
     _initialText = initialText;
     _secureEntry = secureEntry;
     _keyboardType = keyboardType;
@@ -210,6 +346,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     self.backgroundColor = UIColor.clearColor;
     self.translatesAutoresizingMaskIntoConstraints = NO;
     self.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage;
+    self.accessibilityViewIsModal = YES;
 
     [self buildHierarchy];
     [self applyStyling];
@@ -239,6 +376,9 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     dismissButton.translatesAutoresizingMaskIntoConstraints = NO;
     dismissButton.backgroundColor = UIColor.clearColor;
     [dismissButton addTarget:self action:@selector(backgroundTapped) forControlEvents:UIControlEventTouchUpInside];
+    dismissButton.isAccessibilityElement = self.shouldDismissOnBackgroundTap;
+    dismissButton.accessibilityLabel = PPAlertResolvedText(nil, @"PPAlert_Accessibility_Dismiss");
+    dismissButton.accessibilityHint = PPAlertResolvedText(nil, @"PPAlert_Accessibility_Dismiss_Hint");
     [self addSubview:dismissButton];
 
     self.cardView = [[UIView alloc] init];
@@ -256,18 +396,21 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
 
     self.heroGlowView = [[UIView alloc] init];
     self.heroGlowView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.heroGlowView.isAccessibilityElement = NO;
     self.heroGlowView.layer.cornerRadius = 112.0;
     self.heroGlowView.layer.cornerCurve = kCACornerCurveContinuous;
     [self.cardView addSubview:self.heroGlowView];
 
     self.badgeView = [[UIView alloc] init];
     self.badgeView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.badgeView.isAccessibilityElement = NO;
     self.badgeView.layer.cornerRadius = 30.0;
     self.badgeView.layer.cornerCurve = kCACornerCurveContinuous;
     [self.cardView addSubview:self.badgeView];
 
     self.iconView = [[UIImageView alloc] initWithImage:self.iconImage];
     self.iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.iconView.isAccessibilityElement = NO;
     self.iconView.contentMode = UIViewContentModeScaleAspectFit;
     [self.badgeView addSubview:self.iconView];
 
@@ -347,6 +490,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     self.buttonStackView.spacing = 10.0;
     self.buttonStackView.distribution = UIStackViewDistributionFillEqually;
     [self.cardView addSubview:self.buttonStackView];
+    self.cardView.shouldGroupAccessibilityChildren = YES;
 
     self.cardCenterYConstraint = [self.cardView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor];
 
@@ -506,13 +650,14 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
 
 - (NSString *)eyebrowTextForType:(PPAlertType)type {
     switch (type) {
-        case PPAlertTypeSuccess: return kLang(@"alert_eyebrow_success") ?: @"Success";
-        case PPAlertTypeError: return kLang(@"alert_eyebrow_error") ?: @"Action required";
-        case PPAlertTypeWarning: return kLang(@"alert_eyebrow_warning") ?: @"Please review";
-        case PPAlertTypeInfo: return kLang(@"alert_eyebrow_info") ?: @"Details";
-        case PPAlertTypeConfirmation: return kLang(@"alert_eyebrow_confirmation") ?: @"Confirmation";
-        case PPAlertTypeTextInput: return kLang(@"alert_eyebrow_input") ?: @"Input";
+        case PPAlertTypeSuccess: return PPAlertResolvedText(nil, @"alert_eyebrow_success");
+        case PPAlertTypeError: return PPAlertResolvedText(nil, @"alert_eyebrow_error");
+        case PPAlertTypeWarning: return PPAlertResolvedText(nil, @"alert_eyebrow_warning");
+        case PPAlertTypeInfo: return PPAlertResolvedText(nil, @"alert_eyebrow_info");
+        case PPAlertTypeConfirmation: return PPAlertResolvedText(nil, @"alert_eyebrow_confirmation");
+        case PPAlertTypeTextInput: return PPAlertResolvedText(nil, @"alert_eyebrow_input");
     }
+    return PPAlertResolvedText(nil, @"alert_eyebrow_info");
 }
 
 - (void)registerForKeyboard {
@@ -607,6 +752,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         if (self.type == PPAlertTypeTextInput) {
             [self.textField becomeFirstResponder];
         }
+        UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.titleLabel);
         return;
     }
 
@@ -631,6 +777,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         if (self.type == PPAlertTypeTextInput) {
             [self.textField becomeFirstResponder];
         }
+        UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification, self.titleLabel);
     }];
 
     [UIView animateWithDuration:0.30 delay:0.06 options:UIViewAnimationOptionCurveEaseOut | UIViewAnimationOptionAllowUserInteraction animations:^{
@@ -934,7 +1081,10 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     // Success keywords (localised titles typically resolve to these)
     if ([normalised containsString:@"success"] ||
         [normalised containsString:@"نجاح"] ||
-        [normalised containsString:@"تم"]) {
+        ([normalised containsString:@"تم"] &&
+         ![normalised containsString:@"لم يتم"] &&
+         ![normalised containsString:@"تعذر"] &&
+         ![normalised containsString:@"فشل"])) {
         [self showSuccessIn:vc title:title subtitle:subtitle];
         return;
     }

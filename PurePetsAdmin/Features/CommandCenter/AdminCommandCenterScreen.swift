@@ -256,7 +256,7 @@ private enum AdminCommandTypography {
     static let decisionTitle = Font.custom("Beiruti-Bold", size: 26, relativeTo: .title)
 }
 
-private enum AdminCommandInk {
+enum AdminCommandInk {
     static let secondary = AdminSurface.primaryText.opacity(0.72)
     static let tertiary = AdminSurface.primaryText.opacity(0.58)
 }
@@ -354,6 +354,7 @@ struct AdminCommandCenterScreenView: View {
     @ObservedObject var store: AdminCommandCenterStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isShowingSourceIssueDetails = false
 
     private var locale: Locale {
         Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA")
@@ -391,6 +392,9 @@ struct AdminCommandCenterScreenView: View {
                         capabilityText: capabilityText,
                         readinessText: compactReadinessText,
                         readinessTone: readinessTone,
+                        onReadinessTap: store.readiness.failedAreas.isEmpty ? nil : {
+                            isShowingSourceIssueDetails = true
+                        },
                         languageTitle: languageToggleTitle,
                         onAccount: { route("editMyAccount") },
                         onRefresh: { refresh() },
@@ -418,12 +422,35 @@ struct AdminCommandCenterScreenView: View {
         .ignoresSafeArea()
         .environment(\.layoutDirection, direction)
         .environment(\.locale, locale)
+        .sheet(isPresented: $isShowingSourceIssueDetails) {
+            sourceIssueSheet
+                .environment(\.layoutDirection, direction)
+                .environment(\.locale, locale)
+        }
         .onReceive(
             NotificationCenter.default
                 .publisher(for: Notification.Name("LanguageDidChangeNotification"))
                 .receive(on: RunLoop.main)
         ) { _ in
             store.localeCode = Language.currentLanguageCode()
+        }
+    }
+
+    @ViewBuilder
+    private var sourceIssueSheet: some View {
+        let sheet = CommandSourceIssueSheet(
+            sourceNames: localizedAreaNames(store.readiness.failedAreas),
+            detail: failedDetail,
+            updatedText: updatedText,
+            onRetry: refresh
+        )
+
+        if #available(iOS 16.0, *) {
+            sheet
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        } else {
+            sheet
         }
     }
 
@@ -455,6 +482,8 @@ struct AdminCommandCenterScreenView: View {
 
     private var readyContent: some View {
         VStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+            // Temporarily hidden per user directive
+            /*
             if !store.readiness.failedAreas.isEmpty {
                 CommandRecoveryStrip(
                     title: L10n("AdminCommandCenter_SourceIssue_Title"),
@@ -463,6 +492,7 @@ struct AdminCommandCenterScreenView: View {
                     action: refresh
                 )
             }
+            */
 
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
@@ -781,6 +811,7 @@ private struct CommandCenterChrome: View {
     let capabilityText: String
     let readinessText: String
     let readinessTone: AdminCommandTone
+    let onReadinessTap: (() -> Void)?
     let languageTitle: String
     let onAccount: () -> Void
     let onRefresh: () -> Void
@@ -791,7 +822,11 @@ private struct CommandCenterChrome: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             identityAndControls
-            CommandStatusLine(text: readinessText, tone: readinessTone)
+            CommandStatusLine(
+                text: readinessText,
+                tone: readinessTone,
+                action: onReadinessTap
+            )
         }
         .accessibilityElement(children: .contain)
     }
@@ -799,13 +834,13 @@ private struct CommandCenterChrome: View {
     @ViewBuilder
     private var identityAndControls: some View {
         if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 identityButton
                     .frame(maxWidth: .infinity, alignment: .leading)
                 quickControls
             }
         } else {
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
                 identityButton
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .layoutPriority(1)
@@ -816,33 +851,50 @@ private struct CommandCenterChrome: View {
 
     private var identityButton: some View {
         Button(action: onAccount) {
-            HStack(spacing: 11) {
+            HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(AdminSurface.control)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(0.18),
+                                    AdminSurface.primary.opacity(0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Circle()
+                        .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.0)
                     Image(systemName: "person.crop.circle.badge.checkmark")
-                        .font(.system(size: 19, weight: .medium))
+                        .font(.system(size: 20, weight: .semibold))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(AdminSurface.primary)
                 }
-                .frame(width: 42, height: 42)
+                .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("CommandCenter_Eyebrow", alter: nil))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("CommandCenter_Eyebrow", alter: "Pure Pets Operations"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(1)
+
+                        Circle()
+                            .fill(AdminSurface.primary)
+                            .frame(width: 4, height: 4)
+
+                        Text(capabilityText)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.primary)
+                            .lineLimit(1)
+                    }
+
                     Text(roleName)
-                        .font(AdminType.headline)
+                        .font(AdminType.title3)
                         .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(capabilityText)
-                        .font(AdminType.caption1)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -856,12 +908,20 @@ private struct CommandCenterChrome: View {
     private var quickControls: some View {
         HStack(alignment: .center, spacing: 10) {
             Button(action: onLanguage) {
-                Label(languageTitle, systemImage: "globe")
-                    .labelStyle(.iconOnly)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primary)
-                    .frame(width: 44, height: 44)
-                    .background(AdminSurface.control, in: Circle())
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.control)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                        )
+
+                    Label(languageTitle, systemImage: "globe")
+                        .labelStyle(.iconOnly)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
             }
             .buttonStyle(CommandPressStyle())
             .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
@@ -882,11 +942,19 @@ private struct CommandCenterChrome: View {
                     Label(Language.get("Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(AdminSurface.control, in: Circle())
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.control)
+                        .frame(width: 44, height: 44)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
             }
             .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
         }
@@ -896,8 +964,25 @@ private struct CommandCenterChrome: View {
 private struct CommandStatusLine: View {
     let text: String
     let tone: AdminCommandTone
+    let action: (() -> Void)?
 
+    @ViewBuilder
     var body: some View {
+        if let action {
+            Button(action: action) {
+                statusContent
+                    .frame(minHeight: AdminTouchTarget.minimum)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+            .accessibilityHint(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: nil))
+        } else {
+            statusContent
+                .frame(minHeight: 24)
+        }
+    }
+
+    private var statusContent: some View {
         HStack(spacing: 8) {
             Image(systemName: tone.symbol)
                 .font(.system(size: 12, weight: .semibold))
@@ -911,8 +996,126 @@ private struct CommandStatusLine: View {
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(minHeight: 24)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct CommandSourceIssueSheet: View {
+    let sourceNames: [String]
+    let detail: String
+    let updatedText: String
+    let onRetry: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                header
+
+                Text(Language.get("AdminCommandCenter_SourceIssue_SheetDetail", alter: nil))
+                    .font(AdminType.callout)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: AdminSpacing.md) {
+                    Text(Language.get("AdminCommandCenter_SourceIssue_AffectedSources", alter: nil))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                    ForEach(sourceNames, id: \.self) { sourceName in
+                        HStack(spacing: AdminSpacing.md) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(AdminCommandTone.elevated.accent)
+                                .accessibilityHidden(true)
+                            Text(sourceName)
+                                .font(AdminType.headline)
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(minHeight: AdminTouchTarget.minimum)
+                    }
+
+                    Divider()
+
+                    Text(detail)
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(updatedText)
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                }
+                .padding(AdminSpacing.base)
+                .background(
+                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                        .fill(AdminSurface.control)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
+                )
+
+                Button {
+                    dismiss()
+                    onRetry()
+                } label: {
+                    Label(
+                        Language.get("AdminCommandCenter_Retry", alter: nil),
+                        systemImage: "arrow.clockwise"
+                    )
+                    .font(AdminType.headline)
+                    .foregroundStyle(Color.white)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                    .background(
+                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                            .fill(AdminSurface.primary)
+                    )
+                }
+                .buttonStyle(CommandPressStyle())
+                .accessibilityHint(Language.get("AdminCommandOrbit_Refresh_Hint", alter: nil))
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, AdminSpacing.lg)
+            .padding(.bottom, AdminSpacing.xl)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(AdminCommandTone.elevated.softFill)
+                Image(systemName: AdminCommandTone.elevated.symbol)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AdminCommandTone.elevated.accent)
+                    .accessibilityHidden(true)
+            }
+            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+
+            Text(Language.get("AdminCommandCenter_SourceIssue_SheetTitle", alter: nil))
+                .font(AdminType.title3)
+                .foregroundStyle(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control, in: Circle())
+            }
+            .buttonStyle(CommandPressStyle())
+            .accessibilityLabel(Language.get("Close", alter: nil))
+        }
     }
 }
 
@@ -957,14 +1160,6 @@ private struct CommandHeroModel: Equatable {
 }
 
 /// The dominant operational anchor of the command surface.
-///
-/// Composition, in reading order: a trust line that states the live condition
-/// together with the moment it was confirmed, a load column that quantifies the
-/// authorized workload and splits it across a proportional escalation spine,
-/// the decision statement, the single next command bound to the highest
-/// priority signal, and an authority ledger. The spine replaces decorative
-/// gauges: its widths and colors are the real per-area counts and priority
-/// classes, so the graphic cannot disagree with the numbers beside it.
 private struct CommandEscalationHero: View {
     let model: CommandHeroModel
     let isRegular: Bool
@@ -972,6 +1167,7 @@ private struct CommandEscalationHero: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @State private var livePulse = false
 
     private var stacksColumns: Bool {
@@ -983,7 +1179,7 @@ private struct CommandEscalationHero: View {
             trustLine
 
             if stacksColumns {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 18) {
                     loadColumn
                     decisionColumn
                 }
@@ -998,9 +1194,39 @@ private struct CommandEscalationHero: View {
 
             authorityLedger
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
-        .commandSoftSurface(radius: AdminCommandMetric.heroRadius, borderOpacity: 0.78)
+        .padding(20)
+        .background(
+            ZStack {
+                AdminSurface.control
+
+                // Responsive radial ambient aura matching highest tone
+                RadialGradient(
+                    colors: [
+                        model.situation.tone.accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
+                        .clear
+                    ],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 280
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06), radius: 16, x: 0, y: 6)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            model.situation.tone.accent.opacity(0.38),
+                            Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.65 : 0.40)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.0
+                )
+        )
         .accessibilityElement(children: .contain)
     }
 
@@ -1028,13 +1254,15 @@ private struct CommandEscalationHero: View {
             Text(model.situation.badge)
                 .font(AdminType.captionBold)
                 .foregroundStyle(model.situation.tone.color)
-                .lineLimit(2)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
         }
         .padding(.horizontal, 11)
-        .padding(.vertical, 7)
+        .padding(.vertical, 6)
         .background(model.situation.tone.softFill, in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(model.situation.tone.accent.opacity(0.28), lineWidth: 0.75)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(model.situation.badge)
     }
@@ -1049,10 +1277,11 @@ private struct CommandEscalationHero: View {
             Text(model.updatedText)
                 .font(AdminType.caption1)
                 .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(2)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.25 : 0.12), in: Capsule(style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Language.get("CommandCenter_Last_Updated", alter: nil))
         .accessibilityValue(model.updatedText)
@@ -1061,19 +1290,28 @@ private struct CommandEscalationHero: View {
     @ViewBuilder
     private var liveIndicator: some View {
         if model.hasLiveSignal {
-            Circle()
-                .fill(model.situation.tone.accent)
-                .frame(width: 9, height: 9)
-                .opacity(livePulse ? 0.34 : 1)
-                .onAppear(perform: startLivePulse)
-                .onChange(of: reduceMotion) { isReduced in
-                    if isReduced {
-                        stopLivePulse()
-                    } else {
-                        startLivePulse()
-                    }
+            ZStack {
+                Circle()
+                    .stroke(model.situation.tone.accent.opacity(0.4), lineWidth: 1.5)
+                    .frame(width: 14, height: 14)
+                    .scaleEffect(livePulse ? 1.35 : 1.0)
+                    .opacity(livePulse ? 0.0 : 1.0)
+
+                Circle()
+                    .fill(model.situation.tone.accent)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: model.situation.tone.accent.opacity(0.6), radius: 3, x: 0, y: 0)
+            }
+            .frame(width: 14, height: 14)
+            .onAppear(perform: startLivePulse)
+            .onChange(of: reduceMotion) { isReduced in
+                if isReduced {
+                    stopLivePulse()
+                } else {
+                    startLivePulse()
                 }
-                .accessibilityHidden(true)
+            }
+            .accessibilityHidden(true)
         } else {
             Image(systemName: model.situation.symbol)
                 .font(.system(size: 12, weight: .semibold))
@@ -1083,11 +1321,9 @@ private struct CommandEscalationHero: View {
         }
     }
 
-    /// A single quiet breath on the live dot. It carries the only continuous
-    /// motion on the surface and is removed entirely under Reduce Motion.
     private func startLivePulse() {
         guard !reduceMotion, !livePulse else { return }
-        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+        withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) {
             livePulse = true
         }
     }
@@ -1103,14 +1339,12 @@ private struct CommandEscalationHero: View {
     // MARK: Load column
 
     private var loadColumn: some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("AdminCommandCenter_ActiveLoad", alter: nil))
+                Text(Language.get("AdminCommandCenter_ActiveLoad", alter: "Active Workload"))
                     .font(AdminType.caption1)
                     .foregroundStyle(AdminCommandInk.tertiary)
-                    .lineLimit(2)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
                 loadValue
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1138,7 +1372,7 @@ private struct CommandEscalationHero: View {
             ProgressView()
                 .tint(model.situation.tone.color)
                 .scaleEffect(1.1)
-                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
         } else if model.usesNumericLoad {
             Text(model.totalCountText)
                 .font(dynamicTypeSize.isAccessibilitySize ? AdminType.title : AdminCommandTypography.loadValue)
@@ -1152,8 +1386,8 @@ private struct CommandEscalationHero: View {
                 .font(.system(size: 26, weight: .medium))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(model.situation.tone.accent)
-                .frame(width: 56, height: 56)
-                .background(model.situation.tone.softFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .frame(width: 52, height: 52)
+                .background(model.situation.tone.softFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
     }
 
@@ -1186,6 +1420,7 @@ private struct CommandEscalationHero: View {
             Circle()
                 .fill(group.accent)
                 .frame(width: 7, height: 7)
+                .shadow(color: group.accent.opacity(0.5), radius: 2, x: 0, y: 0)
                 .accessibilityHidden(true)
             Text(group.label)
                 .font(AdminType.caption1)
@@ -1210,20 +1445,20 @@ private struct CommandEscalationHero: View {
     // MARK: Decision column
 
     private var decisionColumn: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(model.situation.title)
                     .font(dynamicTypeSize.isAccessibilitySize ? AdminType.title2 : AdminCommandTypography.decisionTitle)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(nil)
-                    .lineSpacing(4)
+                    .lineLimit(2)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(model.situation.detail)
                     .font(AdminType.callout)
                     .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(nil)
-                    .lineSpacing(3)
+                    .lineLimit(3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1235,29 +1470,30 @@ private struct CommandEscalationHero: View {
         }
     }
 
-    /// The next command. It is bound to the highest priority signal and carries
-    /// that signal's own load, so the operator sees what the action resolves
-    /// before opening it. Routing stays with the store-provided callback.
     private func commandBar(for signal: AdminCommandOrbitSignal) -> some View {
         Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onPrimary(signal)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: signal.symbolName)
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(width: 34, height: 34)
-                    .background(Color.white.opacity(0.16), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                    .accessibilityHidden(true)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(Color.white.opacity(0.20))
+                    Image(systemName: signal.symbolName)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.primaryActionTitle)
-                        .font(AdminType.calloutBold)
-                        .lineLimit(2)
-                        .lineSpacing(2)
+                        .font(AdminType.headline)
+                        .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(Language.get("AdminCommandCenter_Act", alter: nil))
+                    Text(Language.get("AdminCommandCenter_Act", alter: "Act now"))
                         .font(AdminType.caption2)
-                        .foregroundStyle(Color.white.opacity(0.76))
+                        .foregroundStyle(Color.white.opacity(0.80))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1268,23 +1504,44 @@ private struct CommandEscalationHero: View {
                     Text(countText)
                         .font(AdminType.captionBold)
                         .monospacedDigit()
+                        .foregroundStyle(.white)
                         .padding(.horizontal, 9)
-                        .frame(minWidth: 30, minHeight: 26)
-                        .background(Color.white.opacity(0.18), in: Capsule(style: .continuous))
+                        .frame(minHeight: 26)
+                        .background(Color.white.opacity(0.22), in: Capsule(style: .continuous))
                         .accessibilityHidden(true)
                 }
 
-                Image(systemName: "chevron.forward")
-                    .font(.system(size: 12, weight: .bold))
-                    .accessibilityHidden(true)
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.20))
+                        .frame(width: 26, height: 26)
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white)
+                }
+                .accessibilityHidden(true)
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .frame(maxWidth: .infinity, minHeight: AdminCommandMetric.commandBarHeight)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .background(
-                signal.tier.tone.actionFill,
-                in: RoundedRectangle(cornerRadius: AdminCommandMetric.commandBarRadius, style: .continuous)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                signal.tier.tone.accent,
+                                signal.tier.tone.accent.opacity(0.85)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(color: signal.tier.tone.accent.opacity(0.38), radius: 8, x: 0, y: 3)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
             )
         }
         .buttonStyle(CommandPressStyle())
@@ -1303,14 +1560,14 @@ private struct CommandEscalationHero: View {
 
             if let stateClassLabel = model.stateClassLabel {
                 ledgerRow(
-                    title: Language.get("CommandCenter_Operational_State", alter: nil),
+                    title: Language.get("CommandCenter_Operational_State", alter: "Operational state"),
                     value: stateClassLabel,
                     accent: model.situation.tone.accent
                 )
             }
 
             ledgerRow(
-                title: Language.get("AdminCommandCenter_AccessScope", alter: nil),
+                title: Language.get("AdminCommandCenter_AccessScope", alter: "Access scope"),
                 value: model.capabilityText,
                 accent: nil
             )
@@ -1322,9 +1579,7 @@ private struct CommandEscalationHero: View {
             Text(title)
                 .font(AdminType.caption1)
                 .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(2)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -1333,18 +1588,17 @@ private struct CommandEscalationHero: View {
                     Circle()
                         .fill(accent)
                         .frame(width: 6, height: 6)
+                        .shadow(color: accent.opacity(0.5), radius: 2, x: 0, y: 0)
                         .accessibilityHidden(true)
                 }
                 Text(value)
                     .font(AdminType.captionBold)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(2)
-                    .lineSpacing(2)
+                    .lineLimit(1)
                     .multilineTextAlignment(.trailing)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .frame(minHeight: 22)
+        .frame(minHeight: 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(value)
@@ -1353,11 +1607,6 @@ private struct CommandEscalationHero: View {
 
 // MARK: - Escalation Spine
 
-/// A proportional load bar: one capsule per authorized area, ordered by
-/// escalation priority from the leading edge, width proportional to the real
-/// item count with a legibility floor, colored by priority class. It is a
-/// single accessibility element because the priority list below the hero owns
-/// the tappable per-area actions.
 private struct CommandLoadSpine: View {
     let segments: [CommandLoadSegment]
     let trackAccent: Color
@@ -1373,20 +1622,21 @@ private struct CommandLoadSpine: View {
             HStack(spacing: gap) {
                 if showsPlaceholder || segments.isEmpty {
                     Capsule(style: .continuous)
-                        .fill(trackAccent.opacity(0.32))
+                        .fill(trackAccent.opacity(0.24))
                 } else {
                     ForEach(Array(segments.enumerated()), id: \.element.id) { index, segment in
                         Capsule(style: .continuous)
                             .fill(segment.accent)
                             .frame(width: index < widths.count ? widths[index] : 0)
+                            .shadow(color: segment.accent.opacity(0.35), radius: 2, x: 0, y: 0)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.88), value: layoutSignature)
         }
-        .frame(height: AdminCommandMetric.spineHeight)
-        .background(AdminSurface.control, in: Capsule(style: .continuous))
+        .frame(height: 8)
+        .background(AdminSurface.control.opacity(0.6), in: Capsule(style: .continuous))
     }
 
     private var layoutSignature: String {
@@ -1722,7 +1972,7 @@ private struct CommandPriorityRunway: View {
     let action: (AdminCommandOrbitSignal) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, detail: detail)
 
             if signals.isEmpty {
@@ -1735,9 +1985,10 @@ private struct CommandPriorityRunway: View {
                     action: nil
                 )
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 10) {
                     ForEach(Array(signals.enumerated()), id: \.element.id) { index, signal in
                         Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             action(signal)
                         } label: {
                             CommandPriorityRow(
@@ -1750,7 +2001,6 @@ private struct CommandPriorityRunway: View {
                         .buttonStyle(CommandPressStyle())
                     }
                 }
-                .commandSoftSurface(radius: AdminCommandMetric.surfaceRadius, borderOpacity: 0.64)
             }
         }
     }
@@ -1762,89 +2012,110 @@ private struct CommandPriorityRow: View {
     let position: Int
     let isLast: Bool
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            VStack(spacing: 0) {
-                ZStack {
-                    Circle()
-                        .fill(signal.tier.tone.softFill)
-                    Image(systemName: signal.symbolName)
-                        .font(.system(size: 16, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(signal.tier.tone.accent)
-                }
-                .frame(width: 42, height: 42)
-                .accessibilityHidden(true)
+            // Priority Leading Indicator Bar
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(signal.tier.tone.accent)
+                .frame(width: 4, height: 44)
+                .shadow(color: signal.tier.tone.accent.opacity(0.40), radius: 2, x: 0, y: 0)
 
-                if !isLast {
-                    Rectangle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 1, height: 32)
-                        .accessibilityHidden(true)
-                }
+            // Specimen Icon Container
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(signal.tier.tone.softFill)
+                Image(systemName: signal.symbolName)
+                    .font(.system(size: 17, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(signal.tier.tone.accent)
             }
+            .frame(width: 44, height: 44)
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(signal.tier.tone.accent.opacity(0.25), lineWidth: 0.75)
+            )
+            .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
                         Text(priorityLabel)
-                            .font(AdminType.captionBold)
+                            .font(AdminType.caption2Bold)
                             .foregroundStyle(signal.tier.tone.color)
-                            .lineLimit(2)
-                            .lineSpacing(2)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(1)
+
                         if !signal.moduleTitle.isEmpty {
+                            Text("•")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(AdminCommandInk.tertiary)
                             Text(signal.moduleTitle)
-                                .font(AdminType.caption1)
+                                .font(AdminType.caption2)
                                 .foregroundStyle(AdminCommandInk.secondary)
-                                .lineLimit(2)
-                                .lineSpacing(2)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(1)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                     Spacer(minLength: 8)
+
                     if signal.count > 0 {
                         Text(signal.count.formatted(.number.locale(locale)))
-                            .font(AdminType.headline)
-                            .foregroundStyle(AdminSurface.primaryText)
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(signal.tier.tone.color)
                             .monospacedDigit()
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(signal.tier.tone.softFill, in: Capsule(style: .continuous))
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(signal.tier.tone.accent.opacity(0.25), lineWidth: 0.5)
+                            )
                             .accessibilityLabel(countAccessibilityText)
                     }
                 }
 
                 Text(signal.title)
-                    .font(position == 1 ? AdminType.title3 : AdminType.headline)
+                    .font(position == 1 ? AdminType.headline : AdminType.calloutBold)
                     .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
 
                 if !signal.detail.isEmpty {
                     Text(signal.detail)
                         .font(AdminType.callout)
                         .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(nil)
-                        .lineSpacing(3)
+                        .lineLimit(3)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                HStack(spacing: 8) {
-                    Text(Language.get("AdminCommandCenter_Act", alter: nil))
+                HStack(spacing: 6) {
+                    Text(Language.get("AdminCommandCenter_Act", alter: "Act now"))
                         .font(AdminType.captionBold)
                         .foregroundStyle(signal.tier.tone.color)
                     Image(systemName: "chevron.forward")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(signal.tier.tone.accent)
                         .accessibilityHidden(true)
                     Spacer(minLength: 0)
                 }
+                .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .frame(minHeight: AdminCommandMetric.rowMinimumHeight)
-        .contentShape(Rectangle())
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.control)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.03), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: nil))
@@ -1877,62 +2148,78 @@ private struct CommandSourceLedger: View {
     let failedSources: [String]
     let updatedText: String
 
+    @Environment(\.colorScheme) private var colorScheme
+
     private var rows: [CommandSourceRow] {
         var result: [CommandSourceRow] = []
-        result.append(.init(title: Language.get("CommandCenter_Last_Updated", alter: nil), value: updatedText, tone: .stable, symbol: "clock"))
+        result.append(.init(title: Language.get("CommandCenter_Last_Updated", alter: "Last confirmed"), value: updatedText, tone: .stable, symbol: "clock.badge.checkmark"))
         if loadingSources.isEmpty && failedSources.isEmpty {
-            result.append(.init(title: Language.get("AdminCommandCenter_SourceReady", alter: nil), value: Language.get("AdminCommandCenter_Ready_Detail", alter: nil), tone: .stable, symbol: "checkmark.circle"))
+            result.append(.init(title: Language.get("AdminCommandCenter_SourceReady", alter: "All sources verified"), value: Language.get("AdminCommandCenter_Ready_Detail", alter: "Real-time sync active"), tone: .stable, symbol: "checkmark.seal.fill"))
         }
         if !loadingSources.isEmpty {
-            result.append(.init(title: Language.get("AdminCommandCenter_LoadingSources", alter: nil), value: localizedList(loadingSources), tone: .info, symbol: "arrow.triangle.2.circlepath"))
+            result.append(.init(title: Language.get("AdminCommandCenter_LoadingSources", alter: "Confirming sources"), value: localizedList(loadingSources), tone: .info, symbol: "arrow.triangle.2.circlepath"))
         }
         if !failedSources.isEmpty {
-            result.append(.init(title: Language.get("AdminCommandCenter_SourceIssue_Title", alter: nil), value: localizedList(failedSources), tone: .elevated, symbol: "wifi.exclamationmark"))
+            result.append(.init(title: Language.get("AdminCommandCenter_SourceIssue_Title", alter: "Source issue"), value: localizedList(failedSources), tone: .elevated, symbol: "wifi.exclamationmark"))
         }
         return result
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             SectionHeader(title: title, detail: detail)
 
             VStack(spacing: 0) {
                 ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                    HStack(spacing: 12) {
-                        Image(systemName: row.symbol)
-                            .font(.system(size: 15, weight: .medium))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(row.tone.accent)
-                            .frame(width: 36, height: 36)
-                            .background(row.tone.softFill, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-                            .accessibilityHidden(true)
+                    HStack(spacing: 14) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(row.tone.softFill)
+                            Image(systemName: row.symbol)
+                                .font(.system(size: 16, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(row.tone.accent)
+                        }
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(row.tone.accent.opacity(0.25), lineWidth: 0.75)
+                        )
+                        .accessibilityHidden(true)
 
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(row.title)
-                                .font(AdminType.captionBold)
+                                .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminCommandInk.secondary)
-                                .lineLimit(2)
-                                .lineSpacing(2)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(1)
                             Text(row.value)
                                 .font(AdminType.callout)
                                 .foregroundStyle(AdminSurface.primaryText)
-                                .lineLimit(nil)
-                                .lineSpacing(3)
+                                .lineLimit(2)
+                                .lineSpacing(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
+                    .padding(.vertical, 14)
                     .accessibilityElement(children: .combine)
 
                     if index < rows.count - 1 {
-                        Divider().padding(.leading, 64)
+                        Divider()
+                            .padding(.leading, 70)
                     }
                 }
             }
-            .commandSoftSurface(radius: AdminCommandMetric.surfaceRadius, borderOpacity: 0.64)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AdminSurface.control)
+                    .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.20 : 0.03), radius: 8, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
+            )
         }
     }
 
@@ -1961,26 +2248,24 @@ private struct CommandRecoveryStrip: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "exclamationmark.triangle")
-                    .font(.system(size: 16, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color(uiColor: .ppWarning))
                     .frame(width: 38, height: 38)
-                    .background(Color(uiColor: .ppMineralBeige), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .background(Color(uiColor: .ppWarning).opacity(0.15), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(AdminType.headline)
                         .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(nil)
-                        .lineSpacing(3)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(detail)
                         .font(AdminType.callout)
                         .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(nil)
-                        .lineSpacing(3)
+                        .lineLimit(3)
+                        .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1990,9 +2275,7 @@ private struct CommandRecoveryStrip: View {
                 HStack(spacing: 8) {
                     Text(actionTitle)
                         .font(AdminType.calloutBold)
-                        .lineLimit(2)
-                        .lineSpacing(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                     Image(systemName: "arrow.clockwise")
                         .font(.system(size: 13, weight: .bold))
                         .accessibilityHidden(true)
@@ -2000,12 +2283,16 @@ private struct CommandRecoveryStrip: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .frame(maxWidth: .infinity, minHeight: 46)
-                .background(AdminSurface.primaryPressed, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(CommandPressStyle())
         }
         .padding(16)
-        .background(Color(uiColor: .ppMineralBeige), in: RoundedRectangle(cornerRadius: AdminCommandMetric.tightRadius, style: .continuous))
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.35), lineWidth: 0.75)
+        )
         .accessibilityElement(children: .contain)
     }
 }
@@ -2046,7 +2333,7 @@ private struct CommandCenterSourcePanel: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
+                .padding(14)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
         }
@@ -2061,6 +2348,8 @@ private struct CommandCenterStatePanel<Extra: View>: View {
     let actionTitle: String?
     let action: (() -> Void)?
     let extra: Extra
+
+    @Environment(\.colorScheme) private var colorScheme
 
     init(
         tone: AdminCommandTone,
@@ -2081,28 +2370,35 @@ private struct CommandCenterStatePanel<Extra: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
             ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(tone.softFill)
+                    .frame(width: 64, height: 64)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .strokeBorder(tone.accent.opacity(0.30), lineWidth: 1.0)
+                    )
+
                 if showsProgress {
                     ProgressView().tint(tone.color)
                 } else {
                     Image(systemName: tone.symbol)
-                        .font(.system(size: 25, weight: .medium))
+                        .font(.system(size: 28, weight: .semibold))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(tone.accent)
                 }
             }
-            .frame(width: 58, height: 58)
+            .frame(width: 64, height: 64)
+            .shadow(color: tone.accent.opacity(0.25), radius: 8, x: 0, y: 3)
             .accessibilityHidden(true)
 
-            VStack(spacing: 7) {
+            VStack(spacing: 8) {
                 Text(title)
                     .font(AdminType.title3)
                     .foregroundStyle(AdminSurface.primaryText)
                     .multilineTextAlignment(.center)
-                    .lineSpacing(4)
+                    .lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(detail)
@@ -2110,7 +2406,7 @@ private struct CommandCenterStatePanel<Extra: View>: View {
                     .foregroundStyle(AdminCommandInk.secondary)
                     .multilineTextAlignment(.center)
                     .lineLimit(nil)
-                    .lineSpacing(3)
+                    .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
@@ -2119,10 +2415,18 @@ private struct CommandCenterStatePanel<Extra: View>: View {
             if let actionTitle, let action {
                 Button(action: action) {
                     Text(actionTitle)
-                        .font(AdminType.calloutBold)
+                        .font(AdminType.headline)
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: AdminCommandMetric.minimumActionHeight)
-                        .background(tone.actionFill, in: RoundedRectangle(cornerRadius: AdminCommandMetric.tightRadius, style: .continuous))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(tone.actionFill)
+                                .shadow(color: tone.accent.opacity(0.35), radius: 8, x: 0, y: 3)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                        )
                 }
                 .buttonStyle(CommandPressStyle())
                 .accessibilityHint(Language.get("AdminCommandOrbit_Refresh_Hint", alter: nil))
@@ -2131,7 +2435,15 @@ private struct CommandCenterStatePanel<Extra: View>: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 24)
         .padding(.vertical, 28)
-        .commandSoftSurface(radius: AdminCommandMetric.surfaceRadius, borderOpacity: 0.64)
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AdminSurface.control)
+                .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.04), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35), lineWidth: 0.75)
+        )
         .accessibilityElement(children: action == nil ? .combine : .contain)
     }
 }
@@ -2160,7 +2472,7 @@ private extension CommandCenterStatePanel where Extra == EmptyView {
 
 // MARK: - Shared Components
 
-private struct SectionHeader: View {
+struct SectionHeader: View {
     let title: String
     let detail: String
 
@@ -2184,7 +2496,7 @@ private struct SectionHeader: View {
     }
 }
 
-private struct CommandPressStyle: ButtonStyle {
+struct CommandPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.76 : 1.0)

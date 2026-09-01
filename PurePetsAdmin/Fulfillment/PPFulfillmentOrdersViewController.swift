@@ -313,6 +313,10 @@ private enum PPFulfillmentTone: Sendable {
         }
     }
 
+    var softFill: Color {
+        color.opacity(0.12)
+    }
+
     var symbol: String {
         switch self {
         case .progress: return "arrow.triangle.2.circlepath"
@@ -2451,86 +2455,118 @@ private struct PPFulfillmentDetailScreen: View {
     // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(PPFulfillmentTokens.primary)
-                    .frame(minHeight: 44)
-                }
-
-                Spacer()
-
-                if viewModel.isLoading {
-                    ProgressView().tint(PPFulfillmentTokens.primary)
+        HStack(alignment: .center) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onDismiss {
+                    onDismiss()
                 } else {
-                    Button(action: { viewModel.load() }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(PPFulfillmentTokens.primary)
-                            .frame(width: 36, height: 36)
-                            .background(PPFulfillmentTokens.primarySoft, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+                    dismiss()
                 }
+            }) {
+                HStack(spacing: 6) {
+                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("Back", alter: "رجوع"))
+                        .font(AdminType.calloutBold)
+                }
+                .foregroundStyle(PPFulfillmentTokens.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
+                )
+            }
+            .buttonStyle(CommandPressStyle())
+
+            Spacer()
+
+            VStack(spacing: 1) {
+                Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Text(viewModel.record.displayOrder)
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
             }
 
-            Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ") + " / " + (viewModel.record.parentOrderNumber ?? viewModel.record.id))
-                .font(AdminType.caption1)
-                .foregroundColor(PPFulfillmentTokens.secondaryInk)
-                .padding(.top, 2)
+            Spacer()
 
-            Text(viewModel.record.displayOrder)
-                .font(AdminType.title2)
-                .foregroundColor(PPFulfillmentTokens.ink)
+            if viewModel.isLoading {
+                ProgressView().tint(PPFulfillmentTokens.primary)
+                    .frame(width: 38, height: 38)
+            } else {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.load()
+                }) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.control)
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
+                            )
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(PPFulfillmentTokens.primary)
+                    }
+                }
+                .buttonStyle(CommandPressStyle())
+                .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, 4)
     }
 
     private var detailCommandHeader: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceLG) {
+        VStack(alignment: .leading, spacing: 16) {
             detailStatusHeader
 
             routeReadout
-            .font(PPFulfillmentTokens.beiruti(.regular, size: 16, relativeTo: .body))
-            .foregroundStyle(PPFulfillmentTokens.secondaryInk)
 
-            Divider().overlay(effectiveTone.color.opacity(0.24))
+            Divider()
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(PPFulfillmentL10n.text("Fulfillment_Ref"))
-                    .font(PPFulfillmentTokens.beiruti(.medium, size: 12, relativeTo: .caption))
-                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-                Text(viewModel.record.id)
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(PPFulfillmentTokens.ink)
-                    .textSelection(.enabled)
-                    .environment(\.layoutDirection, .leftToRight)
-            }
+            executionRefFooter
         }
-        .padding(PPFulfillmentTokens.spaceLG)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(PPFulfillmentTokens.surface)
-        .clipShape(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerHero, style: .continuous))
-        .overlay(alignment: .leading) {
-            Capsule()
-                .fill(effectiveTone.color)
-                .frame(width: 4)
-                .padding(.vertical, PPFulfillmentTokens.spaceLG)
-        }
-        .overlay(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerHero, style: .continuous).stroke(effectiveTone.color.opacity(0.30), lineWidth: 1))
+        .background(
+            ZStack {
+                AdminSurface.control
+
+                RadialGradient(
+                    colors: [
+                        effectiveTone.color.opacity(0.14),
+                        .clear
+                    ],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 260
+                )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            effectiveTone.color.opacity(0.40),
+                            Color(uiColor: .ppSurfaceBorder).opacity(0.50)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.0
+                )
+        )
         .animation(reduceMotion ? nil : .interactiveSpring(response: 0.5, dampingFraction: 0.82), value: viewModel.overridePhase)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("fulfillment.detail.command")
@@ -2538,68 +2574,169 @@ private struct PPFulfillmentDetailScreen: View {
 
     @ViewBuilder
     private var detailStatusHeader: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
-                detailIdentity
-                effectiveStatusBadge
-            }
-        } else {
-            HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
-                detailIdentity
-                Spacer(minLength: PPFulfillmentTokens.spaceSM)
-                effectiveStatusBadge
-            }
-        }
-    }
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                effectiveTone.color.opacity(0.24),
+                                effectiveTone.color.opacity(0.10)
+                            ],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: 25
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 15, style: .continuous)
+                            .strokeBorder(effectiveTone.color.opacity(0.35), lineWidth: 0.75)
+                    )
 
-    private var detailIdentity: some View {
-        HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
-            Image(systemName: viewModel.record.stage.symbol)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(effectiveTone.color)
-                .frame(width: 50, height: 50)
-                .background(effectiveTone.color.opacity(0.11), in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .accessibilityHidden(true)
+                Image(systemName: viewModel.record.stage.symbol)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(effectiveTone.color)
+            }
+            .frame(width: 48, height: 48)
+            .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(PPFulfillmentL10n.text("Fulfillment_Detail_Command_Title"))
-                    .font(PPFulfillmentTokens.beiruti(.medium, size: 13, relativeTo: .caption))
-                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
                     .textCase(.uppercase)
+
                 Text(viewModel.record.displayOrder)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(PPFulfillmentTokens.ink)
+                    .font(.system(size: 20, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
                     .environment(\.layoutDirection, .leftToRight)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            effectiveStatusBadge
         }
     }
 
     private var effectiveStatusBadge: some View {
-        PPFulfillmentStatusBadge(status: effectiveStatus, tone: effectiveTone)
-            .id(effectiveStatus)
-            .transition(reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
+        HStack(spacing: 6) {
+            Circle()
+                .fill(effectiveTone.color)
+                .frame(width: 7, height: 7)
+                .shadow(color: effectiveTone.color.opacity(0.6), radius: 2, x: 0, y: 0)
+            Text(effectiveStatus.isEmpty ? PPFulfillmentL10n.text("Fulfillment_Status_NewRequest") : PPFulfillmentL10n.status(effectiveStatus))
+                .font(AdminType.captionBold)
+                .foregroundStyle(effectiveTone.color)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(effectiveTone.softFill, in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(effectiveTone.color.opacity(0.30), lineWidth: 0.75)
+        )
+        .id(effectiveStatus)
+        .transition(reduceMotion ? .opacity : .scale(scale: 0.92).combined(with: .opacity))
     }
 
-    @ViewBuilder
     private var routeReadout: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
-                Label(viewModel.customerName, systemImage: "person.fill")
-                Image(systemName: "arrow.down")
-                    .foregroundStyle(PPFulfillmentTokens.primary)
-                    .accessibilityHidden(true)
-                Label(viewModel.ownerName, systemImage: viewModel.record.isPlatformOwned ? "pawprint.fill" : "person.2.fill")
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .body))
+        HStack(spacing: 10) {
+            // Customer Plate
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Fulfillment_DetailCustomer", alter: "العميل"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(viewModel.customerName)
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
             }
-        } else {
-            HStack(spacing: PPFulfillmentTokens.spaceSM) {
-                Label(viewModel.customerName, systemImage: "person.fill")
-                Image(systemName: "arrow.forward")
-                    .foregroundStyle(PPFulfillmentTokens.primary)
-                    .accessibilityHidden(true)
-                Label(viewModel.ownerName, systemImage: viewModel.record.isPlatformOwned ? "pawprint.fill" : "person.2.fill")
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .body))
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Vector Connector
+            ZStack {
+                Circle()
+                    .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.30))
+                    .frame(width: 24, height: 24)
+                Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
             }
+
+            // Merchant / Provider Plate
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .ppPremiumAccent).opacity(0.15))
+                    Image(systemName: viewModel.record.isPlatformOwned ? "pawprint.fill" : "person.2.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppPremiumAccent))
+                }
+                .frame(width: 30, height: 30)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Fulfillment_DetailOwner", alter: "الجهة المنفذة"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    Text(viewModel.ownerName)
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.18))
+        )
+    }
+
+    private var executionRefFooter: some View {
+        HStack(alignment: .center, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(PPFulfillmentL10n.text("Fulfillment_Ref"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Text(viewModel.record.id)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.80)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: {
+                UIPasteboard.general.string = viewModel.record.id
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(Language.get("Copy", alter: "نسخ"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+            }
+            .buttonStyle(CommandPressStyle())
         }
     }
 
@@ -2610,7 +2747,7 @@ private struct PPFulfillmentDetailScreen: View {
             symbol: "point.3.connected.trianglepath.dotted"
         ) {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: PPFulfillmentTokens.spaceSM) {
+                HStack(spacing: 12) {
                     ForEach(PPFulfillmentStage.allCases) { stage in
                         PPFulfillmentDetailStageNode(
                             stage: stage,
@@ -2620,7 +2757,8 @@ private struct PPFulfillmentDetailScreen: View {
                         )
                     }
                 }
-                .padding(.vertical, 2)
+                .padding(.vertical, 4)
+                .padding(.horizontal, 2)
             }
         }
     }
@@ -2639,48 +2777,83 @@ private struct PPFulfillmentDetailScreen: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(PPFulfillmentL10n.text("Fulfillment_Detail_Retained_Title"))
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .headline))
+                    .font(AdminType.headline)
                     .foregroundStyle(PPFulfillmentTokens.ink)
                 Text(error)
-                    .font(PPFulfillmentTokens.beiruti(.regular, size: 14, relativeTo: .subheadline))
+                    .font(AdminType.callout)
                     .foregroundStyle(PPFulfillmentTokens.secondaryInk)
             }
             Spacer(minLength: 0)
             Button(PPFulfillmentL10n.text("Fulfillment_Retry"), action: viewModel.load)
-                .font(PPFulfillmentTokens.beiruti(.bold, size: 14, relativeTo: .subheadline))
+                .font(AdminType.captionBold)
         }
-        .padding(PPFulfillmentTokens.spaceBase)
-        .background(PPFulfillmentTokens.warning.opacity(0.09), in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous).stroke(PPFulfillmentTokens.warning.opacity(0.32)))
+        .padding(14)
+        .background(PPFulfillmentTokens.warning.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(PPFulfillmentTokens.warning.opacity(0.32)))
         .accessibilityElement(children: .contain)
     }
 
     private var interventionDock: some View {
-        VStack(spacing: PPFulfillmentTokens.spaceSM) {
-            Button(action: viewModel.prepareOverride) {
-                HStack(spacing: PPFulfillmentTokens.spaceSM) {
-                    Image(systemName: "checkmark.shield.fill")
+        VStack(spacing: 0) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                viewModel.prepareOverride()
+            }) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.20))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
                     Text(PPFulfillmentL10n.text("Fulfillment_OverrideAction"))
-                        .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .body))
+                        .font(AdminType.headline)
+                        .foregroundStyle(.white)
+
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.forward")
-                        .font(.system(size: 12, weight: .bold))
+
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85))
                 }
-                .foregroundStyle(Color.white)
-                .padding(.horizontal, PPFulfillmentTokens.spaceBase)
-                .frame(maxWidth: .infinity, minHeight: 50)
-                .background(PPFulfillmentTokens.danger, in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous))
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.88, green: 0.22, blue: 0.25),
+                                    Color(red: 0.74, green: 0.15, blue: 0.20)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .shadow(color: Color(red: 0.88, green: 0.22, blue: 0.25).opacity(0.38), radius: 10, x: 0, y: 4)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(CommandPressStyle())
             .disabled(viewModel.isAwaitingOverrideConfirmation)
             .accessibilityHint(PPFulfillmentL10n.text("Fulfillment_Override_AuditNotice"))
             .accessibilityIdentifier("fulfillment.override.dock")
         }
-        .padding(.horizontal, PPFulfillmentTokens.screenMargin)
-        .padding(.top, PPFulfillmentTokens.spaceSM)
-        .padding(.bottom, PPFulfillmentTokens.spaceSM)
-        .background(PPFulfillmentTokens.surface)
-        .overlay(alignment: .top) { Divider().overlay(PPFulfillmentTokens.border) }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(
+            AdminSurface.control
+                .shadow(color: Color.black.opacity(0.08), radius: 12, x: 0, y: -4)
+        )
+        .overlay(alignment: .top) {
+            Divider()
+        }
     }
 
     private var effectiveStatus: String {
@@ -2698,20 +2871,67 @@ private struct PPFulfillmentDetailScreen: View {
             symbol: "square.grid.2x2.fill"
         ) {
             LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: dynamicTypeSize.isAccessibilitySize ? 220 : 140), spacing: PPFulfillmentTokens.spaceMD)],
-                spacing: PPFulfillmentTokens.spaceLG
+                columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)],
+                spacing: 10
             ) {
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailOrder", value: viewModel.record.displayOrder)
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_Ref", value: viewModel.record.id, monospaced: true)
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailCreated", value: PPFulfillmentL10n.date(viewModel.record.createdAt))
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailUpdated", value: PPFulfillmentL10n.date(viewModel.record.updatedAt))
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailMode", value: PPFulfillmentL10n.mode(for: viewModel.record))
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailCustomer", value: viewModel.customerName)
-                PPFulfillmentKeyValue(titleKey: "Fulfillment_DetailOwner", value: viewModel.ownerName)
+                telemetryTile(
+                    titleKey: "Fulfillment_DetailOrder",
+                    value: viewModel.record.displayOrder,
+                    symbol: "shippingbox.fill",
+                    isMonospace: true
+                )
+                telemetryTile(
+                    titleKey: "Fulfillment_Ref",
+                    value: viewModel.record.id,
+                    symbol: "barcode",
+                    isMonospace: true
+                )
+                telemetryTile(
+                    titleKey: "Fulfillment_DetailCreated",
+                    value: PPFulfillmentL10n.date(viewModel.record.createdAt),
+                    symbol: "calendar.badge.clock",
+                    isMonospace: false
+                )
+                telemetryTile(
+                    titleKey: "Fulfillment_DetailUpdated",
+                    value: PPFulfillmentL10n.date(viewModel.record.updatedAt),
+                    symbol: "clock.arrow.circlepath",
+                    isMonospace: false
+                )
             }
-            .padding(PPFulfillmentTokens.spaceBase)
-            .ppFulfillmentCard()
         }
+    }
+
+    private func telemetryTile(titleKey: String, value: String, symbol: String, isMonospace: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(PPFulfillmentL10n.text(titleKey))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+            }
+
+            Text(value)
+                .font(isMonospace ? .system(size: 13, weight: .bold, design: .monospaced) : AdminType.calloutBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.78)
+                .environment(\.layoutDirection, isMonospace ? .leftToRight : PPFulfillmentL10n.layoutDirection)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AdminSurface.control)
+                .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.50), lineWidth: 0.75)
+        )
     }
 
     private var compositionSection: some View {
@@ -2722,17 +2942,16 @@ private struct PPFulfillmentDetailScreen: View {
         ) {
             if viewModel.record.items.isEmpty {
                 Text(PPFulfillmentL10n.text("Fulfillment_NoItems"))
+                    .font(AdminType.callout)
                     .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-                    .frame(maxWidth: .infinity, minHeight: 90)
-                    .ppFulfillmentCard()
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             } else {
-                VStack(spacing: 0) {
+                VStack(spacing: 8) {
                     ForEach(Array(viewModel.record.items.enumerated()), id: \.element.id) { index, item in
                         PPFulfillmentItemRow(index: index + 1, item: item, currency: viewModel.record.currency)
-                        if index < viewModel.record.items.count - 1 { Divider().padding(.leading, 58) }
                     }
                 }
-                .ppFulfillmentCard()
             }
         }
     }
@@ -2743,14 +2962,22 @@ private struct PPFulfillmentDetailScreen: View {
             detailKey: "Fulfillment_DetailSettlement_Subtitle",
             symbol: "banknote.fill"
         ) {
-            VStack(spacing: PPFulfillmentTokens.spaceMD) {
+            VStack(spacing: 12) {
                 settlementRow(titleKey: "Fulfillment_Subtotal", amount: viewModel.record.subtotal, emphasized: false)
                 settlementRow(titleKey: "Fulfillment_PlatformCommission", amount: viewModel.record.platformCommission, emphasized: false)
                 Divider()
                 settlementRow(titleKey: "Fulfillment_ProviderNet", amount: viewModel.record.providerNet, emphasized: true)
             }
-            .padding(PPFulfillmentTokens.spaceBase)
-            .ppFulfillmentCard()
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AdminSurface.control)
+                    .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.50), lineWidth: 0.75)
+            )
         }
     }
 
@@ -2760,26 +2987,34 @@ private struct PPFulfillmentDetailScreen: View {
             detailKey: "Fulfillment_DetailAudit_Subtitle",
             symbol: "checkmark.shield.fill"
         ) {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
+            VStack(alignment: .leading, spacing: 12) {
                 Label(PPFulfillmentL10n.date(viewModel.record.adminOverrideAt), systemImage: "calendar.badge.exclamationmark")
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(Color(uiColor: .ppWarning))
+
                 if !viewModel.record.adminOverrideBy.isEmpty {
                     Label(viewModel.record.adminOverrideBy, systemImage: "person.fill")
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
                         .environment(\.layoutDirection, .leftToRight)
                 }
+
                 if !viewModel.record.adminOverrideReason.isEmpty {
                     Text(viewModel.record.adminOverrideReason)
-                        .font(PPFulfillmentTokens.beiruti(.medium, size: 16, relativeTo: .body))
-                        .foregroundStyle(PPFulfillmentTokens.ink)
-                        .padding(PPFulfillmentTokens.spaceMD)
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .padding(12)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PPFulfillmentTokens.primarySoft, in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerSmall, style: .continuous))
+                        .background(Color(uiColor: .ppWarning).opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
-            .font(PPFulfillmentTokens.beiruti(.regular, size: 15, relativeTo: .subheadline))
-            .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-            .padding(PPFulfillmentTokens.spaceBase)
+            .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .ppFulfillmentCard()
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppWarning).opacity(0.35), lineWidth: 0.75)
+            )
         }
     }
 
@@ -2791,17 +3026,26 @@ private struct PPFulfillmentDetailScreen: View {
         ) {
             if viewModel.events.isEmpty {
                 Text(PPFulfillmentL10n.text("Fulfillment_NoEvents"))
+                    .font(AdminType.callout)
                     .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-                    .frame(maxWidth: .infinity, minHeight: 90)
-                    .ppFulfillmentCard()
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.events.enumerated()), id: \.element.id) { index, event in
                         PPFulfillmentTimelineRow(event: event, isLast: index == viewModel.events.count - 1)
                     }
                 }
-                .padding(PPFulfillmentTokens.spaceBase)
-                .ppFulfillmentCard()
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(AdminSurface.control)
+                        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 2)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.50), lineWidth: 0.75)
+                )
             }
         }
     }
@@ -2812,35 +3056,25 @@ private struct PPFulfillmentDetailScreen: View {
         symbol: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
-            PPFulfillmentSectionHeading(
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(
                 title: PPFulfillmentL10n.text(titleKey),
-                detail: PPFulfillmentL10n.text(detailKey),
-                symbol: symbol
+                detail: PPFulfillmentL10n.text(detailKey)
             )
             content()
         }
     }
 
     private func settlementRow(titleKey: String, amount: Double, emphasized: Bool) -> some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXS) {
-                    Text(PPFulfillmentL10n.text(titleKey))
-                    Text(PPFulfillmentL10n.money(amount, currency: viewModel.record.currency))
-                        .fontWeight(.bold)
-                }
-            } else {
-                HStack {
-                    Text(PPFulfillmentL10n.text(titleKey))
-                    Spacer()
-                    Text(PPFulfillmentL10n.money(amount, currency: viewModel.record.currency))
-                        .fontWeight(.bold)
-                }
-            }
+        HStack {
+            Text(PPFulfillmentL10n.text(titleKey))
+                .font(emphasized ? AdminType.headline : AdminType.callout)
+                .foregroundStyle(emphasized ? AdminSurface.primaryText : AdminCommandInk.secondary)
+            Spacer()
+            Text(PPFulfillmentL10n.money(amount, currency: viewModel.record.currency))
+                .font(emphasized ? .system(size: 18, weight: .bold, design: .rounded) : AdminType.calloutBold)
+                .foregroundStyle(emphasized ? Color(red: 0.05, green: 0.65, blue: 0.45) : AdminSurface.primaryText)
         }
-        .font(PPFulfillmentTokens.beiruti(emphasized ? .bold : .regular, size: emphasized ? 18 : 16, relativeTo: emphasized ? .headline : .body))
-        .foregroundStyle(emphasized ? PPFulfillmentTokens.success : PPFulfillmentTokens.ink)
         .accessibilityElement(children: .combine)
     }
 }
@@ -2853,43 +3087,54 @@ private struct PPFulfillmentDetailStageNode: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceSM) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: stage.symbol)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(accentColor)
-                Spacer(minLength: PPFulfillmentTokens.spaceSM)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(accentColor.opacity(0.15))
+                    Image(systemName: stage.symbol)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(accentColor)
+                }
+                .frame(width: 32, height: 32)
+
+                Spacer(minLength: 6)
+
                 if isCurrent {
                     Circle()
                         .fill(currentColor)
                         .frame(width: 9, height: 9)
-                        .overlay(Circle().stroke(PPFulfillmentTokens.surface, lineWidth: 2))
+                        .shadow(color: currentColor.opacity(0.8), radius: 3, x: 0, y: 0)
                 } else if isReached {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(PPFulfillmentTokens.success)
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color(red: 0.05, green: 0.65, blue: 0.45))
                 }
             }
 
             Text(PPFulfillmentL10n.text(stage.titleKey))
-                .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .headline))
-                .foregroundStyle(PPFulfillmentTokens.ink)
-                .lineLimit(2)
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
 
             Text(stateText)
-                .font(PPFulfillmentTokens.beiruti(.medium, size: 12, relativeTo: .caption))
+                .font(AdminType.caption2Bold)
                 .foregroundStyle(accentColor)
                 .lineLimit(1)
         }
-        .padding(PPFulfillmentTokens.spaceMD)
-        .frame(width: dynamicTypeSize.isAccessibilitySize ? 200 : 138, alignment: .leading)
-        .frame(minHeight: dynamicTypeSize.isAccessibilitySize ? 142 : 108, alignment: .leading)
-        .background(backgroundColor, in: RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: PPFulfillmentTokens.cornerMedium, style: .continuous)
-                .stroke(isCurrent ? currentColor : PPFulfillmentTokens.border, lineWidth: isCurrent ? 2 : 1)
+        .padding(12)
+        .frame(width: dynamicTypeSize.isAccessibilitySize ? 180 : 132, alignment: .leading)
+        .frame(minHeight: 104, alignment: .topLeading)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(isCurrent ? currentColor.opacity(0.08) : AdminSurface.control)
+                .shadow(color: Color.black.opacity(isCurrent ? 0.06 : 0.02), radius: 6, x: 0, y: 2)
         )
-        .opacity(isReached || isCurrent ? 1 : 0.58)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(isCurrent ? currentColor.opacity(0.60) : Color(uiColor: .ppSurfaceBorder).opacity(0.50), lineWidth: isCurrent ? 1.5 : 0.75)
+        )
+        .opacity(isReached || isCurrent ? 1 : 0.60)
         .accessibilityElement(children: .combine)
         .accessibilityValue(stateText)
         .accessibilityAddTraits(isCurrent ? .isSelected : [])
@@ -2897,11 +3142,7 @@ private struct PPFulfillmentDetailStageNode: View {
 
     private var accentColor: Color {
         if isCurrent { return currentColor }
-        return isReached ? PPFulfillmentTokens.success : PPFulfillmentTokens.tertiaryInk
-    }
-
-    private var backgroundColor: Color {
-        isCurrent ? currentColor.opacity(0.09) : PPFulfillmentTokens.surface
+        return isReached ? Color(red: 0.05, green: 0.65, blue: 0.45) : AdminCommandInk.tertiary
     }
 
     private var stateText: String {
@@ -2919,12 +3160,13 @@ private struct PPFulfillmentKeyValue: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(PPFulfillmentL10n.text(titleKey))
-                .font(PPFulfillmentTokens.beiruti(.medium, size: 13, relativeTo: .caption))
-                .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminCommandInk.secondary)
             Text(value)
-                .font(monospaced ? .system(size: 15, weight: .semibold, design: .monospaced) : PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .body))
-                .foregroundStyle(PPFulfillmentTokens.ink)
-                .fixedSize(horizontal: false, vertical: true)
+                .font(monospaced ? .system(size: 14, weight: .bold, design: .monospaced) : AdminType.calloutBold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.80)
                 .environment(\.layoutDirection, monospaced ? .leftToRight : PPFulfillmentL10n.layoutDirection)
                 .textSelection(.enabled)
         }
@@ -2940,47 +3182,57 @@ private struct PPFulfillmentItemRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Group {
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
-                    itemIdentity
-                    itemValue
-                }
-            } else {
-                HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
-                    itemIdentity
-                    Spacer()
-                    itemValue
-                }
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.12))
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
             }
-        }
-        .padding(PPFulfillmentTokens.spaceBase)
-        .accessibilityElement(children: .combine)
-    }
+            .frame(width: 40, height: 40)
+            .accessibilityHidden(true)
 
-    private var itemIdentity: some View {
-        HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
-            Text("\(index)")
-                .font(.system(size: 12, weight: .bold, design: .rounded))
-                .foregroundStyle(PPFulfillmentTokens.primary)
-                .frame(width: 34, height: 34)
-                .background(PPFulfillmentTokens.primarySoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(name)
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 17, relativeTo: .headline))
-                    .foregroundStyle(PPFulfillmentTokens.ink)
-                Text(PPFulfillmentL10n.format("Fulfillment_ItemQuantity_Format", "\(item.quantity)"))
-                    .font(PPFulfillmentTokens.beiruti(.regular, size: 14, relativeTo: .subheadline))
-                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
-            }
-        }
-    }
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
 
-    private var itemValue: some View {
-        Text(PPFulfillmentL10n.money(item.unitPrice * Double(item.quantity), currency: currency))
-            .font(PPFulfillmentTokens.beiruti(.bold, size: 15, relativeTo: .subheadline))
-            .foregroundStyle(PPFulfillmentTokens.ink)
+                HStack(spacing: 6) {
+                    Text(PPFulfillmentL10n.format("Fulfillment_ItemQuantity_Format", "\(item.quantity)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+
+                    Text("•")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+
+                    Text(PPFulfillmentL10n.money(item.unitPrice, currency: currency) + " / " + Language.get("Unit", alter: "حبة"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text(PPFulfillmentL10n.money(item.unitPrice * Double(item.quantity), currency: currency))
+                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.control)
+                .shadow(color: Color.black.opacity(0.02), radius: 4, x: 0, y: 1)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.45), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
     }
 
     private var name: String {
@@ -2994,32 +3246,59 @@ private struct PPFulfillmentTimelineRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
+        HStack(alignment: .top, spacing: 14) {
             VStack(spacing: 0) {
-                Circle()
-                    .fill(tone.color)
-                    .overlay(Circle().stroke(PPFulfillmentTokens.surface, lineWidth: 3))
-                    .frame(width: 18, height: 18)
+                ZStack {
+                    Circle()
+                        .fill(tone.color)
+                        .frame(width: 14, height: 14)
+                        .shadow(color: tone.color.opacity(0.5), radius: 3, x: 0, y: 0)
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 6, height: 6)
+                }
+
                 if !isLast {
                     Rectangle()
-                        .fill(tone.color.opacity(0.25))
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    tone.color.opacity(0.40),
+                                    Color(uiColor: .ppSurfaceBorder).opacity(0.30)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
                         .frame(width: 2)
-                        .frame(minHeight: 64, maxHeight: .infinity)
+                        .frame(minHeight: 52, maxHeight: .infinity)
                 }
             }
             .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 5) {
-                Text(PPFulfillmentL10n.eventAction(event.action))
-                    .font(PPFulfillmentTokens.beiruti(.bold, size: 16, relativeTo: .headline))
-                    .foregroundStyle(PPFulfillmentTokens.ink)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 8) {
+                    Text(PPFulfillmentL10n.eventAction(event.action))
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Spacer(minLength: 4)
+
+                    Text(PPFulfillmentL10n.date(event.createdAt))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
                 if !event.fromStatus.isEmpty || !event.toStatus.isEmpty {
                     transitionReadout
-                    .font(PPFulfillmentTokens.beiruti(.medium, size: 14, relativeTo: .subheadline))
-                    .foregroundStyle(tone.color)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(tone.color)
                 }
+
                 actorReadout
-                .font(PPFulfillmentTokens.beiruti(.regular, size: 13, relativeTo: .caption))
-                .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
                 if !event.reason.isEmpty {
                     eventContext(titleKey: "Fulfillment_Event_Reason", value: event.reason)
                 }
@@ -3027,7 +3306,7 @@ private struct PPFulfillmentTimelineRow: View {
                     eventContext(titleKey: "Fulfillment_Event_Note", value: event.note)
                 }
             }
-            .padding(.bottom, isLast ? 0 : PPFulfillmentTokens.spaceBase)
+            .padding(.bottom, isLast ? 0 : 16)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
@@ -3035,57 +3314,57 @@ private struct PPFulfillmentTimelineRow: View {
 
     @ViewBuilder
     private var transitionReadout: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXS) {
-                if !event.fromStatus.isEmpty { Text(PPFulfillmentL10n.status(event.fromStatus)) }
-                Image(systemName: "arrow.down")
-                    .accessibilityHidden(true)
-                if !event.toStatus.isEmpty { Text(PPFulfillmentL10n.status(event.toStatus)) }
+        HStack(spacing: 6) {
+            if !event.fromStatus.isEmpty {
+                Text(PPFulfillmentL10n.status(event.fromStatus))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(tone.softFill, in: Capsule(style: .continuous))
             }
-        } else {
-            HStack(spacing: 6) {
-                if !event.fromStatus.isEmpty { Text(PPFulfillmentL10n.status(event.fromStatus)) }
-                Image(systemName: "arrow.forward")
-                    .accessibilityHidden(true)
-                if !event.toStatus.isEmpty { Text(PPFulfillmentL10n.status(event.toStatus)) }
+            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                .font(.system(size: 9, weight: .bold))
+                .accessibilityHidden(true)
+            if !event.toStatus.isEmpty {
+                Text(PPFulfillmentL10n.status(event.toStatus))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(tone.color.opacity(0.18), in: Capsule(style: .continuous))
             }
         }
     }
 
     @ViewBuilder
     private var actorReadout: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXS) {
-                if !event.actorType.isEmpty { Text(PPFulfillmentL10n.actorType(event.actorType)) }
-                if !event.actor.isEmpty { actorIdentifier }
-                Text(PPFulfillmentL10n.date(event.createdAt))
+        HStack(spacing: 5) {
+            if !event.actorType.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "person.badge.shield.checkmark.fill")
+                        .font(.system(size: 10))
+                    Text(PPFulfillmentL10n.actorType(event.actorType))
+                }
             }
-        } else {
-            HStack(spacing: 5) {
-                if !event.actorType.isEmpty { Text(PPFulfillmentL10n.actorType(event.actorType)) }
-                if !event.actorType.isEmpty, !event.actor.isEmpty { Text("•") }
-                if !event.actor.isEmpty { actorIdentifier }
-                if (!event.actorType.isEmpty || !event.actor.isEmpty), event.createdAt != nil { Text("•") }
-                Text(PPFulfillmentL10n.date(event.createdAt))
+            if !event.actorType.isEmpty, !event.actor.isEmpty { Text("•") }
+            if !event.actor.isEmpty {
+                Text(event.actor)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .environment(\.layoutDirection, .leftToRight)
             }
         }
-    }
-
-    private var actorIdentifier: some View {
-        Text(event.actor)
-            .environment(\.layoutDirection, .leftToRight)
     }
 
     private func eventContext(titleKey: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(PPFulfillmentL10n.text(titleKey))
-                .font(PPFulfillmentTokens.beiruti(.medium, size: 12, relativeTo: .caption))
-                .foregroundStyle(PPFulfillmentTokens.tertiaryInk)
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminCommandInk.secondary)
             Text(value)
-                .font(PPFulfillmentTokens.beiruti(.regular, size: 14, relativeTo: .subheadline))
-                .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                .font(AdminType.callout)
+                .foregroundStyle(AdminSurface.primaryText)
         }
-        .padding(.top, PPFulfillmentTokens.spaceXS)
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .ppSurfaceBorder).opacity(0.20), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.top, 2)
     }
 
     private var tone: PPFulfillmentTone {
@@ -3118,11 +3397,10 @@ private struct PPFulfillmentOverrideSheet: View {
                 PPFulfillmentTokens.canvas.ignoresSafeArea()
 
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXL) {
-                        PPFulfillmentSectionHeading(
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        SectionHeader(
                             title: PPFulfillmentL10n.text("Fulfillment_Intervention_Title"),
-                            detail: PPFulfillmentL10n.text("Fulfillment_Intervention_Subtitle"),
-                            symbol: "checkmark.shield.fill"
+                            detail: PPFulfillmentL10n.text("Fulfillment_Intervention_Subtitle")
                         )
                         transitionPanel
                         confirmationNotice
@@ -3130,9 +3408,9 @@ private struct PPFulfillmentOverrideSheet: View {
                         communicationPanel
                         auditNotice
                     }
-                    .padding(.horizontal, PPFulfillmentTokens.screenMargin)
-                    .padding(.top, PPFulfillmentTokens.spaceBase)
-                    .padding(.bottom, PPFulfillmentTokens.spaceBase)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 20)
                     .disabled(viewModel.isSubmitting || viewModel.isAwaitingOverrideConfirmation)
                 }
             }
@@ -3162,30 +3440,35 @@ private struct PPFulfillmentOverrideSheet: View {
     }
 
     private var transitionPanel: some View {
-        VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) {
+        VStack(alignment: .leading, spacing: 12) {
             sectionLabel("Fulfillment_Intervention_Transition")
 
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceMD) { statusBridge }
+                    VStack(alignment: .leading, spacing: 12) { statusBridge }
                 } else {
-                    HStack(alignment: .center, spacing: PPFulfillmentTokens.spaceMD) { statusBridge }
+                    HStack(alignment: .center, spacing: 12) { statusBridge }
                 }
             }
 
-            Divider().overlay(PPFulfillmentTokens.border)
+            Divider()
 
-            VStack(spacing: 0) {
+            VStack(spacing: 8) {
                 ForEach(Array(viewModel.allowedOverrideTargets.enumerated()), id: \.element) { index, status in
                     targetRow(status)
-                    if index < viewModel.allowedOverrideTargets.count - 1 {
-                        Divider().padding(.leading, 42).overlay(PPFulfillmentTokens.border.opacity(0.72))
-                    }
                 }
             }
         }
-        .padding(PPFulfillmentTokens.spaceBase)
-        .ppFulfillmentCard()
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.control)
+                .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.50), lineWidth: 0.75)
+        )
     }
 
     @ViewBuilder
@@ -3193,7 +3476,7 @@ private struct PPFulfillmentOverrideSheet: View {
         if let phase = viewModel.overridePhase,
            phase == .pending || phase == .acceptedWaitingSync || phase == .stale {
             let isStale = phase == .stale
-            HStack(alignment: .top, spacing: PPFulfillmentTokens.spaceMD) {
+            HStack(alignment: .top, spacing: 12) {
                 Image(systemName: isStale ? "exclamationmark.triangle.fill" : "dot.radiowaves.left.and.right")
                     .foregroundStyle(isStale ? PPFulfillmentTokens.warning : PPFulfillmentTokens.primary)
                     .accessibilityHidden(true)

@@ -781,7 +781,9 @@ static const CGFloat kMenuBarHeight = 80.0f;
     
     [self.currentTool executeWithCompletionBlock:^(UIImage *image, NSError *error, NSDictionary *userInfo) {
         if(error){
-            [PPAlertHelper showInfoIn:self title:@"Error" subtitle:error.localizedDescription];
+            [PPAlertHelper showErrorIn:self
+                                 title:kLang(@"Error")
+                              subtitle:kLang(@"ImageEditor_ApplyFailed")];
         }
         else if(image){
             self->_originalImage = image;

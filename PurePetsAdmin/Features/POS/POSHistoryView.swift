@@ -244,7 +244,7 @@ private struct ReceiptCard: View {
         VStack(spacing: AdminSpacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("#\(receipt.receiptID.prefix(8))")
+                    Text(receipt.receiptID.hasPrefix("PPPOS-") ? receipt.receiptID : "#\(receipt.receiptID.prefix(8))")
                         .font(AdminType.headline)
                         .foregroundColor(AdminSurface.primaryText)
                     if let date = receipt.createdAt {

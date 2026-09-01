@@ -63,9 +63,19 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     self = [super init];
     if (self) {
         _receiptID = docID ?: @"";
+        _subtotal = PPSafeDouble(dict[@"subtotal"]);
+        _discount = PPSafeDouble(dict[@"discount"]);
         _total = PPSafeDouble(dict[@"total"]);
+        _cashReceived = PPSafeDouble(dict[@"cashReceived"]);
+        _changeDue = PPSafeDouble(dict[@"changeDue"]);
         _paymentMethod = PPSafeString(dict[@"paymentMethod"]);
         _currency = PPSafeString(dict[@"currency"]);
+        _status = PPSafeString(dict[@"status"]);
+        _customerName = PPSafeString(dict[@"customerName"]);
+        _customerPhone = PPSafeString(dict[@"customerPhone"]);
+        _note = PPSafeString(dict[@"note"]);
+        _source = PPSafeString(dict[@"source"]);
+        _operatorID = PPSafeString(dict[@"operator"] ?: dict[@"createdBy"]);
         _schemaVersion = [PPSafeNumber(dict[@"posSchemaVersion"]) integerValue];
         NSArray *rawItems = PPSafeArray(dict[@"items"]);
         NSMutableArray *parsedItems = [NSMutableArray array];
@@ -75,7 +85,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
             }
         }
         _items = parsedItems.copy;
-        id createdAt = dict[@"createdAt"];
+        id createdAt = dict[@"createdAt"] ?: dict[@"timestamp"];
         if ([createdAt isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)createdAt dateValue];
     }
     return self;
@@ -167,7 +177,28 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
 - (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
                           total:(double)total
                   paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(NSNumber *)cashReceived
                       commandID:(NSString *)commandID
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    [self submitPOSOrderWithItems:items
+                            total:total
+                    paymentMethod:paymentMethod
+                     cashReceived:cashReceived
+                        commandID:commandID
+                     customerName:nil
+                    customerPhone:nil
+                    posCustomerID:nil
+                       completion:completion];
+}
+
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(NSString *)customerName
+                  customerPhone:(NSString *)customerPhone
+                  posCustomerID:(NSString *)posCustomerID
                      completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
     NSMutableArray *mappedItems = [NSMutableArray array];
     for (NSDictionary *item in items) {
@@ -187,19 +218,32 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         [mappedItems addObject:mapped];
     }
 
+    NSMutableDictionary *salePayload = [@{
+        @"items": mappedItems,
+        @"paymentMethod": paymentMethod ?: @"cash",
+        @"status": @"completed",
+        @"subtotal": @(total),
+        @"total": @(total),
+        @"currency": @"QAR",
+        @"source": @"admin_ios",
+    } mutableCopy];
+    if ([paymentMethod isEqualToString:@"cash"]) {
+        salePayload[@"cashReceived"] = @(MAX(total, PPSafeDouble(cashReceived)));
+    }
+    if (customerName.length > 0) {
+        salePayload[@"customerName"] = customerName;
+    }
+    if (customerPhone.length > 0) {
+        salePayload[@"customerPhone"] = customerPhone;
+    }
+    if (posCustomerID.length > 0) {
+        salePayload[@"posCustomerId"] = posCustomerID;
+    }
+
     NSDictionary *data = @{
         @"action": @"create",
         @"commandId": commandID ?: @"",
-        @"payload": @{
-            @"items": mappedItems,
-            @"paymentMethod": paymentMethod ?: @"cash",
-            @"status": @"completed",
-            @"subtotal": @(total),
-            @"total": @(total),
-            @"cashReceived": [paymentMethod isEqualToString:@"cash"] ? @(total) : @(0),
-            @"currency": @"QAR",
-            @"source": @"admin_ios",
-        }
+        @"payload": salePayload,
     };
 
     [[[FIRFunctions functions] HTTPSCallableWithName:@"processTransaction"]
@@ -260,6 +304,36 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         }];
         if (completion) completion(receipts.copy, nil);
     });
+}
+
+- (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
+                             completion:(void(^)(PPPOSReceipt *, NSError *))completion {
+    NSString *trimmedID = [transactionID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedID.length == 0) {
+        if (completion) completion(nil, PPPOSServiceError(400, @"transactionId is required."));
+        return;
+    }
+
+    FIRDocumentReference *reference = [[[FIRFirestore firestore] collectionWithPath:@"transactions"]
+                                       documentWithPath:trimmedID];
+    [reference getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = snapshot.data;
+        if (!snapshot.exists || ![data isKindOfClass:NSDictionary.class]) {
+            if (completion) completion(nil, PPPOSServiceError(404, @"Transaction receipt was not found."));
+            return;
+        }
+
+        PPPOSReceipt *receipt = [[PPPOSReceipt alloc] initWithDictionary:data documentID:snapshot.documentID];
+        if (receipt.receiptID.length == 0 || receipt.items.count == 0 || receipt.currency.length == 0) {
+            if (completion) completion(nil, PPPOSServiceError(502, @"Invalid transaction receipt."));
+            return;
+        }
+        if (completion) completion(receipt, nil);
+    }];
 }
 
 @end

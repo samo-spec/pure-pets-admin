@@ -37,7 +37,7 @@
     if ([identifier isEqualToString:@"paymentSettings"]) return [AdminPaymentSettingsHostingController new];
     if ([identifier isEqualToString:@"fulfillment"]) return [AdminFulfillmentListHostingController new];
     if ([identifier isEqualToString:@"delivery"]) return [AdminDeliveryListHostingController new];
-    if ([identifier isEqualToString:@"providerApplications"]) return [PPProviderApplicationsViewController new];
+    if ([identifier isEqualToString:@"providerApplications"]) return [PPProviderApplicationsHostingController new];
     if ([identifier isEqualToString:@"providerPlans"]) return [PPProviderPlansViewController new];
     if ([identifier isEqualToString:@"providerFeatures"]) return [PPProviderFeatureAccessViewController new];
     if ([identifier isEqualToString:@"providerAccounting"]) return [PPProviderAccountingViewController new];

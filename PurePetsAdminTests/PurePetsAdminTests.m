@@ -8,6 +8,8 @@
 #import <XCTest/XCTest.h>
 #import "PPPaymentManagementModels.h"
 #import "PPStaffAuth.h"
+#import "PetAccessory.h"
+#import "PPPOSService.h"
 
 @interface PurePetsAdminTests : XCTestCase
 
@@ -153,6 +155,87 @@
     XCTAssertEqualObjects(staff.role, PPStaffRoleViewer);
     XCTAssertTrue([staff hasPermission:kStaffPermSupportView]);
     XCTAssertFalse([staff hasPermission:kStaffPermPaymentsManage]);
+}
+
+- (void)testLivePetWithNullProjectionPriceRemainsUnpricedWithoutCrashing {
+    PetAccessory *livePet = [[PetAccessory alloc] initWithDictionary:@{
+        @"name": @"Unpriced live pet",
+        @"accessKindType": @(AccessTypeLivePet),
+        @"inventoryMode": @"INDIVIDUAL_TRACKED",
+        @"quantity": @1,
+        @"price": [NSNull null],
+        @"finalPrice": [NSNull null],
+        @"sellPrice": [NSNull null],
+        @"availableUnitPriceMin": [NSNull null]
+    } documentID:@"live_pet_unpriced"];
+
+    XCTAssertFalse(livePet.hasResolvedSellingPrice);
+    XCTAssertEqualObjects(livePet.finalPrice, @(0));
+
+    NSDictionary *payload = [livePet toFirestoreDictionary];
+    XCTAssertNil(payload[@"price"]);
+    XCTAssertNil(payload[@"finalPrice"]);
+}
+
+- (void)testLivePetUsesServerProjectedAvailableUnitMinimumPrice {
+    PetAccessory *livePet = [[PetAccessory alloc] initWithDictionary:@{
+        @"name": @"Priced live pet",
+        @"accessKindType": @(AccessTypeLivePet),
+        @"inventoryMode": @"INDIVIDUAL_TRACKED",
+        @"quantity": @1,
+        @"price": [NSNull null],
+        @"finalPrice": [NSNull null],
+        @"availableUnitPriceMin": @125.5
+    } documentID:@"live_pet_priced"];
+
+    XCTAssertTrue(livePet.hasResolvedSellingPrice);
+    XCTAssertEqualWithAccuracy(livePet.price.doubleValue, 125.5, 0.001);
+    XCTAssertEqualWithAccuracy(livePet.finalPrice.doubleValue, 125.5, 0.001);
+}
+
+- (void)testPOSReceiptParsesCanonicalTransactionAndExactUnitDetails {
+    PPPOSReceipt *receipt = [[PPPOSReceipt alloc] initWithDictionary:@{
+        @"posSchemaVersion": @3,
+        @"subtotal": @250,
+        @"discount": @25,
+        @"total": @225,
+        @"cashReceived": @250,
+        @"changeDue": @25,
+        @"currency": @"QAR",
+        @"paymentMethod": @"cash",
+        @"status": @"completed",
+        @"customerName": @"Receipt Customer",
+        @"customerPhone": @"50000000",
+        @"note": @"Handle with care",
+        @"source": @"admin_ios",
+        @"operator": @"staff_1",
+        @"items": @[
+            @{
+                @"productId": @"live_pet_1",
+                @"name": @"Tracked bird",
+                @"unitPrice": @112.5,
+                @"quantity": @2,
+                @"lineTotal": @225,
+                @"inventoryMode": @"INDIVIDUAL_TRACKED",
+                @"unitIds": @[@"unit_1", @"unit_2"],
+                @"unitRingTags": @[@"QA-101", @"QA-102"]
+            }
+        ]
+    } documentID:@"txn_receipt_1"];
+
+    XCTAssertEqualObjects(receipt.receiptID, @"txn_receipt_1");
+    XCTAssertEqual(receipt.schemaVersion, 3);
+    XCTAssertEqualWithAccuracy(receipt.subtotal, 250, 0.001);
+    XCTAssertEqualWithAccuracy(receipt.discount, 25, 0.001);
+    XCTAssertEqualWithAccuracy(receipt.total, 225, 0.001);
+    XCTAssertEqualWithAccuracy(receipt.cashReceived, 250, 0.001);
+    XCTAssertEqualWithAccuracy(receipt.changeDue, 25, 0.001);
+    XCTAssertEqualObjects(receipt.status, @"completed");
+    XCTAssertEqualObjects(receipt.customerName, @"Receipt Customer");
+    XCTAssertEqualObjects(receipt.operatorID, @"staff_1");
+    XCTAssertEqual(receipt.items.count, 1);
+    XCTAssertEqualObjects(receipt.items.firstObject.unitRingTags, (@[@"QA-101", @"QA-102"]));
+    XCTAssertEqualWithAccuracy(receipt.items.firstObject.lineTotal, 225, 0.001);
 }
 
 @end

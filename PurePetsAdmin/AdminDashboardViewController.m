@@ -2423,6 +2423,11 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     (void)notification;
     if (!self.isViewLoaded || !UsrMgr.currentUser) return;
 
+    // Authorization refreshes can turn an early fail-closed listener into a
+    // readable source. Tear down the old registrations first so an inert
+    // listener returned before PPStaffAuth finished cannot pin readiness in a
+    // failed state for the rest of the dashboard lifetime.
+    [self pp_stopCommandPriorityFeeds];
     [self pp_rebuildDashboardFormPreservingOffset:YES];
     if (!self.pp_isCommandSpine) {
         [self setupHeaderUIWithUser:UsrMgr.currentUser];
@@ -2891,12 +2896,20 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     }
 }
 
-/// User-requested re-confirmation. Only the one-shot sources are marked
-/// pending: live-listener areas are continuously confirmed by their own
-/// events and would otherwise hang in a false updating state until the next
-/// data change. Stale in-flight results stay rejected by generation.
+/// User-requested re-confirmation. Healthy live listeners remain attached,
+/// while failed live listeners are recreated because Firestore terminates a
+/// listener after authorization/query errors. Keeping that inert registration
+/// would leave the source failed forever. Stale callbacks remain rejected by
+/// the generation checks in pp_stopCommandPriorityFeeds.
 - (void)refreshCommandFeedsFromUser {
     if (!self.pp_commandOrbitController) return;
+
+    BOOL fulfillmentFailed = [self.pp_feedStatusByArea[@"fulfillment"] isEqualToString:kPPAdminCommandFeedFailed];
+    BOOL inventoryFailed = [self.pp_feedStatusByArea[@"accessories"] isEqualToString:kPPAdminCommandFeedFailed];
+    if (fulfillmentFailed || inventoryFailed) {
+        [self pp_stopCommandPriorityFeeds];
+    }
+
     if (self.pp_feedStatusByArea[@"delivery"]) {
         self.pp_feedStatusByArea[@"delivery"] = kPPAdminCommandFeedPending;
     }
@@ -3467,7 +3480,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPAccountingViewController new];
     }
     if ([tag isEqualToString:@"providerApplications"]) {
-        return [PPProviderApplicationsViewController new];
+        return [PPProviderApplicationsHostingController new];
     }
     if ([tag isEqualToString:@"providerPlans"]) {
         return [PPProviderPlansViewController new];

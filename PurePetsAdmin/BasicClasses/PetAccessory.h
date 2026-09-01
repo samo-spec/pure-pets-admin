@@ -30,6 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *name;
 @property (nonatomic, strong) NSString *desc;
 @property (nonatomic, strong) NSNumber *price;                     // Base/original price
+@property (nonatomic, readonly) BOOL hasResolvedSellingPrice;      // NO when the catalog projection has no priced available unit
 @property (nonatomic, strong, nullable) NSNumber *discountPercent;  // % discount (0–100)
 @property (nonatomic, strong, nullable) NSNumber *discountAmount;   // Absolute discount (e.g. 15.0)
 @property (nonatomic, readonly) NSNumber *finalPrice;               // Auto-calculated final price
@@ -55,6 +56,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSString *source;
 @property (nonatomic, copy, nullable) NSString *inventoryMode;
 @property (nonatomic, assign) NSInteger inventorySchemaVersion;
+@property (nonatomic, strong, nullable) NSNumber *standardSellingPrice;
+@property (nonatomic, assign) NSInteger reservedQuantity;
+@property (nonatomic, assign) BOOL isArchived;
 @property (nonatomic, assign) AccessKindType accessKindType;
 @property (nonatomic, assign) AccessConditions condition;
 @property (nonatomic, assign) NSInteger quantity; // how many in stock

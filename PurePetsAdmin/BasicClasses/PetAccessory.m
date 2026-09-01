@@ -1,6 +1,7 @@
 #import "PetAccessory.h"
 #import "ArabicNormalizer.h"
 #import "MainKindsArrayManager.h"
+#import <math.h>
 
 @interface PetImageItem (PPAccessoryMetadata)
 + (nullable instancetype)itemWithMediaMetadata:(NSDictionary *)metadata;
@@ -18,9 +19,11 @@
     if (![url isKindOfClass:NSString.class] || url.length == 0) {
         return nil;
     }
-    CGFloat width = [metadata[@"width"] doubleValue];
-    CGFloat height = [metadata[@"height"] doubleValue];
-    NSString *blurHash = metadata[@"blurHash"];
+    id widthValue = metadata[@"width"];
+    id heightValue = metadata[@"height"];
+    CGFloat width = [widthValue respondsToSelector:@selector(doubleValue)] ? [widthValue doubleValue] : 0.0;
+    CGFloat height = [heightValue respondsToSelector:@selector(doubleValue)] ? [heightValue doubleValue] : 0.0;
+    NSString *blurHash = [metadata[@"blurHash"] isKindOfClass:NSString.class] ? metadata[@"blurHash"] : nil;
     return [[PetImageItem alloc] initWithURL:url width:width height:height blurHash:blurHash];
 }
 @end
@@ -38,6 +41,7 @@ BOOL const isPPDebugMode = NO;
 
 @interface PetAccessory ()
 @property (nonatomic, copy) NSString *searchTitle;
+@property (nonatomic, assign, readwrite) BOOL hasResolvedSellingPrice;
 + (UIViewController *)pp_topViewController;
 + (UIViewController *)pp_topViewControllerFromRoot:(UIViewController *)rootViewController;
 @end
@@ -107,13 +111,48 @@ static NSNumber *PPAccessoryNumberValueForKeys(NSDictionary *dict, NSArray<NSStr
     return nil;
 }
 
+static NSNumber * _Nullable PPAccessorySellingPriceValueForKeys(NSDictionary *dict, NSArray<NSString *> *keys) {
+    for (NSString *key in keys) {
+        NSNumber *candidate = PPAccessoryNumberValueForKeys(dict, @[key]);
+        if (!candidate) continue;
+        double value = candidate.doubleValue;
+        if (isfinite(value) && value >= 0.0) {
+            return candidate;
+        }
+    }
+    return nil;
+}
+
+static NSArray<NSString *> *PPAccessoryStringArray(id value) {
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSString *> *strings = [NSMutableArray array];
+    for (id candidate in (NSArray *)value) {
+        NSString *string = PPAccessoryTrimmedString(candidate);
+        if (string.length > 0) [strings addObject:string];
+    }
+    return [strings copy];
+}
+
+static NSArray<NSDictionary *> *PPAccessoryDictionaryArray(id value) {
+    if (![value isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSDictionary *> *dictionaries = [NSMutableArray array];
+    for (id candidate in (NSArray *)value) {
+        if ([candidate isKindOfClass:NSDictionary.class]) {
+            [dictionaries addObject:candidate];
+        }
+    }
+    return [dictionaries copy];
+}
+
 static NSArray<NSDictionary *> *PPNormalizedImageMeta(NSArray<NSString *> *urls, NSArray<NSDictionary *> *meta) {
     NSMutableArray<NSDictionary *> *normalized = [NSMutableArray arrayWithCapacity:urls.count];
     for (NSInteger i = 0; i < urls.count; i++) {
         NSString *url = [urls[i] isKindOfClass:NSString.class] ? urls[i] : @"";
         NSDictionary *m = (i < meta.count && [meta[i] isKindOfClass:NSDictionary.class]) ? meta[i] : nil;
-        CGFloat width = [m[@"width"] floatValue];
-        CGFloat height = [m[@"height"] floatValue];
+        id widthValue = m[@"width"];
+        id heightValue = m[@"height"];
+        CGFloat width = [widthValue respondsToSelector:@selector(doubleValue)] ? [widthValue doubleValue] : 0.0;
+        CGFloat height = [heightValue respondsToSelector:@selector(doubleValue)] ? [heightValue doubleValue] : 0.0;
         [normalized addObject:@{
             @"url": url,
             @"width": @(MAX(0.0, width)),
@@ -128,8 +167,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     for (NSInteger i = 0; i < urls.count; i++) {
         NSString *url = [urls[i] isKindOfClass:NSString.class] ? urls[i] : @"";
         NSDictionary *m = (i < meta.count && [meta[i] isKindOfClass:NSDictionary.class]) ? meta[i] : nil;
-        CGFloat width = [m[@"width"] floatValue];
-        CGFloat height = [m[@"height"] floatValue];
+        id widthValue = m[@"width"];
+        id heightValue = m[@"height"];
+        CGFloat width = [widthValue respondsToSelector:@selector(doubleValue)] ? [widthValue doubleValue] : 0.0;
+        CGFloat height = [heightValue respondsToSelector:@selector(doubleValue)] ? [heightValue doubleValue] : 0.0;
         NSMutableDictionary *item = [@{
             @"url": url,
             @"width": @(MAX(0.0, width)),
@@ -145,10 +186,15 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 
 @implementation PetAccessory
 
+@synthesize price = _price;
+@synthesize hasResolvedSellingPrice = _hasResolvedSellingPrice;
+
 - (instancetype)init {
     if (self = [super init]) {
         _name = @"";
         _desc = @"";
+        _price = @(0);
+        _hasResolvedSellingPrice = NO;
         _ownerID = @"";
         _storeID = @"";
         _storeName = @"";
@@ -164,6 +210,24 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     return self;
 }
 
+- (void)setPrice:(NSNumber *)price {
+    id candidate = price;
+    if ([candidate isKindOfClass:NSNumber.class]) {
+        double value = [(NSNumber *)candidate doubleValue];
+        if (isfinite(value) && value >= 0.0) {
+            _price = [(NSNumber *)candidate copy];
+            _hasResolvedSellingPrice = YES;
+            return;
+        }
+    }
+
+    // Keep the Objective-C/Swift surface nonnull while retaining whether the
+    // backend actually supplied a selling price. Never reinterpret unknown as
+    // a real zero-price item.
+    _price = @(0);
+    _hasResolvedSellingPrice = NO;
+}
+
 - (NSDictionary *)toFirestoreDictionary {
     [self normalizeInventoryState];
 
@@ -173,7 +237,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.name) dict[@"name"] = self.name;
     dict[@"searchTitle"] = [ArabicNormalizer normalize:self.name ?: @""];
     if (self.desc) dict[@"desc"] = self.desc;
-    if (self.price) dict[@"price"] = self.price;
+    if (self.hasResolvedSellingPrice) dict[@"price"] = self.price;
 
     // Discount fields
     // The editor uses merge writes, so explicit nulls are required to clear a
@@ -236,8 +300,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     dict[@"isDisabled"] = @(self.isDisabled);
 
     // Calculate and include final price
-    NSNumber *finalPrice = [self calculateFinalPrice];
-    if (finalPrice) dict[@"finalPrice"] = finalPrice;
+    if (self.hasResolvedSellingPrice) {
+        dict[@"finalPrice"] = [self calculateFinalPrice];
+    }
 
     // Add timestamps for Firestore
     dict[@"updatedAt"] = [FIRTimestamp timestampWithDate:[NSDate date]];
@@ -246,20 +311,27 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 }
 
 - (NSNumber *)calculateFinalPrice {
-    if (!self.price) return nil;
-    
+    if (!self.hasResolvedSellingPrice || ![self.price isKindOfClass:NSNumber.class]) return @(0);
+
     double basePrice = [self.price doubleValue];
+    if (!isfinite(basePrice) || basePrice < 0.0) return @(0);
     double finalPrice = basePrice;
-    
+
     // Apply percentage discount first
-    if (self.discountPercent && [self.discountPercent doubleValue] > 0) {
-        double discount = (basePrice * [self.discountPercent doubleValue]) / 100.0;
+    double discountPercent = [self.discountPercent isKindOfClass:NSNumber.class]
+        ? self.discountPercent.doubleValue
+        : 0.0;
+    if (isfinite(discountPercent) && discountPercent > 0.0) {
+        double discount = (basePrice * discountPercent) / 100.0;
         finalPrice = basePrice - discount;
     }
-    
+
     // Apply absolute discount
-    if (self.discountAmount && [self.discountAmount doubleValue] > 0) {
-        finalPrice = finalPrice - [self.discountAmount doubleValue];
+    double discountAmount = [self.discountAmount isKindOfClass:NSNumber.class]
+        ? self.discountAmount.doubleValue
+        : 0.0;
+    if (isfinite(discountAmount) && discountAmount > 0.0) {
+        finalPrice = finalPrice - discountAmount;
     }
     
     // Ensure price doesn't go negative
@@ -353,15 +425,20 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID {
     if (self = [super init]) {
         _accessoryID = docID ?: @"";
-        _name = dict[@"name"] ?: @"";
-        _desc = dict[@"desc"] ?: @"";
-        _price = dict[@"price"] ?: @(0);
-        id finalPriceValue = dict[@"finalPrice"];
-        if ([finalPriceValue respondsToSelector:@selector(doubleValue)] &&
-            [_price doubleValue] <= 0.0 &&
-            [finalPriceValue doubleValue] > 0.0) {
-            _price = @([finalPriceValue doubleValue]);
+        _name = PPAccessoryStringValueForKeys(dict, (@[@"name", @"title"]));
+        _desc = PPAccessoryStringValueForKeys(dict, (@[@"desc", @"description"]));
+
+        // Individually tracked live-pet parent documents intentionally expose
+        // a null aggregate price when no available unit has a selling price.
+        // Prefer the base catalog price, then the server-derived display hint,
+        // while preserving an explicit unresolved state when all are absent.
+        NSNumber *basePrice = PPAccessorySellingPriceValueForKeys(dict, (@[@"price", @"sellPrice"]));
+        NSNumber *projectedPrice = PPAccessorySellingPriceValueForKeys(dict, (@[@"finalPrice", @"availableUnitPriceMin"]));
+        NSNumber *resolvedPrice = basePrice;
+        if (!resolvedPrice || (resolvedPrice.doubleValue <= 0.0 && projectedPrice.doubleValue > 0.0)) {
+            resolvedPrice = projectedPrice ?: resolvedPrice;
         }
+        [self setPrice:resolvedPrice];
         _discountPercent = PPAccessoryNumberValueForKeys(dict, (@[@"discountPercent"]));
         _discountAmount = PPAccessoryNumberValueForKeys(dict, (@[@"discountAmount"]));
         _weightText = PPAccessoryStringValueForKeys(dict, (@[
@@ -386,9 +463,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             @"measurementUnit",
             @"weight_unit"
         ]));
-        _imageURLsArray = dict[@"imageURLsArray"] ?: @[];
-        _imageMeta  = dict[@"imageMeta"] ?: nil;
-        NSArray *imageItemsPayload = [dict[@"imageItems"] isKindOfClass:NSArray.class] ? dict[@"imageItems"] : @[];
+        _imageURLsArray = PPAccessoryStringArray(dict[@"imageURLsArray"]);
+        _imageMeta = PPAccessoryDictionaryArray(dict[@"imageMeta"]);
+        NSArray *imageItemsPayload = PPAccessoryDictionaryArray(dict[@"imageItems"]);
         if (_imageURLsArray.count == 0 && imageItemsPayload.count > 0) {
             NSMutableArray<NSString *> *urls = [NSMutableArray arrayWithCapacity:imageItemsPayload.count];
             for (NSDictionary *item in imageItemsPayload) {
@@ -403,8 +480,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             for (NSDictionary *item in imageItemsPayload) {
                 if (![item isKindOfClass:NSDictionary.class]) continue;
                 NSString *url = [item[@"url"] isKindOfClass:NSString.class] ? item[@"url"] : @"";
-                CGFloat width = [item[@"width"] floatValue];
-                CGFloat height = [item[@"height"] floatValue];
+                id widthValue = item[@"width"];
+                id heightValue = item[@"height"];
+                CGFloat width = [widthValue respondsToSelector:@selector(doubleValue)] ? [widthValue doubleValue] : 0.0;
+                CGFloat height = [heightValue respondsToSelector:@selector(doubleValue)] ? [heightValue doubleValue] : 0.0;
                 [meta addObject:@{
                     @"url": url,
                     @"width": @(MAX(0.0, width)),
@@ -421,15 +500,18 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _createdAt = PPDateFromFirestoreValue(dict[@"createdAt"]);
         _expiryDate = PPNullableDateFromFirestoreValue(dict[@"expiryDate"]);
 
-        _ownerID = dict[@"ownerID"] ?: @"";
-        _storeID = dict[@"storeID"] ?: @"";
-        _storeName = dict[@"storeName"] ?: @"";
+        _ownerID = PPAccessoryStringValueForKeys(dict, (@[@"ownerID"]));
+        _storeID = PPAccessoryStringValueForKeys(dict, (@[@"storeID"]));
+        _storeName = PPAccessoryStringValueForKeys(dict, (@[@"storeName"]));
         _ownerType = [dict[@"ownerType"] isKindOfClass:NSString.class] ? dict[@"ownerType"] : nil;
         _source = [dict[@"source"] isKindOfClass:NSString.class] ? dict[@"source"] : nil;
         _inventoryMode = [dict[@"inventoryMode"] isKindOfClass:NSString.class]
             ? [dict[@"inventoryMode"] uppercaseString]
             : nil;
         _inventorySchemaVersion = [dict[@"inventorySchemaVersion"] integerValue];
+        _standardSellingPrice = PPAccessorySellingPriceValueForKeys(dict, (@[@"standardSellingPrice"]));
+        _reservedQuantity = MAX(0, [dict[@"reservedQuantity"] integerValue]);
+        _isArchived = [dict[@"isArchived"] boolValue];
         _blurHash = PPAccessoryTrimmedString(dict[@"blurHash"]);
         
         _accessKindType = ({
@@ -476,7 +558,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             _noStock = (_quantity <= 0);
         }
         
-        _searchTitle = dict[@"searchTitle"];
+        _searchTitle = PPAccessoryStringValueForKeys(dict, (@[@"searchTitle"]));
+        if (_searchTitle.length == 0) {
+            _searchTitle = [ArabicNormalizer normalize:_name ?: @""] ?: @"";
+        }
         [self normalizeInventoryState];
     }
     return self;
@@ -486,7 +571,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     PetAccessory *copy = [[PetAccessory alloc] init];
     copy.accessoryID = [source.accessoryID copy];
     copy.name = [source.name copy];
-    copy.price = [source.price copy];
+    if (source.hasResolvedSellingPrice) {
+        copy.price = [source.price copy];
+    }
     copy.discountPercent = [source.discountPercent copy];
     copy.discountAmount = [source.discountAmount copy];
     copy.weightText = [source.weightText copy];
@@ -509,6 +596,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.source = [source.source copy];
     copy.inventoryMode = [source.inventoryMode copy];
     copy.inventorySchemaVersion = source.inventorySchemaVersion;
+    copy.standardSellingPrice = source.standardSellingPrice;
+    copy.reservedQuantity = source.reservedQuantity;
+    copy.isArchived = source.isArchived;
     copy.createdAt = [source.createdAt copy];
     copy.expiryDate = [source.expiryDate copy];
     copy.quantity = source.quantity;

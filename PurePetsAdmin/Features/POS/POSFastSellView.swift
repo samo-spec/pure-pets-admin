@@ -32,7 +32,7 @@ extension PetAccessory {
 
     /// Console parity: `isPosCatalogSellable`.
     var pos_isSellable: Bool {
-        active && !noStock && quantity > 0 && !isBlocked && !isDeleted && !isDisabled
+        active && !noStock && quantity > 0 && !isBlocked && !isDeleted && !isDisabled && !isArchived
     }
 
     /// The canonical catalog unit price the server validates against.
@@ -147,6 +147,22 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     var id: String { unitID }
     var label: String { ringTag.isEmpty ? unitID : ringTag }
     var isSelectable: Bool { sellingPrice > 0 }
+}
+
+/// Sendable projection of an Objective-C/Firebase failure. The callable
+/// callback can arrive off the main actor, so Foundation objects must not be
+/// captured by the `@MainActor` task that updates SwiftUI state.
+private struct POSSubmitFailure: Sendable {
+    let productID: String
+    let unitID: String
+    let ringTag: String
+
+    init(error: Error) {
+        let details = PPPOSService.exactUnitConflictDetails(forError: error)
+        productID = (details["productId"] as? String) ?? ""
+        unitID = (details["unitId"] as? String) ?? ""
+        ringTag = (details["ringTag"] as? String) ?? ""
+    }
 }
 
 @MainActor
@@ -290,17 +306,25 @@ final class POSUnitPickerState: ObservableObject {
 final class POSFastSellViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published private(set) var allAccessories: [PetAccessory] = []
-    @Published var cartItems: [POSCartItem] = []
-    @Published var selectedPaymentMethod: String = "cash"
+    @Published private(set) var cartItems: [POSCartItem] = []
+    @Published private(set) var selectedPaymentMethod: String = "cash"
     @Published private(set) var isSubmitting = false
+    @Published private(set) var isPreparingReceipt = false
     @Published var submitError: String?
-    @Published var submitSuccess = false
+    @Published private(set) var completedReceipt: POSCompletedReceipt?
+    @Published private(set) var receiptNotice: String?
 
     /// Footer quick-add catalog rail.
     @Published var catalogFilter: POSCatalogFilter = .accessories
     @Published var catalogSearchText: String = ""
 
     private var listener: AnyObject?
+    /// Retained across an uncertain callable response so retrying the same
+    /// checkout cannot create a second transaction. Any cart/payment change
+    /// invalidates it and starts a new command.
+    private var submissionCommandID: String?
+    private var submissionCashReceived: Double?
+    private var receiptRequestID: UUID?
 
     var searchResults: [PetAccessory] {
         guard !searchText.isEmpty else { return allAccessories }
@@ -327,6 +351,8 @@ final class POSFastSellViewModel: ObservableObject {
     var cartItemCount: Int {
         cartItems.reduce(0) { $0 + $1.quantity }
     }
+
+    var isCheckoutBusy: Bool { isSubmitting || isPreparingReceipt }
 
     let paymentMethods: [(key: String, title: String, icon: String)] = [
         ("cash", "POS_Cash", "banknote.fill"),
@@ -372,6 +398,7 @@ final class POSFastSellViewModel: ObservableObject {
         } else {
             cartItems.append(POSCartItem(accessory: accessory, quantity: 1))
         }
+        invalidateSubmissionCommand()
         return true
     }
 
@@ -396,14 +423,21 @@ final class POSFastSellViewModel: ObservableObject {
             item.unitPrices = prices
             cartItems.append(item)
         }
+        invalidateSubmissionCommand()
     }
 
     func removeFromCart(_ item: POSCartItem) {
+        let previousCount = cartItems.count
         cartItems.removeAll { $0.id == item.id }
+        if cartItems.count != previousCount {
+            invalidateSubmissionCommand()
+        }
     }
 
     func clearCart() {
+        guard !cartItems.isEmpty else { return }
         cartItems = []
+        invalidateSubmissionCommand()
     }
 
     func increaseQuantity(_ item: POSCartItem) {
@@ -411,6 +445,7 @@ final class POSFastSellViewModel: ObservableObject {
         guard !cartItems[idx].isIndividuallyTracked else { return }
         guard cartItems[idx].quantity < cartItems[idx].accessory.quantity else { return }
         cartItems[idx].quantity += 1
+        invalidateSubmissionCommand()
     }
 
     func decreaseQuantity(_ item: POSCartItem) {
@@ -421,10 +456,15 @@ final class POSFastSellViewModel: ObservableObject {
                 cartItems.remove(at: idx)
             } else {
                 cartItems[idx].unitIDs.removeLast()
-                cartItems[idx].unitRingTags.removeLast()
-                cartItems[idx].unitPrices.removeLast()
+                if !cartItems[idx].unitRingTags.isEmpty {
+                    cartItems[idx].unitRingTags.removeLast()
+                }
+                if !cartItems[idx].unitPrices.isEmpty {
+                    cartItems[idx].unitPrices.removeLast()
+                }
                 cartItems[idx].quantity = cartItems[idx].unitIDs.count
             }
+            invalidateSubmissionCommand()
             return
         }
         if cartItems[idx].quantity > 1 {
@@ -432,12 +472,32 @@ final class POSFastSellViewModel: ObservableObject {
         } else {
             cartItems.remove(at: idx)
         }
+        invalidateSubmissionCommand()
     }
 
-    func submitOrder() {
-        guard !cartItems.isEmpty else { return }
+    func selectPaymentMethod(_ paymentMethod: String) {
+        guard paymentMethods.contains(where: { $0.key == paymentMethod }) else { return }
+        guard selectedPaymentMethod != paymentMethod else { return }
+        selectedPaymentMethod = paymentMethod
+        invalidateSubmissionCommand()
+    }
+
+    func submitOrder(cashReceived: Double? = nil) {
+        guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return }
         isSubmitting = true
         submitError = nil
+        receiptNotice = nil
+
+        let acceptedCash = selectedPaymentMethod == "cash"
+            ? max(cashReceived ?? cartTotal, cartTotal)
+            : 0
+
+        if submissionCommandID != nil, submissionCashReceived != acceptedCash {
+            invalidateSubmissionCommand()
+        }
+        let commandID = submissionCommandID ?? generatePOSCommandID()
+        submissionCommandID = commandID
+        submissionCashReceived = acceptedCash
 
         let items: [[String: Any]] = cartItems.map { item in
             var payload: [String: Any] = [
@@ -458,34 +518,104 @@ final class POSFastSellViewModel: ObservableObject {
             withItems: items,
             total: cartTotal,
             paymentMethod: selectedPaymentMethod,
-            commandID: UUID().uuidString
+            cashReceived: selectedPaymentMethod == "cash" ? NSNumber(value: acceptedCash) : nil,
+            commandID: commandID
         ) { [weak self] result, error in
+            // Project ObjC/Foundation values before crossing into MainActor.
+            let transactionID = result?.transactionID ?? ""
+            let serverTotal = result?.total ?? 0
+            let serverCurrency = result?.currency ?? ""
+            let failure = error.map(POSSubmitFailure.init)
+
             Task { @MainActor in
-                guard let self else { return }
-                self.isSubmitting = false
-                if let error {
+                guard let self, self.submissionCommandID == commandID else { return }
+                if let failure {
+                    self.isSubmitting = false
                     // The server names the offending animal; drop those lines so
                     // the operator reselects instead of retrying a dead unit.
-                    if self.discardStaleExactUnits(for: error) {
+                    if self.discardStaleExactUnits(
+                        productID: failure.productID,
+                        unitID: failure.unitID,
+                        ringTag: failure.ringTag
+                    ) {
+                        self.invalidateSubmissionCommand()
                         self.submitError = Language.get("POS_ExactUnitRefreshNeeded", alter: "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى.")
                     } else {
-                        self.submitError = error.localizedDescription
+                        self.submitError = Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
                     }
                     return
                 }
-                self.submitSuccess = true
-                self.cartItems = []
-                self.searchText = ""
+
+                guard !transactionID.isEmpty else {
+                    self.isSubmitting = false
+                    // The server may already have committed the command. Keep
+                    // its ID so Retry is idempotent instead of creating a sale.
+                    self.submitError = Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
+                    return
+                }
+
+                let fallbackReceipt = POSCompletedReceipt(
+                    transactionID: transactionID,
+                    total: serverTotal > 0 ? serverTotal : self.cartTotal,
+                    currency: serverCurrency,
+                    paymentMethod: self.selectedPaymentMethod,
+                    cashReceived: acceptedCash,
+                    cartItems: self.cartItems
+                )
+                self.invalidateSubmissionCommand()
+                self.isSubmitting = false
+                self.isPreparingReceipt = true
+                let receiptRequestID = UUID()
+                self.receiptRequestID = receiptRequestID
+
+                // A receipt must never leave the operator trapped behind a
+                // network-dependent loading state after the sale committed.
+                Task { @MainActor [weak self] in
+                    try? await Task.sleep(nanoseconds: 8_000_000_000)
+                    guard let self, self.receiptRequestID == receiptRequestID else { return }
+                    self.receiptRequestID = nil
+                    self.isPreparingReceipt = false
+                    self.receiptNotice = Language.get(
+                        "POS_Receipt_PartialNotice",
+                        alter: "تمت عملية البيع، لكن تعذر تحديث بعض تفاصيل الإيصال من الخادم. تم تجهيز إيصال مؤكد بالبيانات المتاحة ويمكن طباعته أو مشاركته."
+                    )
+                    self.completedReceipt = fallbackReceipt
+                }
+
+                PPPOSService.shared().fetchPOSReceipt(forTransactionID: transactionID) { [weak self] receipt, receiptError in
+                    let authoritativeReceipt = receipt.map(POSCompletedReceipt.init(receipt:))
+                    let needsFallback = receiptError != nil || authoritativeReceipt == nil
+
+                    Task { @MainActor in
+                        guard let self, self.receiptRequestID == receiptRequestID else { return }
+                        self.receiptRequestID = nil
+                        self.isPreparingReceipt = false
+                        self.receiptNotice = needsFallback
+                            ? Language.get(
+                                "POS_Receipt_PartialNotice",
+                                alter: "تمت عملية البيع، لكن تعذر تحديث بعض تفاصيل الإيصال من الخادم. تم تجهيز إيصال مؤكد بالبيانات المتاحة ويمكن طباعته أو مشاركته."
+                            )
+                            : nil
+                        self.completedReceipt = authoritativeReceipt ?? fallbackReceipt
+                    }
+                }
             }
         }
     }
 
+    /// Clear the completed cart only after the receipt workflow is dismissed.
+    /// Keeping the accepted cart snapshot alive makes the PDF fallback safe if
+    /// the authoritative transaction read is briefly unavailable.
+    func acknowledgeCompletedReceipt() {
+        receiptRequestID = nil
+        completedReceipt = nil
+        receiptNotice = nil
+        cartItems = []
+        searchText = ""
+    }
+
     /// Server rejected specific animals — drop those lines so the operator reselects.
-    private func discardStaleExactUnits(for error: Error) -> Bool {
-        let details = PPPOSService.exactUnitConflictDetails(forError: error)
-        let productID = (details["productId"] as? String) ?? ""
-        let unitID = (details["unitId"] as? String) ?? ""
-        let ringTag = (details["ringTag"] as? String) ?? ""
+    private func discardStaleExactUnits(productID: String, unitID: String, ringTag: String) -> Bool {
         guard !productID.isEmpty || !unitID.isEmpty || !ringTag.isEmpty else { return false }
 
         let before = cartItems.count
@@ -497,6 +627,21 @@ final class POSFastSellViewModel: ObservableObject {
             return false
         }
         return cartItems.count != before
+    }
+
+    private func invalidateSubmissionCommand() {
+        submissionCommandID = nil
+        submissionCashReceived = nil
+    }
+
+    private func generatePOSCommandID() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMddHHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Qatar") ?? TimeZone.current
+        let timestamp = formatter.string(from: Date())
+        let entropy = UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(6).uppercased()
+        return "PPPOS-\(timestamp)\(entropy)"
     }
 }
 
@@ -591,8 +736,12 @@ struct AdminPOSFastSellView: View {
                     .allowsHitTesting(false)
             }
 
-            if viewModel.isSubmitting {
-                AdminLoadingOverlay(message: Language.get("POS_Submitting", alter: "جارٍ التقديم..."))
+            if viewModel.isCheckoutBusy {
+                AdminLoadingOverlay(
+                    message: viewModel.isPreparingReceipt
+                        ? Language.get("POS_Receipt_Preparing", alter: "جارٍ تجهيز الإيصال...")
+                        : Language.get("POS_Submitting", alter: "جارٍ إتمام البيع...")
+                )
             }
         }
         .ignoresSafeArea(.all, edges: .bottom)
@@ -607,16 +756,14 @@ struct AdminPOSFastSellView: View {
         )) {
             exactAnimalPickerSheet
         }
+        .sheet(item: Binding(
+            get: { viewModel.completedReceipt },
+            set: { if $0 == nil { viewModel.acknowledgeCompletedReceipt() } }
+        )) { receipt in
+            POSCompletedReceiptSheet(receipt: receipt, notice: viewModel.receiptNotice)
+        }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
-        .alert(
-            Language.get("POS_Order_Submitted", alter: "تم تقديم الطلب"),
-            isPresented: $viewModel.submitSuccess
-        ) {
-            Button(Language.get("OK", alter: "موافق")) {}
-        } message: {
-            Text(Language.get("POS_Order_Success_Message", alter: "تم تقديم الطلب بنجاح"))
-        }
         .alert(
             Language.get("Error", alter: "خطأ"),
             isPresented: Binding(
@@ -773,7 +920,7 @@ struct AdminPOSFastSellView: View {
     // MARK: - Interaction
 
     private func handleCatalogTap(_ accessory: PetAccessory, from rect: CGRect) {
-        guard !viewModel.isSubmitting else { return }
+        guard !viewModel.isCheckoutBusy else { return }
 
         // Console parity: an individually tracked live pet must go through the
         // exact-animal picker; it is never incremented by quantity.
@@ -961,6 +1108,9 @@ private struct POSApexFlightDeck: View {
                 )
             }
         )
+        .onChange(of: hasItems) { hasItems in
+            if !hasItems { tenderedAmount = nil }
+        }
     }
 
     // MARK: - Cart Peek Drawer
@@ -1033,7 +1183,7 @@ private struct POSApexFlightDeck: View {
                 Button {
                     UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.75)) {
-                        viewModel.selectedPaymentMethod = method.key
+                        viewModel.selectPaymentMethod(method.key)
                         tenderedAmount = nil
                     }
                 } label: {
@@ -1149,10 +1299,10 @@ private struct POSApexFlightDeck: View {
     private var apexChargeButton: some View {
         Button {
             guard hasItems else { return }
-            viewModel.submitOrder()
+            viewModel.submitOrder(cashReceived: tenderedAmount)
         } label: {
             HStack(spacing: 8) {
-                if viewModel.isSubmitting {
+                if viewModel.isCheckoutBusy {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(0.9)
@@ -1228,7 +1378,7 @@ private struct POSApexFlightDeck: View {
             )
         }
         .buttonStyle(POSTilePressStyle())
-        .disabled(!hasItems || viewModel.isSubmitting)
+        .disabled(!hasItems || viewModel.isCheckoutBusy)
     }
 }
 
@@ -2061,7 +2211,7 @@ private struct POSCatalogTile: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ZStack(alignment: .topTrailing) {
                         POSCatalogThumbnail(accessory: accessory)
-                            .frame(height: 56)
+                            .frame(height: 75)
                             .frame(maxWidth: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
@@ -2075,28 +2225,28 @@ private struct POSCatalogTile: View {
                         }
                     }
 
-                    Text(accessory.name)
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 0)
-
-                    HStack(spacing: 2) {
-                        Text(currency(accessory.pos_canonicalUnitPrice))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(accessory.name)
                             .font(AdminType.caption2Bold)
-                            .foregroundColor(AdminSurface.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                        Spacer(minLength: 0)
+                        HStack(spacing: 2) {
+                            Text(currency(accessory.pos_canonicalUnitPrice))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(AdminSurface.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
 
-                        if accessory.pos_isIndividuallyTrackedLivePet {
-                            Image(systemName: "pawprint.fill")
-                                .font(.system(size: 8))
-                                .foregroundColor(AdminSurface.secondaryText)
+                            Spacer(minLength: 0)
+
+                            if accessory.pos_isIndividuallyTrackedLivePet {
+                                Image(systemName: "pawprint.fill")
+                                    .font(.system(size: 8))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
                         }
                     }
                 }

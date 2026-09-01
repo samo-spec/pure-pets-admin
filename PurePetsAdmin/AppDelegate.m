@@ -181,53 +181,60 @@ extern BOOL PP_TouchDotsEnabled;
     // In AppDelegate.m - application:didFinishLaunchingWithOptions:
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"_UIConstraintBasedLayoutLogUnsatisfiable"];
     
- 
     [self setupAppAppearance];          // keep your existing method
     NSString *lang = [Language currentLanguageCode];
     [Language userSelectedLanguage:lang];
-
     
     [[NSUserDefaults standardUserDefaults] setObject:lang forKey:@"AppleLanguages"];
     [[NSUserDefaults standardUserDefaults] synchronize];
 
-    NSLog(@"AppleLanguages  lang %@" ,lang);
+    FIRUser *currentAuthUser = [FIRAuth auth].currentUser;
+    
+    NSLog(@"\n"
+          @"=========================================================================\n"
+          @"🛡️  [PPADMIN APPDELEGATE] Application Launch & Backend Initialization\n"
+          @"=========================================================================\n"
+          @"   🔥 Firebase App  : %@\n"
+          @"   👤 Auth Status   : %@\n"
+          @"   🆔 Current UID   : %@\n"
+          @"   📧 Auth Email    : %@\n"
+          @"   🌐 Language      : %@ (%@)\n"
+          @"   🔔 Push Channel  : Registering APNs & Notifications V2\n"
+          @"   🚀 Launch Options: %@\n"
+          @"=========================================================================",
+          [FIRApp defaultApp] ? @"CONFIGURED & ACTIVE" : @"NOT INITIALIZED",
+          currentAuthUser ? @"AUTHENTICATED (User Present)" : @"UNAUTHENTICATED (No User)",
+          currentAuthUser.uid ?: @"(none)",
+          currentAuthUser.email ?: @"(none)",
+          lang ?: @"ar",
+          [Language isRTL] ? @"RTL Arabic Primary" : @"LTR English Secondary",
+          launchOptions ? [NSString stringWithFormat:@"%lu keys", (unsigned long)launchOptions.count] : @"Standard Launch"
+    );
+
     // --- Push ---
     [application registerForRemoteNotifications];
 
     // Set Firebase Messaging delegate
-        [FIRMessaging messaging].delegate = self;
-        [self pp_registerForAdminTokenSync];
-        [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(pp_handleAdminApplicationDidBecomeActive:)
-                                                     name:UIApplicationDidBecomeActiveNotification
-                                                   object:nil];
-        
-        // Register for remote notifications
-        [self registerForRemoteNotifications];
+    [FIRMessaging messaging].delegate = self;
+    [self pp_registerForAdminTokenSync];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(pp_handleAdminApplicationDidBecomeActive:)
+                                                 name:UIApplicationDidBecomeActiveNotification
+                                               object:nil];
     
+    // Register for remote notifications
+    [self registerForRemoteNotifications];
     
-    // ✅ Global UINavigationBar appearance so your PPNavBar integrates smoothly
-      /*  UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
-        [appearance configureWithTransparentBackground];
-        appearance.shadowColor = UIColor.clearColor;
-        appearance.backgroundColor = UIColor.clearColor;
-
-        [UINavigationBar appearance].standardAppearance = appearance;
-        [UINavigationBar appearance].scrollEdgeAppearance = appearance;
-        [UINavigationBar appearance].compactAppearance = appearance;
-        [UINavigationBar appearance].tintColor = UIColor.clearColor;
-  //  [UINavigationBar appearance].semanticContentAttribute = UISemanticContentAttributeForceLeftToRight;  */
-        // ✅ iOS 12 fallback (no SceneDelegate)
-        if (@available(iOS 13.0, *)) {
-            // handled by SceneDelegate
-        } else {
-            self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-            UIViewController *rootVC = PPAdminLegacyCompatibleLoginRootController();
-            UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
-            self.window.rootViewController = nav;
-            [self.window makeKeyAndVisible];
-        }
-    
+    // ✅ iOS 12 fallback (no SceneDelegate)
+    if (@available(iOS 13.0, *)) {
+        // handled by SceneDelegate
+    } else {
+        self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
+        UIViewController *rootVC = PPAdminLegacyCompatibleLoginRootController();
+        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:rootVC];
+        self.window.rootViewController = nav;
+        [self.window makeKeyAndVisible];
+    }
     
     return YES;
 }

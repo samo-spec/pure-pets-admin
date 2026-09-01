@@ -386,6 +386,7 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
 
 - (void)fetchStaffDoc:(NSString *)uid completion:(PPStaffDocCompletion)completion {
     if (!uid.length) {
+        NSLog(@"🛡️  [PPADMIN BACKEND] fetchStaffDoc aborted: missing UID");
         if (completion) {
             completion(nil, [NSError errorWithDomain:@"PPStaffAuth"
                                                 code:1
@@ -394,19 +395,30 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         return;
     }
 
+    NSLog(@"🛡️  [PPADMIN BACKEND] Querying Firestore staff document: staff_users/%@", uid);
     [[self staffDoc:uid] getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
+                NSLog(@"❌ [PPADMIN BACKEND] Failed fetching staff_users/%@: %@", uid, error.localizedDescription);
                 if (completion) completion(nil, error);
                 return;
             }
-            if (completion) completion([self pp_staffDocFromSnapshot:snapshot], nil);
+            if (!snapshot.exists) {
+                NSLog(@"⚠️  [PPADMIN BACKEND] Document not found in staff_users/%@", uid);
+                if (completion) completion(nil, nil);
+                return;
+            }
+            PPStaffDoc *doc = [self pp_staffDocFromSnapshot:snapshot];
+            NSLog(@"✅ [PPADMIN BACKEND] Successfully resolved staff_users/%@ | role=%@ | status=%@ | perms=%lu | active=%d",
+                  uid, doc.role, doc.status, (unsigned long)doc.permissions.count, doc.isActive);
+            if (completion) completion(doc, nil);
         });
     }];
 }
 
 - (id<FIRListenerRegistration>)listenStaffDoc:(NSString *)uid onChange:(PPStaffDocCompletion)block {
     if (!uid.length) {
+        NSLog(@"🛡️  [PPADMIN BACKEND] listenStaffDoc aborted: missing UID");
         if (block) {
             block(nil, [NSError errorWithDomain:@"PPStaffAuth"
                                            code:2
@@ -415,12 +427,20 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         return nil;
     }
 
+    NSLog(@"🛡️  [PPADMIN BACKEND] Subscribing to snapshot listener for staff_users/%@", uid);
     return [[self staffDoc:uid] addSnapshotListener:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
         if (error) {
+            NSLog(@"❌ [PPADMIN BACKEND] Snapshot listener error on staff_users/%@: %@", uid, error.localizedDescription);
             if (block) block(nil, error);
             return;
         }
         PPStaffDoc *doc = [self pp_staffDocFromSnapshot:snapshot];
+        if (doc) {
+            NSLog(@"🔄 [PPADMIN BACKEND] Snapshot update for staff_users/%@ | role=%@ | status=%@ | perms=%lu",
+                  uid, doc.role, doc.status, (unsigned long)doc.permissions.count);
+        } else {
+            NSLog(@"⚠️  [PPADMIN BACKEND] Snapshot update: staff_users/%@ does not exist", uid);
+        }
         if ([[FIRAuth auth].currentUser.uid isEqualToString:uid]) {
             self.cachedCurrentStaff = doc.canAccessStaffWorkspace ? doc : nil;
         }

@@ -351,15 +351,27 @@ static UIColor *PPServiceAccentColor(void) {
     NSString *priceText = PPSafeString([self.basicFormView valueForIdentifier:kTagPrice]);
     NSString *ownerID = [[PPSafeString([self.ownershipFormView valueForIdentifier:kTagOwnerID]) stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] copy];
 
-    if (title.length == 0 || descriptionText.length == 0 || priceText.length == 0 || ownerID.length == 0) {
-        [self pp_showErrorAlert:kLang(@"Error") ?: @"Missing required fields"];
+    if (title.length == 0) {
+        [self pp_showErrorAlert:kLang(@"Service_Error_TitleRequired")];
+        return;
+    }
+    if (descriptionText.length == 0) {
+        [self pp_showErrorAlert:kLang(@"Service_Error_DescriptionRequired")];
+        return;
+    }
+    if (priceText.length == 0) {
+        [self pp_showErrorAlert:kLang(@"Service_Error_PriceRequired")];
+        return;
+    }
+    if (ownerID.length == 0) {
+        [self pp_showErrorAlert:kLang(@"Service_Error_OwnerRequired")];
         return;
     }
 
     NSError *jsonError = nil;
     NSDictionary *extraFields = [self dictionaryFromJSONText:PPSafeString([self.advancedFormView valueForIdentifier:kTagExtraJSON]) error:&jsonError];
     if (jsonError) {
-        [self pp_showErrorAlert:jsonError.localizedDescription];
+        [self pp_showErrorAlert:kLang(@"Service_Error_InvalidExtraJSON")];
         return;
     }
 
@@ -449,7 +461,7 @@ static UIColor *PPServiceAccentColor(void) {
 #pragma mark - Alerts
 
 - (void)pp_showErrorAlert:(NSString *)message {
-    [PPAlertHelper showInfoIn:self title:kLang(@"Error") ?: @"Error" subtitle:message];
+    [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:message];
 }
 
 - (void)pp_showSuccessAlertAndPop:(NSString *)message {

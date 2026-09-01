@@ -17,6 +17,56 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
     return CFGetTypeID(type) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)type);
 }
 
+static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PPStaffDoc *staffDoc, NSString *trigger) {
+    NSArray<NSString *> *permissions = snapshot.permissions ?: @[];
+    NSString *scopeDescription = snapshot.scope.count > 0 
+        ? [NSString stringWithFormat:@"%@", snapshot.scope] 
+        : @"Global / None";
+    
+    NSMutableString *permsFormatted = [NSMutableString string];
+    if (permissions.count == 0) {
+        [permsFormatted appendString:@"      (No explicit permission keys)"];
+    } else {
+        for (NSUInteger i = 0; i < permissions.count; i++) {
+            [permsFormatted appendFormat:@"      %2lu. %@", (unsigned long)(i + 1), permissions[i]];
+            if (i < permissions.count - 1) {
+                [permsFormatted appendString:@"\n"];
+            }
+        }
+    }
+    
+    NSLog(@"\n"
+          @"=========================================================================\n"
+          @"🛡️  [PPADMIN PERMISSIONS & BACKEND] Staff Session Resolved (%@)\n"
+          @"=========================================================================\n"
+          @"   👤 User ID          : %@\n"
+          @"   📧 Email            : %@\n"
+          @"   🏷️  Display Name     : %@\n"
+          @"   🛡️  Role Identifier  : %@ (%@)\n"
+          @"   👑 Grants All Perms : %@\n"
+          @"   🌐 Global Scope     : %@\n"
+          @"   📦 Scope Map        : %@\n"
+          @"   ⚡ Claims Version   : %ld\n"
+          @"   🚦 Staff Status     : %@\n"
+          @"   📋 Total Perms (%lu) :\n"
+          @"%@\n"
+          @"=========================================================================",
+          trigger ?: @"Direct",
+          snapshot.uid ?: @"(none)",
+          snapshot.email ?: @"(none)",
+          snapshot.displayName ?: @"(none)",
+          snapshot.roleIdentifier ?: @"(none)",
+          snapshot.localizedRoleName ?: @"(none)",
+          snapshot.grantsAllPermissions ? @"YES (Full Admin Bypass)" : @"NO (Explicit Role Key Gating)",
+          snapshot.hasGlobalScope ? @"YES (Unrestricted)" : @"NO (Scoped Constraints)",
+          scopeDescription,
+          (long)staffDoc.claimsVersion,
+          staffDoc.isActive ? @"ACTIVE (Access Granted)" : @"DISABLED (Access Denied)",
+          (unsigned long)permissions.count,
+          permsFormatted
+    );
+}
+
 @interface PPAdminSessionSnapshot ()
 @property (nonatomic, copy, readwrite) NSString *uid;
 @property (nonatomic, copy, readwrite) NSString *displayName;
@@ -49,7 +99,8 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
 
 - (BOOL)hasPermission:(NSString *)permission {
     if (permission.length == 0) return NO;
-    return self.grantsAllPermissions || [self.permissions containsObject:permission];
+    BOOL granted = self.grantsAllPermissions || [self.permissions containsObject:permission];
+    return granted;
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)permissions {
@@ -125,19 +176,25 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
 + (void)restoreCurrentSessionWithCompletion:(PPAdminSessionRestoreCompletion)completion {
     FIRUser *authUser = [FIRAuth auth].currentUser;
     if (!authUser) {
+        NSLog(@"🛡️  [PPADMIN BACKEND] No authenticated Firebase Auth user found on restore");
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, nil);
         });
         return;
     }
 
+    NSLog(@"🛡️  [PPADMIN BACKEND] Restoring staff session for UID: %@", authUser.uid);
+
     [[PPStaffAuth shared] refreshCurrentStaff:^(PPStaffDoc * _Nullable staffDoc,
                                                 NSError * _Nullable staffError) {
         if (staffError) {
+            NSLog(@"❌ [PPADMIN BACKEND] Error refreshing staff doc for %@: %@", authUser.uid, staffError.localizedDescription);
             if (completion) completion(nil, staffError);
             return;
         }
         if (!staffDoc.canAccessStaffWorkspace) {
+            NSLog(@"⛔ [PPADMIN BACKEND] Access Denied: User %@ cannot access staff workspace (active=%d, hasDashboardPerm=%d)",
+                  authUser.uid, staffDoc.isActive, [staffDoc hasPermission:kStaffPermDashboardView]);
             if (completion) completion(nil, [self pp_staffAccessError:staffDoc]);
             return;
         }
@@ -148,6 +205,7 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
                                                   toUserModel:loadedUser
                                                      authUser:authUser];
             if (!effectiveUser) {
+                NSLog(@"❌ [PPADMIN BACKEND] Failed creating effective UserModel for %@", authUser.uid);
                 if (completion) {
                     completion(nil, userError ?: [self pp_errorWithCode:PPAdminSessionBridgeErrorMissingUser
                                                              description:kLang(@"StatusUserDocError")]);
@@ -160,6 +218,8 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
             PPAdminSessionSnapshot *snapshot = [self pp_snapshotForAuthUser:authUser
                                                                    userModel:effectiveUser
                                                                     staffDoc:staffDoc];
+            PPAdminLogPermissionsAndSession(snapshot, staffDoc, @"Session Restore");
+
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(snapshot, nil);
             });
@@ -175,14 +235,18 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
         return observation;
     }
 
+    NSLog(@"🛡️  [PPADMIN BACKEND] Starting real-time snapshot listener on staff_users/%@", authUser.uid);
+
     observation.registration = [[PPStaffAuth shared] listenStaffDoc:authUser.uid
                                                             onChange:^(PPStaffDoc * _Nullable staffDoc,
                                                                        NSError * _Nullable error) {
         if (error) {
+            NSLog(@"❌ [PPADMIN BACKEND] Real-time listener error for %@: %@", authUser.uid, error.localizedDescription);
             dispatch_async(dispatch_get_main_queue(), ^{ if (change) change(nil, error); });
             return;
         }
         if (!staffDoc.canAccessStaffWorkspace) {
+            NSLog(@"⛔ [PPADMIN BACKEND] Real-time listener: Access revoked for %@", authUser.uid);
             NSError *accessError = [self pp_staffAccessError:staffDoc];
             dispatch_async(dispatch_get_main_queue(), ^{ if (change) change(nil, accessError); });
             return;
@@ -194,6 +258,11 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
         PPAdminSessionSnapshot *snapshot = effectiveUser
             ? [self pp_snapshotForAuthUser:authUser userModel:effectiveUser staffDoc:staffDoc]
             : nil;
+        
+        if (snapshot) {
+            PPAdminLogPermissionsAndSession(snapshot, staffDoc, @"Real-Time Snapshot Update");
+        }
+        
         NSError *snapshotError = snapshot ? nil : [self pp_errorWithCode:PPAdminSessionBridgeErrorMissingUser
                                                               description:kLang(@"StatusUserDocError")];
         dispatch_async(dispatch_get_main_queue(), ^{ if (change) change(snapshot, snapshotError); });
@@ -206,6 +275,7 @@ static BOOL PPAdminSessionStrictGlobalScope(NSDictionary<NSString *, id> *scope)
 }
 
 + (void)signOutWithCompletion:(void (^)(NSError * _Nullable))completion {
+    NSLog(@"🛡️  [PPADMIN BACKEND] Signing out staff session...");
     [[UserManager shared] signOutWithCompletion:completion];
 }
 
