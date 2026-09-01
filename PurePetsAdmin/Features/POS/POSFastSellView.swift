@@ -732,6 +732,8 @@ private struct POSFlyArc: ViewModifier, Animatable {
 
 // MARK: - POS FastSell View
 
+@available(iOS 16.0, *)
+@available(iOS 16.0, *)
 struct AdminPOSFastSellView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
@@ -741,6 +743,7 @@ struct AdminPOSFastSellView: View {
     @StateObject private var unitPicker = POSUnitPickerState()
     @State private var showsReservedLivePets = false
     @State private var showsCustomerPicker = false
+    @State private var showsItemPicker = false
     @State private var animalSearchQuery = ""
 
     // Fly-to-cart choreography
@@ -799,6 +802,9 @@ struct AdminPOSFastSellView: View {
                 viewModel.selectedCustomer = customer
                 showsCustomerPicker = false
             }
+        }
+        .sheet(isPresented: $showsItemPicker) {
+            itemPickerSheet
         }
         .sheet(isPresented: $showsReservedLivePets) {
             POSReservedLivePetsView(

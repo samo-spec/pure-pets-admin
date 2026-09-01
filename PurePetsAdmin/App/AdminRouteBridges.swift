@@ -96,6 +96,7 @@ import SwiftUI
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }
 
+@available(iOS 16.0, *)
 @objc public final class AdminPOSFastSellHostingController: UIViewController {
     public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)

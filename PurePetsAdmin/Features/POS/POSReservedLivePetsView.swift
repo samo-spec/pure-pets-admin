@@ -357,7 +357,6 @@ final class POSReservedLivePetsViewModel: ObservableObject {
 
 // MARK: - Main Screen — Spatial Horizon Architecture
 
-@available(iOS 16.0, *)
 struct POSReservedLivePetsView: View {
     let session: AdminSession
     var allAccessories: [PetAccessory] = []
@@ -440,7 +439,7 @@ struct POSReservedLivePetsView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
+                        .foregroundColor(AdminSurface.primary)
                         .frame(width: 36, height: 36)
                         .background(.thinMaterial, in: Circle())
                         .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
@@ -451,7 +450,7 @@ struct POSReservedLivePetsView: View {
                     HStack(spacing: 5) {
                         Text(Language.get("POS_LivePets_Desk", alter: "نقطة البيع · حجوزات الحيوانات"))
                             .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                         // Live pulse dot
                         Circle()
                             .fill(Color(uiColor: .ppSuccess))
@@ -461,7 +460,7 @@ struct POSReservedLivePetsView: View {
                     }
                     Text(Language.get("POS_ReservedLivePets_Title", alter: "الحيوانات المحجوزة"))
                         .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
+                        .foregroundColor(AdminSurface.primaryText)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -478,7 +477,7 @@ struct POSReservedLivePetsView: View {
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
+                        .foregroundColor(AdminSurface.primary)
                         .rotationEffect(.degrees(refreshSpinAngle))
                         .animation(.spring(response: 0.6, dampingFraction: 0.5), value: refreshSpinAngle)
                         .frame(width: 36, height: 36)
@@ -553,16 +552,16 @@ struct POSReservedLivePetsView: View {
         HStack(spacing: 4) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(accent)
+                .foregroundColor(accent)
 
             Text(value)
                 .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .callout))
-                .foregroundStyle(glow ? accent : AdminSurface.primaryText)
+                .foregroundColor(glow ? accent : AdminSurface.primaryText)
                 .monospacedDigit()
 
             Text(label)
                 .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -617,10 +616,10 @@ struct POSReservedLivePetsView: View {
                                         isSelected ? Color.white.opacity(0.3) : filter.urgencyColor.opacity(0.12),
                                         in: Capsule()
                                     )
-                                    .foregroundStyle(isSelected ? .white : filter.urgencyColor)
+                                    .foregroundColor(isSelected ? .white : filter.urgencyColor)
                             }
                         }
-                        .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
+                        .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
                         .background(
@@ -656,7 +655,7 @@ struct POSReservedLivePetsView: View {
         HStack(spacing: 5) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
 
             TextField(
                 Language.get("POS_SearchReserved_Placeholder", alter: "بحث..."),
@@ -670,7 +669,7 @@ struct POSReservedLivePetsView: View {
                 Button { vm.searchText = "" } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 11))
-                        .foregroundStyle(AdminSurface.secondaryText)
+                        .foregroundColor(AdminSurface.secondaryText)
                 }
                 .transition(.scale.combined(with: .opacity))
             }
@@ -708,7 +707,7 @@ struct POSReservedLivePetsView: View {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 8, weight: .bold))
             }
-            .foregroundStyle(vm.selectedBranchID.isEmpty ? AdminSurface.primaryText : AdminSurface.primary)
+            .foregroundColor(vm.selectedBranchID.isEmpty ? AdminSurface.primaryText : AdminSurface.primary)
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
             .background(
@@ -759,11 +758,11 @@ struct POSReservedLivePetsView: View {
                     HStack {
                         Text(Language.get("POS_SectionTitle_Reserved", alter: "الحجوزات النشطة"))
                             .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                         Spacer()
                         Text("\(vm.filteredItems.count)")
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, AdminSpacing.md)
@@ -835,17 +834,17 @@ struct POSReservedLivePetsView: View {
                     .frame(width: 64, height: 64)
                 Image(systemName: "pawprint.circle")
                     .font(.system(size: 34, weight: .light))
-                    .foregroundStyle(AdminSurface.primary.opacity(0.5))
+                    .foregroundColor(AdminSurface.primary.opacity(0.5))
             }
 
             VStack(spacing: 6) {
                 Text(Language.get("POS_NoReservedLivePets_Title", alter: "لا توجد حجوزات"))
                     .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
-                    .foregroundStyle(AdminSurface.primaryText)
+                    .foregroundColor(AdminSurface.primaryText)
 
                 Text(Language.get("POS_NoReservedLivePets_Subtitle", alter: "جميع الحيوانات الحية متاحة للبيع المباشر في الكتالوج حالياً."))
                     .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
-                    .foregroundStyle(AdminSurface.secondaryText)
+                    .foregroundColor(AdminSurface.secondaryText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, AdminSpacing.xl)
             }
@@ -859,7 +858,7 @@ struct POSReservedLivePetsView: View {
                     Text(Language.get("Refresh", alter: "تحديث"))
                         .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
                 }
-                .foregroundStyle(AdminSurface.primary)
+                .foregroundColor(AdminSurface.primary)
                 .padding(.horizontal, AdminSpacing.md)
                 .padding(.vertical, AdminSpacing.sm)
                 .background(AdminSurface.primary.opacity(0.08), in: Capsule())
@@ -876,11 +875,11 @@ struct POSReservedLivePetsView: View {
             if let notice = vm.operationSuccessNotice {
                 HStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                         .font(.system(size: 15, weight: .semibold))
                     Text(notice)
                         .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
-                        .foregroundStyle(.white)
+                        .foregroundColor(.white)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 13)
@@ -970,7 +969,7 @@ private struct POSReservedPetCard: View {
                         HStack(alignment: .center, spacing: 6) {
                             Text(item.animalName)
                                 .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                                .foregroundStyle(AdminSurface.primaryText)
+                                .foregroundColor(AdminSurface.primaryText)
                                 .lineLimit(1)
 
                             Spacer()
@@ -1052,7 +1051,7 @@ private struct POSReservedPetCard: View {
             Text(item.remainingTimeDescription)
                 .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
         }
-        .foregroundStyle(urgencyColor)
+        .foregroundColor(urgencyColor)
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .background(urgencyColor.opacity(0.1), in: Capsule())
@@ -1066,7 +1065,7 @@ private struct POSReservedPetCard: View {
             Text(item.ringTag)
                 .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
         }
-        .foregroundStyle(AdminSurface.primary)
+        .foregroundColor(AdminSurface.primary)
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
         .background(AdminSurface.primary.opacity(0.08), in: Capsule())
@@ -1080,7 +1079,7 @@ private struct POSReservedPetCard: View {
                 .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
                 .lineLimit(1)
         }
-        .foregroundStyle(AdminSurface.secondaryText)
+        .foregroundColor(AdminSurface.secondaryText)
     }
 
     // MARK: Customer Section
@@ -1089,7 +1088,7 @@ private struct POSReservedPetCard: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(Language.get("POS_Customer", alter: "العميل"))
                 .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
 
             HStack(spacing: 5) {
                 // Avatar monogram
@@ -1100,14 +1099,14 @@ private struct POSReservedPetCard: View {
                     .overlay(
                         Text(initials.isEmpty ? "؟" : initials)
                             .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                            .foregroundStyle(AdminSurface.primary)
+                            .foregroundColor(AdminSurface.primary)
                     )
 
                 Text(item.customerName.isEmpty
                      ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم")
                      : item.customerName)
                     .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
-                    .foregroundStyle(AdminSurface.primaryText)
+                    .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
 
                 if !item.customerPhone.isEmpty {
@@ -1119,7 +1118,7 @@ private struct POSReservedPetCard: View {
             if !item.customerPhone.isEmpty {
                 Text(item.customerPhone)
                     .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                    .foregroundStyle(AdminSurface.secondaryText)
+                    .foregroundColor(AdminSurface.secondaryText)
                     .monospacedDigit()
             }
         }
@@ -1131,16 +1130,16 @@ private struct POSReservedPetCard: View {
         VStack(alignment: .trailing, spacing: 1) {
             Text(Language.get("POS_LockedPrice", alter: "سعر الحجز"))
                 .font(Font.custom("Beiruti-Regular", size: 9, relativeTo: .caption2))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
 
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(String(format: "%.0f", item.sellingPrice))
                     .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
-                    .foregroundStyle(AdminSurface.primary)
+                    .foregroundColor(AdminSurface.primary)
                     .monospacedDigit()
                 Text("ر.ق")
                     .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
-                    .foregroundStyle(AdminSurface.primary.opacity(0.7))
+                    .foregroundColor(AdminSurface.primary.opacity(0.7))
             }
         }
     }
@@ -1160,7 +1159,7 @@ private struct POSReservedPetCard: View {
                         .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
                         .lineLimit(1)
                 }
-                .foregroundStyle(.white)
+                .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 40)
                 .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
@@ -1205,7 +1204,7 @@ private struct POSReservedPetCard: View {
         } label: {
             Image(systemName: "phone.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(Color(uiColor: .ppSuccess))
+                .foregroundColor(Color(uiColor: .ppSuccess))
                 .padding(4)
                 .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
         }
@@ -1220,7 +1219,7 @@ private struct POSReservedPetCard: View {
         } label: {
             Image(systemName: "message.fill")
                 .font(.system(size: 9))
-                .foregroundStyle(Color(uiColor: .ppSuccess))
+                .foregroundColor(Color(uiColor: .ppSuccess))
                 .padding(4)
                 .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
         }
@@ -1286,7 +1285,7 @@ private struct PetAvatarView: View {
             Color(uiColor: .secondarySystemBackground)
             Image(systemName: "pawprint.fill")
                 .font(.system(size: size * 0.35))
-                .foregroundStyle(AdminSurface.secondaryText.opacity(0.4))
+                .foregroundColor(AdminSurface.secondaryText.opacity(0.4))
         }
     }
 }
@@ -1308,7 +1307,7 @@ private struct ActionIconButton: View {
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
+                .foregroundColor(tint)
                 .frame(width: 40, height: 40)
                 .background(bg, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
                 .overlay(
@@ -1347,7 +1346,7 @@ struct POSReservedPetDossierSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationView {
             ScrollView {
                 VStack(spacing: 0) {
                     // Full-bleed hero
@@ -1367,19 +1366,19 @@ struct POSReservedPetDossierSheet: View {
                         VStack(spacing: 6) {
                             Text(item.animalName)
                                 .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
-                                .foregroundStyle(AdminSurface.primaryText)
+                                .foregroundColor(AdminSurface.primaryText)
 
                             HStack(spacing: 8) {
                                 Label("#\(item.ringTag)", systemImage: "number.circle.fill")
                                     .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                                    .foregroundStyle(AdminSurface.primary)
+                                    .foregroundColor(AdminSurface.primary)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
                                     .background(.thinMaterial, in: Capsule())
 
                                 Text(item.remainingTimeDescription)
                                     .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                                    .foregroundStyle(urgencyColor)
+                                    .foregroundColor(urgencyColor)
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
                                     .background(urgencyColor.opacity(0.1), in: Capsule())
@@ -1445,10 +1444,10 @@ struct POSReservedPetDossierSheet: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Label(Language.get("POS_Notes", alter: "ملاحظات"), systemImage: "note.text")
                                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                            .foregroundStyle(AdminSurface.secondaryText)
+                                            .foregroundColor(AdminSurface.secondaryText)
                                         Text(item.notes)
                                             .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                                            .foregroundStyle(AdminSurface.primaryText)
+                                            .foregroundColor(AdminSurface.primaryText)
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 }
@@ -1466,15 +1465,16 @@ struct POSReservedPetDossierSheet: View {
                 ToolbarItem(placement: .principal) {
                     Text(Language.get("POS_AnimalDossier_Title", alter: "ملف الحيوان المحجوز"))
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
+                        .foregroundColor(AdminSurface.primaryText)
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("Done", alter: "تم")) { dismiss() }
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
-                        .foregroundStyle(AdminSurface.primary)
+                        .foregroundColor(AdminSurface.primary)
                 }
             }
         }
+        .navigationViewStyle(.stack)
         .onAppear { appeared = true }
     }
 
@@ -1507,7 +1507,7 @@ struct POSReservedPetDossierSheet: View {
             )
             Image(systemName: "pawprint.fill")
                 .font(.system(size: 56, weight: .light))
-                .foregroundStyle(AdminSurface.primary.opacity(0.25))
+                .foregroundColor(AdminSurface.primary.opacity(0.25))
         }
     }
 
@@ -1515,7 +1515,7 @@ struct POSReservedPetDossierSheet: View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
             Text(title)
                 .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
                 .padding(.leading, 4)
                 .padding(.top, AdminSpacing.md)
 
@@ -1534,18 +1534,18 @@ struct POSReservedPetDossierSheet: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                .foregroundColor(AdminSurface.primary.opacity(0.6))
                 .frame(width: 22)
 
             Text(title)
                 .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
             Spacer()
             Text(value)
                 .font(mono
                       ? Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
                       : Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
-                .foregroundStyle(AdminSurface.primaryText)
+                .foregroundColor(AdminSurface.primaryText)
                 .lineLimit(1)
                 .multilineTextAlignment(.trailing)
         }
@@ -1558,17 +1558,17 @@ struct POSReservedPetDossierSheet: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                .foregroundColor(AdminSurface.primary.opacity(0.6))
                 .frame(width: 22)
 
             Text(title)
                 .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                .foregroundStyle(AdminSurface.secondaryText)
+                .foregroundColor(AdminSurface.secondaryText)
             Spacer()
             HStack(spacing: 6) {
                 Text(value)
                     .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                    .foregroundStyle(AdminSurface.primaryText)
+                    .foregroundColor(AdminSurface.primaryText)
 
                 // Call
                 Button {
@@ -1577,7 +1577,7 @@ struct POSReservedPetDossierSheet: View {
                 } label: {
                     Image(systemName: "phone.fill")
                         .font(.system(size: 10))
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
                         .padding(5)
                         .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
                 }
@@ -1590,7 +1590,7 @@ struct POSReservedPetDossierSheet: View {
                 } label: {
                     Image(systemName: "message.fill")
                         .font(.system(size: 10))
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
                         .padding(5)
                         .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
                 }
@@ -1626,24 +1626,24 @@ struct POSExtendReservationSheet: View {
                                 .frame(width: 80, height: 80)
                             Image(systemName: "calendar.badge.clock")
                                 .font(.system(size: 36, weight: .light))
-                                .foregroundStyle(AdminSurface.primary)
+                                .foregroundColor(AdminSurface.primary)
                         }
                         .padding(.top, AdminSpacing.lg)
 
                         Text(Language.get("POS_Extend_Title", alter: "تمديد مهلة الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                            .foregroundStyle(AdminSurface.primaryText)
+                            .foregroundColor(AdminSurface.primaryText)
 
                         Text("\(item.animalName) · #\(item.ringTag)")
                             .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                     }
 
                     // Quick presets
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                         Text(Language.get("POS_QuickExtend", alter: "تمديد سريع"))
                             .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, AdminSpacing.xs)
 
                         HStack(spacing: 8) {
@@ -1659,7 +1659,7 @@ struct POSExtendReservationSheet: View {
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                         Text(Language.get("POS_NewExpiryDate", alter: "تاريخ وساعة الانتهاء الجديدة"))
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, AdminSpacing.xs)
 
                         DatePicker("", selection: $customDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
@@ -1675,7 +1675,7 @@ struct POSExtendReservationSheet: View {
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                         Text(Language.get("POS_ExtendReason", alter: "سبب التمديد (اختياري)"))
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, AdminSpacing.xs)
 
                         TextField(
@@ -1704,7 +1704,7 @@ struct POSExtendReservationSheet: View {
                         Text(Language.get("POS_Confirm_Extend", alter: "تأكيد تمديد الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
@@ -1733,7 +1733,7 @@ struct POSExtendReservationSheet: View {
         } label: {
             Text(title)
                 .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
+                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AdminSpacing.sm)
                 .background(
@@ -1774,18 +1774,18 @@ struct POSReleaseReservationSheet: View {
                                 .frame(width: 80, height: 80)
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 36, weight: .light))
-                                .foregroundStyle(Color(uiColor: .ppError))
+                                .foregroundColor(Color(uiColor: .ppError))
                         }
                         .padding(.top, AdminSpacing.lg)
 
                         Text(Language.get("POS_Release_Title", alter: "إلغاء الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                            .foregroundStyle(AdminSurface.primaryText)
+                            .foregroundColor(AdminSurface.primaryText)
 
                         Text(Language.get("POS_Release_Warning",
                                           alter: "سيتم إلغاء الحجز فوراً وإعادة الحيوان إلى المخزون المتاح لجميع العملاء."))
                             .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, AdminSpacing.xl)
                     }
@@ -1796,15 +1796,15 @@ struct POSReleaseReservationSheet: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(item.animalName)
                                 .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                                .foregroundStyle(AdminSurface.primaryText)
+                                .foregroundColor(AdminSurface.primaryText)
                             Text("#\(item.ringTag) · \(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم") : item.customerName)")
                                 .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                .foregroundStyle(AdminSurface.secondaryText)
+                                .foregroundColor(AdminSurface.secondaryText)
                         }
                         Spacer()
                         Text("\(String(format: "%.0f", item.sellingPrice)) ر.ق")
                             .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
-                            .foregroundStyle(Color(uiColor: .ppError))
+                            .foregroundColor(Color(uiColor: .ppError))
                     }
                     .padding(AdminSpacing.md)
                     .background(Color(uiColor: .ppError).opacity(0.05), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
@@ -1818,7 +1818,7 @@ struct POSReleaseReservationSheet: View {
                     VStack(alignment: .leading, spacing: AdminSpacing.xs) {
                         Text(Language.get("POS_Release_Reason", alter: "سبب الإلغاء"))
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, AdminSpacing.xs)
 
                         TextField(
@@ -1838,7 +1838,7 @@ struct POSReleaseReservationSheet: View {
                             .tint(Color(uiColor: .ppError))
                         Text(Language.get("POS_Release_Confirm_Label", alter: "أتحمل مسؤولية إلغاء هذا الحجز نيابةً عن إدارة المتجر"))
                             .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                            .foregroundColor(AdminSurface.secondaryText)
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                 }
@@ -1858,7 +1858,7 @@ struct POSReleaseReservationSheet: View {
                         Text(Language.get("POS_Confirm_Release", alter: "تأكيد إلغاء الحجز"))
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 52)
                     .background(
