@@ -164,6 +164,14 @@ struct AdminPaymentListView: View {
     }
 
     var body: some View {
+        NavigationView {
+            paymentListContent
+                .navigationBarHidden(true)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var paymentListContent: some View {
         VStack(spacing: 0) {
             dossierHeaderView
             statsHeader
@@ -197,16 +205,39 @@ struct AdminPaymentListView: View {
         }
         .background(AdminSurface.background)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .fullScreenCover(item: Binding(
-            get: { selectedOrderID.map { OrderIDWrapper(id: $0) } },
-            set: { selectedOrderID = $0?.id }
-        )) { wrapper in
-            AdminPaymentDetailView(orderID: wrapper.id, session: session) {
-                selectedOrderID = nil
-            }
-        }
+        .background(paymentDetailPushLink)
         .onAppear {
             if viewModel.records.isEmpty { viewModel.load() }
+        }
+    }
+
+    private var paymentDetailPushLink: some View {
+        NavigationLink(
+            destination: paymentDetailDestination,
+            isActive: Binding(
+                get: { selectedOrderID != nil },
+                set: { isActive in
+                    if !isActive {
+                        selectedOrderID = nil
+                    }
+                }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var paymentDetailDestination: some View {
+        if let orderID = selectedOrderID {
+            AdminPaymentDetailView(orderID: orderID, session: session) {
+                selectedOrderID = nil
+            }
+            .navigationBarHidden(true)
+        } else {
+            EmptyView()
         }
     }
 
@@ -601,12 +632,6 @@ private struct PaymentOrderCard: View {
         formatter.locale = Locale(identifier: Language.currentLanguageCode() == "ar" ? "ar" : "en")
         return formatter.localizedString(for: date, relativeTo: Date())
     }
-}
-
-// MARK: - Navigation Helper
-
-private struct OrderIDWrapper: Identifiable {
-    let id: String
 }
 
 // MARK: - ObjC Hosting Bridge

@@ -38,6 +38,10 @@ static inline UIFont *PPAppFontRegular(CGFloat size) {
     return [UIFont fontWithName:@"Beiruti-Regular" size:size] ?: [UIFont systemFontOfSize:size weight:UIFontWeightRegular];
 }
 
+static inline UIFont *PPAppFont(CGFloat size) {
+    return PPAppFontMedium(size);
+}
+
 #pragma mark - Constants & Metadata
 
 typedef NS_ENUM(NSInteger, SectionType) {
@@ -487,6 +491,13 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 @property (nonatomic, strong) UIButton *saveButton;
 @property (nonatomic, strong) UILabel *changesCountLabel;
 
+// Custom In-View Navigation Bar
+@property (nonatomic, strong) UIView *topNavContainer;
+@property (nonatomic, strong) UIButton *navBackButton;
+@property (nonatomic, strong) UILabel *navTitleLabel;
+@property (nonatomic, strong) UILabel *navEyebrowLabel;
+@property (nonatomic, strong) UIButton *navFastSaveButton;
+
 // State
 @property (nonatomic, strong) UserModel *user;
 @property (nonatomic, assign) EditType editType;
@@ -557,31 +568,42 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
     [self pp_configureNavigation];
+    [self pp_buildTopNavigationBar];
     [self pp_buildTableView];
     [self pp_buildHeaderView];
     [self pp_buildSaveBottomBar];
     [self evaluatePermissions];
     [self pp_updateChangesCount];
+
+    if (self.topNavContainer) {
+        [self.view bringSubviewToFront:self.topNavContainer];
+    }
+    if (self.saveBottomBar) {
+        [self.view bringSubviewToFront:self.saveBottomBar];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:NO animated:animated];
-
-    if (@available(iOS 13.0, *)) {
-        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = PPProviderCanvasColor();
-        appearance.titleTextAttributes = @{
-            NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
-            NSFontAttributeName: PPAppFontBold(18.0)
-        };
-        appearance.shadowColor = PPProviderSeparatorColor();
-        self.navigationItem.standardAppearance = appearance;
-        self.navigationItem.scrollEdgeAppearance = appearance;
-        self.navigationItem.compactAppearance = appearance;
+    if (!self.hidesInternalNavigationBar) {
+        [self.navigationController setNavigationBarHidden:YES animated:animated];
+    } else {
+        [self.navigationController setNavigationBarHidden:NO animated:animated];
+        if (@available(iOS 13.0, *)) {
+            UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+            [appearance configureWithOpaqueBackground];
+            appearance.backgroundColor = PPProviderCanvasColor();
+            appearance.titleTextAttributes = @{
+                NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
+                NSFontAttributeName: PPAppFontBold(18.0)
+            };
+            appearance.shadowColor = PPProviderSeparatorColor();
+            self.navigationItem.standardAppearance = appearance;
+            self.navigationItem.scrollEdgeAppearance = appearance;
+            self.navigationItem.compactAppearance = appearance;
+        }
+        self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
     }
-    self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
 }
 
 - (void)viewDidLayoutSubviews {
@@ -589,11 +611,220 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     [self pp_fitTableHeader];
 }
 
+#pragma mark - Custom In-View Navigation Bar
+
+- (void)pp_buildTopNavigationBar {
+    if (self.hidesInternalNavigationBar) return;
+
+    _topNavContainer = [UIView new];
+    _topNavContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    _topNavContainer.backgroundColor = PPProviderSurfaceColor();
+    _topNavContainer.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.view addSubview:_topNavContainer];
+
+    // Bottom hairline divider
+    UIView *bottomDivider = [UIView new];
+    bottomDivider.translatesAutoresizingMaskIntoConstraints = NO;
+    bottomDivider.backgroundColor = [PPProviderSeparatorColor() colorWithAlphaComponent:0.22];
+    [_topNavContainer addSubview:bottomDivider];
+
+    // Content container aligned to safe area
+    UIView *barContent = [UIView new];
+    barContent.translatesAutoresizingMaskIntoConstraints = NO;
+    barContent.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [_topNavContainer addSubview:barContent];
+
+    // 1. Back Button Pill
+    _navBackButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _navBackButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _navBackButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    BOOL isModal = (self.presentingViewController != nil && (!self.navigationController || self.navigationController.viewControllers.firstObject == self));
+    UIImageSymbolConfiguration *symConfig = [UIImageSymbolConfiguration configurationWithPointSize:13.5 weight:UIImageSymbolWeightBold];
+    UIImage *backIcon = [UIImage systemImageNamed:(isModal ? @"xmark" : ([Language isRTL] ? @"chevron.right" : @"chevron.left")) withConfiguration:symConfig];
+    [_navBackButton setImage:backIcon forState:UIControlStateNormal];
+    [_navBackButton setTitle:(isModal ? (kLang(@"Close") ?: @"إغلاق") : (kLang(@"Back") ?: @"رجوع")) forState:UIControlStateNormal];
+    _navBackButton.titleLabel.font = PPAppFontBold(14.0);
+    [_navBackButton setTitleColor:PPProviderBrandColor() forState:UIControlStateNormal];
+    _navBackButton.tintColor = PPProviderBrandColor();
+    _navBackButton.backgroundColor = [PPProviderBrandColor() colorWithAlphaComponent:0.08];
+    PPApplyContinuousCorners(_navBackButton, 17.0);
+    _navBackButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 12.0, 6.0, 12.0);
+    _navBackButton.imageEdgeInsets = UIEdgeInsetsMake(0.0, [Language isRTL] ? 4.0 : -4.0, 0.0, [Language isRTL] ? -4.0 : 4.0);
+    [_navBackButton addTarget:self action:@selector(pp_handleBackOrClose) forControlEvents:UIControlEventTouchUpInside];
+    [barContent addSubview:_navBackButton];
+
+    // 2. Title & Eyebrow Stack
+    UIView *titleStack = [UIView new];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [barContent addSubview:titleStack];
+
+    UIView *eyebrowRow = [UIView new];
+    eyebrowRow.translatesAutoresizingMaskIntoConstraints = NO;
+    eyebrowRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [titleStack addSubview:eyebrowRow];
+
+    _navEyebrowLabel = [UILabel new];
+    _navEyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navEyebrowLabel.font = PPAppFontMedium(11.0);
+    _navEyebrowLabel.textColor = PPProviderSecondaryTextColor();
+    _navEyebrowLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    _navEyebrowLabel.text = kLang(@"CommandCenter_Customers_Workspace") ?: @"عمليات العملاء / تفاصيل الحساب";
+    [eyebrowRow addSubview:_navEyebrowLabel];
+
+    // Security badge pill
+    UIView *shieldBadge = [UIView new];
+    shieldBadge.translatesAutoresizingMaskIntoConstraints = NO;
+    shieldBadge.backgroundColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.12];
+    PPApplyContinuousCorners(shieldBadge, 8.0);
+    [eyebrowRow addSubview:shieldBadge];
+
+    UIImageView *shieldIcon = [[UIImageView alloc] initWithImage:[[UIImage systemImageNamed:@"lock.shield.fill"] imageWithTintColor:[UIColor ppSuccess] renderingMode:UIImageRenderingModeAlwaysOriginal]];
+    shieldIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    shieldIcon.contentMode = UIViewContentModeScaleAspectFit;
+    [shieldBadge addSubview:shieldIcon];
+
+    UILabel *shieldLabel = [UILabel new];
+    shieldLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    shieldLabel.font = PPAppFontBold(9.5);
+    shieldLabel.textColor = [UIColor ppSuccess];
+    shieldLabel.text = kLang(@"IAM_Verified") ?: @"مؤمّن";
+    [shieldBadge addSubview:shieldLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_navEyebrowLabel.leadingAnchor constraintEqualToAnchor:eyebrowRow.leadingAnchor],
+        [_navEyebrowLabel.centerYAnchor constraintEqualToAnchor:eyebrowRow.centerYAnchor],
+
+        [shieldBadge.leadingAnchor constraintEqualToAnchor:_navEyebrowLabel.trailingAnchor constant:6.0],
+        [shieldBadge.centerYAnchor constraintEqualToAnchor:eyebrowRow.centerYAnchor],
+        [shieldBadge.trailingAnchor constraintLessThanOrEqualToAnchor:eyebrowRow.trailingAnchor],
+        [shieldBadge.heightAnchor constraintEqualToConstant:16.0],
+
+        [shieldIcon.leadingAnchor constraintEqualToAnchor:shieldBadge.leadingAnchor constant:5.0],
+        [shieldIcon.centerYAnchor constraintEqualToAnchor:shieldBadge.centerYAnchor],
+        [shieldIcon.widthAnchor constraintEqualToConstant:9.0],
+        [shieldIcon.heightAnchor constraintEqualToConstant:9.0],
+
+        [shieldLabel.leadingAnchor constraintEqualToAnchor:shieldIcon.trailingAnchor constant:3.0],
+        [shieldLabel.trailingAnchor constraintEqualToAnchor:shieldBadge.trailingAnchor constant:-5.0],
+        [shieldLabel.centerYAnchor constraintEqualToAnchor:shieldBadge.centerYAnchor],
+
+        [eyebrowRow.topAnchor constraintEqualToAnchor:titleStack.topAnchor],
+        [eyebrowRow.leadingAnchor constraintEqualToAnchor:titleStack.leadingAnchor],
+        [eyebrowRow.trailingAnchor constraintEqualToAnchor:titleStack.trailingAnchor],
+        [eyebrowRow.heightAnchor constraintEqualToConstant:16.0]
+    ]];
+
+    _navTitleLabel = [UILabel new];
+    _navTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navTitleLabel.font = PPAppFontBold(16.5);
+    _navTitleLabel.textColor = PPProviderPrimaryTextColor();
+    _navTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    _navTitleLabel.text = self.user.UserName.length ? self.user.UserName : (kLang(@"MissionControl_UserDetail_Hero_Title") ?: @"تفاصيل الحساب وإدارة الصلاحيات");
+    _navTitleLabel.lineBreakMode = NSLineBreakByTruncatingTail;
+    [titleStack addSubview:_navTitleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_navTitleLabel.topAnchor constraintEqualToAnchor:eyebrowRow.bottomAnchor constant:1.0],
+        [_navTitleLabel.leadingAnchor constraintEqualToAnchor:titleStack.leadingAnchor],
+        [_navTitleLabel.trailingAnchor constraintEqualToAnchor:titleStack.trailingAnchor],
+        [_navTitleLabel.bottomAnchor constraintEqualToAnchor:titleStack.bottomAnchor]
+    ]];
+
+    // 3. Fast Save Pill Button
+    _navFastSaveButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _navFastSaveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _navFastSaveButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    UIImageSymbolConfiguration *checkConfig = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
+    UIImage *checkIcon = [UIImage systemImageNamed:@"checkmark" withConfiguration:checkConfig];
+    [_navFastSaveButton setImage:checkIcon forState:UIControlStateNormal];
+    [_navFastSaveButton setTitle:(kLang(@"Save") ?: @"حفظ") forState:UIControlStateNormal];
+    _navFastSaveButton.titleLabel.font = PPAppFontBold(13.5);
+    [_navFastSaveButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    _navFastSaveButton.tintColor = UIColor.whiteColor;
+    _navFastSaveButton.backgroundColor = PPProviderBrandColor();
+    PPApplyContinuousCorners(_navFastSaveButton, 17.0);
+    _navFastSaveButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 14.0, 6.0, 14.0);
+    _navFastSaveButton.imageEdgeInsets = UIEdgeInsetsMake(0.0, [Language isRTL] ? 4.0 : -4.0, 0.0, [Language isRTL] ? -4.0 : 4.0);
+    [_navFastSaveButton addTarget:self action:@selector(onSave) forControlEvents:UIControlEventTouchUpInside];
+    [barContent addSubview:_navFastSaveButton];
+
+    // Constraints
+    [NSLayoutConstraint activateConstraints:@[
+        [_topNavContainer.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_topNavContainer.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_topNavContainer.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_topNavContainer.bottomAnchor constraintEqualToAnchor:barContent.bottomAnchor],
+
+        [barContent.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [barContent.leadingAnchor constraintEqualToAnchor:_topNavContainer.leadingAnchor constant:PPScreenMargin],
+        [barContent.trailingAnchor constraintEqualToAnchor:_topNavContainer.trailingAnchor constant:-PPScreenMargin],
+        [barContent.heightAnchor constraintEqualToConstant:54.0],
+
+        [bottomDivider.leadingAnchor constraintEqualToAnchor:_topNavContainer.leadingAnchor],
+        [bottomDivider.trailingAnchor constraintEqualToAnchor:_topNavContainer.trailingAnchor],
+        [bottomDivider.bottomAnchor constraintEqualToAnchor:_topNavContainer.bottomAnchor],
+        [bottomDivider.heightAnchor constraintEqualToConstant:0.5],
+
+        [_navBackButton.leadingAnchor constraintEqualToAnchor:barContent.leadingAnchor],
+        [_navBackButton.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
+        [_navBackButton.heightAnchor constraintEqualToConstant:34.0],
+
+        [titleStack.leadingAnchor constraintEqualToAnchor:_navBackButton.trailingAnchor constant:10.0],
+        [titleStack.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:_navFastSaveButton.leadingAnchor constant:-10.0],
+
+        [_navFastSaveButton.trailingAnchor constraintEqualToAnchor:barContent.trailingAnchor],
+        [_navFastSaveButton.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
+        [_navFastSaveButton.heightAnchor constraintEqualToConstant:34.0]
+    ]];
+}
+
+- (void)pp_handleBackOrClose {
+    [PPFunc pp_playTapEffect];
+
+    UIViewController *targetVC = self;
+    while (targetVC.parentViewController && !targetVC.navigationController) {
+        targetVC = targetVC.parentViewController;
+    }
+
+    if (targetVC.navigationController && targetVC.navigationController.viewControllers.count > 1) {
+        [targetVC.navigationController popViewControllerAnimated:YES];
+    } else if (targetVC.presentingViewController) {
+        [targetVC dismissViewControllerAnimated:YES completion:nil];
+    } else if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
+}
+
 #pragma mark - Navigation Setup
 
 - (void)pp_configureNavigation {
     self.title = self.user.UserName.length ? self.user.UserName : (kLang(@"MissionControl_UserDetail_Hero_Title") ?: @"تفاصيل الحساب وإدارة الصلاحيات");
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    BOOL isModal = (self.presentingViewController != nil && (!self.navigationController || self.navigationController.viewControllers.firstObject == self));
+    if (isModal) {
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:(kLang(@"Close") ?: @"إغلاق")
+                                                                                 style:UIBarButtonItemStylePlain
+                                                                                target:self
+                                                                                action:@selector(pp_handleBackOrClose)];
+    } else {
+        UIImage *backImg = [UIImage systemImageNamed:([Language isRTL] ? @"chevron.right" : @"chevron.left")];
+        self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:backImg
+                                                                                 style:UIBarButtonItemStylePlain
+                                                                                target:self
+                                                                                action:@selector(pp_handleBackOrClose)];
+    }
+
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:(kLang(@"Save") ?: @"حفظ")
+                                                                              style:UIBarButtonItemStyleDone
+                                                                             target:self
+                                                                             action:@selector(onSave)];
 }
 
 #pragma mark - Table View Setup
@@ -615,8 +846,12 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     [self.tableView registerClass:PPNextGenPickerCardCell.class forCellReuseIdentifier:kNextGenPickerCellID];
     [self.view addSubview:self.tableView];
 
+    NSLayoutYAxisAnchor *topConstraintAnchor = (self.topNavContainer && !self.hidesInternalNavigationBar)
+        ? self.topNavContainer.bottomAnchor
+        : self.view.safeAreaLayoutGuide.topAnchor;
+
     [NSLayoutConstraint activateConstraints:@[
-        [self.tableView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [self.tableView.topAnchor constraintEqualToAnchor:topConstraintAnchor],
         [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -993,9 +1228,13 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     if (changes > 0) {
         _changesCountLabel.text = [NSString stringWithFormat:kLang(@"Unsaved_Changes_Count_Format") ?: @"تم تعديل %lu حقول · اضغط للحفظ", (unsigned long)changes];
         _changesCountLabel.textColor = PPProviderBrandColor();
+        [_navFastSaveButton setTitle:[NSString stringWithFormat:@"%@ (%lu)", (kLang(@"Save") ?: @"حفظ"), (unsigned long)changes] forState:UIControlStateNormal];
+        _navFastSaveButton.alpha = 1.0;
     } else {
         _changesCountLabel.text = kLang(@"MissionControl_Customers_Signal_Clear") ?: @"لا توجد تغييرات معلقة";
         _changesCountLabel.textColor = PPProviderSecondaryTextColor();
+        [_navFastSaveButton setTitle:(kLang(@"Save") ?: @"حفظ") forState:UIControlStateNormal];
+        _navFastSaveButton.alpha = 0.88;
     }
 }
 
@@ -1009,6 +1248,7 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 
     BOOL canSaveAny = self.canManage || self.canManageFeatures || self.canManageRestrictions;
     self.saveBottomBar.hidden = !canSaveAny;
+    self.navFastSaveButton.hidden = !canSaveAny;
 }
 
 #pragma mark - Table View Data Source
@@ -1234,6 +1474,8 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 
     [self.saveButton setTitle:(kLang(@"MissionControl_UserDetail_Saving") ?: @"جارٍ حفظ التغييرات...") forState:UIControlStateNormal];
     self.saveButton.userInteractionEnabled = NO;
+    [self.navFastSaveButton setTitle:(kLang(@"MissionControl_UserDetail_Saving") ?: @"جارٍ الحفظ...") forState:UIControlStateNormal];
+    self.navFastSaveButton.userInteractionEnabled = NO;
     [PPHUD showRingIn:self.view
                 title:(kLang(@"MissionControl_UserDetail_Saving") ?: @"جارٍ حفظ التغييرات")
              subtitle:(kLang(@"MissionControl_UserDetail_Saving_Body") ?: @"جارٍ تطبيق كل تغيير مصرح به عبر خدمات خاضعة للتدقيق.")];
@@ -1307,6 +1549,8 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
         self->_isSaving = NO;
         [self.saveButton setTitle:(kLang(@"MissionControl_UserDetail_Save") ?: @"حفظ التغييرات المصرّح بها") forState:UIControlStateNormal];
         self.saveButton.userInteractionEnabled = self.canManage || self.canManageFeatures || self.canManageRestrictions;
+        [self.navFastSaveButton setTitle:(kLang(@"Save") ?: @"حفظ") forState:UIControlStateNormal];
+        self.navFastSaveButton.userInteractionEnabled = self.canManage || self.canManageFeatures || self.canManageRestrictions;
 
         if (statusSucceeded) self.user.accountStatus = self.editingAccountStatus;
         if (featuresSucceeded) {
@@ -1341,7 +1585,7 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
             [PPFunc pp_playSuccessEffect];
             [PPToast toast:(kLang(@"Update_Success") ?: @"تم حفظ التغييرات بنجاح") style:PPToastStyleSuccess haptic:YES duration:2.0];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [self.navigationController popViewControllerAnimated:YES];
+                [self pp_handleBackOrClose];
             });
         }
     });

@@ -113,6 +113,8 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
 
 struct PPLivePetReservationItem: Equatable {
     let productID: String
+    let name: String
+    let unitPrice: Double
     let unitIDs: [String]
     let ringTags: [String]
 }
@@ -144,6 +146,8 @@ struct PPLivePetReservation: Identifiable, Equatable {
         items = (dictionary["items"] as? [[String: Any]] ?? []).map { source in
             PPLivePetReservationItem(
                 productID: PPLivePetInventoryService.string(source["productId"]),
+                name: PPLivePetInventoryService.string(source["name"]),
+                unitPrice: PPLivePetInventoryService.optionalNumber(source["unitPrice"]) ?? 0,
                 unitIDs: PPLivePetInventoryService.strings(source["unitIds"]),
                 ringTags: PPLivePetInventoryService.strings(source["unitRingTags"])
             )
@@ -287,14 +291,22 @@ enum PPLivePetInventoryService {
         return result
     }
 
-    static func listReservations(productID: String) async throws -> [PPLivePetReservation] {
+    /// Uses the redacted, permission-scoped POS reservation projection. Passing
+    /// no product returns the complete scoped queue; callers never read unit
+    /// subcollections directly because those records include protected fields.
+    static func listReservations(productID: String? = nil) async throws -> [PPLivePetReservation] {
         let response = try await call("listPosReservations", payload: ["pageSize": 500])
         if response["truncated"] as? Bool == true {
             throw PPLivePetServiceError.truncatedReservations
         }
-        return (response["reservations"] as? [[String: Any]] ?? [])
+        let reservations = (response["reservations"] as? [[String: Any]] ?? [])
             .map(PPLivePetReservation.init)
-            .filter { reservation in reservation.items.contains(where: { $0.productID == productID }) }
+        guard let productID = productID?.trimmingCharacters(in: .whitespacesAndNewlines), !productID.isEmpty else {
+            return reservations
+        }
+        return reservations.filter { reservation in
+            reservation.items.contains(where: { $0.productID == productID })
+        }
     }
 
     static func listBranches() async throws -> [PPInventoryBranchOption] {

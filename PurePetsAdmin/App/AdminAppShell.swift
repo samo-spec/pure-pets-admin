@@ -21,6 +21,14 @@ struct AdminAppShell: View {
     }
 
     var body: some View {
+        NavigationView {
+            shellContent
+                .navigationBarHidden(true)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var shellContent: some View {
         ZStack(alignment: .bottom) {
             Group {
                 switch selectedTab {
@@ -86,14 +94,7 @@ struct AdminAppShell: View {
         }
         .ignoresSafeArea()
         .tint(AdminSurface.primary)
-        .fullScreenCover(item: $router.presentedRoute) { route in
-            AdminLegacyRouteView(route: route, languageCode: sessionStore.languageCode) {
-                router.presentedRoute = nil
-            }
-                // UIKit owns both safe-area edges for presented native routes;
-                // each child then receives the device insets exactly once.
-                .ignoresSafeArea()
-        }
+        .background(routePushLink)
         .alert(Language.get("CommandCenter_Permission_Denied_Title", alter: nil), isPresented: $router.permissionDenied) {
             Button(Language.get("OK", alter: nil), role: .cancel) {}
         } message: {
@@ -119,6 +120,40 @@ struct AdminAppShell: View {
             if !route.isAuthorized(for: updatedSession) {
                 router.presentedRoute = nil
             }
+        }
+    }
+
+    /// Module routes are full screens, so the shell pushes them instead of
+    /// presenting another modal layer. Dedicated sheets and transient system
+    /// presenters remain owned by their existing call sites.
+    private var routePushLink: some View {
+        NavigationLink(
+            destination: routeDestination,
+            isActive: Binding(
+                get: { router.presentedRoute != nil },
+                set: { isActive in
+                    if !isActive {
+                        router.presentedRoute = nil
+                    }
+                }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var routeDestination: some View {
+        if let route = router.presentedRoute {
+            AdminRouteDestinationView(route: route, session: session, router: router)
+                // UIKit continues to own both safe-area edges for legacy route
+                // containers; the push only replaces the former modal handoff.
+                .ignoresSafeArea()
+                .navigationBarHidden(true)
+        } else {
+            EmptyView()
         }
     }
 

@@ -79,6 +79,18 @@ NS_ASSUME_NONNULL_BEGIN
                   posCustomerID:(nullable NSString *)posCustomerID
                      completion:(void(^)(PPPOSSubmitResult * _Nullable result,
                                          NSError * _Nullable error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(nullable NSString *)customerName
+                  customerPhone:(nullable NSString *)customerPhone
+                  posCustomerID:(nullable NSString *)posCustomerID
+                     completion:(void(^)(PPPOSSubmitResult * _Nullable result,
+                                         NSError * _Nullable error))completion;
 - (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts,
                                                 NSError * _Nullable error))completion;
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID

@@ -10,31 +10,30 @@
 
 import SwiftUI
 import UIKit
-import FirebaseFirestore
-import FirebaseFunctions
 
 // MARK: - Models & Projections
 
 struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
-    public let id: String
-    public let reservationID: String
-    public let productID: String
-    public let unitID: String
-    public let ringTag: String
-    public let animalName: String
-    public let photoURL: String
-    public let sellingPrice: Double
-    public let standardPrice: Double
-    public let customerName: String
-    public let customerPhone: String
-    public let customerSource: String
-    public let branchID: String
-    public let branchName: String
-    public let validUntil: Date?
-    public let createdAt: Date?
-    public let notes: String
-    public let supplier: String
-    public let purchaseCost: Double?
+    let id: String
+    let reservationID: String
+    let productID: String
+    let unitID: String
+    let ringTag: String
+    let animalName: String
+    let photoURL: String
+    let sellingPrice: Double
+    let standardPrice: Double
+    let customerName: String
+    let customerPhone: String
+    let customerSource: String
+    let branchID: String
+    let branchName: String
+    let validUntil: Date?
+    let createdAt: Date?
+    let notes: String
+    let supplier: String
+    let purchaseCost: Double?
+    let currency: String
 
     var isExpired: Bool {
         guard let validUntil else { return false }
@@ -194,13 +193,10 @@ final class POSReservedLivePetsViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            async let branchesTask = PPLivePetInventoryService.listBranches()
-            async let reservationsTask = fetchAllReservedUnits()
-
-            let (branchList, loadedUnits) = try await (branchesTask, reservationsTask)
-
+            let branchList = try await PPLivePetInventoryService.listBranches()
             self.branches = branchList
             self.branchesByID = branchList.reduce(into: [:]) { $0[$1.id] = $1.name }
+            let loadedUnits = try await fetchAllReservedUnits()
             self.items = loadedUnits.sorted {
                 let left  = $0.validUntil ?? Date.distantFuture
                 let right = $1.validUntil ?? Date.distantFuture
@@ -215,76 +211,48 @@ final class POSReservedLivePetsViewModel: ObservableObject {
     }
 
     private func fetchAllReservedUnits() async throws -> [POSReservedPetCardModel] {
+        let reservations = try await PPLivePetInventoryService.listReservations()
         var cardModels: [POSReservedPetCardModel] = []
         var seenKeys = Set<String>()
 
-        do {
-            let reservations = try await PPLivePetInventoryService.listReservations(productID: "")
-            for res in reservations {
-                let branchTitle = branchesByID[res.branchID] ?? res.branchID
-                for item in res.items {
-                    let accessory = accessoriesByID[item.productID]
-                    let petName   = accessory?.name ?? Language.get("LiveAnimal", alter: "حيوان حي")
-                    let photo     = accessory?.imageURLsArray.first ?? ""
-                    let stdPrice  = accessory?.pos_canonicalUnitPrice ?? res.total
+        for reservation in reservations {
+            let branchTitle = branchesByID[reservation.branchID] ?? reservation.branchID
+            for reservationItem in reservation.items {
+                let accessory = accessoriesByID[reservationItem.productID]
+                let petName = accessory?.name
+                    ?? (!reservationItem.name.isEmpty
+                        ? reservationItem.name
+                        : Language.get("POS_LiveAnimalFallback", alter: "حيوان حي"))
+                let photo = accessory?.imageURLsArray.first ?? ""
+                let unitPrice = reservationItem.unitPrice > 0
+                    ? reservationItem.unitPrice
+                    : accessory?.pos_canonicalUnitPrice ?? 0
 
-                    for (index, unitID) in item.unitIDs.enumerated() {
-                        let ring = index < item.ringTags.count ? item.ringTags[index] : unitID
-                        let unitKey = "\(item.productID)_\(unitID)"
-                        if seenKeys.contains(unitKey) { continue }
-                        seenKeys.insert(unitKey)
-                        cardModels.append(POSReservedPetCardModel(
-                            id: unitKey, reservationID: res.id,
-                            productID: item.productID, unitID: unitID,
-                            ringTag: ring, animalName: petName, photoURL: photo,
-                            sellingPrice: stdPrice, standardPrice: stdPrice,
-                            customerName: res.customerName, customerPhone: res.customerPhone,
-                            customerSource: res.customerSource, branchID: res.branchID,
-                            branchName: branchTitle, validUntil: res.validUntil,
-                            createdAt: nil, notes: "", supplier: "", purchaseCost: nil
-                        ))
-                    }
-                }
-            }
-        } catch { /* fallback below */ }
-
-        if cardModels.isEmpty {
-            let snapshot = try await Firestore.firestore()
-                .collection("petAccessories")
-                .whereField("isLivePet", isEqualTo: true)
-                .getDocuments()
-
-            for doc in snapshot.documents {
-                let pData = doc.data()
-                let productID = doc.documentID
-                let petName   = PPLivePetInventoryService.string(pData["name"])
-                let pictures  = (pData["imageURLsArray"] as? [String]) ?? (pData["pictures"] as? [String]) ?? []
-                let photo     = pictures.first ?? ""
-                let stdPrice  = PPLivePetInventoryService.optionalNumber(pData["price"]) ?? 0
-
-                let unitsSnap = try await doc.reference
-                    .collection("inventoryUnits")
-                    .whereField("status", isEqualTo: "RESERVED")
-                    .getDocuments()
-
-                for uDoc in unitsSnap.documents {
-                    let u = PPLivePetInventoryUnit(dictionary: uDoc.data())
-                    let unitKey = "\(productID)_\(u.id)"
-                    if seenKeys.contains(unitKey) { continue }
-                    seenKeys.insert(unitKey)
-                    let branchTitle = branchesByID[u.currentBranchID] ?? u.currentBranchID
+                for (index, unitID) in reservationItem.unitIDs.enumerated() {
+                    let ring = index < reservationItem.ringTags.count ? reservationItem.ringTags[index] : unitID
+                    let unitKey = "\(reservationItem.productID)_\(unitID)"
+                    guard seenKeys.insert(unitKey).inserted else { continue }
                     cardModels.append(POSReservedPetCardModel(
-                        id: unitKey, reservationID: u.reservationTransactionID,
-                        productID: productID, unitID: u.id,
-                        ringTag: u.ringTag.isEmpty ? u.id : u.ringTag,
-                        animalName: petName, photoURL: photo,
-                        sellingPrice: u.sellingPrice ?? stdPrice, standardPrice: stdPrice,
-                        customerName: u.reservationCustomerName,
-                        customerPhone: u.reservationCustomerPhone,
-                        customerSource: "directory", branchID: u.currentBranchID,
-                        branchName: branchTitle, validUntil: u.reservationValidUntil,
-                        createdAt: nil, notes: u.notes, supplier: u.supplier,
-                        purchaseCost: u.purchaseCost
+                        id: unitKey,
+                        reservationID: reservation.id,
+                        productID: reservationItem.productID,
+                        unitID: unitID,
+                        ringTag: ring,
+                        animalName: petName,
+                        photoURL: photo,
+                        sellingPrice: unitPrice,
+                        standardPrice: accessory?.pos_canonicalUnitPrice ?? unitPrice,
+                        customerName: reservation.customerName,
+                        customerPhone: reservation.customerPhone,
+                        customerSource: reservation.customerSource,
+                        branchID: reservation.branchID,
+                        branchName: branchTitle,
+                        validUntil: reservation.validUntil,
+                        createdAt: nil,
+                        notes: "",
+                        supplier: "",
+                        purchaseCost: nil,
+                        currency: reservation.currency
                     ))
                 }
             }
@@ -296,60 +264,38 @@ final class POSReservedLivePetsViewModel: ObservableObject {
     // MARK: - Actions
 
     func extendHold(for item: POSReservedPetCardModel, newValidUntil: Date, reason: String) async -> Bool {
-        do {
-            if !item.reservationID.isEmpty {
-                try await Firestore.firestore()
-                    .collection("transactions")
-                    .document(item.reservationID)
-                    .updateData([
-                        "reservationValidUntil": Timestamp(date: newValidUntil),
-                        "reservationExtendedAt": FieldValue.serverTimestamp(),
-                        "reservationExtendReason": reason,
-                    ])
-            }
-            try await Firestore.firestore()
-                .collection("petAccessories").document(item.productID)
-                .collection("inventoryUnits").document(item.unitID)
-                .updateData([
-                    "reservationValidUntil": Timestamp(date: newValidUntil),
-                    "lastModified": FieldValue.serverTimestamp(),
-                ])
-            self.operationSuccessNotice = Language.get("POS_Reservation_Extended_Success", alter: "تم تمديد فترة الحجز بنجاح ✓")
-            await loadData()
-            return true
-        } catch {
-            self.errorMessage = error.localizedDescription
-            return false
-        }
+        // Reservation expiry is a multi-record lifecycle transition. Infra has
+        // no extension command, so this screen must not mutate transactions or
+        // exact-animal units directly and silently bypass audit enforcement.
+        errorMessage = Language.get(
+            "LivePet_Error_ReservationExtensionUnavailable",
+            alter: "لا يمكن تمديد الحجز من هذا الجهاز لأن الخادم لا يوفّر عملية تمديد معتمدة. حرر الحجز ثم أنشئ حجزاً جديداً إذا لزم الأمر."
+        )
+        return false
     }
 
     func releaseHold(for item: POSReservedPetCardModel, reason: String) async -> Bool {
+        guard !item.reservationID.isEmpty else {
+            errorMessage = Language.get(
+                "LivePet_Error_ReservationProjection",
+                alter: "تعذر عرض حجز بسبب بيانات غير مكتملة. حدّث الصفحة وأبلغ المشرف إذا استمرت المشكلة."
+            )
+            return false
+        }
         do {
-            if !item.reservationID.isEmpty {
-                _ = try await PPLivePetInventoryService.callTransaction([
-                    "action": "cancel",
-                    "transactionId": item.reservationID,
-                    "commandId": PPLivePetInventoryService.commandID("release-pos-reservation"),
-                    "expectedStatus": "pending",
-                    "reason": reason.isEmpty ? "operator_release_from_pos" : reason,
-                    "currency": "QAR",
-                ])
-            } else {
-                _ = try await PPLivePetInventoryService.callInventory(
-                    action: "releaseReservation",
-                    productID: item.productID,
-                    commandID: PPLivePetInventoryService.commandID("release-unit"),
-                    payload: [
-                        "unitId": item.unitID,
-                        "reason": reason.isEmpty ? "operator_release_from_pos" : reason,
-                    ]
-                )
-            }
+            _ = try await PPLivePetInventoryService.callTransaction([
+                "action": "cancel",
+                "transactionId": item.reservationID,
+                "commandId": PPLivePetInventoryService.commandID("release-pos-reservation"),
+                "expectedStatus": "pending",
+                "reason": reason.isEmpty ? "operator_release_from_pos" : reason,
+                "currency": item.currency.isEmpty ? "QAR" : item.currency,
+            ])
             self.operationSuccessNotice = Language.get("POS_Reservation_Released_Success", alter: "تم إلغاء الحجز وإعادة الحيوان للمخزون ✓")
             await loadData()
             return true
         } catch {
-            self.errorMessage = error.localizedDescription
+            self.errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
             return false
         }
     }
@@ -484,7 +430,7 @@ struct POSReservedLivePetsView: View {
                         .background(.thinMaterial, in: Circle())
                         .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
                 }
-                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                .accessibilityLabel(Language.get("POS_Refresh", alter: "تحديث"))
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
             .padding(.top, AdminSpacing.md)
@@ -773,15 +719,34 @@ struct POSReservedLivePetsView: View {
                             item: item,
                             index: index,
                             onCompleteSale: {
+                                guard session.hasPermission("pos.sell") else {
+                                    vm.errorMessage = Language.get(
+                                        "PPAlert_Error_Permission_Message",
+                                        alter: "ليست لديك صلاحية لإكمال هذا الإجراء. اطلب الصلاحية من مسؤول مخوّل."
+                                    )
+                                    return
+                                }
                                 UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                                 onCompleteSale?(item)
                                 dismiss()
                             },
                             onExtend: {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                vm.extendingItem = item
+                                // Infra intentionally has no reservation-extension
+                                // command. Keep the control truthful until that
+                                // audited server transition is explicitly added.
+                                vm.errorMessage = Language.get(
+                                    "LivePet_Error_ReservationExtensionUnavailable",
+                                    alter: "لا يمكن تمديد الحجز من هنا لأن الخادم لا يوفّر عملية تمديد معتمدة. حرر الحجز ثم أنشئ حجزاً جديداً إذا لزم الأمر."
+                                )
                             },
                             onRelease: {
+                                guard session.hasPermission("pos.sell"), session.hasPermission("payments.refund") else {
+                                    vm.errorMessage = Language.get(
+                                        "PPAlert_Error_Permission_Message",
+                                        alter: "ليست لديك صلاحية لإكمال هذا الإجراء. اطلب الصلاحية من مسؤول مخوّل."
+                                    )
+                                    return
+                                }
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                 vm.releasingItem = item
                             },
@@ -855,7 +820,7 @@ struct POSReservedLivePetsView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 12, weight: .semibold))
-                    Text(Language.get("Refresh", alter: "تحديث"))
+                    Text(Language.get("POS_Refresh", alter: "تحديث"))
                         .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
                 }
                 .foregroundColor(AdminSurface.primary)

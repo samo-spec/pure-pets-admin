@@ -200,6 +200,30 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                   customerPhone:(NSString *)customerPhone
                   posCustomerID:(NSString *)posCustomerID
                      completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    [self submitPOSOrderWithItems:items
+                         subtotal:total
+                         discount:0.0
+                            total:total
+                    paymentMethod:paymentMethod
+                     cashReceived:cashReceived
+                        commandID:commandID
+                     customerName:customerName
+                    customerPhone:customerPhone
+                    posCustomerID:posCustomerID
+                       completion:completion];
+}
+
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(NSString *)customerName
+                  customerPhone:(NSString *)customerPhone
+                  posCustomerID:(NSString *)posCustomerID
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
     NSMutableArray *mappedItems = [NSMutableArray array];
     for (NSDictionary *item in items) {
         NSString *productID = PPSafeString(item[@"itemID"] ?: item[@"itemId"] ?: item[@"productId"]);
@@ -218,17 +242,22 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         [mappedItems addObject:mapped];
     }
 
+    double roundedSubtotal = round(subtotal * 100.0) / 100.0;
+    double roundedDiscount = round(discount * 100.0) / 100.0;
+    double roundedTotal = round(total * 100.0) / 100.0;
+
     NSMutableDictionary *salePayload = [@{
         @"items": mappedItems,
         @"paymentMethod": paymentMethod ?: @"cash",
         @"status": @"completed",
-        @"subtotal": @(total),
-        @"total": @(total),
+        @"subtotal": @(roundedSubtotal),
+        @"discount": @(roundedDiscount),
+        @"total": @(roundedTotal),
         @"currency": @"QAR",
         @"source": @"admin_ios",
     } mutableCopy];
     if ([paymentMethod isEqualToString:@"cash"]) {
-        salePayload[@"cashReceived"] = @(MAX(total, PPSafeDouble(cashReceived)));
+        salePayload[@"cashReceived"] = @(MAX(roundedTotal, PPSafeDouble(cashReceived)));
     }
     if (customerName.length > 0) {
         salePayload[@"customerName"] = customerName;
@@ -236,9 +265,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     if (customerPhone.length > 0) {
         salePayload[@"customerPhone"] = customerPhone;
     }
-    if (posCustomerID.length > 0) {
-        salePayload[@"posCustomerId"] = posCustomerID;
-    }
+    // `processTransaction` reserves posCustomerId for a pending live-pet
+    // reservation, together with branch and expiry. A completed Fast Sell
+    // persists only the selected customer's receipt snapshot above.
+    (void)posCustomerID;
 
     NSDictionary *data = @{
         @"action": @"create",

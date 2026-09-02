@@ -515,6 +515,14 @@ struct AdminChatsView: View {
     }
 
     var body: some View {
+        NavigationView {
+            chatsContent
+                .navigationBarHidden(true)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var chatsContent: some View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
@@ -530,13 +538,39 @@ struct AdminChatsView: View {
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
         .onChange(of: viewModel.searchText) { _ in viewModel.applyFilter() }
-        .fullScreenCover(item: $selectedThread) { thread in
+        .background(threadPushLink)
+    }
+
+    private var threadPushLink: some View {
+        NavigationLink(
+            destination: threadDestination,
+            isActive: Binding(
+                get: { selectedThread != nil },
+                set: { isActive in
+                    if !isActive {
+                        selectedThread = nil
+                    }
+                }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var threadDestination: some View {
+        if let thread = selectedThread {
             SupportThreadView(
                 thread: thread,
                 currentUID: viewModel.currentUID,
                 canManage: viewModel.canManage
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .navigationBarHidden(true)
+        } else {
+            EmptyView()
         }
     }
 

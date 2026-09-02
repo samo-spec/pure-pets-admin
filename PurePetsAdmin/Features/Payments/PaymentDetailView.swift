@@ -672,7 +672,7 @@ struct AdminPaymentDetailView: View {
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .center)
         } else if let error = viewModel.officialFulfillmentError {
             PaymentDetailInlineState(
-                title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: "تعذر إدارة مرحلة التنفيذ"),
+                title: viewModel.officialFulfillmentErrorTitle ?? Language.get("PaymentMgmt_OfficialFulfillment_LoadFailed_Title", alter: "تعذر التحقق من سجل التنفيذ الرسمي"),
                 subtitle: error,
                 symbol: "exclamationmark.triangle.fill",
                 tint: Color(UIColor.ppError),
@@ -699,11 +699,24 @@ struct AdminPaymentDetailView: View {
             }
         } else {
             PaymentDetailInlineState(
-                title: Language.get("PaymentDetail_NoAction_Title", alter: "لا توجد إجراءات متاحة"),
-                subtitle: Language.get("PaymentMgmt_OfficialFulfillment_None", alter: "سجل التنفيذ مكتمل ومستقر."),
-                symbol: "checkmark.seal.fill",
-                tint: Color(UIColor.ppSuccess)
+                title: Language.get("PaymentMgmt_OfficialFulfillment_Missing_Title", alter: "يحتاج التنفيذ الرسمي إلى تهيئة"),
+                subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Missing_Subtitle", alter: "لا يوجد سجل تنفيذ رسمي مرتبط بهذا الطلب بعد. اختر الإجراء المعتمد التالي لإنشاء السجل الرسمي وتحديث الطلب بأمان."),
+                symbol: "shippingbox.and.arrow.backward.fill",
+                tint: Color(UIColor.ppWarning)
             )
+            if !viewModel.missingOfficialFulfillmentActions.isEmpty {
+                Divider().background(AdminSurface.hairline)
+            }
+            ForEach(Array(viewModel.missingOfficialFulfillmentActions.enumerated()), id: \.element) { index, action in
+                PaymentDetailActionButton(
+                    title: officialActionTitle(action),
+                    subtitle: Language.get("PaymentMgmt_OfficialFulfillment_Initialize_Action_Subtitle", alter: "ينشئ سجل التنفيذ الرسمي ثم يطبق هذا الإجراء المعتمد."),
+                    symbol: officialActionSymbol(action),
+                    tint: officialActionColor(action),
+                    isPrimary: index == 0,
+                    isBusy: viewModel.isBusy
+                ) { requestOfficialInitializationAction(action) }
+            }
         }
     }
 
@@ -780,6 +793,19 @@ struct AdminPaymentDetailView: View {
                 title
             )
         ) { note in viewModel.transitionOfficialFulfillment(action: action, note: note) }
+    }
+
+    private func requestOfficialInitializationAction(_ action: String) {
+        let title = officialActionTitle(action)
+        presentActionPrompt(
+            title: title,
+            confirmation: Language.get("PaymentMgmt_OfficialFulfillment_Initialize_Confirm", alter: "سيُنشئ النظام سجل التنفيذ الرسمي المفقود، ثم يطبق الإجراء المعتمد ويسجله في سجل التدقيق."),
+            prompt: Language.get("PaymentMgmt_OfficialFulfillment_Prompt", alter: "أضف ملاحظة تشغيلية قصيرة. سيُسجّل الإجراء في سجل تدقيق التنفيذ."),
+            defaultNote: String(
+                format: Language.get("PaymentMgmt_OfficialFulfillment_DefaultNote", alter: "إجراء موظف المدفوعات: %@"),
+                title
+            )
+        ) { note in viewModel.initializeOfficialFulfillment(action: action, note: note) }
     }
 
     private func presentActionPrompt(
@@ -905,7 +931,7 @@ struct AdminPaymentDetailView: View {
             }
             if let error = viewModel.officialFulfillmentError {
                 return .init(
-                    title: Language.get("PaymentMgmt_OfficialFulfillment_NotManageable", alter: "خطأ بالتنفيذ"),
+                    title: viewModel.officialFulfillmentErrorTitle ?? Language.get("PaymentMgmt_OfficialFulfillment_LoadFailed_Title", alter: "تعذر التحقق من سجل التنفيذ الرسمي"),
                     subtitle: error,
                     symbol: "exclamationmark.triangle.fill",
                     tint: Color(UIColor.ppError)
@@ -1539,18 +1565,112 @@ final class PaymentDetailViewModel: ObservableObject {
     @Published var lastSuccessMessage: String?
     @Published var officialFulfillment: PPFulfillmentRecord?
     @Published var officialFulfillmentLoading = false
+    @Published var officialFulfillmentErrorTitle: String?
     @Published var officialFulfillmentError: String?
     @Published var officialActionInFlight = false
 
     private var pendingSuccessMessage: String?
+    private var pendingOfficialInitializationSuccessMessage: String?
 
     var officialActions: [String] {
         guard let officialFulfillment else { return [] }
         return PPFulfillmentService.availableOfficialActions(forStatus: officialFulfillment.status)
     }
 
+    var missingOfficialFulfillmentActions: [String] {
+        guard let record,
+              record.fulfillmentVersion == 1,
+              officialFulfillment == nil,
+              officialFulfillmentError == nil else { return [] }
+        return PPFulfillmentService.availableOfficialActions(forStatus: "new_request")
+    }
+
     var isBusy: Bool {
         isLoading || isPerformingAction || officialActionInFlight || officialFulfillmentLoading
+    }
+
+    private func showOfficialFulfillmentFeedback(
+        titleKey: String,
+        titleFallback: String,
+        subtitleKey: String,
+        subtitleFallback: String
+    ) {
+        officialFulfillmentErrorTitle = Language.get(titleKey, alter: titleFallback)
+        officialFulfillmentError = Language.get(subtitleKey, alter: subtitleFallback)
+    }
+
+    private func showOfficialFulfillmentError(_ error: Error, duringAction: Bool) {
+        let nsError = error as NSError
+        guard nsError.domain == "PPFulfillmentService" else {
+            showOfficialFulfillmentFeedback(
+                titleKey: duringAction
+                    ? "PaymentMgmt_OfficialFulfillment_ActionFailed_Title"
+                    : "PaymentMgmt_OfficialFulfillment_LoadFailed_Title",
+                titleFallback: duringAction
+                    ? "لم يُحدّث سجل التنفيذ الرسمي"
+                    : "تعذر التحقق من سجل التنفيذ الرسمي",
+                subtitleKey: duringAction
+                    ? "PaymentMgmt_OfficialFulfillment_ActionFailed_Subtitle"
+                    : "PaymentMgmt_OfficialFulfillment_LoadFailed_Subtitle",
+                subtitleFallback: duringAction
+                    ? "لم يُطبّق الإجراء. حدّث الطلب قبل إعادة المحاولة."
+                    : "تعذر التحقق من سجل التنفيذ الرسمي. حدّث الطلب، وإذا استمرت المشكلة فتأكد من صلاحيات الموظف أو تواصل مع المسؤول."
+            )
+            return
+        }
+
+        switch nsError.code {
+        case 410, 411:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_AccessRestricted_Title",
+                titleFallback: "وصول سجل التنفيذ الرسمي مقيّد",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_AccessRestricted_Subtitle",
+                subtitleFallback: "لا يملك حساب الموظف صلاحية الوصول إلى سجل التنفيذ هذا ضمن النطاق الحالي."
+            )
+        case 412:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_SessionChanged_Title",
+                titleFallback: "تغيّرت جلسة الموظف",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_SessionChanged_Subtitle",
+                subtitleFallback: "حدّث الطلب بعد استعادة جلسة الموظف."
+            )
+        case 414:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_NeedsReview_Title",
+                titleFallback: "يحتاج سجل التنفيذ الرسمي إلى مراجعة",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_NeedsReview_Subtitle",
+                subtitleFallback: "يوجد أكثر من سجل تنفيذ رسمي مرتبط بالطلب؛ لم يُجرَ أي تغيير."
+            )
+        case 415:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_NotManageable_Title",
+                titleFallback: "تعذر إدارة سجل التنفيذ الرسمي",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_NotManageable",
+                subtitleFallback: "سجل التنفيذ ليس طلبًا رسميًا لبيور بتس أو يقع خارج نطاق صلاحيات الموظف."
+            )
+        case 416:
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_ActionFailed_Title",
+                titleFallback: "لم يُحدّث سجل التنفيذ الرسمي",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_InvalidCommand",
+                subtitleFallback: "حدّث الطلب وأدخل ملاحظة موظف صحيحة قبل المتابعة."
+            )
+        default:
+            showOfficialFulfillmentFeedback(
+                titleKey: duringAction
+                    ? "PaymentMgmt_OfficialFulfillment_ActionFailed_Title"
+                    : "PaymentMgmt_OfficialFulfillment_LoadFailed_Title",
+                titleFallback: duringAction
+                    ? "لم يُحدّث سجل التنفيذ الرسمي"
+                    : "تعذر التحقق من سجل التنفيذ الرسمي",
+                subtitleKey: duringAction
+                    ? "PaymentMgmt_OfficialFulfillment_ActionFailed_Subtitle"
+                    : "PaymentMgmt_OfficialFulfillment_LoadFailed_Subtitle",
+                subtitleFallback: duringAction
+                    ? "لم يُطبّق الإجراء. حدّث الطلب قبل إعادة المحاولة."
+                    : "تعذر التحقق من سجل التنفيذ الرسمي. حدّث الطلب، وإذا استمرت المشكلة فتأكد من صلاحيات الموظف أو تواصل مع المسؤول."
+            )
+        }
     }
 
     init(orderID: String) {
@@ -1645,6 +1765,7 @@ final class PaymentDetailViewModel: ObservableObject {
     }
 
     private func loadOfficialFulfillment(for record: PPPaymentAdminRecord) {
+        officialFulfillmentErrorTitle = nil
         officialFulfillmentError = nil
         guard record.fulfillmentVersion == 1 else {
             officialFulfillment = nil
@@ -1661,10 +1782,23 @@ final class PaymentDetailViewModel: ObservableObject {
                 guard let self, self.record?.orderId == record.orderId else { return }
                 self.officialFulfillmentLoading = false
                 if let error {
-                    self.officialFulfillmentError = error.localizedDescription
+                    self.pendingOfficialInitializationSuccessMessage = nil
+                    self.showOfficialFulfillmentError(error, duringAction: false)
                     return
                 }
                 self.officialFulfillment = fulfillment
+                if fulfillment != nil, let pendingSuccess = self.pendingOfficialInitializationSuccessMessage {
+                    self.lastSuccessMessage = pendingSuccess
+                    self.pendingOfficialInitializationSuccessMessage = nil
+                } else if fulfillment == nil, self.pendingOfficialInitializationSuccessMessage != nil {
+                    self.pendingOfficialInitializationSuccessMessage = nil
+                    self.showOfficialFulfillmentFeedback(
+                        titleKey: "PaymentMgmt_OfficialFulfillment_Initialize_Unconfirmed_Title",
+                        titleFallback: "لا يزال التنفيذ الرسمي قيد المزامنة",
+                        subtitleKey: "PaymentMgmt_OfficialFulfillment_Initialize_Unconfirmed",
+                        subtitleFallback: "تم قبول الأمر، لكن لم يظهر سجل التنفيذ الرسمي بعد. حدّث الطلب وراجعه قبل إعادة المحاولة."
+                    )
+                }
             }
         }
     }
@@ -1673,13 +1807,16 @@ final class PaymentDetailViewModel: ObservableObject {
         guard let fulfillment = officialFulfillment, !isBusy else { return }
         let safeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
         guard safeNote.count >= 3 else {
-            officialFulfillmentError = Language.get(
-                "PaymentMgmt_Prompt_NoteRequired_Subtitle",
-                alter: ""
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_ActionFailed_Title",
+                titleFallback: "لم يُحدّث سجل التنفيذ الرسمي",
+                subtitleKey: "PaymentMgmt_Prompt_NoteRequired_Subtitle",
+                subtitleFallback: "أضف ملاحظة تشغيلية قبل المتابعة."
             )
             return
         }
         officialActionInFlight = true
+        officialFulfillmentErrorTitle = nil
         officialFulfillmentError = nil
         errorMessage = nil
         lastSuccessMessage = nil
@@ -1695,12 +1832,61 @@ final class PaymentDetailViewModel: ObservableObject {
                 self.officialActionInFlight = false
                 if let error {
                     self.officialFulfillment = nil
-                    self.officialFulfillmentError = error.localizedDescription
+                    self.showOfficialFulfillmentError(error, duringAction: true)
                     return
                 }
                 self.pendingSuccessMessage = Language.get(
                     "PaymentMgmt_OfficialFulfillment_Success",
                     alter: ""
+                )
+                self.loadData()
+            }
+        }
+    }
+
+    func initializeOfficialFulfillment(action: String, note: String) {
+        guard let record,
+              record.fulfillmentVersion == 1,
+              officialFulfillment == nil,
+              !isBusy else { return }
+        let safeNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let expectedParentStatus = PPPaymentAdminRecord
+            .normalizedStatusString(record.rawStatus as String?)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let allowedActions = PPFulfillmentService.availableOfficialActions(forStatus: "new_request")
+        guard !expectedParentStatus.isEmpty,
+              allowedActions.contains(action),
+              safeNote.count >= 3 else {
+            showOfficialFulfillmentFeedback(
+                titleKey: "PaymentMgmt_OfficialFulfillment_ActionFailed_Title",
+                titleFallback: "لم يُحدّث سجل التنفيذ الرسمي",
+                subtitleKey: "PaymentMgmt_OfficialFulfillment_InvalidCommand",
+                subtitleFallback: "حدّث الطلب وأدخل ملاحظة موظف صحيحة قبل المتابعة."
+            )
+            return
+        }
+        officialActionInFlight = true
+        officialFulfillmentErrorTitle = nil
+        officialFulfillmentError = nil
+        errorMessage = nil
+        lastSuccessMessage = nil
+        PPFulfillmentService.shared().initializeAndTransitionOfficialFulfillment(
+            orderID: record.orderId,
+            expectedParentStatus: expectedParentStatus,
+            action: action,
+            note: safeNote,
+            commandID: UUID().uuidString
+        ) { [weak self] _, error in
+            Task { @MainActor in
+                guard let self else { return }
+                self.officialActionInFlight = false
+                if let error {
+                    self.showOfficialFulfillmentError(error, duringAction: true)
+                    return
+                }
+                self.pendingOfficialInitializationSuccessMessage = Language.get(
+                    "PaymentMgmt_OfficialFulfillment_Initialize_Success",
+                    alter: "تم إنشاء سجل التنفيذ الرسمي وتحديث الطلب."
                 )
                 self.loadData()
             }

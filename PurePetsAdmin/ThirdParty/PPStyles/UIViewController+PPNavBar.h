@@ -80,6 +80,9 @@ static NSString * const kPPKeyBaseButton = @"__base_button";
 - (UIButton *)pp_navBarSetLeftIcon:(NSString *)systemImage  key:(NSString *)key
                              target:(id _Nullable)target action:(SEL _Nullable)action
                                 tap:(PPNavBarTapBlock _Nullable)tapBlock;
+- (void)pp_navBarAddActionButton:(UIButton *)button key:(NSString *)key;
+- (void)pp_navBarAddRightButton:(UIButton *)btn key:(NSString *)key;
+- (void)pp_navBarAddLeftButton:(UIButton *)btn key:(NSString *)key;
 - (void)pp_navBarHideButtonForKey:(NSString *)key hidden:(BOOL)hidden animated:(BOOL)animated;
 - (void)pp_navBarRemoveButtonForKey:(NSString *)key;
 

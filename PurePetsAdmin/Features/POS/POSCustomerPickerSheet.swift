@@ -175,12 +175,14 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 guard let data = result.data as? [String: Any],
                       let items = data["customers"] as? [[String: Any]] else {
                     self?.isLoading = false
+                    self?.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
                     return
                 }
                 if let self { self.searchResults = items.compactMap { self.parseCustomer($0) } }
                 self?.isLoading = false
             } catch {
                 self?.isLoading = false
+                self?.errorMessage = Language.get("POS_Customer_DirectoryLoadFailed", alter: "تعذر تحميل دليل العملاء. تحقق من الاتصال وحاول مرة أخرى.")
             }
         }
     }
@@ -370,6 +372,7 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
 struct POSCustomerPickerSheet: View {
     let currentSelected: POSCustomerRecord?
+    var canCreateCustomer: Bool = true
     let onSelect: (POSCustomerRecord) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -421,7 +424,11 @@ struct POSCustomerPickerSheet: View {
                 Text(Language.get("POS_Customer_Title", alter: "دليل وربط العملاء"))
                     .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
                     .foregroundColor(AdminSurface.primaryText)
-                Text(Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة."))
+                Text(
+                    canCreateCustomer
+                        ? Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة.")
+                        : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة.")
+                )
                     .font(Font.custom("Beiruti-Regular", size: 12.5, relativeTo: .caption))
                     .foregroundColor(AdminSurface.secondaryText)
             }
@@ -449,7 +456,7 @@ struct POSCustomerPickerSheet: View {
 
     private var tabSwitcher: some View {
         HStack(spacing: 6) {
-            ForEach(POSCustomerPickerTab.allCases) { tab in
+            ForEach(canCreateCustomer ? POSCustomerPickerTab.allCases : [.search]) { tab in
                 let selected = viewModel.activeTab == tab
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -719,12 +726,10 @@ struct POSCustomerPickerSheet: View {
                 }
             }
 
-            if !viewModel.searchText.isEmpty {
+            if canCreateCustomer && !viewModel.searchText.isEmpty {
                 Button {
-                    withAnimation(.spring()) {
-                        viewModel.newName = viewModel.searchText
-                        viewModel.activeTab = .create
-                    }
+                    viewModel.newName = viewModel.searchText
+                    viewModel.activeTab = .create
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
@@ -793,7 +798,7 @@ struct POSCustomerPickerSheet: View {
                     // Name Field
                     formField(
                         title: Language.get("POS_Customer_NameField", alter: "اسم العميل بالكامل *"),
-                        placeholder: "مثال: سالم الكواري",
+                        placeholder: Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"),
                         icon: "person.fill",
                         text: $viewModel.newName
                     )
@@ -813,7 +818,7 @@ struct POSCustomerPickerSheet: View {
                                 .padding(.vertical, 10)
                                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                            TextField("5512 3456", text: $viewModel.newPhone)
+                            TextField(Language.get("POS_Customer_PhonePlaceholder", alter: "5512 3456"), text: $viewModel.newPhone)
                                 .font(.system(size: 15, weight: .semibold))
                                 .monospacedDigit()
                                 .keyboardType(.phonePad)
@@ -829,7 +834,7 @@ struct POSCustomerPickerSheet: View {
                     // Email Field (Optional)
                     formField(
                         title: Language.get("POS_Customer_EmailField", alter: "البريد الإلكتروني (اختياري)"),
-                        placeholder: "customer@example.com",
+                        placeholder: Language.get("POS_Customer_EmailPlaceholder", alter: "customer@example.com"),
                         icon: "envelope.fill",
                         text: $viewModel.newEmail,
                         keyboardType: .emailAddress
@@ -867,7 +872,7 @@ struct POSCustomerPickerSheet: View {
                     // Note Field (Optional)
                     formField(
                         title: Language.get("POS_Customer_NoteField", alter: "ملاحظات داخلية"),
-                        placeholder: "ملاحظات حول التوصيل أو تفضيلات العميل...",
+                        placeholder: Language.get("POS_Customer_NotePlaceholder", alter: "ملاحظات حول التوصيل أو تفضيلات العميل…"),
                         icon: "note.text",
                         text: $viewModel.newNote
                     )

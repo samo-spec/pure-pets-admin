@@ -2,13 +2,583 @@
 //  UsersListView.swift
 //  PurePetsAdmin
 //
+//  Reimagined from absolute first principles: Category-defining Customer Operations &
+//  Identity Intelligence Horizon. A studio-grade flagship interface with unprecedented
+//  spatial telemetry, real-time live synchronization, comprehensive customer dossier inspection,
+//  instant walk-in onboarding, and deep access/restriction control.
+//
 
 import SwiftUI
- 
 import UIKit
+import FirebaseFirestore
+import FirebaseAuth
+import FirebaseCore
+
+// MARK: - Customer Status Model
+
+enum CustomerAccountStatus: String, CaseIterable, Identifiable, Sendable {
+    case active = "active"
+    case pendingReview = "pending_review"
+    case disabled = "disabled"
+    case blocked = "blocked"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .active:
+            return Language.get("MissionControl_Customers_Status_Active", alter: "نشط ومؤكد")
+        case .pendingReview:
+            return Language.get("MissionControl_Customers_Status_PendingReview", alter: "قيد المراجعة")
+        case .disabled:
+            return Language.get("MissionControl_Customers_Status_Disabled", alter: "معطّل")
+        case .blocked:
+            return Language.get("MissionControl_Customers_Status_Blocked", alter: "محظور")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .active: return "checkmark.seal.fill"
+        case .pendingReview: return "clock.badge.exclamationmark.fill"
+        case .disabled: return "slash.circle.fill"
+        case .blocked: return "nosign"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .active: return Color(uiColor: .ppSuccess)
+        case .pendingReview: return Color(uiColor: .ppWarning)
+        case .disabled: return Color(uiColor: .ppTextSecondary)
+        case .blocked: return Color(uiColor: .ppError)
+        }
+    }
+}
+
+// MARK: - Customer Account Model
+
+struct PPCustomerAccountModel: Identifiable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let email: String
+    let phone: String
+    let photoURL: String?
+    let status: CustomerAccountStatus
+    let isVerified: Bool
+    let isOnline: Bool
+    let lastSeen: Date?
+    let createdAt: Date?
+    let accountType: String
+    let features: [String: Bool]
+    let restrictions: [String: Bool]
+
+    var initials: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "PP" }
+        let components = trimmed.components(separatedBy: " ")
+        if components.count >= 2,
+           let firstChar = components.first?.first,
+           let lastChar = components.last?.first {
+            return "\(firstChar)\(lastChar)".uppercased()
+        }
+        return String(trimmed.prefix(2)).uppercased()
+    }
+
+    var gradientColors: [Color] {
+        let palettes: [[Color]] = [
+            [Color(red: 0.60, green: 0.05, blue: 0.20), Color(red: 0.85, green: 0.15, blue: 0.35)], // PurePets Crimson
+            [Color(red: 0.08, green: 0.45, blue: 0.85), Color(red: 0.18, green: 0.65, blue: 0.95)], // Sapphire Blue
+            [Color(red: 0.05, green: 0.58, blue: 0.40), Color(red: 0.10, green: 0.75, blue: 0.55)], // Emerald Green
+            [Color(red: 0.82, green: 0.38, blue: 0.05), Color(red: 0.95, green: 0.55, blue: 0.15)], // Amber Gold
+            [Color(red: 0.45, green: 0.15, blue: 0.70), Color(red: 0.65, green: 0.28, blue: 0.88)], // Amethyst Purple
+            [Color(red: 0.10, green: 0.60, blue: 0.65), Color(red: 0.20, green: 0.75, blue: 0.78)]  // Deep Teal
+        ]
+        let index = abs(id.hashValue) % palettes.count
+        return palettes[index]
+    }
+
+    var shortUID: String {
+        guard id.count > 10 else { return id }
+        let prefix = id.prefix(4)
+        let suffix = id.suffix(4)
+        return "\(prefix)...\(suffix)"
+    }
+
+    var formattedPhone: String {
+        let digits = phone.filter { "0123456789+".contains($0) }
+        return digits.isEmpty ? phone : digits
+    }
+
+    var hasRestrictions: Bool {
+        restrictions.values.contains(true)
+    }
+
+    var activeRestrictionsCount: Int {
+        restrictions.values.filter { $0 }.count
+    }
+
+    var activeFeaturesCount: Int {
+        features.values.filter { $0 }.count
+    }
+
+    var requiresAttention: Bool {
+        status == .blocked || status == .pendingReview || status == .disabled || hasRestrictions
+    }
+}
+
+// MARK: - Filter Tabs & Sort
+
+enum CustomerFilterTab: Int, CaseIterable, Identifiable {
+    case all = 0
+    case active = 1
+    case verified = 2
+    case needsAttention = 3
+    case blocked = 4
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: return Language.get("POS_Filter_All", alter: "الكل")
+        case .active: return Language.get("Active", alter: "نشط")
+        case .verified: return Language.get("MissionControl_Customers_Metric_Verified", alter: "موثّق")
+        case .needsAttention: return Language.get("MissionControl_Customers_Metric_Attention", alter: "تحتاج مراجعة")
+        case .blocked: return Language.get("MissionControl_Customers_Status_Blocked", alter: "محظور")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .all: return "square.grid.2x2.fill"
+        case .active: return "checkmark.seal.fill"
+        case .verified: return "shield.checkmark.fill"
+        case .needsAttention: return "exclamationmark.octagon.fill"
+        case .blocked: return "nosign"
+        }
+    }
+}
+
+enum CustomerSortOption: String, CaseIterable, Identifiable {
+    case recent = "recent"
+    case nameAsc = "name_asc"
+    case nameDesc = "name_desc"
+    case status = "status"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .recent: return Language.get("Sort_Recent", alter: "الأحدث نشاطاً")
+        case .nameAsc: return Language.get("Sort_NameAsc", alter: "الاسم (أ - ي)")
+        case .nameDesc: return Language.get("Sort_NameDesc", alter: "الاسم (ي - أ)")
+        case .status: return Language.get("Sort_Status", alter: "حسب الحالة")
+        }
+    }
+}
+
+// MARK: - Feature & Restriction Definitions
+
+struct PPCustomerFeatureItem: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+}
+
+struct PPCustomerRestrictionItem: Identifiable {
+    let id: String
+    let title: String
+    let subtitle: String
+    let icon: String
+}
+
+private enum PPCustomerCatalog {
+    static let features: [PPCustomerFeatureItem] = [
+        PPCustomerFeatureItem(id: "canPostPetAds", title: "نشر إعلانات الحيوانات", subtitle: "إمكانية طرح حيوانات أليفة للبيع في الكتالوج", icon: "pawprint.fill", color: Color(red: 0.85, green: 0.35, blue: 0.15)),
+        PPCustomerFeatureItem(id: "canPostAdoption", title: "طلبات وعروض التبني", subtitle: "مشاركة حيوانات للتبني الإنساني ورعايتها", icon: "heart.circle.fill", color: Color(red: 0.90, green: 0.20, blue: 0.45)),
+        PPCustomerFeatureItem(id: "canSellAccessories", title: "بيع المستلزمات والأطعمة", subtitle: "إضافة منتجات أكسسوارات وأغذية للبيع", icon: "tag.fill", color: Color(red: 0.20, green: 0.50, blue: 0.90)),
+        PPCustomerFeatureItem(id: "canOfferServices", title: "الخدمات والرعاية والعيادات", subtitle: "تقديم استشارات بيطرية وحلاقة وتدريب", icon: "cross.case.fill", color: Color(red: 0.55, green: 0.20, blue: 0.80)),
+        PPCustomerFeatureItem(id: "canUseChat", title: "المحادثات الفورية المباشرة", subtitle: "التواصل الفوري مع خدمة العملاء والمتاجر", icon: "bubble.left.and.bubble.right.fill", color: Color(red: 0.08, green: 0.65, blue: 0.45)),
+        PPCustomerFeatureItem(id: "canUseStories", title: "القصص واليوميات المصورة", subtitle: "مشاركة يوميات الحيوانات وتفاعلات المجتمع", icon: "camera.metering.spot", color: Color(red: 0.95, green: 0.55, blue: 0.10)),
+        PPCustomerFeatureItem(id: "canAccessPremiumMarketplace", title: "سوق النخبة والمميّزين", subtitle: "الاطلاع على المزادات الحصرية والحيوانات النادرة", icon: "star.hexagonpath.fill", color: Color(red: 0.85, green: 0.65, blue: 0.05)),
+        PPCustomerFeatureItem(id: "canAccessProviderMarketplace", title: "سوق المزوّدين المعتمدين", subtitle: "الشراء والطلب المباشر من الموردين بالجملة", icon: "building.2.crop.circle.fill", color: Color(red: 0.15, green: 0.60, blue: 0.75))
+    ]
+
+    static let restrictions: [PPCustomerRestrictionItem] = [
+        PPCustomerRestrictionItem(id: "postingBlocked", title: "حظر النشر الإعلاني", subtitle: "منع المستخدم من إضافة أو تجديد أي إعلانات", icon: "nosign"),
+        PPCustomerRestrictionItem(id: "chatBlocked", title: "حظر المحادثات والشات", subtitle: "تعطيل إرسال واستقبال الرسائل الفورية", icon: "bubble.left.and.exclamationmark.bubble.right.fill"),
+        PPCustomerRestrictionItem(id: "purchaseBlocked", title: "حظر الشراء ونقاط البيع", subtitle: "إيقاف تنفيذ عمليات الدفع وشراء الطلبات", icon: "cart.badge.minus"),
+        PPCustomerRestrictionItem(id: "withdrawalBlocked", title: "حظر السحب والتحويل المالي", subtitle: "تجميد عمليات سحب الأرصدة والمحفظة", icon: "banknote.fill")
+    ]
+}
+
+// MARK: - ViewModel
+
+@MainActor
+final class AdminCustomerAccountsViewModel: ObservableObject {
+    @Published private(set) var allCustomers: [PPCustomerAccountModel] = []
+    @Published private(set) var filteredCustomers: [PPCustomerAccountModel] = []
+    @Published var searchText: String = ""
+    @Published var activeTab: CustomerFilterTab = .all
+    @Published var activeSort: CustomerSortOption = .recent
+    @Published var isLoading: Bool = true
+    @Published var isRefreshing: Bool = false
+    @Published var errorMessage: String? = nil
+    @Published var toastMessage: String? = nil
+    @Published var activeDossierCustomer: PPCustomerAccountModel? = nil
+    @Published var isAddCustomerSheetPresented: Bool = false
+
+    private nonisolated(unsafe) var listener: (any ListenerRegistration)? = nil
+
+    init() {
+        startListening()
+    }
+
+    deinit {
+        listener?.remove()
+    }
+
+    // Telemetry stats
+    var totalCount: Int { allCustomers.count }
+    var activeCount: Int { allCustomers.filter { $0.status == .active }.count }
+    var verifiedCount: Int { allCustomers.filter { $0.isVerified }.count }
+    var attentionCount: Int { allCustomers.filter { $0.requiresAttention }.count }
+    var blockedCount: Int { allCustomers.filter { $0.status == .blocked }.count }
+
+    func startListening() {
+        isLoading = allCustomers.isEmpty
+        errorMessage = nil
+        listener?.remove()
+
+        let db = Firestore.firestore()
+        listener = db.collection("UsersCol").addSnapshotListener { [weak self] snapshot, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isLoading = false
+                self.isRefreshing = false
+
+                if let error {
+                    self.errorMessage = error.localizedDescription
+                    return
+                }
+
+                guard let docs = snapshot?.documents else { return }
+
+                var parsed: [PPCustomerAccountModel] = []
+                for doc in docs {
+                    let data = doc.data()
+                    let accountType = ((data["accountType"] as? String) ?? "user").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    // Filter out staff accounts — this screen is customer identity operations
+                    if accountType == "staff" { continue }
+
+                    let uid = doc.documentID
+                    let name = (data["UserName"] as? String)
+                        ?? (data["displayName"] as? String)
+                        ?? (data["FirstName"] as? String)
+                        ?? Language.get("MissionControl_Customers_Unknown_Identity", alter: "عميل بدون اسم")
+
+                    let email = (data["UserEmail"] as? String)
+                        ?? (data["email"] as? String)
+                        ?? ""
+
+                    let phone = (data["MobileNo"] as? String)
+                        ?? (data["phone"] as? String)
+                        ?? ""
+
+                    let photo = (data["photoURL"] as? String)
+                        ?? (data["UserImageUrl"] as? String)
+                        ?? (data["UserImageName"] as? String)
+
+                    let rawStatus = ((data["accountStatus"] as? String) ?? "").lowercased()
+                    let isBlocked = (data["isBlocked"] as? Bool) ?? false
+
+                    let status: CustomerAccountStatus = {
+                        if isBlocked || rawStatus == "blocked" { return .blocked }
+                        if rawStatus == "pending_review" { return .pendingReview }
+                        if rawStatus == "disabled" { return .disabled }
+                        return .active
+                    }()
+
+                    let verified = (data["verified"] as? Bool) ?? false
+                    let onlineStatus = (data["onlineStatus"] as? Int) ?? 0
+                    let isOnline = onlineStatus == 1 || (data["isOnline"] as? Bool == true)
+
+                    let lastSeenTimestamp = data["lastSeen"] as? Timestamp
+                    let createdTimestamp = (data["createdAt"] as? Timestamp) ?? (data["loginDate"] as? Timestamp)
+
+                    let features = (data["features"] as? [String: Bool]) ?? [:]
+                    let restrictions = (data["restrictions"] as? [String: Bool]) ?? [:]
+
+                    parsed.append(
+                        PPCustomerAccountModel(
+                            id: uid,
+                            name: name,
+                            email: email,
+                            phone: phone,
+                            photoURL: photo,
+                            status: status,
+                            isVerified: verified,
+                            isOnline: isOnline,
+                            lastSeen: lastSeenTimestamp?.dateValue(),
+                            createdAt: createdTimestamp?.dateValue(),
+                            accountType: accountType,
+                            features: features,
+                            restrictions: restrictions
+                        )
+                    )
+                }
+
+                self.allCustomers = parsed
+                self.applyFilter()
+            }
+        }
+    }
+
+    func applyFilter() {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        let baseFiltered = allCustomers.filter { customer in
+            // Tab filter
+            let matchesTab: Bool = {
+                switch activeTab {
+                case .all: return true
+                case .active: return customer.status == .active
+                case .verified: return customer.isVerified
+                case .needsAttention: return customer.requiresAttention
+                case .blocked: return customer.status == .blocked
+                }
+            }()
+            guard matchesTab else { return false }
+
+            // Search query filter
+            guard !q.isEmpty else { return true }
+            return customer.name.lowercased().contains(q)
+                || customer.email.lowercased().contains(q)
+                || customer.phone.lowercased().contains(q)
+                || customer.id.lowercased().contains(q)
+        }
+
+        // Apply Sorting
+        filteredCustomers = baseFiltered.sorted { a, b in
+            switch activeSort {
+            case .recent:
+                let dateA = a.lastSeen ?? a.createdAt ?? Date.distantPast
+                let dateB = b.lastSeen ?? b.createdAt ?? Date.distantPast
+                return dateA > dateB
+            case .nameAsc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            case .nameDesc:
+                return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedDescending
+            case .status:
+                return a.status.rawValue < b.status.rawValue
+            }
+        }
+    }
+
+    func showToast(_ message: String) {
+        toastMessage = message
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.8) { [weak self] in
+            if self?.toastMessage == message {
+                withAnimation(.easeOut(duration: 0.25)) {
+                    self?.toastMessage = nil
+                }
+            }
+        }
+    }
+
+    // MARK: - Customer Mutation Actions
+
+    func updateCustomerStatus(customer: PPCustomerAccountModel, toStatus: CustomerAccountStatus, reason: String = "") {
+        let uid = customer.id
+        let statusString = toStatus.rawValue
+        let isBlocked = toStatus == .blocked
+
+        AdminService.updateUserStatus(uid, status: statusString, reason: reason.isEmpty ? "admin_console_update" : reason, duration: nil) { [weak self] _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    // Direct fallback Firestore write
+                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
+                        "accountStatus": statusString,
+                        "isBlocked": isBlocked,
+                        "lastModified": FieldValue.serverTimestamp()
+                    ]) { fbError in
+                        if let fbError {
+                            self?.showToast(fbError.localizedDescription)
+                        } else {
+                            self?.showToast(Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح"))
+                        }
+                    }
+                } else {
+                    self?.showToast(Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح"))
+                }
+            }
+        }
+    }
+
+    func toggleVerification(customer: PPCustomerAccountModel) {
+        let uid = customer.id
+        let newVerified = !customer.isVerified
+
+        AdminService.updateUserVerified(uid, verified: newVerified) { [weak self] _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    // Fallback Firestore write
+                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
+                        "verified": newVerified,
+                        "lastModified": FieldValue.serverTimestamp()
+                    ]) { fbError in
+                        if let fbError {
+                            self?.showToast(fbError.localizedDescription)
+                        } else {
+                            let msg = newVerified
+                                ? Language.get("Customer_Verified_Success", alter: "تم توثيق الحساب بنجاح")
+                                : Language.get("Customer_Unverified_Success", alter: "تم إلغاء توثيق الحساب")
+                            self?.showToast(msg)
+                        }
+                    }
+                } else {
+                    let msg = newVerified
+                        ? Language.get("Customer_Verified_Success", alter: "تم توثيق الحساب بنجاح")
+                        : Language.get("Customer_Unverified_Success", alter: "تم إلغاء توثيق الحساب")
+                    self?.showToast(msg)
+                }
+            }
+        }
+    }
+
+    func updateFeature(customer: PPCustomerAccountModel, featureKey: String, isEnabled: Bool) {
+        let uid = customer.id
+        var updated = customer.features
+        updated[featureKey] = isEnabled
+
+        AdminService.updateUserFeatures(uid, features: updated) { [weak self] _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
+                        "features.\(featureKey)": isEnabled,
+                        "lastModified": FieldValue.serverTimestamp()
+                    ]) { _ in
+                        self?.showToast(Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة"))
+                    }
+                } else {
+                    self?.showToast(Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة"))
+                }
+            }
+        }
+    }
+
+    func updateRestriction(customer: PPCustomerAccountModel, restrictionKey: String, isBlocked: Bool) {
+        let uid = customer.id
+        var updated = customer.restrictions
+        updated[restrictionKey] = isBlocked
+
+        AdminService.updateUserRestrictions(uid, restrictions: updated) { [weak self] _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
+                        "restrictions.\(restrictionKey)": isBlocked,
+                        "lastModified": FieldValue.serverTimestamp()
+                    ]) { _ in
+                        self?.showToast(Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان"))
+                    }
+                } else {
+                    self?.showToast(Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان"))
+                }
+            }
+        }
+    }
+
+    func sendPasswordReset(email: String) {
+        guard !email.isEmpty else {
+            showToast(Language.get("Error_NoEmail", alter: "العميل لا يمتلك بريداً إلكترونياً مسجلاً"))
+            return
+        }
+        Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
+            DispatchQueue.main.async {
+                if let error {
+                    self?.showToast(error.localizedDescription)
+                } else {
+                    self?.showToast(Language.get("PasswordReset_Sent", alter: "تم إرسال رابط إعادة تعيين كلمة المرور إلى بريد العميل"))
+                }
+            }
+        }
+    }
+
+    func createCustomer(
+        name: String,
+        email: String,
+        phone: String,
+        password: String,
+        initialStatus: CustomerAccountStatus,
+        isVerified: Bool,
+        completion: @escaping (Bool, String?) -> Void
+    ) {
+        let secondaryAppName = "CustomerProvisioningApp"
+        let secondaryApp: FirebaseApp
+        if let existing = FirebaseApp.app(name: secondaryAppName) {
+            secondaryApp = existing
+        } else if let defaultApp = FirebaseApp.app() {
+            FirebaseApp.configure(name: secondaryAppName, options: defaultApp.options)
+            secondaryApp = FirebaseApp.app(name: secondaryAppName)!
+        } else {
+            completion(false, "Firebase is not configured")
+            return
+        }
+
+        let secondaryAuth = Auth.auth(app: secondaryApp)
+        secondaryAuth.createUser(withEmail: email, password: password) { [weak self] authResult, error in
+            DispatchQueue.main.async {
+                if let error {
+                    completion(false, error.localizedDescription)
+                    return
+                }
+                guard let user = authResult?.user else {
+                    completion(false, "Failed to resolve user")
+                    return
+                }
+
+                let uid = user.uid
+                try? secondaryAuth.signOut()
+
+                let docData: [String: Any] = [
+                    "uid": uid,
+                    "ID": uid,
+                    "UserName": name,
+                    "displayName": name,
+                    "UserEmail": email,
+                    "email": email,
+                    "MobileNo": phone,
+                    "accountType": "user",
+                    "accountStatus": initialStatus.rawValue,
+                    "isBlocked": initialStatus == .blocked,
+                    "verified": isVerified,
+                    "createdAt": FieldValue.serverTimestamp(),
+                    "lastModified": FieldValue.serverTimestamp()
+                ]
+
+                Firestore.firestore().collection("UsersCol").document(uid).setData(docData, merge: true) { err in
+                    if let err {
+                        completion(false, err.localizedDescription)
+                    } else {
+                        self?.showToast(Language.get("Customer_Created_Success", alter: "تم إنشاء حساب العميل بنجاح"))
+                        completion(true, nil)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Main Flagship Customer Accounts View
+
 struct AdminUsersListView: View {
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = AdminCustomerAccountsViewModel()
+    @State private var isSpinning: Bool = false
 
     init(onDismiss: (() -> Void)? = nil) {
         self.onDismiss = onDismiss
@@ -18,12 +588,1556 @@ struct AdminUsersListView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            AdminLegacyViewControllerWrapper { UsersListVC(viewFor: .editAccount) }
-                .ignoresSafeArea()
+            VStack(spacing: 0) {
+                liquidNavBar
+                bentoTelemetryGrid
+                searchAndFilterDeck
+                customerListSection
+            }
+
+            // Floating Operational Toast
+            if let toast = viewModel.toastMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(toast)
+                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 0.12, green: 0.14, blue: 0.18), Color(red: 0.18, green: 0.20, blue: 0.25)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                    .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(item: $viewModel.activeDossierCustomer) { customer in
+            AdminCustomerDossierSheet(customer: customer, viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isAddCustomerSheetPresented) {
+            AdminAddCustomerSheet(viewModel: viewModel)
+        }
+    }
+
+    // MARK: - 1. Liquid Navigation Bar
+
+    private var liquidNavBar: some View {
+        HStack(spacing: AdminSpacing.sm) {
+            // Back Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(Language.get("Back", alter: "رجوع"))
+                        .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .body))
+                }
+                .foregroundColor(AdminSurface.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+            }
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء / حسابات العملاء"))
+                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+
+                    // Live Sync Pulse
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 5, height: 5)
+                        Text(Language.get("LiveSync", alter: "مباشر"))
+                            .font(Font.custom("Beiruti-Bold", size: 9, relativeTo: .caption2))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Capsule())
+                }
+
+                HStack(spacing: 6) {
+                    Text(Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"))
+                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text("\(viewModel.totalCount)")
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Refresh Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isSpinning = true
+                }
+                viewModel.startListening()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                    isSpinning = false
+                }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .rotationEffect(.degrees(isSpinning ? 360 : 0))
+                    .frame(width: 34, height: 34)
+                    .background(AdminSurface.control, in: Circle())
+            }
+            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+
+            // "+ إضافة عميل" (Add Customer Action)
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                viewModel.isAddCustomerSheetPresented = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(Language.get("Add", alter: "إضافة"))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, Color(red: 0.72, green: 0.05, blue: 0.18)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.25), radius: 6, y: 2)
+            }
+            .accessibilityLabel(Language.get("AddUser", alter: "إضافة عميل جديد"))
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, AdminSpacing.xs)
+        .padding(.bottom, 6)
+        .background(AdminSurface.surface)
+        .overlay(
+            Divider().background(AdminSurface.hairline),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - 2. Bento Telemetry Grid
+
+    private var bentoTelemetryGrid: some View {
+        VStack(spacing: 6) {
+            // Operational Health Banner
+            HStack(spacing: 8) {
+                if viewModel.attentionCount == 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                        Text(Language.get("MissionControl_Customers_Signal_Clear", alter: "لا توجد تنبيهات على الحسابات • البيانات مستقرة ومؤكدة"))
+                            .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else {
+                    Button {
+                        withAnimation(.spring()) {
+                            viewModel.activeTab = .needsAttention
+                            viewModel.applyFilter()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppWarning))
+                            Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "تحتاج إلى مراجعة: %d حساب"), viewModel.attentionCount) + " • اضغط للتصفية")
+                                .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
+                                .foregroundColor(Color(uiColor: .ppWarning))
+                            Spacer()
+                            Image(systemName: "arrow.left")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppWarning))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color(uiColor: .ppWarning).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 6)
+
+            // 4 Bento Tiles Row
+            HStack(spacing: 8) {
+                bentoTile(
+                    title: Language.get("MissionControl_Customers_Metric_Total", alter: "الإجمالي"),
+                    value: "\(viewModel.totalCount)",
+                    icon: "person.2.fill",
+                    accent: AdminSurface.primary,
+                    isSelected: viewModel.activeTab == .all
+                ) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        viewModel.activeTab = .all
+                        viewModel.applyFilter()
+                    }
+                }
+
+                bentoTile(
+                    title: Language.get("MissionControl_Customers_Metric_Active", alter: "نشط"),
+                    value: "\(viewModel.activeCount)",
+                    icon: "checkmark.seal.fill",
+                    accent: Color(uiColor: .ppSuccess),
+                    isSelected: viewModel.activeTab == .active
+                ) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        viewModel.activeTab = .active
+                        viewModel.applyFilter()
+                    }
+                }
+
+                bentoTile(
+                    title: Language.get("MissionControl_Customers_Metric_Verified", alter: "موثّق"),
+                    value: "\(viewModel.verifiedCount)",
+                    icon: "shield.checkmark.fill",
+                    accent: Color(red: 0.12, green: 0.50, blue: 0.90),
+                    isSelected: viewModel.activeTab == .verified
+                ) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        viewModel.activeTab = .verified
+                        viewModel.applyFilter()
+                    }
+                }
+
+                bentoTile(
+                    title: Language.get("MissionControl_Customers_Metric_Attention", alter: "تحتاج مراجعة"),
+                    value: "\(viewModel.attentionCount)",
+                    icon: "exclamationmark.octagon.fill",
+                    accent: viewModel.attentionCount > 0 ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText,
+                    isSelected: viewModel.activeTab == .needsAttention,
+                    pulse: viewModel.attentionCount > 0
+                ) {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        viewModel.activeTab = .needsAttention
+                        viewModel.applyFilter()
+                    }
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+        }
+        .padding(.bottom, 6)
+    }
+
+    private func bentoTile(
+        title: String,
+        value: String,
+        icon: String,
+        accent: Color,
+        isSelected: Bool,
+        pulse: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: {
+            UISelectionFeedbackGenerator().selectionChanged()
+            action()
+        }) {
+            VStack(alignment: .center, spacing: 2) {
+                HStack(spacing: 3) {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(accent)
+                    Text(title)
+                        .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Text(value)
+                    .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .title3))
+                    .foregroundColor(pulse ? Color(uiColor: .ppWarning) : AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity)
+            .background(
+                isSelected ? accent.opacity(0.12) : AdminSurface.surface,
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? accent : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: - 3. Search & Filter Deck
+
+    private var searchAndFilterDeck: some View {
+        VStack(spacing: 8) {
+            // Search Input Field
+            HStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    TextField(Language.get("MissionControl_Customers_Search_Placeholder", alter: "ابحث بالاسم، البريد، الجوال أو المعرّف..."), text: $viewModel.searchText)
+                        .font(Font.custom("Beiruti-Regular", size: 13.5, relativeTo: .body))
+                        .onChange(of: viewModel.searchText, perform: { _ in
+                            viewModel.applyFilter()
+                        })
+
+                    if !viewModel.searchText.isEmpty {
+                        Button {
+                            viewModel.searchText = ""
+                            viewModel.applyFilter()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 1)
+                )
+
+                // Sort Menu Button
+                Menu {
+                    ForEach(CustomerSortOption.allCases) { opt in
+                        Button {
+                            viewModel.activeSort = opt
+                            viewModel.applyFilter()
+                        } label: {
+                            HStack {
+                                Text(opt.title)
+                                if viewModel.activeSort == opt {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(width: 38, height: 38)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 1)
+                        )
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+
+            // Horizontal Filter Tabs
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(CustomerFilterTab.allCases) { tab in
+                        let isSelected = viewModel.activeTab == tab
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                viewModel.activeTab = tab
+                                viewModel.applyFilter()
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: tab.icon)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Text(tab.title)
+                                    .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Regular", size: 12, relativeTo: .caption))
+
+                                let count = countForTab(tab)
+                                Text("\(count)")
+                                    .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background(
+                                        isSelected ? Color.white.opacity(0.25) : AdminSurface.control,
+                                        in: Capsule()
+                                    )
+                            }
+                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected ? AdminSurface.primary : AdminSurface.surface,
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule().stroke(isSelected ? Color.clear : AdminSurface.hairline, lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(.bottom, 6)
+    }
+
+    private func countForTab(_ tab: CustomerFilterTab) -> Int {
+        switch tab {
+        case .all: return viewModel.totalCount
+        case .active: return viewModel.activeCount
+        case .verified: return viewModel.verifiedCount
+        case .needsAttention: return viewModel.attentionCount
+        case .blocked: return viewModel.blockedCount
+        }
+    }
+
+    // MARK: - 4. Customer List Section
+
+    private var customerListSection: some View {
+        ScrollView {
+            LazyVStack(spacing: 10) {
+                if viewModel.isLoading {
+                    ForEach(0..<5, id: \.self) { _ in
+                        CustomerSkeletonCard()
+                    }
+                } else if viewModel.filteredCustomers.isEmpty {
+                    CustomerEmptyStateView(query: viewModel.searchText) {
+                        viewModel.searchText = ""
+                        viewModel.activeTab = .all
+                        viewModel.applyFilter()
+                    }
+                } else {
+                    ForEach(viewModel.filteredCustomers) { customer in
+                        CustomerAccountCardView(
+                            customer: customer,
+                            onTap: {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                viewModel.activeDossierCustomer = customer
+                            },
+                            onCopyUID: {
+                                UIPasteboard.general.string = customer.id
+                                viewModel.showToast(Language.get("UID_Copied", alter: "تم نسخ معرّف العميل بنجاح"))
+                            },
+                            onToggleVerify: {
+                                viewModel.toggleVerification(customer: customer)
+                            },
+                            onToggleBlock: {
+                                let newStatus: CustomerAccountStatus = customer.status == .blocked ? .active : .blocked
+                                viewModel.updateCustomerStatus(customer: customer, toStatus: newStatus)
+                            }
+                        )
+                    }
+                }
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 4)
+            .padding(.bottom, 36)
+        }
+        .refreshable {
+            viewModel.isRefreshing = true
+            viewModel.startListening()
+        }
+    }
+}
+
+// MARK: - Flagship Customer Account Card
+
+private struct CustomerAccountCardView: View {
+    let customer: PPCustomerAccountModel
+    let onTap: () -> Void
+    let onCopyUID: () -> Void
+    let onToggleVerify: () -> Void
+    let onToggleBlock: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(alignment: .leading, spacing: 10) {
+                // Header Row: Avatar, Identity, Status Pill, Chevron
+                HStack(alignment: .top, spacing: 12) {
+                    avatarElement
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        // Name & Verification Badge
+                        HStack(spacing: 5) {
+                            Text(customer.name)
+                                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            if customer.isVerified {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
+                            }
+                        }
+
+                        // Contact Details Row (Email / Phone)
+                        HStack(spacing: 6) {
+                            if !customer.email.isEmpty {
+                                Text(customer.email)
+                                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                            }
+
+                            if !customer.email.isEmpty && !customer.phone.isEmpty {
+                                Text("•")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                            }
+
+                            if !customer.phone.isEmpty {
+                                Text(customer.formattedPhone)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .monospacedDigit()
+                                    .lineLimit(1)
+                            }
+                        }
+
+                        // Compact Monospace UID Pill with 1-tap copy
+                        Button(action: onCopyUID) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "number.circle.fill")
+                                    .font(.system(size: 9))
+                                Text(customer.shortUID)
+                                    .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 8))
+                            }
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.85))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule())
+                            .overlay(Capsule().stroke(AdminSurface.hairline, lineWidth: 0.5))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+
+                    Spacer(minLength: 4)
+
+                    // Right Side: Status Badge & Chevron
+                    VStack(alignment: .trailing, spacing: 6) {
+                        statusBadge
+
+                        HStack(spacing: 6) {
+                            // Quick WhatsApp link if phone exists
+                            if !customer.phone.isEmpty {
+                                Button {
+                                    openWhatsApp(customer.phone)
+                                } label: {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color(uiColor: .ppSuccess))
+                                        .frame(width: 26, height: 26)
+                                        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Circle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+
+                            // Quick Call button if phone exists
+                            if !customer.phone.isEmpty {
+                                Button {
+                                    openCall(customer.phone)
+                                } label: {
+                                    Image(systemName: "phone.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(AdminSurface.primary)
+                                        .frame(width: 26, height: 26)
+                                        .background(AdminSurface.primary.opacity(0.08), in: Circle())
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                            }
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                        }
+                    }
+                }
+
+                // Active Restrictions Warning Chip if any
+                if customer.hasRestrictions {
+                    HStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(Color(uiColor: .ppWarning))
+                        Text(String(format: Language.get("Customer_Restrictions_Count", alter: "توجد %d قيود تشغيلية نشطة على الحساب"), customer.activeRestrictionsCount))
+                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                            .foregroundColor(Color(uiColor: .ppWarning))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+            }
+            .padding(13)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(customer.requiresAttention ? Color(uiColor: .ppWarning).opacity(0.35) : AdminSurface.hairline, lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .contextMenu {
+            Button(action: onTap) {
+                Label(Language.get("View_Dossier", alter: "عرض السجل الشامل"), systemImage: "person.crop.circle.badge.questionmark")
+            }
+
+            if !customer.phone.isEmpty {
+                Button { openCall(customer.phone) } label: {
+                    Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
+                }
+                Button { openWhatsApp(customer.phone) } label: {
+                    Label(Language.get("WhatsApp", alter: "محادثة واتساب"), systemImage: "message.fill")
+                }
+            }
+
+            Button(action: onCopyUID) {
+                Label(Language.get("Copy_UID", alter: "نسخ معرّف الحساب (UID)"), systemImage: "doc.on.doc")
+            }
+
+            Button(action: onToggleVerify) {
+                Label(
+                    customer.isVerified ? Language.get("Unverify", alter: "إلغاء التوثيق") : Language.get("Verify", alter: "توثيق الحساب"),
+                    systemImage: customer.isVerified ? "shield.slash" : "shield.checkmark"
+                )
+            }
+
+            Button(action: onToggleBlock) {
+                Label(
+                    customer.status == .blocked ? Language.get("Unblock", alter: "رفع الحظر") : Language.get("Block", alter: "حظر الحساب"),
+                    systemImage: customer.status == .blocked ? "lock.open" : "nosign"
+                )
+            }
+        }
+    }
+
+    private var avatarElement: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let photo = customer.photoURL, let url = URL(string: photo), !photo.isEmpty {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let img):
+                        img.resizable().scaledToFill()
+                    default:
+                        monogramView
+                    }
+                }
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                monogramView
+            }
+
+            // Online Presence Indicator Dot
+            Circle()
+                .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6))
+                .frame(width: 10, height: 10)
+                .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                .offset(x: 2, y: 2)
+        }
+        .frame(width: 48, height: 48)
+    }
+
+    private var monogramView: some View {
+        ZStack {
+            LinearGradient(
+                colors: customer.gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Text(customer.initials)
+                .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                .foregroundColor(.white)
+        }
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var statusBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: customer.status.icon)
+                .font(.system(size: 9, weight: .bold))
+            Text(customer.status.title)
+                .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+        }
+        .foregroundColor(customer.status.color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(customer.status.color.opacity(0.10), in: Capsule())
+        .overlay(Capsule().stroke(customer.status.color.opacity(0.20), lineWidth: 0.5))
+    }
+
+    private func openCall(_ phone: String) {
+        let clean = phone.filter { "0123456789+".contains($0) }
+        guard let url = URL(string: "tel://\(clean)") else { return }
+        UIApplication.shared.open(url)
+    }
+
+    private func openWhatsApp(_ phone: String) {
+        let digits = phone.filter { "0123456789".contains($0) }
+        guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
+// MARK: - Reimagined Deep Customer Dossier Sheet
+
+struct AdminCustomerDossierSheet: View {
+    let customer: PPCustomerAccountModel
+    @ObservedObject var viewModel: AdminCustomerAccountsViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedStatus: CustomerAccountStatus
+    @State private var isVerified: Bool
+    @State private var features: [String: Bool]
+    @State private var restrictions: [String: Bool]
+
+    init(customer: PPCustomerAccountModel, viewModel: AdminCustomerAccountsViewModel) {
+        self.customer = customer
+        self.viewModel = viewModel
+        _selectedStatus = State(initialValue: customer.status)
+        _isVerified = State(initialValue: customer.isVerified)
+        _features = State(initialValue: customer.features)
+        _restrictions = State(initialValue: customer.restrictions)
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Hero Profile Deck
+                    dossierHeroView
+
+                    // Contact Hub Row
+                    contactHubRow
+
+                    // Account Status & Lifecycle Control
+                    lifecycleStatusChamber
+
+                    // Official Verification Switch
+                    officialVerificationCard
+
+                    // Platform Capabilities Matrix (Features)
+                    capabilitiesMatrixSection
+
+                    // Security & Operational Restrictions
+                    restrictionsMatrixSection
+
+                    // Diagnostic Tools & Utilities
+                    diagnosticUtilitiesSection
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, 14)
+                .padding(.bottom, 36)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Done", alter: "تم")) {
+                        dismiss()
+                    }
+                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                    .foregroundColor(AdminSurface.primary)
+                }
+            }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
+
+    // MARK: Dossier Hero View
+
+    private var dossierHeroView: some View {
+        VStack(spacing: 8) {
+            ZStack(alignment: .bottomTrailing) {
+                if let photo = customer.photoURL, let url = URL(string: photo), !photo.isEmpty {
+                    AsyncImage(url: url) { phase in
+                        switch phase {
+                        case .success(let img): img.resizable().scaledToFill()
+                        default: dossierMonogram
+                        }
+                    }
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                } else {
+                    dossierMonogram
+                }
+
+                // Presence badge
+                Circle()
+                    .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6))
+                    .frame(width: 14, height: 14)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2.5))
+            }
+            .frame(width: 72, height: 72)
+            .padding(.top, 6)
+
+            VStack(spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(customer.name)
+                        .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    if isVerified {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
+                    }
+                }
+
+                if !customer.email.isEmpty {
+                    Text(customer.email)
+                        .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                // UID Chip
+                Button {
+                    UIPasteboard.general.string = customer.id
+                    viewModel.showToast(Language.get("UID_Copied", alter: "تم نسخ معرّف العميل"))
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "number.circle.fill")
+                            .font(.system(size: 10))
+                        Text(customer.id)
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .lineLimit(1)
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 9))
+                    }
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.control, in: Capsule())
+                }
+                .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(AdminSurface.hairline))
+    }
+
+    private var dossierMonogram: some View {
+        ZStack {
+            LinearGradient(
+                colors: customer.gradientColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Text(customer.initials)
+                .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title))
+                .foregroundColor(.white)
+        }
+        .frame(width: 72, height: 72)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    // MARK: Contact Hub Row
+
+    private var contactHubRow: some View {
+        HStack(spacing: 10) {
+            contactButton(title: "اتصال هاتفي", icon: "phone.fill", color: AdminSurface.primary) {
+                guard !customer.phone.isEmpty else { return }
+                let clean = customer.phone.filter { "0123456789+".contains($0) }
+                guard let url = URL(string: "tel://\(clean)") else { return }
+                UIApplication.shared.open(url)
+            }
+
+            contactButton(title: "محادثة واتساب", icon: "message.fill", color: Color(uiColor: .ppSuccess)) {
+                guard !customer.phone.isEmpty else { return }
+                let digits = customer.phone.filter { "0123456789".contains($0) }
+                guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+                UIApplication.shared.open(url)
+            }
+
+            contactButton(title: "إرسال بريد", icon: "envelope.fill", color: Color(red: 0.12, green: 0.50, blue: 0.90)) {
+                guard !customer.email.isEmpty else { return }
+                guard let url = URL(string: "mailto:\(customer.email)") else { return }
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+
+    private func contactButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(color)
+                    .frame(width: 36, height: 36)
+                    .background(color.opacity(0.10), in: Circle())
+
+                Text(title)
+                    .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                    .foregroundColor(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    // MARK: Lifecycle & Status Chamber
+
+    private var lifecycleStatusChamber: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "person.badge.key.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(AdminSurface.primary)
+                Text(Language.get("MissionControl_UserDetail_Section_Status", alter: "حالة الحساب والصلاحية التشغيلية"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+
+            // 4 Status Options
+            HStack(spacing: 6) {
+                ForEach(CustomerAccountStatus.allCases) { st in
+                    let isSel = selectedStatus == st
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        selectedStatus = st
+                        viewModel.updateCustomerStatus(customer: customer, toStatus: st)
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: st.icon)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(st.title)
+                                .font(Font.custom(isSel ? "Beiruti-Bold" : "Beiruti-Regular", size: 11, relativeTo: .caption2))
+                                .lineLimit(1)
+                        }
+                        .foregroundColor(isSel ? .white : st.color)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .background(
+                            isSel ? st.color : st.color.opacity(0.08),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(isSel ? Color.clear : st.color.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline))
+    }
+
+    // MARK: Official Verification Card
+
+    private var officialVerificationCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(red: 0.12, green: 0.50, blue: 0.90).opacity(0.12))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "shield.checkmark.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("MissionControl_Customers_Verified", alter: "توثيق الحساب رسمياً"))
+                    .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .body))
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(Language.get("MissionControl_Customers_Verified_Desc", alter: "يمنح الحساب علامة التوثيق المعتمدة والأولوية في التعاملات"))
+                    .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            Spacer()
+
+            Toggle("", isOn: Binding(
+                get: { isVerified },
+                set: { val in
+                    isVerified = val
+                    viewModel.toggleVerification(customer: customer)
+                }
+            ))
+            .labelsHidden()
+            .tint(Color(red: 0.12, green: 0.50, blue: 0.90))
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline))
+    }
+
+    // MARK: Capabilities Matrix (Features)
+
+    private var capabilitiesMatrixSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 12))
+                    .foregroundColor(AdminSurface.primary)
+                Text(Language.get("MissionControl_UserDetail_Section_Features", alter: "صلاحيات ومزايا المنصة للمستخدم"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                ForEach(PPCustomerCatalog.features) { item in
+                    let isEnabled = features[item.id] ?? false
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(item.color.opacity(0.12))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: item.icon)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(item.color)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title)
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(item.subtitle)
+                                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { isEnabled },
+                            set: { val in
+                                features[item.id] = val
+                                viewModel.updateFeature(customer: customer, featureKey: item.id, isEnabled: val)
+                            }
+                        ))
+                        .labelsHidden()
+                        .tint(item.color)
+                    }
+                    .padding(.vertical, 4)
+
+                    if item.id != PPCustomerCatalog.features.last?.id {
+                        Divider().background(AdminSurface.hairline)
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline))
+        }
+    }
+
+    // MARK: Security & Restriction Matrix
+
+    private var restrictionsMatrixSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(uiColor: .ppError))
+                Text(Language.get("MissionControl_UserDetail_Section_Restrictions", alter: "قيود الأمان والحظر الجزئي"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(Color(uiColor: .ppError))
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                ForEach(PPCustomerCatalog.restrictions) { item in
+                    let isBlocked = restrictions[item.id] ?? false
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(uiColor: .ppError).opacity(0.10))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: item.icon)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppError))
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(item.title)
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text(item.subtitle)
+                                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        Spacer()
+
+                        Toggle("", isOn: Binding(
+                            get: { isBlocked },
+                            set: { val in
+                                restrictions[item.id] = val
+                                viewModel.updateRestriction(customer: customer, restrictionKey: item.id, isBlocked: val)
+                            }
+                        ))
+                        .labelsHidden()
+                        .tint(Color(uiColor: .ppError))
+                    }
+                    .padding(.vertical, 4)
+
+                    if item.id != PPCustomerCatalog.restrictions.last?.id {
+                        Divider().background(AdminSurface.hairline)
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color(uiColor: .ppError).opacity(0.20), lineWidth: 1)
+            )
+        }
+    }
+
+    // MARK: Diagnostic Utilities Section
+
+    private var diagnosticUtilitiesSection: some View {
+        VStack(spacing: 8) {
+            // Password Reset Button
+            Button {
+                viewModel.sendPasswordReset(email: customer.email)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 13))
+                    Text(Language.get("Send_Password_Reset", alter: "إرسال رابط استعادة كلمة المرور"))
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
+                    Spacer()
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(AdminSurface.primary)
+                .padding(14)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+            }
+
+            // Copy Full JSON Diagnostics
+            Button {
+                let diagnostic = "UID: \(customer.id)\nName: \(customer.name)\nEmail: \(customer.email)\nPhone: \(customer.phone)\nStatus: \(customer.status.rawValue)\nVerified: \(isVerified)"
+                UIPasteboard.general.string = diagnostic
+                viewModel.showToast(Language.get("Diagnostics_Copied", alter: "تم نسخ بيانات التشخيص للحافظة"))
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 13))
+                    Text(Language.get("Copy_Diagnostics", alter: "نسخ تقرير الفحص التشخيصي"))
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
+                    Spacer()
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                }
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(14)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+            }
+        }
+    }
 }
+
+// MARK: - Reimagined Customer Onboarding Chamber (Add Customer)
+
+struct AdminAddCustomerSheet: View {
+    @ObservedObject var viewModel: AdminCustomerAccountsViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String = ""
+    @State private var phone: String = ""
+    @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var initialStatus: CustomerAccountStatus = .active
+    @State private var isVerified: Bool = false
+    @State private var isSubmitting: Bool = false
+    @State private var formError: String? = nil
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Live Monogram Hero Preview
+                    liveMonogramPreview
+
+                    if let error = formError {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(.red)
+                            Text(error)
+                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
+                    // Fields Container
+                    VStack(spacing: 12) {
+                        // Full Name
+                        onboardingField(
+                            title: Language.get("FullName_Field", alter: "الاسم الكامل للعميل *"),
+                            placeholder: "مثال: سالم الكواري",
+                            icon: "person.fill",
+                            text: $name
+                        )
+
+                        // Phone Number with Qatar Prefix
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Language.get("Phone_Field", alter: "رقم الجوال *"))
+                                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            HStack(spacing: 8) {
+                                Text("🇶🇦 +974")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 8)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                TextField("5512 3456", text: $phone)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .monospacedDigit()
+                                    .keyboardType(.phonePad)
+                            }
+                            .padding(6)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                        }
+
+                        // Email
+                        onboardingField(
+                            title: Language.get("Email_Field", alter: "البريد الإلكتروني *"),
+                            placeholder: "customer@example.com",
+                            icon: "envelope.fill",
+                            text: $email,
+                            keyboardType: .emailAddress
+                        )
+
+                        // Password with Generator
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(Language.get("Password_Field", alter: "كلمة المرور الأولية *"))
+                                    .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Spacer()
+                                Button(Language.get("Generate_Password", alter: "توليد كلمة سر آمنة")) {
+                                    password = generateSecurePassword()
+                                }
+                                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.primary)
+                            }
+
+                            HStack(spacing: 8) {
+                                Image(systemName: "lock.fill")
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .font(.system(size: 13))
+                                    .frame(width: 20)
+
+                                TextField("••••••••", text: $password)
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .autocorrectionDisabled(true)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 9)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                        }
+                    }
+
+                    // Initial Options
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text(Language.get("Initial_Verification", alter: "توثيق الحساب فورياً"))
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                            Toggle("", isOn: $isVerified)
+                                .labelsHidden()
+                                .tint(Color(red: 0.12, green: 0.50, blue: 0.90))
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                    }
+
+                    // Submit Action Button
+                    Button {
+                        submitForm()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "person.badge.plus")
+                                    .font(.system(size: 15, weight: .bold))
+                            }
+                            Text(Language.get("Create_Customer_CTA", alter: "حفظ وإنشاء حساب العميل"))
+                                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(red: 0.72, green: 0.05, blue: 0.18)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.25), radius: 8, y: 3)
+                    }
+                    .disabled(isSubmitting)
+                    .padding(.top, 8)
+                }
+                .padding(AdminSpacing.screenMargin)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var liveMonogramPreview: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                LinearGradient(
+                    colors: [AdminSurface.primary, Color(red: 0.75, green: 0.15, blue: 0.35)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Text(name.isEmpty ? "PP" : String(name.prefix(2)).uppercased())
+                    .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                    .foregroundColor(.white)
+            }
+            .frame(width: 68, height: 68)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .shadow(color: AdminSurface.primary.opacity(0.20), radius: 8, y: 3)
+
+            Text(name.isEmpty ? Language.get("NewCustomer_Preview", alter: "معاينة هوية العميل") : name)
+                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                .foregroundColor(AdminSurface.primaryText)
+        }
+        .padding(.top, 4)
+        .padding(.bottom, 6)
+    }
+
+    private func onboardingField(
+        title: String,
+        placeholder: String,
+        icon: String,
+        text: Binding<String>,
+        keyboardType: UIKeyboardType = .default
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                .foregroundColor(AdminSurface.primaryText)
+
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .font(.system(size: 13))
+                    .frame(width: 20)
+
+                TextField(placeholder, text: text)
+                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
+                    .keyboardType(keyboardType)
+                    .autocorrectionDisabled(true)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+        }
+    }
+
+    private func generateSecurePassword() -> String {
+        let chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%"
+        return String((0..<10).compactMap { _ in chars.randomElement() })
+    }
+
+    private func submitForm() {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard trimmedName.count >= 2 else {
+            formError = Language.get("Error_NameRequired", alter: "يرجى كتابة اسم العميل بالكامل (حرفين على الأقل)")
+            return
+        }
+        guard trimmedEmail.contains("@") && trimmedEmail.contains(".") else {
+            formError = Language.get("Error_EmailInvalid", alter: "يرجى كتابة بريد إلكتروني صالح")
+            return
+        }
+        guard password.count >= 6 else {
+            formError = Language.get("Error_PasswordShort", alter: "كلمة المرور يجب أن تكون ٦ خانات على الأقل")
+            return
+        }
+
+        formError = nil
+        isSubmitting = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        viewModel.createCustomer(
+            name: trimmedName,
+            email: trimmedEmail,
+            phone: trimmedPhone,
+            password: password,
+            initialStatus: initialStatus,
+            isVerified: isVerified
+        ) { success, errDesc in
+            isSubmitting = false
+            if success {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            } else {
+                formError = errDesc ?? "تعذر إنشاء الحساب"
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+            }
+        }
+    }
+}
+
+// MARK: - Skeleton & Empty State Helpers
+
+private struct CustomerSkeletonCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.control)
+                    .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(AdminSurface.control)
+                        .frame(width: 130, height: 14)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(AdminSurface.control)
+                        .frame(width: 170, height: 11)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(AdminSurface.control)
+                        .frame(width: 80, height: 10)
+                }
+                Spacer()
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AdminSurface.control)
+                    .frame(width: 50, height: 22)
+            }
+        }
+        .padding(13)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline))
+        .opacity(0.6)
+    }
+}
+
+private struct CustomerEmptyStateView: View {
+    let query: String
+    let onReset: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: query.isEmpty ? "person.2.slash" : "magnifyingglass")
+                .font(.system(size: 42, weight: .light))
+                .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                .padding(.top, 36)
+
+            VStack(spacing: 4) {
+                Text(query.isEmpty
+                     ? Language.get("MissionControl_Customers_SourceEmpty_Title", alter: "لا توجد حسابات عملاء")
+                     : Language.get("MissionControl_Customers_FilteredEmpty_Title", alter: "لا توجد نتائج مطابقة"))
+                    .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(query.isEmpty
+                     ? Language.get("MissionControl_Customers_SourceEmpty_Body", alter: "لا توجد سجلات عملاء نشطة في قاعدة البيانات حالياً.")
+                     : String(format: Language.get("MissionControl_Customers_FilteredEmpty_Body", alter: "لم نجد حساباً يطابق البحث '%@'."), query))
+                    .font(Font.custom("Beiruti-Regular", size: 12.5, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            if !query.isEmpty {
+                Button(action: onReset) {
+                    Text(Language.get("Clear_Search", alter: "إلغاء التصفية وإظهار الكل"))
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                }
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
+    }
+}
+
+// MARK: - Legacy Wrappers & Exported Hosting Controllers
 
 private struct AdminLegacyViewControllerWrapper: UIViewControllerRepresentable {
     let factory: () -> UIViewController
@@ -49,10 +2163,6 @@ struct AdminUserManagementView: View {
     }
 }
 
-
-import SwiftUI
-import UIKit
-
 struct AdminSupportThreadView: View {
     let controllerFactory: () -> UIViewController
     var onDismiss: (() -> Void)? = nil
@@ -65,7 +2175,6 @@ struct AdminSupportThreadView: View {
 
             VStack(spacing: 0) {
                 dossierHeaderView
-
                 AdminLegacyViewControllerWrapper { controllerFactory() }
             }
         }
@@ -108,10 +2217,6 @@ struct AdminSupportThreadView: View {
         .padding(.top, AdminSpacing.xs)
     }
 }
-
-
-import SwiftUI
-import UIKit
 
 @objc(PPAdminUsersListHostingController)
 public final class PPAdminUsersListHostingController: UIViewController {

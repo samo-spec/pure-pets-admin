@@ -75,6 +75,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     /// and the exact cart snapshot that produced the accepted command.
     init(
         transactionID: String,
+        subtotal: Double = 0,
+        discount: Double = 0,
         total: Double,
         currency: String,
         paymentMethod: String,
@@ -95,8 +97,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 ringTags: item.unitRingTags
             )
         }
-        subtotal = total
-        discount = 0
+        self.subtotal = subtotal > 0 ? subtotal : total + discount
+        self.discount = max(discount, 0)
         self.total = total
         self.cashReceived = paymentMethod == "cash" ? max(cashReceived, total) : 0
         changeDue = paymentMethod == "cash" ? max(cashReceived - total, 0) : 0

@@ -85,6 +85,18 @@ NS_ASSUME_NONNULL_BEGIN
                             completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
     NS_SWIFT_NAME(transitionOfficialFulfillment(_:expectedStatus:action:note:commandID:completion:));
 
+/// Repairs only the recoverable fulfillment-v1 gap where the deterministic
+/// official child is absent, then applies a legal `new_request` transition.
+/// The callable performs the authority, scope, parent-state, idempotency, and
+/// audit checks atomically; this client never writes fulfillment data directly.
+- (void)initializeAndTransitionOfficialFulfillmentForOrderID:(NSString *)orderID
+                                          expectedParentStatus:(NSString *)expectedParentStatus
+                                                        action:(NSString *)action
+                                                          note:(NSString *)note
+                                                     commandID:(NSString *)commandID
+                                                    completion:(void(^)(NSDictionary * _Nullable result, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(initializeAndTransitionOfficialFulfillment(orderID:expectedParentStatus:action:note:commandID:completion:));
+
 /// Mirrors the callable's canonical `payments.manage` authorization gate.
 - (BOOL)canAdminOverride NS_SWIFT_NAME(canAdminOverride());
 

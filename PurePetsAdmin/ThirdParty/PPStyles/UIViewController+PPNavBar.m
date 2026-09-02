@@ -571,6 +571,23 @@ static NSDictionary *PPNavTitleAttributes(void) {
     return btn;
 }
 
+- (void)pp_navBarAddRightButton:(UIButton *)btn key:(NSString *)key {
+    [self _pp_addRightButton:btn key:key];
+}
+
+- (void)pp_navBarAddLeftButton:(UIButton *)btn key:(NSString *)key {
+    [self _pp_addLeftButton:btn key:key];
+}
+
+- (void)pp_navBarAddActionButton:(UIButton *)button key:(NSString *)key {
+    BOOL isRTL = PPIsRTL(self);
+    if (isRTL) {
+        [self _pp_addLeftButton:button key:key];
+    } else {
+        [self _pp_addRightButton:button key:key];
+    }
+}
+
 - (void)pp_navBarHideButtonForKey:(NSString *)key hidden:(BOOL)hidden animated:(BOOL)animated {
     UIButton *btn = (UIButton *)PPDictForVC(self, NO)[key];
     if (!btn) return;

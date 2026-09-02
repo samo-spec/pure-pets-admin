@@ -342,6 +342,23 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is unavailable") }
 
+    /// Routes are pushed by the SwiftUI shell, which owns an outer UIKit
+    /// navigation controller. The legacy route container owns the visible
+    /// command-center header through its embedded stack, so the outer bar must
+    /// stay hidden or its back/add controls are rendered in addition to the
+    /// destination's own controls.
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Reassert after the SwiftUI push transition. UIKit can otherwise
+        // restore the outer bar while attaching the representable controller.
+        navigationController?.setNavigationBarHidden(true, animated: false)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         let usesClearCanvas = route == .homeControl

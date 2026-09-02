@@ -30,4 +30,7 @@ typedef NS_ENUM(NSInteger, EditType) {
 /// Full combined editor (default)
 + (instancetype)fullEditorForUser:(UserModel *)user;
 
+/// Set to YES if an enclosing container provides its own navigation header. Default is NO.
+@property (nonatomic, assign) BOOL hidesInternalNavigationBar;
+
 @end

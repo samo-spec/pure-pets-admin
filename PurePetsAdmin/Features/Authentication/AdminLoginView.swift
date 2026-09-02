@@ -316,6 +316,7 @@ enum AdminType {
     static let calloutBold = Font.custom("Beiruti-Medium", size: 16, relativeTo: .callout)
     static let footnote = Font.custom("Beiruti-Regular", size: 14, relativeTo: .footnote)
     static let footnoteBold = Font.custom("Beiruti-Bold", size: 14, relativeTo: .footnote)
+    static let caption = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
     static let caption1 = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
     static let caption2 = Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2)
     static let caption2Bold = Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2)

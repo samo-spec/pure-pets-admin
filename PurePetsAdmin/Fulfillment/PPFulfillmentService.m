@@ -63,6 +63,39 @@ static NSError *PPFulfillmentReadError(NSInteger code, NSString *localizationKey
                            userInfo:@{NSLocalizedDescriptionKey: kLang(localizationKey)}];
 }
 
+/// A missing document is a recoverable *read* outcome only when the Firestore
+/// SDK reports it as such. Function `not-found` failures are intentionally not
+/// included here because they can represent an authorization-protected server
+/// resource and must remain fail-closed.
+static BOOL PPFulfillmentErrorContainsCode(NSError *error, NSString *domain, NSInteger code) {
+    NSError *currentError = error;
+    for (NSUInteger depth = 0; currentError && depth < 4; depth += 1) {
+        if ([currentError.domain isEqualToString:domain] && currentError.code == code) {
+            return YES;
+        }
+        id underlying = currentError.userInfo[NSUnderlyingErrorKey];
+        currentError = [underlying isKindOfClass:NSError.class] ? underlying : nil;
+    }
+    return NO;
+}
+
+static BOOL PPFulfillmentErrorContainsFirestoreCode(NSError *error, NSInteger code) {
+    return PPFulfillmentErrorContainsCode(error, FIRFirestoreErrorDomain, code);
+}
+
+static BOOL PPFulfillmentErrorIndicatesAbsentDocument(NSError *error) {
+    return PPFulfillmentErrorContainsFirestoreCode(error, FIRFirestoreErrorCodeNotFound) ||
+        PPFulfillmentErrorContainsCode(error, NSCocoaErrorDomain, NSFileNoSuchFileError);
+}
+
+static NSError *PPFulfillmentOfficialReadFailure(NSError *underlyingError) {
+    if (!underlyingError || PPFulfillmentErrorIndicatesAbsentDocument(underlyingError)) return nil;
+    if (PPFulfillmentErrorContainsFirestoreCode(underlyingError, FIRFirestoreErrorCodePermissionDenied)) {
+        return PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope");
+    }
+    return PPFulfillmentReadError(413, @"PaymentMgmt_OfficialFulfillment_LoadFailed_Subtitle");
+}
+
 static NSError *PPFulfillmentPartialReadError(NSError *underlyingError,
                                               NSUInteger successfulQueryCount,
                                               NSUInteger queryCount) {
@@ -511,7 +544,8 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         dispatch_group_enter(group);
         [[collection documentWithPath:fulfillmentID] getDocumentWithCompletion:^(FIRDocumentSnapshot *snapshot, NSError *error) {
             @synchronized (matches) {
-                if (!firstError && error) firstError = error;
+                NSError *readFailure = PPFulfillmentOfficialReadFailure(error);
+                if (!firstError && readFailure) firstError = readFailure;
                 if (!error && snapshot.exists) {
                     PPFulfillmentRecord *record = [[PPFulfillmentRecord alloc] initWithDictionary:snapshot.data documentID:snapshot.documentID];
                     if ([record.parentOrderID isEqualToString:safeParentID] &&
@@ -789,6 +823,47 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
             NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
             if (completion) completion(dict, error);
         }];
+    }];
+}
+
+- (void)initializeAndTransitionOfficialFulfillmentForOrderID:(NSString *)orderID
+                                          expectedParentStatus:(NSString *)expectedParentStatus
+                                                        action:(NSString *)action
+                                                          note:(NSString *)note
+                                                     commandID:(NSString *)commandID
+                                                    completion:(void(^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    NSString *safeOrderID = [orderID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeExpectedParentStatus = [expectedParentStatus.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeAction = [action.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeNote = [note stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *safeCommandID = [commandID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![staff hasPermission:kStaffPermPaymentsManage] || !PPFulfillmentHasReadableScope(staff)) {
+        if (completion) completion(nil, PPFulfillmentReadError([staff hasPermission:kStaffPermPaymentsManage] ? 411 : 410,
+                                                               [staff hasPermission:kStaffPermPaymentsManage] ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission"));
+        return;
+    }
+    if (!safeOrderID.length || !safeExpectedParentStatus.length ||
+        ![[PPFulfillmentService availableOfficialActionsForStatus:@"new_request"] containsObject:safeAction] ||
+        safeNote.length < 3 || !safeCommandID.length) {
+        if (completion) completion(nil, PPFulfillmentReadError(416, @"PaymentMgmt_OfficialFulfillment_InvalidCommand"));
+        return;
+    }
+
+    FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:@"staffInitializeAndTransitionOfficialFulfillment"];
+    [callable callWithObject:@{
+        @"orderId": safeOrderID,
+        @"expectedParentStatus": safeExpectedParentStatus,
+        @"action": safeAction,
+        @"note": safeNote,
+        @"commandId": safeCommandID,
+    } completion:^(FIRHTTPSCallableResult *result, NSError *error) {
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        NSDictionary *dict = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : nil;
+        if (completion) completion(dict, error);
     }];
 }
 

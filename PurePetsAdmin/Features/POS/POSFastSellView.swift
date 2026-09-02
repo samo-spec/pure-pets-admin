@@ -14,6 +14,9 @@
 
 import SwiftUI
 import UIKit
+import AVFoundation
+import AudioToolbox
+import FirebaseFirestore
 
 // MARK: - Live Pet Inventory Contract
 
@@ -52,8 +55,10 @@ extension PetAccessory {
 // MARK: - Catalog Filter Rail
 
 /// Console parity: the POS fast-lane product type rail
-/// (Accessories / Food / Pet Medicines / Live Pets).
+/// Console parity: the POS fast-lane product type filter
+/// (All / Accessories / Food / Pet Medicines / Live Pets).
 enum POSCatalogFilter: String, CaseIterable, Identifiable {
+    case all
     case accessories
     case food
     case medicine
@@ -63,6 +68,7 @@ enum POSCatalogFilter: String, CaseIterable, Identifiable {
 
     var titleKey: String {
         switch self {
+        case .all: return "POS_CatalogTypeAll"
         case .accessories: return "POS_CatalogTypeAccessories"
         case .food: return "POS_CatalogTypeFood"
         case .medicine: return "POS_CatalogTypeMedicine"
@@ -72,6 +78,7 @@ enum POSCatalogFilter: String, CaseIterable, Identifiable {
 
     var fallbackTitle: String {
         switch self {
+        case .all: return "الكل"
         case .accessories: return "إكسسوارات"
         case .food: return "طعام"
         case .medicine: return "أدوية"
@@ -81,15 +88,27 @@ enum POSCatalogFilter: String, CaseIterable, Identifiable {
 
     var symbol: String {
         switch self {
-        case .accessories: return "bag"
+        case .all: return "square.grid.2x2.fill"
+        case .accessories: return "bag.fill"
         case .food: return "fork.knife"
-        case .medicine: return "cross.case"
-        case .livePets: return "pawprint"
+        case .medicine: return "cross.case.fill"
+        case .livePets: return "pawprint.fill"
+        }
+    }
+
+    var accentColor: Color {
+        switch self {
+        case .all: return AdminSurface.primary
+        case .accessories: return Color(uiColor: .ppQuickActionShopping)
+        case .food: return Color(uiColor: .ppPremiumAccent)
+        case .medicine: return Color(uiColor: .ppQuickActionServices)
+        case .livePets: return Color(uiColor: .ppQuickActionAnimals)
         }
     }
 
     func matches(_ accessory: PetAccessory) -> Bool {
         switch self {
+        case .all: return true
         case .accessories: return !accessory.isFood && !accessory.isLivePet && !accessory.isPetMedicine
         case .food: return accessory.isFood
         case .medicine: return accessory.isPetMedicine
@@ -132,6 +151,51 @@ struct POSCartItem: Identifiable, Equatable {
         lhs.id == rhs.id
             && lhs.quantity == rhs.quantity
             && lhs.unitIDs == rhs.unitIDs
+    }
+}
+
+// MARK: - POS Discount Models
+
+enum POSDiscountType: String, CaseIterable, Identifiable {
+    case percentage = "percentage"
+    case fixedAmount = "fixed"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .percentage:
+            return Language.get("POS_Discount_Percentage", alter: "نسبة مئوية (%)")
+        case .fixedAmount:
+            return Language.get("POS_Discount_FixedAmount", alter: "مبلغ ثابت (ر.ق)")
+        }
+    }
+}
+
+struct POSDiscount: Equatable {
+    var type: POSDiscountType
+    var value: Double // e.g. 10 for 10%, or 25 for 25 QAR
+
+    func calculateAmount(subtotal: Double) -> Double {
+        guard subtotal > 0 && value > 0 else { return 0 }
+        switch type {
+        case .percentage:
+            let pct = min(max(value, 0), 100)
+            return ((subtotal * pct / 100.0) * 100).rounded() / 100.0
+        case .fixedAmount:
+            return min(subtotal, (max(value, 0) * 100).rounded() / 100.0)
+        }
+    }
+
+    func displayBadge(subtotal: Double) -> String {
+        switch type {
+        case .percentage:
+            let amt = calculateAmount(subtotal: subtotal)
+            let formattedAmt = String(format: "%.2f", amt)
+            return "-\(formattedAmt) (\(Int(value))%)"
+        case .fixedAmount:
+            return "-\(String(format: "%.2f", value)) ر.ق"
+        }
     }
 }
 
@@ -314,18 +378,35 @@ final class POSFastSellViewModel: ObservableObject {
     @Published private(set) var completedReceipt: POSCompletedReceipt?
     @Published private(set) var receiptNotice: String?
 
-    /// Footer quick-add catalog rail.
-    @Published var catalogFilter: POSCatalogFilter = .accessories
+    /// Filter, search, and live catalog presentation states.
+    @Published var catalogFilter: POSCatalogFilter = .all
     @Published var catalogSearchText: String = ""
+    @Published private(set) var isCatalogLoading = true
+    @Published private(set) var catalogErrorMessage: String?
 
     @Published var selectedCustomer: POSCustomerRecord? = nil
+    @Published var appliedDiscount: POSDiscount? = nil
+
+    func count(for filter: POSCatalogFilter) -> Int {
+        allAccessories.filter { $0.pos_isSellable && filter.matches($0) }.count
+    }
 
     func clearSelectedCustomer() {
         selectedCustomer = nil
         invalidateSubmissionCommand()
     }
 
-    private var listener: AnyObject?
+    func applyDiscount(_ discount: POSDiscount?) {
+        appliedDiscount = discount
+        invalidateSubmissionCommand()
+    }
+
+    func clearDiscount() {
+        appliedDiscount = nil
+        invalidateSubmissionCommand()
+    }
+
+    private var listener: (any ListenerRegistration)?
     /// Retained across an uncertain callable response so retrying the same
     /// checkout cannot create a second transaction. Any cart/payment change
     /// invalidates it and starts a new command.
@@ -351,8 +432,18 @@ final class POSFastSellViewModel: ObservableObject {
         return list
     }
 
+    var cartSubtotal: Double {
+        let sum = cartItems.reduce(0) { $0 + $1.lineTotal }
+        return (sum * 100).rounded() / 100.0
+    }
+
+    var discountAmount: Double {
+        guard let discount = appliedDiscount else { return 0 }
+        return discount.calculateAmount(subtotal: cartSubtotal)
+    }
+
     var cartTotal: Double {
-        cartItems.reduce(0) { $0 + $1.lineTotal }
+        max(0, ((cartSubtotal - discountAmount) * 100).rounded() / 100.0)
     }
 
     var cartItemCount: Int {
@@ -367,20 +458,33 @@ final class POSFastSellViewModel: ObservableObject {
     ]
 
     func startListening() {
+        listener?.remove()
+        listener = nil
+        isCatalogLoading = allAccessories.isEmpty
+        catalogErrorMessage = nil
+
         listener = AccessoryManager.shared().observeAllAccessories { [weak self] items, error in
+            let projectedItems = items ?? []
+            let projectedError = error?.localizedDescription
             Task { @MainActor in
                 guard let self else { return }
-                if error == nil {
-                    self.allAccessories = items ?? []
+                self.isCatalogLoading = false
+                if let projectedError {
+                    self.catalogErrorMessage = projectedError
+                    return
                 }
+                self.catalogErrorMessage = nil
+                self.allAccessories = projectedItems
             }
         }
     }
 
+    func retryCatalog() {
+        startListening()
+    }
+
     func stopListening() {
-        if let reg = listener as? NSObjectProtocol {
-            NotificationCenter.default.removeObserver(reg)
-        }
+        listener?.remove()
         listener = nil
     }
 
@@ -444,6 +548,7 @@ final class POSFastSellViewModel: ObservableObject {
     func clearCart() {
         guard !cartItems.isEmpty else { return }
         cartItems = []
+        appliedDiscount = nil
         invalidateSubmissionCommand()
     }
 
@@ -556,6 +661,8 @@ final class POSFastSellViewModel: ObservableObject {
 
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
+            subtotal: cartSubtotal,
+            discount: discountAmount,
             total: cartTotal,
             paymentMethod: selectedPaymentMethod,
             cashReceived: selectedPaymentMethod == "cash" ? NSNumber(value: acceptedCash) : nil,
@@ -599,6 +706,8 @@ final class POSFastSellViewModel: ObservableObject {
 
                 let fallbackReceipt = POSCompletedReceipt(
                     transactionID: transactionID,
+                    subtotal: self.cartSubtotal,
+                    discount: self.discountAmount,
                     total: serverTotal > 0 ? serverTotal : self.cartTotal,
                     currency: serverCurrency,
                     paymentMethod: self.selectedPaymentMethod,
@@ -732,18 +841,22 @@ private struct POSFlyArc: ViewModifier, Animatable {
 
 // MARK: - POS FastSell View
 
-@available(iOS 16.0, *)
-@available(iOS 16.0, *)
 struct AdminPOSFastSellView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @FocusState private var isSearchFocused: Bool
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
     @State private var showsReservedLivePets = false
     @State private var showsCustomerPicker = false
     @State private var showsItemPicker = false
+    @State private var isShowingScanner = false
+    @State private var showsDiscountSheet = false
+    @State private var showsCategoryLens = false
+    @State private var lastScannedCode: String?
     @State private var animalSearchQuery = ""
 
     // Fly-to-cart choreography
@@ -757,14 +870,32 @@ struct AdminPOSFastSellView: View {
         self.onDismiss = onDismiss
     }
 
+    private func dismissKeyboard() {
+        if isSearchFocused {
+            isSearchFocused = false
+        }
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     var body: some View {
+        NavigationView {
+            posContent
+                .navigationBarHidden(true)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var posContent: some View {
         ZStack(alignment: .bottom) {
-            AdminSurface.background.ignoresSafeArea()
+            AdminSurface.background
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismissKeyboard()
+                }
 
             VStack(spacing: 0) {
-                dossierHeaderView
-                customerBarView
-                filterRail
+                commandDeck
                 catalogGrid
             }
 
@@ -773,6 +904,10 @@ struct AdminPOSFastSellView: View {
                 currency: { formatCurrency($0) },
                 cartPulse: cartPulse,
                 onOpenUnitPicker: { openUnitPicker(for: $0) },
+                onOpenDiscount: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsDiscountSheet = true
+                },
                 onClearCart: {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
@@ -798,14 +933,39 @@ struct AdminPOSFastSellView: View {
         .coordinateSpace(name: POSFastSellSpace.root)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $showsCustomerPicker) {
-            POSCustomerPickerSheet(currentSelected: viewModel.selectedCustomer) { customer in
+            POSCustomerPickerSheet(
+                currentSelected: viewModel.selectedCustomer,
+                canCreateCustomer: session.hasPermission("pos.sell")
+            ) { customer in
                 viewModel.selectedCustomer = customer
                 showsCustomerPicker = false
             }
         }
+        .sheet(isPresented: $showsCategoryLens) {
+            POSCategoryLensSheet(viewModel: viewModel)
+        }
         .sheet(isPresented: $showsItemPicker) {
             itemPickerSheet
         }
+        .sheet(isPresented: $showsDiscountSheet) {
+            POSDiscountSheet(
+                subtotal: viewModel.cartSubtotal,
+                currentDiscount: viewModel.appliedDiscount,
+                currency: { formatCurrency($0) },
+                onApply: { discount in
+                    viewModel.applyDiscount(discount)
+                    showsDiscountSheet = false
+                },
+                onRemove: {
+                    viewModel.clearDiscount()
+                    showsDiscountSheet = false
+                },
+                onDismiss: {
+                    showsDiscountSheet = false
+                }
+            )
+        }
+        .background(scannerPushLink)
         .sheet(isPresented: $showsReservedLivePets) {
             POSReservedLivePetsView(
                 session: session,
@@ -850,12 +1010,71 @@ struct AdminPOSFastSellView: View {
         }
     }
 
-    // MARK: - Header Pill
+    private var scannerPushLink: some View {
+        NavigationLink(
+            destination: POSBarcodeScannerScreen(
+                onResult: { code in
+                    let normalized = code.trimmingCharacters(in: .whitespacesAndNewlines)
+                    isShowingScanner = false
+                    guard !normalized.isEmpty else { return }
+                    viewModel.catalogSearchText = normalized
+                    lastScannedCode = normalized
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: String(
+                            format: Language.get("POS_Scanner_Detected_Format", alter: "تم التقاط الرمز %@"),
+                            normalized
+                        )
+                    )
+                },
+                onCancel: {
+                    isShowingScanner = false
+                }
+            )
+            .navigationBarHidden(true),
+            isActive: $isShowingScanner
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
 
-    /// One pill, 58pt ceiling: close, workspace/title stack, and the add action.
-    private var dossierHeaderView: some View {
+    // MARK: - Command Deck
+
+    private var commandDeck: some View {
+        VStack(spacing: AdminSpacing.sm) {
+            commandHeaderView
+            customerBarView
+            omniSearchAndFilterBar
+            commandStatusView
+        }
+        .padding(.horizontal, AdminSpacing.base)
+        .padding(.top, AdminSpacing.xs)
+        .padding(.bottom, AdminSpacing.md)
+        .background(
+            ZStack(alignment: .topTrailing) {
+                AdminSurface.background
+                RadialGradient(
+                    colors: [AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.07), .clear],
+                    center: .topTrailing,
+                    startRadius: 4,
+                    endRadius: 210
+                )
+            }
+        )
+        .overlay(
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: AdminStroke.hairline),
+            alignment: .bottom
+        )
+    }
+
+    private var commandHeaderView: some View {
         HStack(spacing: AdminSpacing.sm) {
             Button {
+                dismissKeyboard()
                 if let onDismiss {
                     onDismiss()
                 } else {
@@ -863,12 +1082,13 @@ struct AdminPOSFastSellView: View {
                 }
             } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(AdminSurface.primary)
-                    .frame(width: 38, height: 38)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                     .background(AdminSurface.control, in: Circle())
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
             }
-            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات"))
@@ -876,189 +1096,388 @@ struct AdminPOSFastSellView: View {
                     .foregroundColor(AdminSurface.secondaryText)
                     .lineLimit(1)
                 Text(Language.get("POS_Title", alter: "بيع سريع"))
-                    .font(AdminType.headline)
+                    .font(AdminType.title3)
                     .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .minimumScaleFactor(0.82)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
 
             Button {
+                dismissKeyboard()
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 showsReservedLivePets = true
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "pawprint.circle.fill")
+                HStack(spacing: AdminSpacing.xs) {
+                    Image(systemName: "pawprint.fill")
                         .font(.system(size: 13, weight: .bold))
                     Text(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
-                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .font(AdminType.captionBold)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                 }
                 .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 38)
-                .background(
-                    LinearGradient(
-                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.88)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: Capsule()
-                )
-                .overlay(
-                    Capsule().strokeBorder(Color.white.opacity(0.25), lineWidth: 1)
-                )
-                .shadow(color: AdminSurface.primary.opacity(0.2), radius: 4, y: 1)
+                .padding(.horizontal, AdminSpacing.md)
+                .frame(minHeight: AdminTouchTarget.minimum)
+                .background(AdminSurface.primary, in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.24), lineWidth: AdminStroke.thin))
+                .shadow(color: AdminSurface.primary.opacity(0.18), radius: 8, y: 3)
             }
             .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
         }
-        .padding(.horizontal, AdminSpacing.sm)
-        .padding(.vertical, AdminSpacing.sm)
-        .frame(maxHeight: 58)
-        .background(AdminSurface.surface, in: Capsule())
-        .overlay(Capsule().stroke(AdminSurface.hairline))
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
     }
 
-    // MARK: - Customer Affordance Bar
+    // MARK: - Customer Context
 
     private var customerBarView: some View {
-        HStack(spacing: 8) {
-            if let customer = viewModel.selectedCustomer {
-                // Active Attached Customer Card
-                HStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(customer.avatarColor)
-                            .frame(width: 28, height: 28)
-                        Text(customer.initials)
-                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
-                            .foregroundColor(.white)
-                    }
+        HStack(spacing: AdminSpacing.sm) {
+            Button {
+                dismissKeyboard()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showsCustomerPicker = true
+            } label: {
+                HStack(spacing: AdminSpacing.sm) {
+                    if let customer = viewModel.selectedCustomer {
+                        ZStack {
+                            Circle()
+                                .fill(customer.avatarColor.opacity(0.16))
+                                .frame(width: 38, height: 38)
+                            Text(customer.initials)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(customer.avatarColor)
+                        }
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: 4) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(Language.get("POS_Customer_BoundLabel", alter: "عميل السلة"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
                             Text(customer.name)
-                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                .font(AdminType.subheadlineBold)
                                 .foregroundColor(AdminSurface.primaryText)
                                 .lineLimit(1)
-                            Image(systemName: "checkmark.seal.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.green)
+                            Text(customer.phone)
+                                .font(.system(.caption2, design: .monospaced).weight(.medium))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                                .environment(\.layoutDirection, .leftToRight)
                         }
-                        Text(customer.phone)
-                            .font(.system(size: 10.5, weight: .medium))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .monospacedDigit()
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                                .fill(AdminSurface.primarySoft)
+                                .frame(width: 38, height: 38)
+                            Image(systemName: "person.crop.circle.badge.plus")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة"))
+                                .font(AdminType.subheadlineBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(2)
+                            Text(Language.get("POS_Customer_SelectHint", alter: "يفتح دليل العملاء لإرفاق عميل بهذه السلة"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
                     }
 
-                    Spacer(minLength: 4)
+                    Spacer(minLength: AdminSpacing.xs)
 
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showsCustomerPicker = true
-                    } label: {
-                        Text(Language.get("Change", alter: "تغيير"))
-                            .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
-                            .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                    }
-                    .accessibilityLabel(Language.get("Change", alter: "تغيير"))
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, AdminSpacing.md)
+                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                        .stroke(
+                            viewModel.selectedCustomer == nil ? AdminSurface.hairline : AdminSurface.primary.opacity(0.34),
+                            lineWidth: viewModel.selectedCustomer == nil ? AdminStroke.thin : AdminStroke.medium
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(customerAccessibilityLabel)
+            .accessibilityHint(Language.get("POS_Customer_SelectHint", alter: "يفتح دليل العملاء لإرفاق عميل بهذه السلة"))
 
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if viewModel.selectedCustomer != nil {
+                Button {
+                    dismissKeyboard()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if reduceMotion {
+                        viewModel.clearSelectedCustomer()
+                    } else {
                         withAnimation(AdminAnimation.fast) {
                             viewModel.clearSelectedCustomer()
                         }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
                     }
-                    .accessibilityLabel(Language.get("Remove", alter: "إلغاء التحديد"))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(AdminSurface.primary.opacity(0.35), lineWidth: 1.2)
-                )
-            } else {
-                // No Customer Selected: Quick Pick/Add Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showsCustomerPicker = true
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                        Text(Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة"))
-                            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.primaryText)
-                        Spacer()
-                        Image(systemName: "chevron.backward")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(AdminSurface.hairline, lineWidth: 1)
-                    )
+                    Image(systemName: "person.crop.circle.badge.xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .frame(width: AdminTouchTarget.minimum, height: 54)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                        )
                 }
-                .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(Language.get("POS_Customer_Remove", alter: "إزالة العميل"))
+                .accessibilityHint(Language.get("POS_Customer_RemoveHint", alter: "يزيل العميل من السلة دون حذف ملفه"))
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 6)
     }
 
-    // MARK: - Category Filter Rail
+    private var customerAccessibilityLabel: String {
+        guard let customer = viewModel.selectedCustomer else {
+            return Language.get("POS_Customer_SelectOrAdd", alter: "تحديد أو إضافة عميل للسلة")
+        }
+        return "\(Language.get("POS_Customer_Change", alter: "تغيير العميل")): \(customer.name), \(customer.phone)"
+    }
 
-    private var filterRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(POSCatalogFilter.allCases) { filter in
-                    let active = viewModel.catalogFilter == filter
+    // MARK: - Catalog Command
+
+    private var omniSearchAndFilterBar: some View {
+        HStack(spacing: AdminSpacing.sm) {
+            HStack(spacing: AdminSpacing.sm) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(isSearchFocused ? AdminSurface.primary : AdminSurface.secondaryText)
+
+                TextField(
+                    searchPrompt,
+                    text: $viewModel.catalogSearchText
+                )
+                .font(AdminType.body)
+                .multilineTextAlignment(.leading)
+                .foregroundColor(AdminSurface.primaryText)
+                .focused($isSearchFocused)
+                .submitLabel(.search)
+                .onSubmit { dismissKeyboard() }
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+
+                if !viewModel.catalogSearchText.isEmpty {
                     Button {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        withAnimation(AdminAnimation.fast) {
-                            viewModel.catalogFilter = filter
-                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.catalogSearchText = ""
+                        lastScannedCode = nil
                     } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: filter.symbol)
-                                .font(.system(size: 12, weight: .semibold))
-                            Text(Language.get(filter.titleKey, alter: filter.fallbackTitle))
-                                .font(AdminType.captionBold)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 14)
-                        .frame(minHeight: 34)
-                        .foregroundColor(active ? .white : AdminSurface.primaryText)
-                        .background(
-                            active ? AdminSurface.primary : AdminSurface.control,
-                            in: Capsule(style: .continuous)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous).stroke(active ? Color.clear : AdminSurface.hairline)
-                        )
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 17))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
                     }
-                    .accessibilityLabel(Language.get(filter.titleKey, alter: filter.fallbackTitle))
-                    .accessibilityAddTraits(active ? [.isButton, .isSelected] : .isButton)
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                    .accessibilityLabel(Language.get("POS_Search_Clear", alter: "مسح البحث"))
                 }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.vertical, 8)
+            .padding(.leading, AdminSpacing.md)
+            .padding(.trailing, viewModel.catalogSearchText.isEmpty ? AdminSpacing.md : 0)
+            .frame(maxWidth: .infinity, minHeight: 54)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(
+                        isSearchFocused ? AdminSurface.primary : AdminSurface.hairline,
+                        lineWidth: isSearchFocused ? AdminStroke.medium : AdminStroke.thin
+                    )
+            )
+            .shadow(
+                color: isSearchFocused ? AdminSurface.primary.opacity(0.12) : .clear,
+                radius: 10,
+                y: 3
+            )
+
+            Button {
+                dismissKeyboard()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                isShowingScanner = true
+            } label: {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: 52, height: 54)
+                    .background(AdminSurface.primarySoft, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .stroke(AdminSurface.primary.opacity(0.24), lineWidth: AdminStroke.thin)
+                    )
+            }
+            .accessibilityLabel(Language.get("POS_Scan_Barcode", alter: "مسح رمز المنتج"))
+            .accessibilityHint(Language.get("POS_Scan_Barcode_Hint", alter: "يفتح الكاميرا للبحث برمز المنتج"))
+
+            filterTriggerButton
         }
-        .accessibilityLabel(Language.get("POS_CatalogFilterRail", alter: "فلاتر الكتالوج"))
+        .animation(reduceMotion ? nil : AdminAnimation.fast, value: viewModel.catalogSearchText.isEmpty)
+        .onChange(of: viewModel.catalogSearchText) { value in
+            if let lastScannedCode, value != lastScannedCode {
+                self.lastScannedCode = nil
+            }
+        }
+    }
+
+    private var searchPrompt: String {
+        if viewModel.catalogFilter == .all {
+            return Language.get("POS_Search_All_Prompt", alter: "ابحث بالاسم أو المعرف في كل المنتجات...")
+        }
+        let category = Language.get(
+            viewModel.catalogFilter.titleKey,
+            alter: viewModel.catalogFilter.fallbackTitle
+        )
+        return String(
+            format: Language.get("POS_Search_Category_Format", alter: "ابحث في %@..."),
+            category
+        )
+    }
+
+    private var filterTriggerButton: some View {
+        Button {
+            dismissKeyboard()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            showsCategoryLens = true
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: viewModel.catalogFilter.symbol)
+                    .font(.system(size: 15, weight: .bold))
+                Text(Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle))
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+            }
+            .foregroundColor(
+                viewModel.catalogFilter == .all
+                    ? AdminSurface.primaryText
+                    : viewModel.catalogFilter.accentColor
+            )
+            .frame(minWidth: 66, minHeight: 54)
+            .padding(.horizontal, AdminSpacing.xs)
+            .background(
+                viewModel.catalogFilter == .all
+                    ? AdminSurface.control
+                    : viewModel.catalogFilter.accentColor.opacity(0.13),
+                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(
+                        viewModel.catalogFilter == .all
+                            ? AdminSurface.hairline
+                            : viewModel.catalogFilter.accentColor.opacity(0.34),
+                        lineWidth: AdminStroke.thin
+                    )
+            )
+        }
+        .accessibilityLabel(Language.get("POS_FilterButton", alter: "تصفية المنتجات"))
+        .accessibilityValue(Language.get(viewModel.catalogFilter.titleKey, alter: viewModel.catalogFilter.fallbackTitle))
+        .accessibilityHint(Language.get("POS_CategoryLens_Hint", alter: "يفتح فئات الكتالوج المتاحة"))
+    }
+
+    @ViewBuilder
+    private var commandStatusView: some View {
+        if viewModel.isCatalogLoading && viewModel.allAccessories.isEmpty {
+            HStack(spacing: AdminSpacing.sm) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                    .tint(AdminSurface.primary)
+                Text(Language.get("POS_Catalog_Loading", alter: "جارٍ مزامنة الكتالوج…"))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, AdminSpacing.sm)
+            .frame(minHeight: 28)
+            .accessibilityElement(children: .combine)
+        } else if viewModel.catalogErrorMessage != nil && viewModel.allAccessories.isEmpty {
+            HStack(spacing: AdminSpacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundColor(Color(uiColor: .ppError))
+                Text(Language.get("POS_Catalog_LoadFailed", alter: "تعذر تأكيد الكتالوج المباشر"))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+                Spacer(minLength: AdminSpacing.xs)
+                Button {
+                    viewModel.retryCatalog()
+                } label: {
+                    Text(Language.get("POS_Retry", alter: "إعادة المحاولة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(minHeight: AdminTouchTarget.minimum)
+                        .padding(.horizontal, AdminSpacing.sm)
+                }
+            }
+            .padding(.leading, AdminSpacing.sm)
+            .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .accessibilityElement(children: .contain)
+        } else if let code = lastScannedCode,
+                  viewModel.catalogSearchText == code,
+                  viewModel.catalogResults.isEmpty {
+            HStack(spacing: AdminSpacing.sm) {
+                Image(systemName: "barcode.viewfinder")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(Color(uiColor: .ppWarning))
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(Language.get("POS_Scan_NoMatch_Title", alter: "لم يُعثر على منتج بهذا الرمز"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(
+                        String(
+                            format: Language.get(
+                                "POS_Scan_NoMatch_Subtitle_Format",
+                                alter: "الرمز %@ لا يطابق اسماً أو معرّفاً في الكتالوج الحالي."
+                            ),
+                            code
+                        )
+                    )
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(2)
+                    .environment(\.layoutDirection, .leftToRight)
+                }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                Button {
+                    isShowingScanner = true
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                }
+                .accessibilityLabel(Language.get("POS_Scanner_Retry", alter: "إعادة فحص الكاميرا"))
+            }
+            .padding(.leading, AdminSpacing.sm)
+            .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        } else if !viewModel.catalogSearchText.isEmpty || viewModel.catalogFilter != .all {
+            let isScannedResult = lastScannedCode == viewModel.catalogSearchText
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: isScannedResult ? "checkmark.circle.fill" : viewModel.catalogFilter.symbol)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isScannedResult ? Color(uiColor: .ppSuccess) : viewModel.catalogFilter.accentColor)
+                Text(
+                    String(
+                        format: Language.get("POS_Catalog_ResultCount_Format", alter: "%ld نتيجة"),
+                        viewModel.catalogResults.count
+                    )
+                )
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+                .monospacedDigit()
+                Spacer()
+            }
+            .padding(.horizontal, AdminSpacing.sm)
+            .frame(minHeight: 28)
+            .accessibilityElement(children: .combine)
+        }
     }
 
     @ViewBuilder
@@ -1074,6 +1493,10 @@ struct AdminPOSFastSellView: View {
                     .foregroundColor(AdminSurface.secondaryText)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                dismissKeyboard()
+            }
         } else {
             ScrollView {
                 LazyVGrid(
@@ -1097,6 +1520,18 @@ struct AdminPOSFastSellView: View {
                 .padding(.top, 4)
                 .padding(.bottom, viewModel.cartItems.isEmpty ? 165 : 260)
             }
+            .posScrollDismissesKeyboardCompat()
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8)
+                    .onChanged { _ in
+                        dismissKeyboard()
+                    }
+            )
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    dismissKeyboard()
+                }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -1104,6 +1539,7 @@ struct AdminPOSFastSellView: View {
     // MARK: - Interaction
 
     private func handleCatalogTap(_ accessory: PetAccessory, from rect: CGRect) {
+        dismissKeyboard()
         guard !viewModel.isCheckoutBusy else { return }
 
         // Console parity: an individually tracked live pet must go through the
@@ -1211,6 +1647,7 @@ private struct POSApexFlightDeck: View {
     let currency: (Double) -> String
     let cartPulse: CGFloat
     let onOpenUnitPicker: (PetAccessory) -> Void
+    let onOpenDiscount: () -> Void
     let onClearCart: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -1315,12 +1752,65 @@ private struct POSApexFlightDeck: View {
                 .padding(.vertical, 3)
                 .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
 
+                // Discount Indicator & Trigger
+                if viewModel.discountAmount > 0 {
+                    HStack(spacing: 4) {
+                        Button(action: onOpenDiscount) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "tag.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text("-" + currency(viewModel.discountAmount))
+                                    .font(AdminType.caption2Bold)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.clearDiscount()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(emeraldColor.opacity(0.85))
+                        }
+                        .accessibilityLabel(Language.get("POS_RemoveDiscount", alter: "إزالة الخصم"))
+                    }
+                    .foregroundColor(emeraldColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(emeraldColor.opacity(0.14), in: Capsule(style: .continuous))
+                } else {
+                    Button(action: onOpenDiscount) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "tag")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(Language.get("POS_Discount", alter: "خصم"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+                    }
+                    .accessibilityLabel(Language.get("POS_AddDiscount", alter: "إضافة خصم"))
+                }
+
                 Spacer()
 
-                Text(currency(viewModel.cartTotal))
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .monospacedDigit()
+                VStack(alignment: .trailing, spacing: 0) {
+                    if viewModel.discountAmount > 0 {
+                        Text(currency(viewModel.cartSubtotal))
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                            .strikethrough()
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .monospacedDigit()
+                    }
+
+                    Text(currency(viewModel.cartTotal))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                }
 
                 Button(action: onClearCart) {
                     Image(systemName: "trash")
@@ -2604,5 +3094,929 @@ private struct CompactCartItemChip: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(AdminSurface.hairline, lineWidth: 0.5)
         )
+    }
+}
+
+// MARK: - POS Discount Sheet
+
+struct POSDiscountSheet: View {
+    let subtotal: Double
+    let currentDiscount: POSDiscount?
+    let currency: (Double) -> String
+    let onApply: (POSDiscount) -> Void
+    let onRemove: () -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var discountType: POSDiscountType = .percentage
+    @State private var percentageValue: Double = 10.0
+    @State private var fixedValueText: String = ""
+    @State private var selectedPercentPreset: Double? = 10.0
+    @State private var selectedFixedPreset: Double? = nil
+
+    private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
+
+    private var percentPresets: [Double] {
+        [5, 10, 15, 20, 25, 50]
+    }
+
+    private var fixedPresets: [Double] {
+        let candidates: [Double] = [5, 10, 15, 20, 25, 50, 100, 200]
+        return candidates.filter { $0 < subtotal }
+    }
+
+    private var calculatedDiscountAmount: Double {
+        switch discountType {
+        case .percentage:
+            let pct = min(max(percentageValue, 0), 100)
+            return ((subtotal * pct / 100.0) * 100).rounded() / 100.0
+        case .fixedAmount:
+            let sanitized = fixedValueText.replacingOccurrences(of: ",", with: ".")
+            let val = Double(sanitized) ?? 0
+            return min(subtotal, (max(val, 0) * 100).rounded() / 100.0)
+        }
+    }
+
+    private var calculatedNetTotal: Double {
+        max(0, ((subtotal - calculatedDiscountAmount) * 100).rounded() / 100.0)
+    }
+
+    private var isValid: Bool {
+        calculatedDiscountAmount > 0 && calculatedDiscountAmount <= subtotal
+    }
+
+    init(
+        subtotal: Double,
+        currentDiscount: POSDiscount?,
+        currency: @escaping (Double) -> String,
+        onApply: @escaping (POSDiscount) -> Void,
+        onRemove: @escaping () -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.subtotal = subtotal
+        self.currentDiscount = currentDiscount
+        self.currency = currency
+        self.onApply = onApply
+        self.onRemove = onRemove
+        self.onDismiss = onDismiss
+
+        if let cur = currentDiscount {
+            _discountType = State(initialValue: cur.type)
+            if cur.type == .percentage {
+                _percentageValue = State(initialValue: cur.value)
+                _selectedPercentPreset = State(initialValue: cur.value)
+            } else {
+                _fixedValueText = State(initialValue: String(format: "%.2f", cur.value))
+                _selectedFixedPreset = State(initialValue: cur.value)
+            }
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // 1. Original Order Subtotal Card
+                        originalSubtotalCard
+
+                        // 2. Discount Mode Segmented Selector
+                        discountModeSelector
+
+                        // 3. Presets Row
+                        presetsSection
+
+                        // 4. Custom Value Input & Steppers
+                        customValueSection
+
+                        // 5. Live Telemetry & Calculations Card
+                        liveCalculationCard
+
+                        // 6. Action Buttons
+                        actionButtonsSection
+                    }
+                    .padding(AdminSpacing.screenMargin)
+                }
+            }
+            .navigationTitle(Language.get("POS_Discount_Title", alter: "تطبيق الخصم"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Text(Language.get("Close", alter: "إغلاق"))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - Subviews
+
+    private var originalSubtotalCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.12))
+                    .frame(width: 44, height: 44)
+                Image(systemName: "cart.fill")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("POS_OriginalSubtotal", alter: "المجموع الأصلي للسلة"))
+                    .font(AdminType.caption1)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(currency(subtotal))
+                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+    }
+
+    private var discountModeSelector: some View {
+        HStack(spacing: 8) {
+            ForEach(POSDiscountType.allCases) { type in
+                let isSelected = discountType == type
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        discountType = type
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: type == .percentage ? "percent" : "banknote")
+                            .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                        Text(type.title)
+                            .font(AdminType.calloutBold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 40)
+                    .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(isSelected ? Color.clear : AdminSurface.hairline)
+                    )
+                }
+            }
+        }
+    }
+
+    private var presetsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("POS_QuickDiscountPresets", alter: "خيارات سريعة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if discountType == .percentage {
+                        ForEach(percentPresets, id: \.self) { preset in
+                            let isSelected = percentageValue == preset
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                                    percentageValue = preset
+                                    selectedPercentPreset = preset
+                                }
+                            } label: {
+                                Text("\(Int(preset))%")
+                                    .font(AdminType.captionBold)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                    .background(
+                                        isSelected ? emeraldColor : AdminSurface.control,
+                                        in: Capsule(style: .continuous)
+                                    )
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(isSelected ? Color.clear : emeraldColor.opacity(0.3), lineWidth: 0.8)
+                                    )
+                            }
+                        }
+                    } else {
+                        ForEach(fixedPresets, id: \.self) { preset in
+                            let isSelected = (Double(fixedValueText) ?? 0) == preset
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                                    fixedValueText = String(format: "%.0f", preset)
+                                    selectedFixedPreset = preset
+                                }
+                            } label: {
+                                Text(currency(preset))
+                                    .font(AdminType.captionBold)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 8)
+                                    .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                    .background(
+                                        isSelected ? emeraldColor : AdminSurface.control,
+                                        in: Capsule(style: .continuous)
+                                    )
+                                    .overlay(
+                                        Capsule(style: .continuous)
+                                            .stroke(isSelected ? Color.clear : emeraldColor.opacity(0.3), lineWidth: 0.8)
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var customValueSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("POS_CustomDiscountValue", alter: "القيمة المحددة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            if discountType == .percentage {
+                HStack(spacing: 12) {
+                    Button {
+                        if percentageValue > 1 {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            percentageValue = max(1, percentageValue - (percentageValue > 10 ? 5 : 1))
+                        }
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 14, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .background(AdminSurface.control, in: Circle())
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 2) {
+                        Text("\(Int(percentageValue))")
+                            .font(Font.custom("Beiruti-Bold", size: 36, relativeTo: .title))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .monospacedDigit()
+                        Text("%")
+                            .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        if percentageValue < 100 {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            percentageValue = min(100, percentageValue + (percentageValue >= 10 ? 5 : 1))
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .foregroundColor(.white)
+                            .background(AdminSurface.primary, in: Circle())
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+            } else {
+                HStack(spacing: 10) {
+                    Image(systemName: "banknote")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    TextField("0.00", text: $fixedValueText)
+                        .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title3))
+                        .keyboardType(.decimalPad)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    if !fixedValueText.isEmpty {
+                        Button {
+                            fixedValueText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+            }
+        }
+    }
+
+    private var liveCalculationCard: some View {
+        VStack(spacing: 10) {
+            HStack {
+                Text(Language.get("POS_OriginalSubtotal", alter: "المجموع الفرعي:"))
+                    .font(AdminType.caption1)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                Text(currency(subtotal))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+
+            HStack {
+                HStack(spacing: 4) {
+                    Text(Language.get("POS_Discount", alter: "الخصم:"))
+                        .font(AdminType.caption1)
+                    if discountType == .percentage {
+                        Text("(\(Int(percentageValue))%)")
+                            .font(AdminType.caption2Bold)
+                    }
+                }
+                .foregroundColor(emeraldColor)
+
+                Spacer()
+
+                Text("-" + currency(calculatedDiscountAmount))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(emeraldColor)
+                    .monospacedDigit()
+            }
+
+            Divider().background(AdminSurface.hairline)
+
+            HStack {
+                Text(Language.get("POS_NetTotal", alter: "الإجمالي الصافي للدفع:"))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                Text(currency(calculatedNetTotal))
+                    .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title3))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .monospacedDigit()
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(emeraldColor.opacity(0.35), lineWidth: 1)
+        )
+    }
+
+    private var actionButtonsSection: some View {
+        VStack(spacing: 10) {
+            Button {
+                guard isValid else { return }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                let discount = POSDiscount(
+                    type: discountType,
+                    value: discountType == .percentage ? percentageValue : (Double(fixedValueText.replacingOccurrences(of: ",", with: ".")) ?? 0)
+                )
+                onApply(discount)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("POS_ApplyDiscount", alter: "تطبيق الخصم") + " (\(currency(calculatedNetTotal)))")
+                        .font(AdminType.calloutBold)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 48)
+                .foregroundColor(.white)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(isValid ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                )
+            }
+            .disabled(!isValid)
+
+            if currentDiscount != nil {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onRemove()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 13, weight: .medium))
+                        Text(Language.get("POS_RemoveDiscount", alter: "إزالة الخصم بالكامل"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(.red)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 38)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Keyboard Dismissal Helper
+
+extension View {
+    @ViewBuilder
+    func posScrollDismissesKeyboardCompat() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDismissesKeyboard(.interactively)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Catalog Lens
+
+struct POSCategoryLensSheet: View {
+    @ObservedObject var viewModel: POSFastSellViewModel
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: AdminSpacing.md) {
+                        HStack(spacing: AdminSpacing.sm) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                                    .fill(AdminSurface.primarySoft)
+                                    .frame(width: 48, height: 48)
+                                Image(systemName: "scope")
+                                    .font(.system(size: 21, weight: .semibold))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Language.get("POS_CategoryLens_Title", alter: "عدسة الكتالوج"))
+                                    .font(AdminType.title2)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Text(Language.get("POS_CategoryLens_Subtitle", alter: "اختر نطاقاً واحداً للبحث من دون تغيير محتوى السلة."))
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: AdminSpacing.xs)
+
+                            Button { dismiss() } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                                    .background(AdminSurface.control, in: Circle())
+                            }
+                            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
+                        }
+                        .accessibilityElement(children: .contain)
+
+                        VStack(spacing: AdminSpacing.sm) {
+                            ForEach(POSCatalogFilter.allCases) { filter in
+                                categoryRow(filter)
+                            }
+                        }
+                    }
+                    .padding(AdminSpacing.screenMargin)
+                }
+            }
+            .navigationBarHidden(true)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private func categoryRow(_ filter: POSCatalogFilter) -> some View {
+        let selected = viewModel.catalogFilter == filter
+        let count = viewModel.count(for: filter)
+
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if reduceMotion {
+                viewModel.catalogFilter = filter
+            } else {
+                withAnimation(AdminAnimation.standard) {
+                    viewModel.catalogFilter = filter
+                }
+            }
+            dismiss()
+        } label: {
+            HStack(spacing: AdminSpacing.md) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                        .fill(filter.accentColor.opacity(selected ? 0.18 : 0.10))
+                        .frame(width: 46, height: 46)
+                    Image(systemName: filter.symbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(filter.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get(filter.titleKey, alter: filter.fallbackTitle))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(String(format: Language.get("POS_CategoryLens_Count_Format", alter: "%ld منتج متاح"), count))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .monospacedDigit()
+                }
+
+                Spacer()
+
+                if selected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 21, weight: .semibold))
+                        .foregroundColor(filter.accentColor)
+                        .accessibilityLabel(Language.get("POS_CategoryLens_Selected", alter: "النطاق المحدد"))
+                } else {
+                    Image(systemName: "chevron.forward")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 68)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
+                    .stroke(selected ? filter.accentColor.opacity(0.45) : AdminSurface.hairline, lineWidth: selected ? AdminStroke.medium : AdminStroke.thin)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .accessibilityValue(selected ? Language.get("POS_CategoryLens_Selected", alter: "النطاق المحدد") : "")
+    }
+}
+
+// MARK: - Permission-Aware Barcode Scanner
+
+private enum POSBarcodeScannerPhase: Equatable {
+    case permissionRequired
+    case requesting
+    case ready
+    case denied
+    case unavailable
+}
+
+struct POSBarcodeScannerScreen: View {
+    let onResult: (String) -> Void
+    let onCancel: () -> Void
+
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var phase: POSBarcodeScannerPhase
+
+    init(onResult: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
+        self.onResult = onResult
+        self.onCancel = onCancel
+        _phase = State(initialValue: Self.phaseForCurrentAuthorization())
+    }
+
+    var body: some View {
+        ZStack {
+            if phase == .ready {
+                POSBarcodeCameraView(
+                    onResult: onResult,
+                    onFailure: { phase = .unavailable }
+                )
+                .ignoresSafeArea()
+                Color.black.opacity(0.24).ignoresSafeArea().allowsHitTesting(false)
+                scannerChrome
+            } else {
+                AdminSurface.background.ignoresSafeArea()
+                scannerStateContent
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onAppear { refreshAuthorization() }
+        .onChange(of: scenePhase) { value in
+            if value == .active { refreshAuthorization() }
+        }
+    }
+
+    private var scannerChrome: some View {
+        VStack(spacing: 0) {
+            scannerHeader(dark: true)
+            Spacer()
+
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .stroke(Color.white.opacity(0.92), lineWidth: 3)
+                .frame(maxWidth: 310, minHeight: 190, maxHeight: 220)
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                        .stroke(AdminSurface.primary.opacity(0.9), lineWidth: 1)
+                        .padding(8)
+                )
+                .accessibilityHidden(true)
+
+            Text(Language.get("POS_Scanner_Guidance", alter: "ضع رمز QR أو الباركود بالكامل داخل الإطار"))
+                .font(AdminType.calloutBold)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, AdminSpacing.base)
+                .padding(.vertical, AdminSpacing.md)
+                .background(Color.black.opacity(0.62), in: Capsule())
+                .padding(.top, AdminSpacing.lg)
+                .padding(.horizontal, AdminSpacing.screenMargin)
+
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var scannerStateContent: some View {
+        VStack(spacing: AdminSpacing.lg) {
+            scannerHeader(dark: false)
+            Spacer()
+
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primarySoft)
+                    .frame(width: 104, height: 104)
+                Image(systemName: scannerStateIcon)
+                    .font(.system(size: 42, weight: .light))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(spacing: AdminSpacing.sm) {
+                Text(scannerStateTitle)
+                    .font(AdminType.title2)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+                Text(scannerStateSubtitle)
+                    .font(AdminType.body)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, AdminSpacing.xl)
+
+            scannerStateAction
+                .padding(.horizontal, AdminSpacing.screenMargin)
+
+            Spacer()
+            Spacer()
+        }
+    }
+
+    private func scannerHeader(dark: Bool) -> some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Button { onCancel() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(dark ? .white : AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(dark ? Color.black.opacity(0.55) : AdminSurface.control, in: Circle())
+            }
+            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
+
+            Text(Language.get("POS_Scanner_Title", alter: "مسح رمز المنتج"))
+                .font(AdminType.headline)
+                .foregroundColor(dark ? .white : AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, AdminSpacing.sm)
+    }
+
+    @ViewBuilder
+    private var scannerStateAction: some View {
+        switch phase {
+        case .permissionRequired:
+            scannerActionButton(Language.get("POS_Scanner_Allow", alter: "السماح بالكاميرا"), icon: "camera.fill") {
+                requestCameraAccess()
+            }
+        case .requesting:
+            HStack(spacing: AdminSpacing.sm) {
+                ProgressView().tint(AdminSurface.primary)
+                Text(Language.get("POS_Scanner_Requesting", alter: "بانتظار إذن الكاميرا…"))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .frame(minHeight: 52)
+        case .denied:
+            scannerActionButton(Language.get("POS_Scanner_OpenSettings", alter: "فتح الإعدادات"), icon: "gearshape.fill") {
+                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(url)
+            }
+        case .unavailable:
+            scannerActionButton(Language.get("POS_Scanner_Retry", alter: "إعادة فحص الكاميرا"), icon: "arrow.clockwise") {
+                refreshAuthorization()
+            }
+        case .ready:
+            EmptyView()
+        }
+    }
+
+    private func scannerActionButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon)
+                .font(AdminType.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+        }
+    }
+
+    private var scannerStateIcon: String {
+        switch phase {
+        case .permissionRequired, .requesting: return "camera.viewfinder"
+        case .denied: return "camera.fill.badge.xmark"
+        case .unavailable: return "exclamationmark.triangle.fill"
+        case .ready: return "barcode.viewfinder"
+        }
+    }
+
+    private var scannerStateTitle: String {
+        switch phase {
+        case .permissionRequired, .requesting:
+            return Language.get("POS_Scanner_PermissionTitle", alter: "استخدم الكاميرا لمسح الرمز")
+        case .denied:
+            return Language.get("POS_Scanner_DeniedTitle", alter: "الوصول إلى الكاميرا متوقف")
+        case .unavailable:
+            return Language.get("POS_Scanner_UnavailableTitle", alter: "الماسح غير متاح")
+        case .ready:
+            return Language.get("POS_Scanner_Title", alter: "مسح رمز المنتج")
+        }
+    }
+
+    private var scannerStateSubtitle: String {
+        switch phase {
+        case .permissionRequired, .requesting:
+            return Language.get("POS_Scanner_PermissionSubtitle", alter: "تُستخدم الكاميرا لقراءة رمز المنتج فقط، ثم يُبحث عنه في الكتالوج الحالي.")
+        case .denied:
+            return Language.get("POS_Scanner_DeniedSubtitle", alter: "فعّل الكاميرا للتطبيق من الإعدادات، ثم عُد للمسح.")
+        case .unavailable:
+            return Language.get("POS_Scanner_UnavailableSubtitle", alter: "تعذر تشغيل كاميرا أو قارئ رموز متوافق على هذا الجهاز.")
+        case .ready:
+            return ""
+        }
+    }
+
+    private func requestCameraAccess() {
+        phase = .requesting
+        AVCaptureDevice.requestAccess(for: .video) { granted in
+            DispatchQueue.main.async {
+                phase = granted ? .ready : .denied
+            }
+        }
+    }
+
+    private func refreshAuthorization() {
+        phase = Self.phaseForCurrentAuthorization()
+    }
+
+    private static func phaseForCurrentAuthorization() -> POSBarcodeScannerPhase {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized: return .ready
+        case .notDetermined: return .permissionRequired
+        case .denied, .restricted: return .denied
+        @unknown default: return .unavailable
+        }
+    }
+}
+
+private struct POSBarcodeCameraView: UIViewControllerRepresentable {
+    let onResult: (String) -> Void
+    let onFailure: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onResult: onResult) }
+
+    func makeUIViewController(context: Context) -> ScannerViewController {
+        let controller = ScannerViewController()
+        controller.metadataDelegate = context.coordinator
+        controller.onFailure = onFailure
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {
+        context.coordinator.onResult = onResult
+        uiViewController.onFailure = onFailure
+    }
+
+    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
+        var onResult: (String) -> Void
+        private var didEmitResult = false
+
+        init(onResult: @escaping (String) -> Void) {
+            self.onResult = onResult
+        }
+
+        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
+            guard !didEmitResult,
+                  let readable = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
+                  let value = readable.stringValue,
+                  !value.isEmpty else { return }
+            didEmitResult = true
+            AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            onResult(value)
+        }
+    }
+}
+
+final class ScannerViewController: UIViewController {
+    private let captureSession = AVCaptureSession()
+    private let sessionQueue = DispatchQueue(label: "com.purepets.admin.pos.scanner", qos: .userInitiated)
+    private var previewLayer: AVCaptureVideoPreviewLayer?
+    private var isConfigured = false
+
+    weak var metadataDelegate: AVCaptureMetadataOutputObjectsDelegate?
+    var onFailure: (() -> Void)?
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .black
+        configureCapture()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        previewLayer?.frame = view.bounds
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        startSessionIfPossible()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        sessionQueue.async { [weak self] in
+            guard let self, self.captureSession.isRunning else { return }
+            self.captureSession.stopRunning()
+        }
+    }
+
+    private func configureCapture() {
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
+              let device = AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              captureSession.canAddInput(input) else {
+            failConfiguration()
+            return
+        }
+
+        let output = AVCaptureMetadataOutput()
+        guard captureSession.canAddOutput(output) else {
+            failConfiguration()
+            return
+        }
+
+        captureSession.beginConfiguration()
+        captureSession.addInput(input)
+        captureSession.addOutput(output)
+        captureSession.commitConfiguration()
+
+        output.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
+        let supported: [AVMetadataObject.ObjectType] = [.qr, .ean8, .ean13, .pdf417, .code128]
+        let available = Set(output.availableMetadataObjectTypes)
+        let enabled = supported.filter { available.contains($0) }
+        guard !enabled.isEmpty else {
+            failConfiguration()
+            return
+        }
+        output.metadataObjectTypes = enabled
+
+        let layer = AVCaptureVideoPreviewLayer(session: captureSession)
+        layer.videoGravity = .resizeAspectFill
+        layer.frame = view.bounds
+        view.layer.addSublayer(layer)
+        previewLayer = layer
+        isConfigured = true
+        startSessionIfPossible()
+    }
+
+    private func startSessionIfPossible() {
+        guard isConfigured else { return }
+        sessionQueue.async { [weak self] in
+            guard let self, !self.captureSession.isRunning else { return }
+            self.captureSession.startRunning()
+        }
+    }
+
+    private func failConfiguration() {
+        DispatchQueue.main.async { [weak self] in
+            self?.onFailure?()
+        }
     }
 }

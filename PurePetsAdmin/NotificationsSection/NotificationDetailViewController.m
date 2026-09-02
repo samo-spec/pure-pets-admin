@@ -2,69 +2,37 @@
 //  NotificationDetailViewController.m
 //  PurePetsAdmin
 //
-//  Created by Mohammed Ahmed on 24/08/2025.
+//  Category-defining administrative notification inspector & action hub.
 //
 
-
-// NotificationDetailViewController.m
 #import "NotificationDetailViewController.h"
+#import "NotificationManager.h"
 #import "Styling.h"
 #import "Language.h"
+#import "PPDesignTokens.h"
+#import "UIViewController+PPNavBar.h"
+#import "PPFunc.h"
+#import "PPHUD.h"
+#import "PPToast.h"
+#import "SceneDelegate.h"
 
-static NSString *PPAdminNotificationDetailTrimmedString(id value)
-{
-    if (![value isKindOfClass:NSString.class]) return @"";
-    return [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-}
+@interface NotificationDetailViewController ()
+@property (nonatomic, strong) NotificationModel *model;
+@property (nonatomic, copy) NSString *uid;
+@property (nonatomic, strong) UIScrollView *scrollView;
+@property (nonatomic, strong) UIStackView *contentStack;
+@property (nonatomic, strong) UIButton *readStatusNavButton;
+@end
 
-static NSDictionary *PPAdminNotificationDetailMeta(NotificationModel *model)
-{
-    return [model.meta isKindOfClass:NSDictionary.class] ? model.meta : @{};
-}
-
-static NSString *PPAdminNotificationDetailTitle(NotificationModel *model)
-{
-    NSDictionary *meta = PPAdminNotificationDetailMeta(model);
-    NSString *titleKey = PPAdminNotificationDetailTrimmedString(meta[@"titleLocalizationKey"]);
-    if (titleKey.length > 0) return kLang(titleKey);
-    return PPAdminNotificationDetailTrimmedString(model.title);
-}
-
-static NSString *PPAdminNotificationDetailBody(NotificationModel *model)
-{
-    NSDictionary *meta = PPAdminNotificationDetailMeta(model);
-    NSString *bodyKey = PPAdminNotificationDetailTrimmedString(meta[@"bodyLocalizationKey"]);
-    NSString *orderReference = PPAdminNotificationDetailTrimmedString(meta[@"orderReference"]);
-    if (bodyKey.length > 0) {
-        NSString *format = kLang(bodyKey);
-        return orderReference.length > 0 ? [NSString stringWithFormat:format, orderReference] : format;
-    }
-    return PPAdminNotificationDetailTrimmedString(model.body);
-}
-
-@implementation NotificationDetailViewController {
-    NotificationModel *_model;
-    NSString *_uid;
-    UILabel *_titleL;
-    UILabel *_bodyL;
-    UILabel *_timeL;
-    UILabel *_typeL;
-    UIView *_cardView;
-}
+@implementation NotificationDetailViewController
 
 - (instancetype)initWithModel:(NotificationModel *)model userID:(NSString *)uid {
-    if (self = [super init]) { _model = model; _uid = [uid copy]; }
+    self = [super init];
+    if (self) {
+        _model = model;
+        _uid = [uid copy];
+    }
     return self;
-}
-
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:YES animated:YES];
-}
-
-- (void)didTapBack {
-    [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [self.navigationController popViewControllerAnimated:YES];
 }
 
 - (void)viewDidLoad {
@@ -72,170 +40,369 @@ static NSString *PPAdminNotificationDetailBody(NotificationModel *model)
     self.view.backgroundColor = [UIColor ppBackground];
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIView *navRow = [[UIView alloc] init];
-    navRow.translatesAutoresizingMaskIntoConstraints = NO;
-    navRow.backgroundColor = UIColor.clearColor;
-    navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [self.view addSubview:navRow];
-
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
-    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
-    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
-    [backBtn setImage:chevron forState:UIControlStateNormal];
-    [backBtn setTitle:backText forState:UIControlStateNormal];
-    backBtn.tintColor = [UIColor ppPrimary];
-    backBtn.titleLabel.font = [Styling fontBold:16];
-    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
-    [navRow addSubview:backBtn];
-
-    UILabel *eyebrow = [[UILabel alloc] init];
-    eyebrow.translatesAutoresizingMaskIntoConstraints = NO;
-    eyebrow.font = [Styling fontBold:12];
-    eyebrow.textColor = [UIColor ppTextSecondary];
-    eyebrow.text = kLang(@"NotificationDetail_Eyebrow");
-    eyebrow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    [navRow addSubview:eyebrow];
-
-    UIScrollView *scrollView = [[UIScrollView alloc] init];
-    scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    scrollView.alwaysBounceVertical = YES;
-    scrollView.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
-    [self.view addSubview:scrollView];
-
-    UIView *contentView = [[UIView alloc] init];
-    contentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [scrollView addSubview:contentView];
-
-    _cardView = [[UIView alloc] init];
-    _cardView.translatesAutoresizingMaskIntoConstraints = NO;
-    _cardView.backgroundColor = PPSurfaceColor();
-    _cardView.layer.cornerRadius = PPCornerHero;
-    _cardView.layer.cornerCurve = kCACornerCurveContinuous;
-    _cardView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-    _cardView.layer.borderColor = PPHairlineColor().CGColor;
-    PPApplyElevatedShadow(_cardView);
-    _cardView.layer.shadowOpacity = 0.07;
-    [contentView addSubview:_cardView];
-
-    UIView *glyphSurface = [[UIView alloc] init];
-    glyphSurface.translatesAutoresizingMaskIntoConstraints = NO;
-    glyphSurface.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.12];
-    glyphSurface.layer.cornerRadius = PPCornerMedium;
-    glyphSurface.layer.cornerCurve = kCACornerCurveContinuous;
-    [_cardView addSubview:glyphSurface];
-
-    UIImageView *glyph = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"bell.badge.fill"]];
-    glyph.translatesAutoresizingMaskIntoConstraints = NO;
-    glyph.tintColor = AppPrimaryClr;
-    glyph.contentMode = UIViewContentModeScaleAspectFit;
-    [glyphSurface addSubview:glyph];
-
-    _typeL = [UILabel new]; _typeL.translatesAutoresizingMaskIntoConstraints = NO;
-    _typeL.font = [Styling fontMedium:13.0];
-    _typeL.textColor = PPTextSecondaryColor();
-    _typeL.textAlignment = [Language alignmentForCurrentLanguage];
-    _typeL.adjustsFontForContentSizeCategory = YES;
-    [_cardView addSubview:_typeL];
-
-    _titleL = [UILabel new]; _titleL.translatesAutoresizingMaskIntoConstraints = NO;
-    _titleL.font = [Styling fontBold:28.0] ?: [UIFont systemFontOfSize:28 weight:UIFontWeightBold];
-    _titleL.numberOfLines = 0;
-    _titleL.textColor = PPTextPrimaryColor();
-    _titleL.textAlignment = [Language alignmentForCurrentLanguage];
-    _titleL.adjustsFontForContentSizeCategory = YES;
-    [_cardView addSubview:_titleL];
-
-    _bodyL = [UILabel new]; _bodyL.translatesAutoresizingMaskIntoConstraints = NO;
-    _bodyL.font = [Styling fontRegular:19.0] ?: [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    _bodyL.numberOfLines = 0;
-    _bodyL.textColor = PPTextPrimaryColor();
-    _bodyL.textAlignment = [Language alignmentForCurrentLanguage];
-    _bodyL.adjustsFontForContentSizeCategory = YES;
-    [_cardView addSubview:_bodyL];
-
-    _timeL = [UILabel new]; _timeL.translatesAutoresizingMaskIntoConstraints = NO;
-    _timeL.font = [Styling fontMedium:13.0] ?: [UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
-    _timeL.textColor = PPTextTertiaryColor();
-    _timeL.textAlignment = [Language alignmentForCurrentLanguage];
-    _timeL.adjustsFontForContentSizeCategory = YES;
-    [_cardView addSubview:_timeL];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [navRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
-        [navRow.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [navRow.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        
-        [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
-        [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor constant:10],
-        [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:-10],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
-
-        [eyebrow.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
-        [eyebrow.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:4],
-        [eyebrow.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor constant:-16],
-        [eyebrow.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:-10],
-
-        [scrollView.topAnchor constraintEqualToAnchor:navRow.bottomAnchor],
-        [scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-
-        [contentView.topAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.topAnchor],
-        [contentView.leadingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.leadingAnchor],
-        [contentView.trailingAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.trailingAnchor],
-        [contentView.bottomAnchor constraintEqualToAnchor:scrollView.contentLayoutGuide.bottomAnchor],
-        [contentView.widthAnchor constraintEqualToAnchor:scrollView.frameLayoutGuide.widthAnchor],
-
-        [_cardView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:PPSpaceXL],
-        [_cardView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:PPSpaceLG],
-        [_cardView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-PPSpaceLG],
-        [_cardView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-PPSpaceXL],
-
-        [glyphSurface.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceXL],
-        [glyphSurface.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:PPSpaceXL],
-        [glyphSurface.widthAnchor constraintEqualToConstant:64.0],
-        [glyphSurface.heightAnchor constraintEqualToConstant:64.0],
-
-        [glyph.centerXAnchor constraintEqualToAnchor:glyphSurface.centerXAnchor],
-        [glyph.centerYAnchor constraintEqualToAnchor:glyphSurface.centerYAnchor],
-        [glyph.widthAnchor constraintEqualToConstant:30.0],
-        [glyph.heightAnchor constraintEqualToConstant:30.0],
-
-        [_typeL.leadingAnchor constraintEqualToAnchor:glyphSurface.trailingAnchor constant:PPSpaceMD],
-        [_typeL.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceXL],
-        [_typeL.centerYAnchor constraintEqualToAnchor:glyphSurface.centerYAnchor],
-
-        [_titleL.topAnchor constraintEqualToAnchor:glyphSurface.bottomAnchor constant:PPSpaceXL],
-        [_titleL.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:PPSpaceXL],
-        [_titleL.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceXL],
-
-        [_bodyL.topAnchor constraintEqualToAnchor:_titleL.bottomAnchor constant:PPSpaceLG],
-        [_bodyL.leadingAnchor constraintEqualToAnchor:_titleL.leadingAnchor],
-        [_bodyL.trailingAnchor constraintEqualToAnchor:_titleL.trailingAnchor],
-
-        [_timeL.topAnchor constraintEqualToAnchor:_bodyL.bottomAnchor constant:PPSpaceXL],
-        [_timeL.leadingAnchor constraintEqualToAnchor:_titleL.leadingAnchor],
-        [_timeL.trailingAnchor constraintEqualToAnchor:_titleL.trailingAnchor],
-        [_timeL.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceXL],
-    ]];
-
-    _titleL.text = PPAdminNotificationDetailTitle(_model);
-    _bodyL.text  = PPAdminNotificationDetailBody(_model);
-    _typeL.text = kLang(@"Notification") ?: @"Notification";
-    NSDateFormatter *fmt = [NSDateFormatter new];
-    fmt.locale = [NSLocale currentLocale];
-    fmt.dateStyle = NSDateFormatterMediumStyle; fmt.timeStyle = NSDateFormatterShortStyle;
-    _timeL.text = [fmt stringFromDate:_model.createdAt ?: [NSDate date]];
-
-    _cardView.isAccessibilityElement = YES;
-    _cardView.accessibilityTraits = UIAccessibilityTraitStaticText;
-    _cardView.accessibilityLabel = [@[_typeL.text ?: @"", _titleL.text ?: @"", _bodyL.text ?: @"", _timeL.text ?: @""] componentsJoinedByString:@", "];
-
-    if (!_model.isRead) {
-        _model.isRead = YES;
-       // [[NotificationManager sharedManager] markRead:_model forUser:_uid completion:nil];
+    [self setupNavigation];
+    [self setupScrollView];
+    [self buildHeroCard];
+    [self buildBodyCard];
+    [self buildActionCardIfNeeded];
+    [self buildMetadataCard];
+    
+    // Mark as read immediately on open
+    if (!self.model.isRead) {
+        self.model.isRead = YES;
+        [[NotificationManager shared] markRead:self.model forUser:self.uid completion:nil];
     }
 }
+
+- (void)setupNavigation {
+    NSString *title = [Language isRTL] ? @"تفاصيل التنبيه" : @"Notification Details";
+    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:title showBack:YES];
+    
+    _readStatusNavButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _readStatusNavButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self updateReadButtonIcon];
+    [_readStatusNavButton addTarget:self action:@selector(toggleReadStatus) forControlEvents:UIControlEventTouchUpInside];
+    [self pp_navBarAddActionButton:_readStatusNavButton key:@"read_toggle"];
+    
+    UIButton *shareBtn = [UIButton buttonWithType:UIButtonTypeSystem];
+    shareBtn.translatesAutoresizingMaskIntoConstraints = NO;
+    [shareBtn setImage:[UIImage systemImageNamed:@"square.and.arrow.up"] forState:UIControlStateNormal];
+    shareBtn.tintColor = [UIColor ppPrimary];
+    [shareBtn addTarget:self action:@selector(shareNotification) forControlEvents:UIControlEventTouchUpInside];
+    [self pp_navBarAddActionButton:shareBtn key:@"share"];
+}
+
+- (void)updateReadButtonIcon {
+    NSString *iconName = self.model.isRead ? @"envelope.fill" : @"envelope.open.fill";
+    [_readStatusNavButton setImage:[UIImage systemImageNamed:iconName] forState:UIControlStateNormal];
+    _readStatusNavButton.tintColor = [UIColor ppPrimary];
+}
+
+- (void)toggleReadStatus {
+    [PPFunc pp_playTapEffect];
+    self.model.isRead = !self.model.isRead;
+    [self updateReadButtonIcon];
+    [[NotificationManager shared] markRead:self.model forUser:self.uid completion:nil];
+    
+    NSString *msg = self.model.isRead
+        ? ([Language isRTL] ? @"تم تحديد التنبيه كمقروء" : @"Marked as read")
+        : ([Language isRTL] ? @"تم تحديد التنبيه كغير مقروء" : @"Marked as unread");
+    [PPHUD showSuccess:msg];
+}
+
+- (void)shareNotification {
+    [PPFunc pp_playTapEffect];
+    NSString *title = self.model.title ?: @"";
+    NSString *body = self.model.body ?: @"";
+    NSString *text = [NSString stringWithFormat:@"%@\n\n%@", title, body];
+    UIActivityViewController *act = [[UIActivityViewController alloc] initWithActivityItems:@[text] applicationActivities:nil];
+    [self presentViewController:act animated:YES completion:nil];
+}
+
+- (void)setupScrollView {
+    _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _scrollView.contentInset = UIEdgeInsetsMake(16, 0, 40, 0);
+    _scrollView.alwaysBounceVertical = YES;
+    [self.view addSubview:_scrollView];
+
+    _contentStack = [[UIStackView alloc] init];
+    _contentStack.translatesAutoresizingMaskIntoConstraints = NO;
+    _contentStack.axis = UILayoutConstraintAxisVertical;
+    _contentStack.spacing = 16;
+    _contentStack.alignment = UIStackViewAlignmentFill;
+    [_scrollView addSubview:_contentStack];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_contentStack.topAnchor constraintEqualToAnchor:_scrollView.topAnchor],
+        [_contentStack.leadingAnchor constraintEqualToAnchor:_scrollView.leadingAnchor constant:16],
+        [_contentStack.trailingAnchor constraintEqualToAnchor:_scrollView.trailingAnchor constant:-16],
+        [_contentStack.bottomAnchor constraintEqualToAnchor:_scrollView.bottomAnchor],
+        [_contentStack.widthAnchor constraintEqualToAnchor:_scrollView.widthAnchor constant:-32]
+    ]];
+}
+
+- (void)buildHeroCard {
+    UIView *card = [self makeSectionCard];
+    
+    NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    NSString *orderID = meta[@"orderId"] ?: meta[@"orderID"];
+    
+    UIColor *accent = [UIColor ppPrimary];
+    NSString *symbol = @"bell.badge.fill";
+    NSString *categoryText = [Language isRTL] ? @"إشعار عام" : @"Notification";
+    
+    if (self.model.type == PPNotificationTypeOrder || orderID.length > 0) {
+        accent = [UIColor ppQuickActionShopping] ?: [UIColor systemOrangeColor];
+        symbol = @"bag.fill";
+        categoryText = [Language isRTL] ? @"طلب متجر" : @"Store Order";
+    } else if (self.model.type == PPNotificationTypeWarning) {
+        accent = [UIColor ppWarning];
+        symbol = @"exclamationmark.triangle.fill";
+        categoryText = [Language isRTL] ? @"تنبيه نظام" : @"System Alert";
+    } else if ([self.model.title containsString:@"support"] || [self.model.title containsString:@"دعم"]) {
+        accent = [UIColor ppQuickActionServices] ?: [UIColor systemGreenColor];
+        symbol = @"bubble.left.and.bubble.right.fill";
+        categoryText = [Language isRTL] ? @"رسالة دعم" : @"Support Message";
+    }
+    
+    UIView *iconSurface = [[UIView alloc] init];
+    iconSurface.translatesAutoresizingMaskIntoConstraints = NO;
+    iconSurface.backgroundColor = [accent colorWithAlphaComponent:0.12];
+    PPApplyContinuousCorners(iconSurface, 18.0);
+    [card addSubview:iconSurface];
+    
+    UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:symbol]];
+    iconView.translatesAutoresizingMaskIntoConstraints = NO;
+    iconView.tintColor = accent;
+    iconView.contentMode = UIViewContentModeScaleAspectFit;
+    [iconSurface addSubview:iconView];
+    
+    UIView *categoryPill = [[UIView alloc] init];
+    categoryPill.translatesAutoresizingMaskIntoConstraints = NO;
+    categoryPill.backgroundColor = [accent colorWithAlphaComponent:0.10];
+    PPApplyContinuousCorners(categoryPill, PPCornerPill);
+    [card addSubview:categoryPill];
+    
+    UILabel *catLabel = [[UILabel alloc] init];
+    catLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    catLabel.font = [Styling fontBold:12.0];
+    catLabel.textColor = accent;
+    catLabel.text = categoryText;
+    [categoryPill addSubview:catLabel];
+    
+    UILabel *timeLabel = [[UILabel alloc] init];
+    timeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    timeLabel.font = [Styling fontMedium:13.0];
+    timeLabel.textColor = [UIColor ppTextSecondary];
+    timeLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    
+    NSDateFormatter *fmt = [[NSDateFormatter alloc] init];
+    fmt.dateStyle = NSDateFormatterMediumStyle;
+    fmt.timeStyle = NSDateFormatterShortStyle;
+    timeLabel.text = [fmt stringFromDate:self.model.createdAt ?: [NSDate date]];
+    [card addSubview:timeLabel];
+    
+    UILabel *titleLabel = [[UILabel alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.font = [Styling fontBold:22.0];
+    titleLabel.textColor = [UIColor ppTextPrimary];
+    titleLabel.numberOfLines = 0;
+    titleLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    
+    NSString *titleKey = meta[@"titleLocalizationKey"];
+    titleLabel.text = (titleKey.length > 0) ? kLang(titleKey) : self.model.title;
+    [card addSubview:titleLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [iconSurface.topAnchor constraintEqualToAnchor:card.topAnchor constant:18],
+        [iconSurface.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [iconSurface.widthAnchor constraintEqualToConstant:56],
+        [iconSurface.heightAnchor constraintEqualToConstant:56],
+        
+        [iconView.centerXAnchor constraintEqualToAnchor:iconSurface.centerXAnchor],
+        [iconView.centerYAnchor constraintEqualToAnchor:iconSurface.centerYAnchor],
+        [iconView.widthAnchor constraintEqualToConstant:30],
+        [iconView.heightAnchor constraintEqualToConstant:30],
+        
+        [categoryPill.centerYAnchor constraintEqualToAnchor:iconSurface.centerYAnchor],
+        [categoryPill.leadingAnchor constraintEqualToAnchor:iconSurface.trailingAnchor constant:14],
+        [categoryPill.heightAnchor constraintEqualToConstant:26],
+        
+        [catLabel.leadingAnchor constraintEqualToAnchor:categoryPill.leadingAnchor constant:10],
+        [catLabel.trailingAnchor constraintEqualToAnchor:categoryPill.trailingAnchor constant:-10],
+        [catLabel.centerYAnchor constraintEqualToAnchor:categoryPill.centerYAnchor],
+        
+        [timeLabel.centerYAnchor constraintEqualToAnchor:categoryPill.centerYAnchor],
+        [timeLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [timeLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:categoryPill.trailingAnchor constant:8],
+        
+        [titleLabel.topAnchor constraintEqualToAnchor:iconSurface.bottomAnchor constant:16],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [titleLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [titleLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18]
+    ]];
+    
+    [_contentStack addArrangedSubview:card];
+}
+
+- (void)buildBodyCard {
+    UIView *card = [self makeSectionCard];
+    
+    UILabel *header = [[UILabel alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.text = [Language isRTL] ? @"نص الإشعار" : @"Notification Message";
+    header.font = [Styling fontBold:15.0];
+    header.textColor = [UIColor ppTextSecondary];
+    header.textAlignment = Language.alignmentForCurrentLanguage;
+    [card addSubview:header];
+    
+    NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    NSString *bodyKey = meta[@"bodyLocalizationKey"];
+    NSString *displayBody = @"";
+    if (bodyKey.length > 0) {
+        NSString *format = kLang(bodyKey);
+        NSString *ref = meta[@"orderReference"] ?: @"";
+        displayBody = (ref.length > 0) ? [NSString stringWithFormat:format, ref] : format;
+    } else {
+        displayBody = self.model.body ?: @"";
+    }
+    
+    UILabel *bodyLabel = [[UILabel alloc] init];
+    bodyLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    bodyLabel.font = [Styling fontRegular:16.0];
+    bodyLabel.textColor = [UIColor ppTextPrimary];
+    bodyLabel.numberOfLines = 0;
+    bodyLabel.textAlignment = Language.alignmentForCurrentLanguage;
+    bodyLabel.text = displayBody;
+    [card addSubview:bodyLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [header.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
+        [header.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [header.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        
+        [bodyLabel.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:10],
+        [bodyLabel.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [bodyLabel.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [bodyLabel.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18]
+    ]];
+    
+    [_contentStack addArrangedSubview:card];
+}
+
+- (void)buildActionCardIfNeeded {
+    NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    NSString *orderID = meta[@"orderId"] ?: meta[@"orderID"];
+    
+    if (orderID.length == 0) return;
+    
+    UIView *card = [self makeSectionCard];
+    
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    btn.backgroundColor = [UIColor ppPrimary];
+    NSString *btnTitle = [Language isRTL]
+        ? [NSString stringWithFormat:@"🛍️ الانتقال إلى تفاصيل الطلب #%@ ➔", orderID]
+        : [NSString stringWithFormat:@"🛍️ View Full Order Details #%@ ➔", orderID];
+    [btn setTitle:btnTitle forState:UIControlStateNormal];
+    [btn setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
+    btn.titleLabel.font = [Styling fontBold:16.0];
+    PPApplyContinuousCorners(btn, PPCornerMedium);
+    PPApplyButtonShadow(btn);
+    [btn addTarget:self action:@selector(openRelatedOrder) forControlEvents:UIControlEventTouchUpInside];
+    [card addSubview:btn];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.topAnchor constraintEqualToAnchor:card.topAnchor constant:14],
+        [btn.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:14],
+        [btn.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-14],
+        [btn.heightAnchor constraintEqualToConstant:50],
+        [btn.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-14]
+    ]];
+    
+    [_contentStack addArrangedSubview:card];
+}
+
+- (void)openRelatedOrder {
+    [PPFunc pp_playTapEffect];
+    NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    NSString *orderID = meta[@"orderId"] ?: meta[@"orderID"];
+    if (orderID.length > 0) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:PPAdminRouteToPaymentOrderNotification
+                                                            object:nil
+                                                          userInfo:@{ PPAdminRouteToPaymentOrderIDUserInfoKey: orderID }];
+        [self.navigationController popViewControllerAnimated:YES];
+    }
+}
+
+- (void)buildMetadataCard {
+    UIView *card = [self makeSectionCard];
+    
+    UILabel *header = [[UILabel alloc] init];
+    header.translatesAutoresizingMaskIntoConstraints = NO;
+    header.text = [Language isRTL] ? @"البيانات الإدارية (Metadata)" : @"Administrative Metadata";
+    header.font = [Styling fontBold:15.0];
+    header.textColor = [UIColor ppTextSecondary];
+    header.textAlignment = Language.alignmentForCurrentLanguage;
+    [card addSubview:header];
+    
+    UIStackView *rowsStack = [[UIStackView alloc] init];
+    rowsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    rowsStack.axis = UILayoutConstraintAxisVertical;
+    rowsStack.spacing = 10;
+    [card addSubview:rowsStack];
+    
+    [rowsStack addArrangedSubview:[self makeMetaRow:[Language isRTL] ? @"معرف الإشعار" : @"Notification ID" value:self.model.nid ?: @"-"]];
+    if (self.model.targetUserID.length > 0) {
+        [rowsStack addArrangedSubview:[self makeMetaRow:[Language isRTL] ? @"المستخدم المستهدف" : @"Target User" value:self.model.targetUserID]];
+    }
+    
+    NSDictionary *meta = [self.model.meta isKindOfClass:NSDictionary.class] ? self.model.meta : @{};
+    if (meta[@"route"]) {
+        [rowsStack addArrangedSubview:[self makeMetaRow:[Language isRTL] ? @"المسار الداخلي" : @"Route" value:[NSString stringWithFormat:@"%@", meta[@"route"]]]];
+    }
+    if (self.model.sourcePath.length > 0) {
+        [rowsStack addArrangedSubview:[self makeMetaRow:[Language isRTL] ? @"المصدر" : @"Source Path" value:self.model.sourcePath]];
+    }
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [header.topAnchor constraintEqualToAnchor:card.topAnchor constant:16],
+        [header.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [header.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        
+        [rowsStack.topAnchor constraintEqualToAnchor:header.bottomAnchor constant:14],
+        [rowsStack.leadingAnchor constraintEqualToAnchor:card.leadingAnchor constant:18],
+        [rowsStack.trailingAnchor constraintEqualToAnchor:card.trailingAnchor constant:-18],
+        [rowsStack.bottomAnchor constraintEqualToAnchor:card.bottomAnchor constant:-18]
+    ]];
+    
+    [_contentStack addArrangedSubview:card];
+}
+
+- (UIView *)makeMetaRow:(NSString *)key value:(NSString *)val {
+    UIView *row = [[UIView alloc] init];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    row.backgroundColor = [UIColor ppSurface];
+    PPApplyContinuousCorners(row, PPCornerSmall);
+    
+    UILabel *keyL = [[UILabel alloc] init];
+    keyL.translatesAutoresizingMaskIntoConstraints = NO;
+    keyL.font = [Styling fontMedium:13.0];
+    keyL.textColor = [UIColor ppTextSecondary];
+    keyL.text = key;
+    keyL.textAlignment = Language.alignmentForCurrentLanguage;
+    [row addSubview:keyL];
+    
+    UILabel *valL = [[UILabel alloc] init];
+    valL.translatesAutoresizingMaskIntoConstraints = NO;
+    valL.font = [UIFont monospacedSystemFontOfSize:12.5 weight:UIFontWeightRegular];
+    valL.textColor = [UIColor ppTextPrimary];
+    valL.text = val;
+    valL.textAlignment = [Language isRTL] ? NSTextAlignmentLeft : NSTextAlignmentRight;
+    [row addSubview:valL];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [row.heightAnchor constraintGreaterThanOrEqualToConstant:36],
+        [keyL.leadingAnchor constraintEqualToAnchor:row.leadingAnchor constant:10],
+        [keyL.centerYAnchor constraintEqualToAnchor:row.centerYAnchor],
+        
+        [valL.trailingAnchor constraintEqualToAnchor:row.trailingAnchor constant:-10],
+        [valL.leadingAnchor constraintGreaterThanOrEqualToAnchor:keyL.trailingAnchor constant:12],
+        [valL.centerYAnchor constraintEqualToAnchor:row.centerYAnchor]
+    ]];
+    return row;
+}
+
+- (UIView *)makeSectionCard {
+    UIView *card = [[UIView alloc] init];
+    card.translatesAutoresizingMaskIntoConstraints = NO;
+    card.backgroundColor = [UIColor ppSurfaceElevated];
+    card.layer.borderWidth = 1.0;
+    card.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    PPApplyContinuousCorners(card, PPCornerCard);
+    PPApplyCardShadow(card);
+    return card;
+}
+
 @end
