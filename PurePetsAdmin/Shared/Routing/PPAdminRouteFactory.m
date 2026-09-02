@@ -47,7 +47,7 @@
     if ([identifier isEqualToString:@"staff"]) return [AdminStaffManagementHostingController new];
     if ([identifier isEqualToString:@"account"]) {
         UserModel *currentUser = [UserManager shared].currentUser;
-        return currentUser ? [UserManagementController accountEditorForUser:currentUser] : nil;
+        return currentUser ? [[PPAdminProfileViewController alloc] initWithUser:currentUser] : nil;
     }
     if ([identifier isEqualToString:@"chats"]) return [PPAdminChatsHostingController new];
     if ([identifier isEqualToString:@"notifications"]) return [NotificationsListViewController new];

@@ -935,11 +935,12 @@ struct AdminPOSFastSellView: View {
         .sheet(isPresented: $showsCustomerPicker) {
             POSCustomerPickerSheet(
                 currentSelected: viewModel.selectedCustomer,
-                canCreateCustomer: session.hasPermission("pos.sell")
-            ) { customer in
-                viewModel.selectedCustomer = customer
-                showsCustomerPicker = false
-            }
+                canCreateCustomer: session.hasPermission("pos.sell"),
+                onSelect: { customer in
+                    viewModel.selectedCustomer = customer
+                    showsCustomerPicker = false
+                }
+            )
         }
         .sheet(isPresented: $showsCategoryLens) {
             POSCategoryLensSheet(viewModel: viewModel)

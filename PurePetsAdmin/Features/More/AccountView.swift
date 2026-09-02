@@ -26,9 +26,8 @@ struct AdminAccountView: View {
                         fallback.view.backgroundColor = .ppBackground
                         return fallback
                     }
-                    let editor = UserManagementController.accountEditor(forUser: user)
-                    editor!.hidesInternalNavigationBar = true
-                    return editor!
+                    let profileVC = PPAdminProfileViewController(user: user)
+                    return profileVC
                 }
             }
         }

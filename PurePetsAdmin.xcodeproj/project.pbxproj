@@ -2541,7 +2541,7 @@
 				);
 				INFOPLIST_FILE = PurePetsAdmin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pure Pets Admin";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Pure Pets Admin uses the camera to scan product barcodes and QR codes in Point of Sale.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Pure Pets Admin uses the camera to scan product codes and capture photos or videos used in app workflows.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "We use Face ID to let you quickly and securely log in without entering your password.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background to track deliveries and update order status.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to show nearby pet services and to help with delivery tracking.";
@@ -2626,7 +2626,7 @@
 				);
 				INFOPLIST_FILE = PurePetsAdmin/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pure Pets Admin";
-				INFOPLIST_KEY_NSCameraUsageDescription = "Pure Pets Admin uses the camera to scan product barcodes and QR codes in Point of Sale.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Pure Pets Admin uses the camera to scan product codes and capture photos or videos used in app workflows.";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "We use Face ID to let you quickly and securely log in without entering your password.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "This app uses your location in the background to track deliveries and update order status.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "This app uses your location to show nearby pet services and to help with delivery tracking.";

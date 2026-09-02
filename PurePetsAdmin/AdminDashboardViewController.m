@@ -15,6 +15,7 @@
 #import "PPAdminWebAppViewController.h"
 #import "UsersListVC.h"
 #import "UserManagementController.h"
+#import "ThirdParty/PPCells/PPSettingsViewController.h"
 #import "AdminLoginViewController.h"
 #import "AddUserViewController.h"
 #import "BlockUserViewController.h"
@@ -3512,7 +3513,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return;
     }
 
-    UIViewController *editor = [UserManagementController accountEditorForUser:UsrMgr.currentUser];
+    PPAdminProfileViewController *editor = [[PPAdminProfileViewController alloc] initWithUser:UsrMgr.currentUser];
     [self.navigationController pushViewController:editor animated:YES];
 }
 
