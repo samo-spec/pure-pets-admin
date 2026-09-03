@@ -24,6 +24,10 @@ static NSString * const kFldPhone       = @"phone";
 static NSString * const kFldIsActive    = @"isActive";
 static NSString * const kFldIsDefault   = @"isDefault";
 static NSString * const kFldStockMode   = @"stockMode";
+static NSString * const kFldManagerId   = @"managerId";
+static NSString * const kFldOperatingHours = @"operatingHours";
+static NSString * const kFldTaxNumber   = @"taxNumber";
+static NSString * const kFldCrNumber    = @"crNumber";
 static NSString * const kFldCreatedAt   = @"createdAt";
 static NSString * const kFldUpdatedAt   = @"updatedAt";
 static NSString * const kFldCreatedBy   = @"createdBy";
@@ -55,6 +59,10 @@ static NSString * const kStockModeBranch   = @"branch";
             kFldIsActive,
             kFldIsDefault,
             kFldStockMode,
+            kFldManagerId,
+            kFldOperatingHours,
+            kFldTaxNumber,
+            kFldCrNumber,
             kFldCreatedAt,
             kFldUpdatedAt,
             kFldCreatedBy,
@@ -89,6 +97,11 @@ static NSString * const kStockModeBranch   = @"branch";
     m.isActive  = [d[kFldIsActive]  boolValue];
     m.isDefault = [d[kFldIsDefault] boolValue];
     m.stockMode = [self stockModeFromRaw:PPSafeString(d[kFldStockMode])];
+
+    m.managerId        = PPSafeString(d[kFldManagerId]);
+    m.operatingHours   = PPSafeString(d[kFldOperatingHours]);
+    m.taxNumber        = PPSafeString(d[kFldTaxNumber]);
+    m.crNumber         = PPSafeString(d[kFldCrNumber]);
 
     // Timestamps — Firestore may send FIRTimestamp; PPSafeDate handles the cast.
     m.createdAt = PPSafeDate(d[kFldCreatedAt]);
@@ -141,6 +154,11 @@ static NSString * const kStockModeBranch   = @"branch";
     d[kFldIsActive]  = @(self.isActive);
     d[kFldIsDefault] = @(self.isDefault);
     d[kFldStockMode] = [self stockModeRawValue];
+
+    if (self.managerId.length)      d[kFldManagerId]      = self.managerId;
+    if (self.operatingHours.length) d[kFldOperatingHours] = self.operatingHours;
+    if (self.taxNumber.length)      d[kFldTaxNumber]      = self.taxNumber;
+    if (self.crNumber.length)       d[kFldCrNumber]       = self.crNumber;
 
     // Always stamp updatedAt on every write.
     d[kFldUpdatedAt] = [NSDate date];

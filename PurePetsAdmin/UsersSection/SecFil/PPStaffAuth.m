@@ -15,7 +15,11 @@
 PPStaffRole const PPStaffRoleSuperAdmin        = @"super_admin";
 PPStaffRole const PPStaffRoleOwner             = @"owner";
 PPStaffRole const PPStaffRoleOperationsManager = @"operations_manager";
+PPStaffRole const PPStaffRoleBranchManager     = @"branch_manager";
 PPStaffRole const PPStaffRoleInventoryManager  = @"inventory_manager";
+PPStaffRole const PPStaffRoleAccountant        = @"accountant";
+PPStaffRole const PPStaffRoleWarehouse         = @"warehouse";
+PPStaffRole const PPStaffRoleSales             = @"sales";
 PPStaffRole const PPStaffRolePaymentsManager   = @"payments_manager";
 PPStaffRole const PPStaffRoleSupportAgent      = @"support_agent";
 PPStaffRole const PPStaffRoleViewer            = @"viewer";
@@ -163,7 +167,10 @@ static PPStaffRole PPStaffNormalizedRole(id value) {
     // must never become an elevated Admin role on the client.
     if ([rawRole isEqualToString:@"SuperAdmin"]) return PPStaffRoleSuperAdmin;
     if ([rawRole isEqualToString:@"Owner"]) return PPStaffRoleOwner;
-    if ([rawRole isEqualToString:@"Accountant"]) return PPStaffRolePaymentsManager;
+    if ([rawRole isEqualToString:@"BranchManager"]) return PPStaffRoleBranchManager;
+    if ([rawRole isEqualToString:@"Accountant"]) return PPStaffRoleAccountant;
+    if ([rawRole isEqualToString:@"Warehouse"]) return PPStaffRoleWarehouse;
+    if ([rawRole isEqualToString:@"Sales"]) return PPStaffRoleSales;
     if ([rawRole isEqualToString:@"InventoryManager"]) return PPStaffRoleInventoryManager;
     if ([rawRole isEqualToString:@"Staff"]) return PPStaffRoleViewer;
     if ([rawRole isEqualToString:@"Viewer"]) return PPStaffRoleViewer;
@@ -181,7 +188,11 @@ static PPStaffRole PPStaffNormalizedRole(id value) {
         PPStaffRoleSuperAdmin,
         PPStaffRoleOwner,
         PPStaffRoleOperationsManager,
+        PPStaffRoleBranchManager,
         PPStaffRoleInventoryManager,
+        PPStaffRoleAccountant,
+        PPStaffRoleWarehouse,
+        PPStaffRoleSales,
         PPStaffRolePaymentsManager,
         PPStaffRoleSupportAgent,
         PPStaffRoleViewer,
@@ -343,6 +354,51 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         }
     }
     return NO;
+}
+
+- (NSArray<NSString *> *)assignedBranchIDs {
+    NSArray *branches = self.scope[@"branchIds"];
+    if ([branches isKindOfClass:NSArray.class]) {
+        return branches;
+    }
+    return @[];
+}
+
+- (NSString *)defaultBranchID {
+    NSString *def = PPStaffSafeString(self.scope[@"defaultBranchId"]);
+    if (def.length > 0) return def;
+    return self.assignedBranchIDs.firstObject;
+}
+
+- (NSDictionary<NSString *, NSArray<NSString *> *> *)branchPermissions {
+    NSDictionary *perms = self.scope[@"branchPermissions"];
+    if ([perms isKindOfClass:NSDictionary.class]) {
+        return perms;
+    }
+    return nil;
+}
+
+- (BOOL)hasAccessToBranch:(NSString *)branchID {
+    if (!branchID.length || !self.isActive) return NO;
+    if (self.hasGlobalScope || self.isAdmin) return YES;
+    return [self.assignedBranchIDs containsObject:branchID];
+}
+
+- (BOOL)hasPermission:(NSString *)perm inBranch:(NSString * _Nullable)branchID {
+    if (!perm.length || !self.isActive) return NO;
+    if (self.isAdmin) return YES;
+    if (branchID.length && ![self hasAccessToBranch:branchID]) return NO;
+    if (branchID.length && self.branchPermissions[branchID]) {
+        NSArray<NSString *> *branchPerms = self.branchPermissions[branchID];
+        if ([branchPerms isKindOfClass:NSArray.class]) {
+            return [branchPerms containsObject:perm];
+        }
+    }
+    return [self hasPermission:perm];
+}
+
+- (NSString *)localizedRoleName {
+    return [PPStaffAuth localizedRoleName:self.role];
 }
 
 @end
@@ -572,6 +628,48 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         return permissions.copy;
     }
 
+    if ([normalizedRole isEqualToString:PPStaffRoleBranchManager]) {
+        return @[
+            kStaffPermDashboardView,
+            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate,
+            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
+            kStaffPermAccountingView,
+            kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryAssign,
+            kStaffPermReportsView,
+            kStaffPermNotificationsView,
+        ];
+    }
+
+    if ([normalizedRole isEqualToString:PPStaffRoleAccountant]) {
+        return @[
+            kStaffPermDashboardView,
+            kStaffPermAccountingView, kStaffPermAccountingManage,
+            kStaffPermPaymentsView, kStaffPermPaymentsManage,
+            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
+            kStaffPermReportsView, kStaffPermReportsExport,
+            kStaffPermNotificationsView,
+        ];
+    }
+
+    if ([normalizedRole isEqualToString:PPStaffRoleWarehouse]) {
+        return @[
+            kStaffPermDashboardView,
+            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate,
+            kStaffPermDeliveryView, kStaffPermDeliveryDispatch,
+            kStaffPermCategoriesView,
+            kStaffPermNotificationsView,
+        ];
+    }
+
+    if ([normalizedRole isEqualToString:PPStaffRoleSales]) {
+        return @[
+            kStaffPermDashboardView,
+            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
+            kStaffPermStockView,
+            kStaffPermNotificationsView,
+        ];
+    }
+
     if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager]) {
         return @[
             kStaffPermDashboardView,
@@ -613,6 +711,10 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
     if ([normalizedRole isEqualToString:PPStaffRoleSuperAdmin])        return kLang(@"StaffRole_SuperAdmin");
     if ([normalizedRole isEqualToString:PPStaffRoleOwner])             return kLang(@"StaffRole_Owner");
     if ([normalizedRole isEqualToString:PPStaffRoleOperationsManager]) return kLang(@"StaffRole_OperationsManager");
+    if ([normalizedRole isEqualToString:PPStaffRoleBranchManager])     return kLang(@"StaffRole_BranchManager");
+    if ([normalizedRole isEqualToString:PPStaffRoleAccountant])        return kLang(@"StaffRole_Accountant");
+    if ([normalizedRole isEqualToString:PPStaffRoleWarehouse])         return kLang(@"StaffRole_Warehouse");
+    if ([normalizedRole isEqualToString:PPStaffRoleSales])             return kLang(@"StaffRole_Sales");
     if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager])  return kLang(@"StaffRole_InventoryManager");
     if ([normalizedRole isEqualToString:PPStaffRolePaymentsManager])   return kLang(@"StaffRole_PaymentsManager");
     if ([normalizedRole isEqualToString:PPStaffRoleSupportAgent])      return kLang(@"StaffRole_SupportAgent");

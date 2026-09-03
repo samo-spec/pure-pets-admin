@@ -357,6 +357,10 @@ static NSDictionary *PPNavTitleAttributes(void) {
 #pragma mark - Swizzled implementations
 
 - (void)pp_swz_viewWillAppear:(BOOL)animated {
+    if (self.navigationController) {
+        [self.navigationController pp_enableSwipeToPop];
+    }
+
     BOOL usesSystemNavigation = PPUsesCommandCenterSystemNavigation(self);
     if (usesSystemNavigation) {
         PPRemoveOverlayNavigationBar(self);
@@ -1031,6 +1035,101 @@ static NSDictionary *PPNavTitleAttributes(void) {
     DLog(@"[PPNavBar] 🔄 Force replaced RIGHT custom view (RTL=%d)", PPIsRTL(self));
     return navBarTitleView;
 }
+@end
+
+#pragma mark - Universal Swipe to Pop
+
+static const void *kPPInteractivePopDelegateKey = &kPPInteractivePopDelegateKey;
+
+@interface PPInteractivePopGestureDelegate : NSObject <UIGestureRecognizerDelegate>
+@property (nonatomic, weak) UINavigationController *navigationController;
+/// UIKit's original recognizer delegate. Retained as a forwarding target so replacing
+/// the delegate never strips UIKit's own interactive-transition callbacks.
+@property (nonatomic, weak) id<UIGestureRecognizerDelegate> systemDelegate;
+@end
+
+@implementation PPInteractivePopGestureDelegate
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    UINavigationController *nav = self.navigationController;
+    if (!nav) return NO;
+    
+    // Only allow swipe to pop when there are 2 or more view controllers on the stack
+    if (nav.viewControllers.count <= 1) {
+        return NO;
+    }
+    
+    // Prevent starting pop gesture while an animated transition is in progress
+    id<UIViewControllerTransitionCoordinator> coordinator = nav.transitionCoordinator;
+    if (coordinator && [coordinator isAnimated]) {
+        return NO;
+    }
+
+    // Do not bypass custom back action (e.g. unsaved changes prompt)
+    if (PPCommandCenterNavigationHasCustomBackAction(nav.topViewController)) {
+        return NO;
+    }
+    
+    return YES;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return NO;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    // Never install a failure requirement here. `UIScreenEdgePanGestureRecognizer` is itself a
+    // `UIPanGestureRecognizer`, so requiring every pan to fail first made nested navigation
+    // controllers depend on each other (a gesture dependency cycle) and blocked table scrolling.
+    return NO;
+}
+
+#pragma mark Forwarding to UIKit's original delegate
+
+- (BOOL)respondsToSelector:(SEL)aSelector {
+    if ([super respondsToSelector:aSelector]) {
+        return YES;
+    }
+    id<UIGestureRecognizerDelegate> systemDelegate = self.systemDelegate;
+    return systemDelegate != nil && [systemDelegate respondsToSelector:aSelector];
+}
+
+- (id)forwardingTargetForSelector:(SEL)aSelector {
+    id<UIGestureRecognizerDelegate> systemDelegate = self.systemDelegate;
+    if (systemDelegate != nil && [systemDelegate respondsToSelector:aSelector]) {
+        return systemDelegate;
+    }
+    return [super forwardingTargetForSelector:aSelector];
+}
+
+@end
+
+@implementation UINavigationController (PPSwipeToPop)
+
+- (void)pp_enableSwipeToPop {
+    if (!self.interactivePopGestureRecognizer) return;
+
+    PPInteractivePopGestureDelegate *popDelegate = objc_getAssociatedObject(self, kPPInteractivePopDelegateKey);
+    if (!popDelegate) {
+        popDelegate = [[PPInteractivePopGestureDelegate alloc] init];
+        popDelegate.navigationController = self;
+        objc_setAssociatedObject(self, kPPInteractivePopDelegateKey, popDelegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    id<UIGestureRecognizerDelegate> currentDelegate = self.interactivePopGestureRecognizer.delegate;
+    if (currentDelegate != nil && currentDelegate != popDelegate) {
+        popDelegate.systemDelegate = currentDelegate;
+    }
+
+    self.interactivePopGestureRecognizer.delegate = popDelegate;
+    self.interactivePopGestureRecognizer.enabled = YES;
+
+    BOOL isRTL = [Language isRTL];
+    if ([self.interactivePopGestureRecognizer isKindOfClass:[UIScreenEdgePanGestureRecognizer class]]) {
+        ((UIScreenEdgePanGestureRecognizer *)self.interactivePopGestureRecognizer).edges = isRTL ? UIRectEdgeRight : UIRectEdgeLeft;
+    }
+}
+
 @end
 
 /*

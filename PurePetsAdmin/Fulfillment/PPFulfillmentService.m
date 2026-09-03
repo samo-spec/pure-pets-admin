@@ -218,6 +218,16 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         _customerID = PPSafeString(dict[@"customerID"]);
         if (!_customerID.length) _customerID = _parentUserId;
         _customerName = PPSafeString(dict[@"customerName"]);
+        NSDictionary *address = PPSafeDict(dict[@"shippingAddressSnapshot"]);
+        if (!address.count) address = PPSafeDict(dict[@"deliveryAddress"]);
+        if (!_customerName.length) {
+            _customerName = PPSafeString(address[@"fullName"]);
+            if (!_customerName.length) _customerName = PPSafeString(address[@"displayName"]);
+        }
+        _customerPhone = PPSafeString(address[@"phoneNumber"]);
+        if (!_customerPhone.length) _customerPhone = PPSafeString(address[@"phone"]);
+        _deliveryAddress = PPSafeString(address[@"addressLine1"]);
+        if (!_deliveryAddress.length) _deliveryAddress = PPSafeString(address[@"locationName"]);
         _ownerID = PPSafeString(dict[@"ownerID"]);
         if (!_ownerID.length) _ownerID = PPSafeString(dict[@"ownerId"]);
         _ownerType = PPSafeString(dict[@"ownerType"]);
@@ -466,6 +476,45 @@ static NSArray<FIRDocumentSnapshot *> *PPFulfillmentMergeDocuments(NSArray<NSArr
         [composite addRegistration:registration];
     }];
     return composite;
+}
+
+- (void)refreshFulfillmentFromServer:(NSString *)fulfillmentID
+                          completion:(void(^)(PPFulfillmentRecord *, NSError *))completion {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (!PPFulfillmentCanRead(staff) || !PPFulfillmentHasReadableScope(staff)) {
+        if (completion) completion(nil, PPFulfillmentReadError(PPFulfillmentCanRead(staff) ? 411 : 410,
+                                                               PPFulfillmentCanRead(staff) ? @"PPOrder_Error_MissingReadScope" : @"PPOrder_Error_NoReadPermission"));
+        return;
+    }
+    NSString *safeFulfillmentID = [fulfillmentID isKindOfClass:NSString.class]
+        ? [fulfillmentID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    if (!safeFulfillmentID.length) {
+        if (completion) completion(nil, PPFulfillmentReadError(414, @"Fulfillment_OverrideInvalid"));
+        return;
+    }
+
+    FIRDocumentReference *ref = [[[FIRFirestore firestore] collectionWithPath:@"FulfillmentOrders"] documentWithPath:safeFulfillmentID];
+    [ref getDocumentWithSource:FIRFirestoreSourceServer completion:^(FIRDocumentSnapshot *snap, NSError *error) {
+        if (!PPFulfillmentStaffSessionIsCurrent(staff)) {
+            if (completion) completion(nil, PPFulfillmentReadError(412, @"PPOrder_Error_SessionChanged"));
+            return;
+        }
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        if (!snap.exists) {
+            NSError *notFound = [NSError errorWithDomain:NSCocoaErrorDomain code:NSFileNoSuchFileError userInfo:nil];
+            if (completion) completion(nil, notFound);
+            return;
+        }
+        if (!PPFulfillmentStaffCanReachData(staff, snap.data)) {
+            if (completion) completion(nil, PPFulfillmentReadError(411, @"PPOrder_Error_MissingReadScope"));
+            return;
+        }
+        if (completion) completion([[PPFulfillmentRecord alloc] initWithDictionary:snap.data documentID:snap.documentID], nil);
+    }];
 }
 
 - (void)fetchFulfillmentDetail:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord *, NSArray *, NSError *))completion {

@@ -493,23 +493,33 @@ private struct InventoryItemRow: View {
 
     @ViewBuilder
     private var thumbnailView: some View {
-        if let urlString = item.imageURLsArray.first,
-           let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                case .failure:
-                    placeholderIcon
-                case .empty:
-                    ProgressView().tint(AdminSurface.primary)
-                @unknown default:
-                    placeholderIcon
+        Group {
+            if let urlString = item.imageURLsArray.first,
+               let url = URL(string: urlString) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 56, height: 56)
+                            .clipped()
+                    case .failure:
+                        placeholderIcon
+                    case .empty:
+                        ProgressView().tint(AdminSurface.primary)
+                    @unknown default:
+                        placeholderIcon
+                    }
                 }
+                .frame(width: 56, height: 56)
+                .clipped()
+            } else {
+                placeholderIcon
             }
-        } else {
-            placeholderIcon
         }
+        .frame(width: 56, height: 56)
+        .clipped()
     }
 
     private var placeholderIcon: some View {

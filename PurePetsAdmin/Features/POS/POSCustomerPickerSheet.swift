@@ -338,9 +338,38 @@ final class POSCustomerPickerViewModel: ObservableObject {
                 let list = snapshot.documents.compactMap { doc -> PPInventoryBranchOption? in
                     let data = doc.data()
                     if data["isActive"] as? Bool == false { return nil }
-                    let name = (data["name"] as? String) ?? (data["nameAr"] as? String) ?? (data["branchName"] as? String) ?? doc.documentID
-                    return PPInventoryBranchOption(id: doc.documentID, name: name)
-                }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+                    var nameAr = (data["nameAr"] as? String) ?? ""
+                    var nameEn = (data["nameEn"] as? String) ?? ""
+                    if let nameMap = data["name"] as? [String: Any] {
+                        if nameAr.isEmpty { nameAr = (nameMap["ar"] as? String) ?? "" }
+                        if nameEn.isEmpty { nameEn = (nameMap["en"] as? String) ?? "" }
+                    } else if let nameStr = data["name"] as? String, nameAr.isEmpty {
+                        if nameStr.lowercased().contains("reservation") {
+                            nameAr = Language.get("ReservationBranch", alter: "فرع الحجوزات")
+                            nameEn = "Reservation Branch"
+                        } else {
+                            nameAr = nameStr
+                        }
+                    }
+                    if let branchName = data["branchName"] as? String, nameAr.isEmpty {
+                        nameAr = branchName
+                    }
+                    let code = (data["code"] as? String) ?? ""
+                    let address = (data["address"] as? String) ?? ""
+                    let phone = (data["phone"] as? String) ?? ""
+                    let isDefault = (data["isDefault"] as? Bool) ?? false
+                    let stockMode = (data["stockMode"] as? String) ?? ""
+                    return PPInventoryBranchOption(
+                        id: doc.documentID,
+                        code: code,
+                        nameAr: nameAr,
+                        nameEn: nameEn,
+                        address: address,
+                        phone: phone,
+                        isDefault: isDefault,
+                        stockMode: stockMode
+                    )
+                }.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
                 self?.branches = list
             } catch {
                 // Non-critical

@@ -603,16 +603,18 @@ static NSString *PPAccountingDateString(NSDate *date) {
     [self.tableView reloadData];
 
     __weak typeof(self) weakSelf = self;
+    id<FIRListenerRegistration> wsReg = [self.service subscribeAccountingWorkspaceWithFilter:self.currentFilter callback:^(PPAccountingWorkspaceSnapshot * _Nullable snapshot) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf dataUpdated];
+        });
+    }];
     id<FIRListenerRegistration> txnReg = [self.service subscribeTransactionsWithFilter:self.currentFilter callback:^{
         [weakSelf dataUpdated];
     }];
     id<FIRListenerRegistration> expReg = [self.service subscribeExpensesWithFilter:self.currentFilter callback:^{
         [weakSelf dataUpdated];
     }];
-    id<FIRListenerRegistration> revReg = [self.service subscribeOrderRevenueWithFilter:self.currentFilter callback:^{
-        [weakSelf dataUpdated];
-    }];
-    self.listeners = @[txnReg, expReg, revReg];
+    self.listeners = @[wsReg, txnReg, expReg];
 }
 
 - (void)dataUpdated {

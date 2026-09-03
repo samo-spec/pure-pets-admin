@@ -114,6 +114,12 @@ private struct PPLivePetUnitPhotoDraft {
     var uploadedURL: String?
 }
 
+private struct PPLivePetUnitPhotoMetadataSnapshot: Sendable {
+    let contentType: String?
+    let size: Int64
+    let customMetadata: [String: String]
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -394,12 +400,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func setupStoreOptions() {
         var options: [(id: String, name: String)] = []
-        let mainName = Language.get("Main Store", alter: "المتجر الرئيسي")
-        options.append(("main_store", mainName))
-        
-        if let currentUID = Auth.auth().currentUser?.uid, !currentUID.isEmpty, currentUID != "main_store" {
-            let myName = Auth.auth().currentUser?.displayName ?? Language.get("My Store", alter: "متجري")
-            options.append((currentUID, myName.isEmpty ? Language.get("My Store", alter: "متجري") : myName))
+        let branches = BranchContextStore.shared.availableBranches
+        if !branches.isEmpty {
+            for b in branches {
+                options.append((b.branchID, b.localizedName()))
+            }
+        } else {
+            let mainName = Language.get("Main Store", alter: "المتجر الرئيسي")
+            options.append(("main_store", mainName))
         }
         
         if let existingID = editingAccessory?.storeID, !existingID.isEmpty, !options.contains(where: { $0.id == existingID }) {
@@ -408,8 +416,18 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         
         self.availableStores = options
-        if selectedStoreName.isEmpty {
-            selectedStoreName = options.first?.name ?? mainName
+        
+        if selectedStoreName.isEmpty || selectedStoreName == Language.get("Main Store", alter: "المتجر الرئيسي") || selectedStoreName == "Pure Pets" {
+            if let matched = options.first(where: { $0.id == selectedStoreID }) {
+                selectedStoreName = matched.name
+            } else if let active = BranchContextStore.shared.activeBranch {
+                selectedStoreID = active.branchID
+                selectedStoreName = active.localizedName()
+            } else {
+                selectedStoreName = options.first?.name ?? Language.get("Main Store", alter: "المتجر الرئيسي")
+            }
+        } else if let matched = options.first(where: { $0.id == selectedStoreID }) {
+            selectedStoreName = matched.name
         }
     }
 
@@ -984,7 +1002,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if let existingMetadata = try await livePetUnitPhotoMetadata(for: reference) {
                 guard existingMetadata.contentType == "image/jpeg",
                       existingMetadata.size == Int64(photo.encodedData.count),
-                      expectedMetadata.allSatisfy({ existingMetadata.customMetadata?[$0.key] == $0.value }) else {
+                      expectedMetadata.allSatisfy({ existingMetadata.customMetadata[$0.key] == $0.value }) else {
                     throw livePetUnitPhotoError(
                         code: 3,
                         key: "LivePetIntake_UnitPhotoStagedConflict",
@@ -1009,14 +1027,20 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         return mediaByUnitID
     }
 
-    private func livePetUnitPhotoMetadata(for reference: StorageReference) async throws -> StorageMetadata? {
+    private func livePetUnitPhotoMetadata(
+        for reference: StorageReference
+    ) async throws -> PPLivePetUnitPhotoMetadataSnapshot? {
         do {
             return try await withCheckedThrowingContinuation { continuation in
                 reference.getMetadata { metadata, error in
                     if let error {
                         continuation.resume(throwing: error)
                     } else if let metadata {
-                        continuation.resume(returning: metadata)
+                        continuation.resume(returning: PPLivePetUnitPhotoMetadataSnapshot(
+                            contentType: metadata.contentType,
+                            size: metadata.size,
+                            customMetadata: metadata.customMetadata ?? [:]
+                        ))
                     } else {
                         continuation.resume(throwing: self.livePetUnitPhotoError(
                             code: 4,
@@ -1523,6 +1547,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private func completeSuccessfulSave(message: String) {
         guard !hasCompletedSave else { return }
         isSubmitting = false
+        livePetUnitPhotos.removeAll()
         hasUnsavedChanges = false
         submissionFailureKind = nil
         pendingUnsavedUploads.removeAll()
@@ -2020,44 +2045,51 @@ struct PPAccessoryEditorScreen: View {
             // Ambient Spatial Canvas Background
             AdminSurface.background
                 .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
 
             VStack(spacing: 0) {
-                // Top Sovereign Command Header
-                sovereignHeaderView
-
-                // Spatial Stage Navigation Radar
-                stageRadarView
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.bottom, 8)
-
                 // Scrollable Master Canvas
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: 16) {
-                            // Archetype Selector (when applicable)
-                            if viewModel.showTypeRow && viewModel.editingAccessory == nil {
-                                archetypeSelectorDeck
-                            }
+                        VStack(spacing: 0) {
+                            // Top Sovereign Command Header
+                            sovereignHeaderView
 
-                            // Interactive Digital Twin Hologram
-                            digitalTwinHologramDeck
+                            // Spatial Stage Navigation Radar
+                            stageRadarView
+                                .padding(.horizontal, AdminSpacing.screenMargin)
+                                .padding(.bottom, 8)
 
-                            // Dynamic Stage Sections
-                            switch viewModel.activeStage {
-                            case .identity:
-                                identityStageCanvas
-                            case .bioVault:
-                                bioVaultStageCanvas
-                            case .pricing:
-                                pricingStageCanvas
-                            case .governance:
-                                governanceStageCanvas
+                            LazyVStack(spacing: 16) {
+                                // Archetype Selector (when applicable)
+                                if viewModel.showTypeRow && viewModel.editingAccessory == nil {
+                                    archetypeSelectorDeck
+                                }
+
+                                // Interactive Digital Twin Hologram
+                                digitalTwinHologramDeck
+
+                                // Dynamic Stage Sections
+                                switch viewModel.activeStage {
+                                case .identity:
+                                    identityStageCanvas
+                                case .bioVault:
+                                    bioVaultStageCanvas
+                                case .pricing:
+                                    pricingStageCanvas
+                                case .governance:
+                                    governanceStageCanvas
+                                }
                             }
+                            .padding(.horizontal, AdminSpacing.screenMargin)
+                            .padding(.top, 6)
+                            .padding(.bottom, 130)
                         }
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, 6)
-                        .padding(.bottom, 130)
                     }
+                    .scrollDismissesKeyboardCompat()
                 }
             }
 
@@ -2091,15 +2123,17 @@ struct PPAccessoryEditorScreen: View {
             )
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
-            PPAccessoryStorePickerSheet(
-                stores: viewModel.availableStores,
-                selectedStoreID: viewModel.selectedStoreID,
-                onSelect: { storeID, storeName in
-                    viewModel.selectedStoreID = storeID
-                    viewModel.selectedStoreName = storeName
-                    viewModel.showStorePicker = false
-                }
-            )
+            PPBranchSelectionGateView(
+                title: Language.isRTL() ? "اختر الفرع المالك" : "Select Owning Branch",
+                subtitle: Language.isRTL() ? "سينسب الصنف والمخزون إلى هذا الفرع." : "Inventory and operations will be assigned to this branch.",
+                selectedBranchID: viewModel.selectedStoreID,
+                allowGlobalAccess: false
+            ) { selectedBranch in
+                viewModel.selectedStoreID = selectedBranch.branchID
+                viewModel.selectedStoreName = selectedBranch.localizedName()
+                viewModel.showStorePicker = false
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
 
@@ -2321,12 +2355,16 @@ struct PPAccessoryEditorScreen: View {
                 } else if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
                     AsyncImage(url: url) { phase in
                         if let img = phase.image {
-                            img.resizable().aspectRatio(contentMode: .fill)
+                            img.resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 82, height: 82)
+                                .clipped()
                         } else {
                             Image(systemName: "photo.fill").foregroundStyle(AdminCommandInk.tertiary)
                         }
                     }
                     .frame(width: 82, height: 82)
+                    .clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -2638,12 +2676,16 @@ struct PPAccessoryEditorScreen: View {
                             if let url = URL(string: urlString) {
                                 AsyncImage(url: url) { phase in
                                     if let img = phase.image {
-                                        img.resizable().aspectRatio(contentMode: .fill)
+                                        img.resizable()
+                                            .aspectRatio(contentMode: .fill)
+                                            .frame(width: 92, height: 92)
+                                            .clipped()
                                     } else {
                                         Color.gray.opacity(0.2)
                                     }
                                 }
                                 .frame(width: 92, height: 92)
+                                .clipped()
                                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             }
 
@@ -4027,9 +4069,10 @@ private struct PPUIKitDismissalGuard: UIViewControllerRepresentable {
         uiViewController.update(isBlocked: isBlocked)
     }
 
-    final class Controller: UIViewController {
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
         private var isBlocked = false
         private var didDisableInteractivePop = false
+        private var dismissTap: UITapGestureRecognizer?
 
         override func viewDidLoad() {
             super.viewDidLoad()
@@ -4040,11 +4083,13 @@ private struct PPUIKitDismissalGuard: UIViewControllerRepresentable {
         override func didMove(toParent parent: UIViewController?) {
             super.didMove(toParent: parent)
             applyGuard()
+            setupKeyboardDismissTap()
         }
 
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             applyGuard()
+            setupKeyboardDismissTap()
         }
 
         func update(isBlocked: Bool) {
@@ -4052,6 +4097,34 @@ private struct PPUIKitDismissalGuard: UIViewControllerRepresentable {
             DispatchQueue.main.async { [weak self] in
                 self?.applyGuard()
             }
+        }
+
+        private func setupKeyboardDismissTap() {
+            guard dismissTap == nil, let hostView = parent?.view else { return }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleDismissTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            hostView.addGestureRecognizer(tap)
+            dismissTap = tap
+        }
+
+        @objc private func handleDismissTap() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var current = touch.view
+            while let v = current {
+                if v is UITextField || v is UITextView {
+                    return false
+                }
+                current = v.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
 
         private func applyGuard() {
@@ -4084,6 +4157,11 @@ private struct PPLivePetIntakeJourney: View {
     @State private var previewNotesExpanded = false
     @State private var stageMessage: String?
     @State private var previewMedia: PPLivePetPreviewMedia?
+    @State private var unitPhotoTargetID: String?
+    @State private var showUnitPhotoSource = false
+    @State private var showUnitPhotoLibrary = false
+    @State private var showUnitPhotoCamera = false
+    @State private var showCameraAccessAlert = false
     @Namespace private var genderSelectionNamespace
 
     private enum FocusedField: Hashable {
@@ -4109,11 +4187,12 @@ private struct PPLivePetIntakeJourney: View {
             intakeBackground
 
             VStack(spacing: 0) {
-                intakeHeader
-                    .accessibilitySortPriority(4)
-
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.base) {
+                    VStack(spacing: 0) {
+                        intakeHeader
+                            .accessibilitySortPriority(4)
+
+                        VStack(spacing: AdminSpacing.base) {
                         journeyCompass
                             .accessibilitySortPriority(3)
 
@@ -4134,7 +4213,9 @@ private struct PPLivePetIntakeJourney: View {
                     .padding(.top, AdminSpacing.sm)
                     .padding(.bottom, AdminSpacing.lg)
                 }
-                .id(viewModel.activeStage)
+            }
+            .scrollDismissesKeyboardCompat()
+            .id(viewModel.activeStage)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 actionDock
@@ -4170,6 +4251,56 @@ private struct PPLivePetIntakeJourney: View {
                 stageMessage = message
                 UIAccessibility.post(notification: .announcement, argument: message)
             }
+        }
+        .confirmationDialog(
+            tr("LivePetIntake_UnitPhotoSourceTitle", "صورة هذا الحيوان"),
+            isPresented: $showUnitPhotoSource,
+            titleVisibility: .visible
+        ) {
+            Button(tr("LivePetIntake_UnitPhotoCamera", "التقاط صورة")) {
+                requestUnitPhotoCamera()
+            }
+            Button(tr("LivePetIntake_UnitPhotoLibrary", "اختيار من مكتبة الصور")) {
+                showUnitPhotoLibrary = true
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr(
+                "LivePetIntake_UnitPhotoSourceMessage",
+                "سترتبط الصورة بسجل هذا الحيوان فقط ولن تُنسخ إلى الحيوانات الأخرى."
+            ))
+        }
+        .sheet(isPresented: $showUnitPhotoLibrary) {
+            PPLivePetPhotoPicker(maxSelection: 1) { images, failedCount in
+                if let image = images.first {
+                    acceptUnitPhoto(image)
+                } else if failedCount > 0 {
+                    presentUnitPhotoMessage(tr(
+                        "LivePetIntake_UnitPhotoImportFailed",
+                        "تعذر استيراد الصورة المحددة. اختر صورة أخرى وحاول مجدداً."
+                    ))
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showUnitPhotoCamera) {
+            PPLivePetCameraPicker { image in
+                acceptUnitPhoto(image)
+            }
+        }
+        .alert(
+            tr("LivePetIntake_UnitPhotoCameraPermissionTitle", "السماح باستخدام الكاميرا"),
+            isPresented: $showCameraAccessAlert
+        ) {
+            Button(tr("LivePetIntake_OpenSettings", "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr(
+                "LivePetIntake_UnitPhotoCameraPermissionMessage",
+                "فعّل إذن الكاميرا من الإعدادات لالتقاط صورة خاصة بهذا الحيوان، أو اختر صورة من المكتبة."
+            ))
         }
         .sheet(isPresented: $viewModel.showSpeciesPicker) {
             PPLivePetChoiceSheet(
@@ -4217,29 +4348,17 @@ private struct PPLivePetIntakeJourney: View {
             )
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
-            PPLivePetChoiceSheet(
+            PPBranchSelectionGateView(
                 title: tr("LivePetIntake_SelectBranch", "اختر الفرع المالك"),
                 subtitle: tr("LivePetIntake_SelectBranchSub", "سيُنسب المخزون والحركة الافتتاحية إلى هذا الفرع."),
-                searchPrompt: tr("LivePetIntake_SearchBranch", "ابحث عن فرع"),
-                emptyTitle: tr("LivePetIntake_NoBranches", "لا توجد فروع متاحة"),
-                selectedID: viewModel.selectedStoreID,
-                choices: viewModel.availableStores.map { store in
-                    PPLivePetChoice(
-                        id: store.id,
-                        title: store.name,
-                        subtitle: store.id == "main_store"
-                            ? tr("LivePetIntake_MainBranch", "الفرع الرئيسي")
-                            : tr("LivePetIntake_ManagedBranch", "فرع متاح لهذا الحساب"),
-                        symbol: store.id == "main_store" ? "building.2.fill" : "storefront.fill"
-                    )
-                },
-                onSelect: { selectedID in
-                    guard let store = viewModel.availableStores.first(where: { $0.id == selectedID }) else { return }
-                    viewModel.selectedStoreID = store.id
-                    viewModel.selectedStoreName = store.name
-                    viewModel.showStorePicker = false
-                }
-            )
+                selectedBranchID: viewModel.selectedStoreID,
+                allowGlobalAccess: false
+            ) { selectedBranch in
+                viewModel.selectedStoreID = selectedBranch.branchID
+                viewModel.selectedStoreName = selectedBranch.localizedName()
+                viewModel.showStorePicker = false
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $previewMedia) { media in
             PPLivePetMediaPreview(media: media)
@@ -4271,6 +4390,10 @@ private struct PPLivePetIntakeJourney: View {
     private var intakeBackground: some View {
         AdminSurface.background
             .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
             .accessibilityHidden(true)
     }
 
@@ -4304,6 +4427,69 @@ private struct PPLivePetIntakeJourney: View {
             },
             cancelBlock: nil
         )
+    }
+
+    private func presentUnitPhotoSource(for unitID: String) {
+        focusedField = nil
+        guard viewModel.canManageStock else {
+            presentUnitPhotoMessage(tr(
+                "LivePetIntake_UnitPhotoPermissionRequired",
+                "تحتاج إلى صلاحية إدارة المخزون لإرفاق صورة الحيوان."
+            ))
+            return
+        }
+        unitPhotoTargetID = unitID
+        showUnitPhotoSource = true
+    }
+
+    private func acceptUnitPhoto(_ image: UIImage) {
+        guard let unitID = unitPhotoTargetID else { return }
+        if let errorMessage = viewModel.setLivePetUnitPhoto(image, unitID: unitID) {
+            presentUnitPhotoMessage(errorMessage)
+        } else {
+            stageMessage = nil
+            let message = tr(
+                "LivePetIntake_UnitPhotoSelectedAnnouncement",
+                "تم إرفاق الصورة بهذا الحيوان فقط."
+            )
+            UIAccessibility.post(notification: .announcement, argument: message)
+        }
+    }
+
+    private func presentUnitPhotoMessage(_ message: String) {
+        stageMessage = message
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        UIAccessibility.post(notification: .announcement, argument: message)
+    }
+
+    private func requestUnitPhotoCamera() {
+        guard unitPhotoTargetID != nil else { return }
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            presentUnitPhotoMessage(tr(
+                "LivePetIntake_UnitPhotoCameraUnavailable",
+                "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            ))
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showUnitPhotoCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        showUnitPhotoCamera = true
+                    } else {
+                        showCameraAccessAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            showCameraAccessAlert = true
+        @unknown default:
+            showCameraAccessAlert = true
+        }
     }
 
     private var intakeHeader: some View {
@@ -4772,12 +4958,16 @@ private struct PPLivePetIntakeJourney: View {
             } label: {
                 AsyncImage(url: URL(string: urlString)) { phase in
                     if let image = phase.image {
-                        image.resizable().scaledToFill()
+                        image.resizable()
+                            .scaledToFill()
+                            .frame(width: 82, height: 82)
+                            .clipped()
                     } else {
                         mediaPlaceholder(symbol: "photo")
                     }
                 }
                 .frame(width: 82, height: 82)
+                .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
                 .overlay(primaryThumbnailBorder(isPrimary: index == 0))
             }
@@ -5353,47 +5543,87 @@ private struct PPLivePetIntakeJourney: View {
     ) -> some View {
         let expanded = expandedUnitID == unit.id
         let readiness = unitReadiness(for: unit)
+        let photo = viewModel.livePetUnitPhoto(for: unit.id)
 
         return VStack(spacing: 0) {
-            passportSpine(index: index, unit: unit, readiness: readiness, expanded: expanded)
+            passportSpine(
+                index: index,
+                unit: unit,
+                readiness: readiness,
+                expanded: expanded,
+                photo: photo
+            )
 
             if expanded {
                 Rectangle()
-                    .fill(AdminSurface.hairline)
+                    .fill(AdminSurface.hairline.opacity(0.72))
                     .frame(height: 0.75)
 
                 passportBody(index: index, unit: unit, binding: binding, readiness: readiness)
             }
         }
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
                 .strokeBorder(
-                    readiness.isSubmittable ? AdminSurface.hairline : readiness.tint.opacity(0.42),
-                    lineWidth: readiness.isSubmittable ? 0.75 : 1.25
+                    expanded
+                        ? readiness.tint.opacity(0.54)
+                        : (readiness.isSubmittable ? AdminSurface.hairline : readiness.tint.opacity(0.42)),
+                    lineWidth: expanded ? 1.25 : (readiness.isSubmittable ? 0.75 : 1)
                 )
         )
+        .overlay(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(readiness.tint)
+                .frame(width: 3)
+                .padding(.vertical, AdminSpacing.md)
+                .opacity(expanded ? 1 : 0.52)
+                .accessibilityHidden(true)
+        }
         .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .shadow(
+            color: Color.black.opacity(expanded ? 0.065 : 0.025),
+            radius: expanded ? 14 : 5,
+            x: 0,
+            y: expanded ? 6 : 2
+        )
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.22), value: expanded)
         .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2), value: readiness.isSubmittable)
     }
 
-    /// Collapsed row. Carries enough to decide whether the passport needs to be
-    /// opened at all: readiness dial, identity, gender and price.
+    /// Collapsed decision row. The progress aperture becomes the animal's image
+    /// when one exists, while preserving completion, identity, sex and price at
+    /// a glance. Tapping it changes only expansion state.
     private func passportSpine(
         index: Int,
         unit: PPLivePetUnitDraft,
         readiness: PPUnitReadiness,
-        expanded: Bool
+        expanded: Bool,
+        photo: UIImage?
     ) -> some View {
         let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
 
         return Button {
             setExpandedUnit(expanded ? nil : unit.id)
         } label: {
-            HStack(spacing: AdminSpacing.md) {
-                readinessDial(index: index, readiness: readiness)
+            HStack(alignment: .center, spacing: AdminSpacing.md) {
+                passportIdentityAperture(
+                    index: index,
+                    readiness: readiness,
+                    photo: photo
+                )
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    HStack(spacing: AdminSpacing.xs) {
+                        readinessStatusPill(readiness)
+                        if photo != nil {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                                .accessibilityHidden(true)
+                        }
+                    }
+
                     Text(ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring)
                         .font(ring.isEmpty
                             ? AdminType.calloutBold
@@ -5458,26 +5688,30 @@ private struct PPLivePetIntakeJourney: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    /// Index numeral wrapped in an arc that fills as the required fields are
-    /// satisfied. One glyph answers "which animal" and "how far along" at once.
-    private func readinessDial(index: Int, readiness: PPUnitReadiness) -> some View {
+    /// A photo-aware completion aperture. The ring remains the authoritative
+    /// readiness signal; the image is identity context, never completion proof.
+    private func passportIdentityAperture(
+        index: Int,
+        readiness: PPUnitReadiness,
+        photo: UIImage?
+    ) -> some View {
         ZStack {
             Circle()
-                .strokeBorder(AdminSurface.hairline, lineWidth: 2.5)
+                .fill(readiness.tint.opacity(0.09))
 
-            Circle()
-                .trim(from: 0, to: max(0.001, readiness.progress))
-                .stroke(readiness.tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.28), value: readiness.progress)
-
-            if readiness.isDuplicateIdentity {
+            if let photo {
+                Image(uiImage: photo)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+            } else if readiness.isDuplicateIdentity {
                 Image(systemName: "exclamationmark")
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.system(size: 16, weight: .heavy))
                     .foregroundStyle(readiness.tint)
             } else if readiness.isSubmittable {
                 Image(systemName: "checkmark")
-                    .font(.system(size: 14, weight: .heavy))
+                    .font(.system(size: 15, weight: .heavy))
                     .foregroundStyle(readiness.tint)
                     .transition(.opacity)
             } else {
@@ -5487,9 +5721,50 @@ private struct PPLivePetIntakeJourney: View {
                     .foregroundStyle(AdminSurface.primaryText)
                     .environment(\.layoutDirection, .leftToRight)
             }
+
+            Circle()
+                .strokeBorder(AdminSurface.hairline, lineWidth: 2.5)
+
+            Circle()
+                .trim(from: 0, to: max(0.001, readiness.progress))
+                .stroke(readiness.tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.28), value: readiness.progress)
         }
-        .frame(width: 42, height: 42)
+        .frame(width: 52, height: 52)
+        .overlay(alignment: .bottomTrailing) {
+            if photo != nil {
+                Text("\(index + 1)")
+                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .frame(width: 19, height: 19)
+                    .background(readiness.tint, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.surface, lineWidth: 2))
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
         .accessibilityHidden(true)
+    }
+
+    private func readinessStatusPill(_ readiness: PPUnitReadiness) -> some View {
+        let symbol: String
+        if readiness.isDuplicateIdentity {
+            symbol = "exclamationmark.triangle.fill"
+        } else if readiness.isSubmittable {
+            symbol = "checkmark.circle.fill"
+        } else if readiness.isUntouched {
+            symbol = "circle.dashed"
+        } else {
+            symbol = "circle.lefthalf.filled"
+        }
+
+        return Label(readiness.statusSummary, systemImage: symbol)
+            .font(AdminType.caption2Bold)
+            .foregroundStyle(readiness.tint)
+            .padding(.horizontal, AdminSpacing.xs)
+            .padding(.vertical, 3)
+            .background(readiness.tint.opacity(0.10), in: Capsule(style: .continuous))
     }
 
     /// Compact gender pill for the collapsed row. Absent gender is stated
@@ -5518,62 +5793,103 @@ private struct PPLivePetIntakeJourney: View {
         binding: Binding<PPLivePetUnitDraft>,
         readiness: PPUnitReadiness
     ) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.base) {
-            identityField(unit: unit, binding: binding, readiness: readiness)
-
-            unitGenderSelector(unit: unit)
-
-            moneyFields(unit: unit, binding: binding)
-
-            receivedDateField(binding: binding)
-
-            intakeField(
-                caption: tr("LivePetIntake_SupplierField", "المورد أو المصدر"),
-                symbol: "shippingbox.fill",
-                required: false,
-                optionalNote: tr("LivePetIntake_Optional", "اختياري"),
-                focused: focusedField == .unitSupplier(unit.id)
-            ) {
-                TextField(
-                    "",
-                    text: binding.supplier,
-                    prompt: promptText(tr("LivePetIntake_SupplierPrompt", "اسم المورد أو المزرعة"))
+        VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                passportSectionHeader(
+                    sequence: 1,
+                    symbol: "viewfinder.circle.fill",
+                    title: tr("LivePetIntake_PassportIdentityTitle", "إشارة الهوية"),
+                    subtitle: tr(
+                        "LivePetIntake_PassportIdentitySubtitle",
+                        "صورة تشغيلية وهوية فريدة تميّزان هذا الحيوان عن بقية الدفعة."
+                    )
                 )
-                .font(AdminType.body)
-                .foregroundStyle(AdminSurface.primaryText)
-                .focused($focusedField, equals: .unitSupplier(unit.id))
-                .submitLabel(.next)
-                .onSubmit { focusedField = .unitNotes(unit.id) }
-                .accessibilityLabel(tr("LivePetIntake_SupplierField", "المورد أو المصدر"))
+
+                identityCaptureLayout(unit: unit, binding: binding, readiness: readiness)
+                unitGenderSelector(unit: unit)
             }
 
-            intakeField(
-                caption: tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"),
-                symbol: "text.alignleft",
-                required: false,
-                optionalNote: tr("LivePetIntake_Optional", "اختياري"),
-                focused: focusedField == .unitNotes(unit.id)
-            ) {
-                TextField(
-                    "",
-                    text: binding.notes,
-                    prompt: promptText(tr("LivePetIntake_NotesPrompt", "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
+            passportSectionDivider
+
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                passportSectionHeader(
+                    sequence: 2,
+                    symbol: "point.3.filled.connected.trianglepath.dotted",
+                    title: tr("LivePetIntake_PassportCommercialTitle", "الإحداثيات التجارية"),
+                    subtitle: tr(
+                        "LivePetIntake_PassportCommercialSubtitle",
+                        "قيم البيع والاستلام تخص هذا الحيوان وحده."
+                    )
                 )
-                .font(AdminType.body)
-                .foregroundStyle(AdminSurface.primaryText)
-                .focused($focusedField, equals: .unitNotes(unit.id))
-                .submitLabel(.done)
-                .onSubmit { focusedField = nil }
-                .accessibilityLabel(tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"))
+                moneyFields(unit: unit, binding: binding)
+            }
+
+            passportSectionDivider
+
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                passportSectionHeader(
+                    sequence: 3,
+                    symbol: "clock.arrow.circlepath",
+                    title: tr("LivePetIntake_PassportProvenanceTitle", "سياق الوصول"),
+                    subtitle: tr(
+                        "LivePetIntake_PassportProvenanceSubtitle",
+                        "متى وصل الحيوان ومن أين، مع ملاحظات الفريق الداخلية."
+                    )
+                )
+
+                receivedDateField(binding: binding)
+
+                intakeField(
+                    caption: tr("LivePetIntake_SupplierField", "المورد أو المصدر"),
+                    symbol: "shippingbox.fill",
+                    required: false,
+                    optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+                    focused: focusedField == .unitSupplier(unit.id)
+                ) {
+                    TextField(
+                        "",
+                        text: binding.supplier,
+                        prompt: promptText(tr("LivePetIntake_SupplierPrompt", "اسم المورد أو المزرعة"))
+                    )
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .focused($focusedField, equals: .unitSupplier(unit.id))
+                    .submitLabel(.next)
+                    .onSubmit { focusedField = .unitNotes(unit.id) }
+                    .accessibilityLabel(tr("LivePetIntake_SupplierField", "المورد أو المصدر"))
+                }
+
+                intakeField(
+                    caption: tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"),
+                    symbol: "text.alignleft",
+                    required: false,
+                    optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+                    focused: focusedField == .unitNotes(unit.id)
+                ) {
+                    TextField(
+                        "",
+                        text: binding.notes,
+                        prompt: promptText(tr("LivePetIntake_NotesPrompt", "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
+                    )
+                    .font(AdminType.body)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .focused($focusedField, equals: .unitNotes(unit.id))
+                    .submitLabel(.done)
+                    .onSubmit { focusedField = nil }
+                    .accessibilityLabel(tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"))
+                }
             }
 
             passportActions(index: index, unit: unit)
         }
         .padding(AdminSpacing.md)
-        // A wash derived from the text colour recesses the body against the card
-        // in both light and dark appearances, which is what makes the inputs
-        // read as raised controls instead of flat blocks.
-        .background(AdminSurface.primaryText.opacity(0.035))
+        .background(
+            LinearGradient(
+                colors: [readiness.tint.opacity(0.045), AdminSurface.primaryText.opacity(0.018)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .transition(
             accessibilityReduceMotion
                 ? .opacity
@@ -5582,6 +5898,192 @@ private struct PPLivePetIntakeJourney: View {
                     removal: .opacity
                 )
         )
+    }
+
+    @ViewBuilder
+    private func identityCaptureLayout(
+        unit: PPLivePetUnitDraft,
+        binding: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                unitPhotoCard(unit: unit)
+                identityField(unit: unit, binding: binding, readiness: readiness)
+            }
+        } else {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                unitPhotoCard(unit: unit)
+                    .frame(width: 124)
+                identityField(unit: unit, binding: binding, readiness: readiness)
+            }
+        }
+    }
+
+    private func unitPhotoCard(unit: PPLivePetUnitDraft) -> some View {
+        let photo = viewModel.livePetUnitPhoto(for: unit.id)
+        let canAttach = viewModel.canManageStock
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            ZStack(alignment: .topTrailing) {
+                Button {
+                    if let photo {
+                        previewMedia = PPLivePetPreviewMedia(source: .local(photo))
+                    } else {
+                        presentUnitPhotoSource(for: unit.id)
+                    }
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .fill(photo == nil ? AdminSurface.primary.opacity(0.055) : AdminSurface.control)
+
+                        if let photo {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .clipped()
+
+                            LinearGradient(
+                                colors: [.clear, Color.black.opacity(0.44)],
+                                startPoint: .center,
+                                endPoint: .bottom
+                            )
+
+                            Label(
+                                tr("LivePetIntake_UnitPhotoPreview", "معاينة"),
+                                systemImage: "arrow.up.left.and.arrow.down.right"
+                            )
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(.white)
+                            .padding(AdminSpacing.xs)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        } else {
+                            VStack(spacing: AdminSpacing.xs) {
+                                Image(systemName: canAttach ? "camera.aperture" : "lock.fill")
+                                    .font(.system(size: 25, weight: .semibold))
+                                    .foregroundStyle(canAttach ? AdminSurface.primary : AdminSurface.secondaryText)
+                                Text(tr("LivePetIntake_UnitPhotoAdd", "أضف صورة"))
+                                    .font(AdminType.captionBold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(tr("LivePetIntake_Optional", "اختياري"))
+                                    .font(AdminType.caption2)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                            .multilineTextAlignment(.center)
+                            .padding(AdminSpacing.sm)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 178 : 138)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .strokeBorder(
+                                photo == nil ? AdminSurface.primary.opacity(0.30) : AdminSurface.hairline,
+                                style: StrokeStyle(lineWidth: 1, dash: photo == nil ? [5, 4] : [])
+                            )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                .disabled(!canAttach && photo == nil)
+                .accessibilityLabel(photo == nil
+                    ? tr("LivePetIntake_UnitPhotoAddAccessibility", "إضافة صورة لهذا الحيوان")
+                    : tr("LivePetIntake_UnitPhotoPreviewAccessibility", "معاينة صورة هذا الحيوان"))
+                .accessibilityHint(photo == nil
+                    ? tr("LivePetIntake_UnitPhotoAddHint", "يفتح الكاميرا أو مكتبة الصور")
+                    : tr("LivePetIntake_UnitPhotoPreviewHint", "يفتح الصورة بملء الشاشة"))
+
+                if photo != nil {
+                    Button(role: .destructive) {
+                        viewModel.removeLivePetUnitPhoto(unitID: unit.id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .background(Color.black.opacity(0.58), in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(2)
+                    .accessibilityLabel(tr("LivePetIntake_UnitPhotoRemove", "إزالة صورة هذا الحيوان"))
+                    .accessibilityHint(tr("LivePetIntake_UnitPhotoRemoveHint", "يزيل الصورة المحلية قبل حفظ الإدخال"))
+                }
+            }
+
+            Button {
+                presentUnitPhotoSource(for: unit.id)
+            } label: {
+                Label(
+                    photo == nil
+                        ? tr("LivePetIntake_UnitPhotoChoose", "اختيار صورة")
+                        : tr("LivePetIntake_UnitPhotoReplace", "استبدال الصورة"),
+                    systemImage: photo == nil ? "plus" : "arrow.triangle.2.circlepath"
+                )
+                .font(AdminType.captionBold)
+                .foregroundStyle(canAttach ? AdminSurface.primary : AdminSurface.secondaryText)
+                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
+                .background(AdminSurface.primary.opacity(canAttach ? 0.08 : 0.035), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            }
+            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+            .disabled(!canAttach)
+
+            Label(
+                tr("LivePetIntake_UnitPhotoInternalNote", "ترتبط بسجل هذا الحيوان فقط"),
+                systemImage: "link.badge.plus"
+            )
+            .font(AdminType.caption2)
+            .foregroundStyle(AdminSurface.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func passportSectionHeader(
+        sequence: Int,
+        symbol: String,
+        title: String,
+        subtitle: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.09))
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .frame(width: 38, height: 38)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+                    Text(String(format: "%02d", sequence))
+                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primary)
+                        .environment(\.layoutDirection, .leftToRight)
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Text(subtitle)
+                    .font(AdminType.caption)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var passportSectionDivider: some View {
+        Rectangle()
+            .fill(AdminSurface.hairline.opacity(0.72))
+            .frame(height: 0.75)
+            .accessibilityHidden(true)
     }
 
     private func identityField(
@@ -5746,18 +6248,20 @@ private struct PPLivePetIntakeJourney: View {
     /// untouched animal submits `UNSPECIFIED` rather than a guess.
     private func unitGenderSelector(unit: PPLivePetUnitDraft) -> some View {
         VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(spacing: AdminSpacing.xs) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
                 Image(systemName: "allergens.fill")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(AdminSurface.secondaryText)
+                    .foregroundStyle(AdminSurface.primary)
                 Text(tr("LivePetIntake_UnitGender", "جنس هذا الحيوان"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
-                Spacer(minLength: 0)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: AdminSpacing.xs)
                 if unit.gender == .unspecified {
                     Text(tr("LivePetIntake_GenderUnsetNote", "سيُحفظ كغير محدد"))
                         .font(AdminType.caption2)
                         .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
@@ -5765,22 +6269,22 @@ private struct PPLivePetIntakeJourney: View {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(spacing: AdminSpacing.xs) {
                         ForEach(PPLivePetUnitGender.allCases) { option in
-                            genderOption(option, unit: unit, stacked: false)
+                            genderOption(option, unit: unit, compact: false)
                         }
                     }
                 } else {
                     HStack(spacing: AdminSpacing.xs) {
                         ForEach(PPLivePetUnitGender.allCases) { option in
-                            genderOption(option, unit: unit, stacked: true)
+                            genderOption(option, unit: unit, compact: true)
                         }
                     }
                 }
             }
             .padding(AdminSpacing.xs)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .background(AdminSurface.primaryText.opacity(0.025), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+                    .strokeBorder(AdminSurface.hairline.opacity(0.75), lineWidth: 0.75)
             )
         }
         .accessibilityElement(children: .contain)
@@ -5790,7 +6294,7 @@ private struct PPLivePetIntakeJourney: View {
     private func genderOption(
         _ option: PPLivePetUnitGender,
         unit: PPLivePetUnitDraft,
-        stacked: Bool
+        compact: Bool
     ) -> some View {
         let selected = unit.gender == option
         let tint = Color(uiColor: option.tint)
@@ -5799,47 +6303,54 @@ private struct PPLivePetIntakeJourney: View {
             viewModel.setLivePetUnitGender(option, unitID: unit.id)
         } label: {
             Group {
-                if stacked {
-                    VStack(spacing: 3) {
+                if compact {
+                    VStack(spacing: 4) {
                         Image(systemName: option.symbolName)
                             .font(.system(size: 15, weight: .semibold))
                         Text(option.localizedShortTitle)
                             .font(AdminType.caption2Bold)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.75)
+                            .minimumScaleFactor(0.72)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .frame(maxWidth: .infinity, minHeight: 56)
                 } else {
                     HStack(spacing: AdminSpacing.sm) {
                         Image(systemName: option.symbolName)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 16, weight: .semibold))
                         Text(option.localizedTitle)
                             .font(AdminType.calloutBold)
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                         if selected {
-                            Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .heavy))
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
                         }
                     }
                     .padding(.horizontal, AdminSpacing.md)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .leading)
                 }
             }
-            .foregroundStyle(selected ? .white : AdminSurface.primaryText)
+            .foregroundStyle(selected ? tint : AdminSurface.primaryText)
             .background(
                 ZStack {
+                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                        .fill(AdminSurface.surface)
                     if selected {
                         RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                            .fill(tint)
+                            .fill(tint.opacity(0.13))
                             .matchedGeometryEffect(id: unit.id, in: genderSelectionNamespace)
                     }
                 }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder(selected ? tint.opacity(0.48) : Color.clear, lineWidth: 1)
             )
             .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
         .animation(
-            accessibilityReduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82),
+            accessibilityReduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84),
             value: unit.gender
         )
         .accessibilityLabel(option.localizedTitle)
@@ -6491,19 +7002,32 @@ private struct PPLivePetIntakeJourney: View {
 
     @ViewBuilder
     private var snapshotImage: some View {
-        if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    mediaPlaceholder(symbol: "pawprint.fill")
+        Group {
+            if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable()
+                            .scaledToFill()
+                            .frame(width: 88, height: 88)
+                            .clipped()
+                    } else {
+                        mediaPlaceholder(symbol: "pawprint.fill")
+                    }
                 }
+                .frame(width: 88, height: 88)
+                .clipped()
+            } else if let first = viewModel.pickedImages.first {
+                Image(uiImage: first)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 88, height: 88)
+                    .clipped()
+            } else {
+                mediaPlaceholder(symbol: "pawprint.fill")
             }
-        } else if let first = viewModel.pickedImages.first {
-            Image(uiImage: first).resizable().scaledToFill()
-        } else {
-            mediaPlaceholder(symbol: "pawprint.fill")
         }
+        .frame(width: 88, height: 88)
+        .clipped()
     }
 
     private var branchSelector: some View {
@@ -7651,6 +8175,51 @@ private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
     }
 }
 
+private struct PPLivePetCameraPicker: UIViewControllerRepresentable {
+    let onPicked: (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.cameraCaptureMode = .photo
+        picker.allowsEditing = false
+        picker.delegate = context.coordinator
+        picker.modalPresentationStyle = .fullScreen
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: PPLivePetCameraPicker
+
+        init(parent: PPLivePetCameraPicker) {
+            self.parent = parent
+        }
+
+        func imagePickerController(
+            _ picker: UIImagePickerController,
+            didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
+        ) {
+            guard let image = info[.originalImage] as? UIImage else {
+                parent.dismiss()
+                return
+            }
+            parent.onPicked(image)
+            parent.dismiss()
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            parent.dismiss()
+        }
+    }
+}
+
 private struct PPLivePetPressStyle: ButtonStyle {
     let reduceMotion: Bool
 
@@ -7721,27 +8290,30 @@ private struct PPAccessoryFoodIntakeJourney: View {
             catalogBackground
 
             VStack(spacing: 0) {
-                catalogHeader
-                    .accessibilitySortPriority(4)
-
                 ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.base) {
-                        catalogCompass
-                            .accessibilitySortPriority(3)
-                        catalogFeedback
-                        catalogStageScene
-                            .id(viewModel.activeStage)
-                            .transition(
-                                accessibilityReduceMotion
-                                    ? .opacity
-                                    : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-                            )
-                            .accessibilitySortPriority(2)
+                    VStack(spacing: 0) {
+                        catalogHeader
+                            .accessibilitySortPriority(4)
+
+                        VStack(spacing: AdminSpacing.base) {
+                            catalogCompass
+                                .accessibilitySortPriority(3)
+                            catalogFeedback
+                            catalogStageScene
+                                .id(viewModel.activeStage)
+                                .transition(
+                                    accessibilityReduceMotion
+                                        ? .opacity
+                                        : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+                                )
+                                .accessibilitySortPriority(2)
+                        }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.sm)
+                        .padding(.bottom, AdminSpacing.lg)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.sm)
-                    .padding(.bottom, AdminSpacing.lg)
                 }
+                .scrollDismissesKeyboardCompat()
                 .id(viewModel.activeStage)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -7816,29 +8388,17 @@ private struct PPAccessoryFoodIntakeJourney: View {
             )
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
-            PPLivePetChoiceSheet(
+            PPBranchSelectionGateView(
                 title: tr("CatalogIntake_SelectStore", "اختر الفرع المالك"),
                 subtitle: tr("CatalogIntake_SelectStoreSub", "سيُنسب الصنف والمخزون إلى هذا الفرع."),
-                searchPrompt: tr("CatalogIntake_SearchStore", "ابحث عن فرع"),
-                emptyTitle: tr("CatalogIntake_NoStores", "لا توجد فروع متاحة"),
-                selectedID: viewModel.selectedStoreID,
-                choices: viewModel.availableStores.map { store in
-                    PPLivePetChoice(
-                        id: store.id,
-                        title: store.name,
-                        subtitle: store.id == "main_store"
-                            ? tr("CatalogIntake_MainStore", "الفرع الرئيسي")
-                            : tr("CatalogIntake_ManagedStore", "فرع متاح لهذا الحساب"),
-                        symbol: store.id == "main_store" ? "building.2.fill" : "storefront.fill"
-                    )
-                },
-                onSelect: { selectedID in
-                    guard let store = viewModel.availableStores.first(where: { $0.id == selectedID }) else { return }
-                    viewModel.selectedStoreID = store.id
-                    viewModel.selectedStoreName = store.name
-                    viewModel.showStorePicker = false
-                }
-            )
+                selectedBranchID: viewModel.selectedStoreID,
+                allowGlobalAccess: false
+            ) { selectedBranch in
+                viewModel.selectedStoreID = selectedBranch.branchID
+                viewModel.selectedStoreName = selectedBranch.localizedName()
+                viewModel.showStorePicker = false
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $previewMedia) { media in
             PPLivePetMediaPreview(media: media)
@@ -7863,6 +8423,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private var catalogBackground: some View {
         AdminSurface.background
             .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            }
             .accessibilityHidden(true)
     }
 
@@ -9079,5 +9643,18 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     private func tr(_ key: String, _ fallback: String) -> String {
         Language.get(key, alter: fallback)
+    }
+}
+
+// MARK: - Scroll Dismisses Keyboard Compatibility
+
+fileprivate extension View {
+    @ViewBuilder
+    func scrollDismissesKeyboardCompat() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDismissesKeyboard(.interactively)
+        } else {
+            self
+        }
     }
 }

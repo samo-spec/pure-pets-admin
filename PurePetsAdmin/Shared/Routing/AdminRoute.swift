@@ -354,6 +354,8 @@ internal final class AdminLegacyRouteContainerController: UIViewController, UINa
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.pp_enableSwipeToPop()
+        workflowNavigationController?.pp_enableSwipeToPop()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -426,6 +428,7 @@ private final class AdminGlobalNavigationStackController: UINavigationController
     override func viewDidLoad() {
         super.viewDidLoad()
         super.setNavigationBarHidden(true, animated: false)
+        pp_enableSwipeToPop()
     }
 
     override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {

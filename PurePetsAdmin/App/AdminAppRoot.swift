@@ -121,6 +121,9 @@ final class AdminSessionStore: ObservableObject {
                       session.displayName, session.roleIdentifier, session.permissions.count)
                 self.state = .authenticated(session)
                 self.startStaffObservation(for: session.uid)
+                PPStaffAuth.shared().fetchStaffDoc(session.uid) { staffDoc, _ in
+                    PPBranchContextManager.shared().configure(withStaff: staffDoc, completion: nil)
+                }
             }
         }
     }
@@ -157,6 +160,7 @@ final class AdminSessionStore: ObservableObject {
                 }
             } else {
                 self.state = .unauthenticated
+                BranchContextStore.shared.clear()
             }
         }
     }
@@ -292,6 +296,7 @@ struct AdminAppRoot: View {
     @ObservedObject var sessionStore: AdminSessionStore
     @ObservedObject var authenticationState: AuthenticationState
     @ObservedObject var router: AdminRouter
+    @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -303,6 +308,12 @@ struct AdminAppRoot: View {
                 AdminLoginView(state: authenticationState)
             case let .authenticated(session):
                 AdminAppShell(session: session, sessionStore: sessionStore, router: router)
+                    .fullScreenCover(isPresented: Binding(
+                        get: { branchStore.needsBranchSelection },
+                        set: { _ in }
+                    )) {
+                        PPBranchSelectionGateView()
+                    }
             }
         }
         .ignoresSafeArea()

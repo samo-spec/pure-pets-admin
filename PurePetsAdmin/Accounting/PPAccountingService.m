@@ -2,6 +2,20 @@
 #import "PPStaffAuth.h"
 @import FirebaseFirestore;
 @import FirebaseAuth;
+@import FirebaseFunctions;
+
+static NSString *PPAccountingNormalizePeriod(NSString *filter) {
+    NSString *f = [filter lowercaseString];
+    if ([f isEqualToString:@"today"]) return @"today";
+    if ([f isEqualToString:@"week"] || [f isEqualToString:@"this_week"]) return @"this_week";
+    if ([f isEqualToString:@"month"] || [f isEqualToString:@"this_month"]) return @"this_month";
+    if ([f isEqualToString:@"quarter"] || [f isEqualToString:@"this_quarter"]) return @"this_quarter";
+    if ([f isEqualToString:@"year"] || [f isEqualToString:@"this_year"]) return @"this_year";
+    if ([f isEqualToString:@"last_month"]) return @"last_month";
+    if ([f isEqualToString:@"last_year"]) return @"last_year";
+    if ([f isEqualToString:@"all"] || [f isEqualToString:@"all_time"]) return @"all_time";
+    return @"this_month";
+}
 
 static NSString * const PPAccountingOrderScopeErrorDomain = @"PPAccountingOrderScope";
 static NSString * const PPAccountingPartialReadMarkerKey = @"PPAccountingPartialRead";
@@ -185,6 +199,104 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 @end
 
+@implementation PPAccountingWorkspaceDashboard
+- (instancetype)initWithDictionary:(NSDictionary *)dict {
+    self = [super init];
+    if (self && [dict isKindOfClass:NSDictionary.class]) {
+        _currency = PPSafeString(dict[@"currency"]) ?: @"QAR";
+        _income = PPSafeDouble(dict[@"income"]);
+        _incomeMinor = [dict[@"incomeMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"incomeMinor"] longLongValue] : 0;
+        _expenses = PPSafeDouble(dict[@"expenses"]);
+        _expensesMinor = [dict[@"expensesMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"expensesMinor"] longLongValue] : 0;
+        _netProfit = PPSafeDouble(dict[@"netProfit"]);
+        _netProfitMinor = [dict[@"netProfitMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"netProfitMinor"] longLongValue] : 0;
+        _cashIn = PPSafeDouble(dict[@"cashIn"]);
+        _cashInMinor = [dict[@"cashInMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"cashInMinor"] longLongValue] : 0;
+        _cashOut = PPSafeDouble(dict[@"cashOut"]);
+        _cashOutMinor = [dict[@"cashOutMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"cashOutMinor"] longLongValue] : 0;
+        _currentCashBalance = PPSafeDouble(dict[@"currentCashBalance"]);
+        _currentCashBalanceMinor = [dict[@"currentCashBalanceMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"currentCashBalanceMinor"] longLongValue] : 0;
+        _categoryIncomeMinor = [dict[@"categoryIncomeMinor"] isKindOfClass:NSDictionary.class] ? dict[@"categoryIncomeMinor"] : @{};
+        _categoryExpenseMinor = [dict[@"categoryExpenseMinor"] isKindOfClass:NSDictionary.class] ? dict[@"categoryExpenseMinor"] : @{};
+    }
+    return self;
+}
+@end
+
+@implementation PPAccountingDocument
+- (instancetype)initWithDictionary:(NSDictionary *)dict {
+    self = [super init];
+    if (self && [dict isKindOfClass:NSDictionary.class]) {
+        _documentID = PPSafeString(dict[@"id"]);
+        _documentNumber = PPSafeString(dict[@"documentNumber"]) ?: _documentID;
+        _kind = PPSafeString(dict[@"kind"]) ?: @"income";
+        _status = PPSafeString(dict[@"status"]) ?: @"paid";
+        _accountingDateKey = PPSafeString(dict[@"accountingDateKey"]);
+        _currency = PPSafeString(dict[@"currency"]) ?: @"QAR";
+        _total = PPSafeDouble(dict[@"total"]);
+        _totalMinor = [dict[@"totalMinor"] respondsToSelector:@selector(longLongValue)] ? [dict[@"totalMinor"] longLongValue] : 0;
+        _categoryId = [dict[@"categoryId"] isKindOfClass:NSString.class] ? dict[@"categoryId"] : nil;
+        _categoryName = [dict[@"categoryName"] isKindOfClass:NSString.class] ? dict[@"categoryName"] : nil;
+        _descriptionText = [dict[@"description"] isKindOfClass:NSString.class] ? dict[@"description"] : nil;
+        _sourceType = [dict[@"sourceType"] isKindOfClass:NSString.class] ? dict[@"sourceType"] : nil;
+        _sourceDocumentId = [dict[@"sourceDocumentId"] isKindOfClass:NSString.class] ? dict[@"sourceDocumentId"] : nil;
+        _isLegacy = [dict[@"legacy"] boolValue];
+        _canonicalLinked = [dict[@"canonicalLinked"] boolValue];
+    }
+    return self;
+}
+@end
+
+@implementation PPAccountingWorkspaceSnapshot
+- (instancetype)initWithDictionary:(NSDictionary *)dict {
+    self = [super init];
+    if (self && [dict isKindOfClass:NSDictionary.class]) {
+        NSDictionary *range = [dict[@"range"] isKindOfClass:NSDictionary.class] ? dict[@"range"] : @{};
+        _period = PPSafeString(range[@"period"]);
+        _fromDateKey = PPSafeString(range[@"fromDateKey"]);
+        _toDateKey = PPSafeString(range[@"toDateKey"]);
+
+        NSString *baseCurrency = [dict[@"settings"] isKindOfClass:NSDictionary.class]
+            ? PPSafeString(dict[@"settings"][@"baseCurrency"])
+            : @"QAR";
+
+        NSArray *dashboards = [dict[@"dashboard"] isKindOfClass:NSArray.class] ? dict[@"dashboard"] : @[];
+        NSDictionary *primaryDict = nil;
+        for (NSDictionary *entry in dashboards) {
+            if ([entry isKindOfClass:NSDictionary.class] && [baseCurrency isEqualToString:PPSafeString(entry[@"currency"])]) {
+                primaryDict = entry;
+                break;
+            }
+        }
+        if (!primaryDict && dashboards.firstObject && [dashboards.firstObject isKindOfClass:NSDictionary.class]) {
+            primaryDict = dashboards.firstObject;
+        }
+        if (primaryDict) {
+            _primaryDashboard = [[PPAccountingWorkspaceDashboard alloc] initWithDictionary:primaryDict];
+        }
+
+        NSMutableArray<PPAccountingDocument *> *docs = [NSMutableArray array];
+        NSInteger inCount = 0;
+        NSInteger exCount = 0;
+        NSArray *rawDocs = [dict[@"documents"] isKindOfClass:NSArray.class] ? dict[@"documents"] : @[];
+        for (NSDictionary *rawDoc in rawDocs) {
+            if (![rawDoc isKindOfClass:NSDictionary.class]) continue;
+            PPAccountingDocument *doc = [[PPAccountingDocument alloc] initWithDictionary:rawDoc];
+            [docs addObject:doc];
+            if ([doc.kind isEqualToString:@"income"]) {
+                inCount++;
+            } else if ([doc.kind isEqualToString:@"expense"]) {
+                exCount++;
+            }
+        }
+        _documents = docs.copy;
+        _incomeCount = inCount;
+        _expenseCount = exCount;
+    }
+    return self;
+}
+@end
+
 @interface PPAccountingService ()
 @property (nonatomic, strong) NSMutableArray<PPAccountingTransaction *> *internalTransactions;
 @property (nonatomic, strong) NSMutableArray<PPAccountingExpense *> *internalExpenses;
@@ -192,6 +304,8 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 @property (nonatomic, assign) NSInteger internalOrderCount;
 @property (nonatomic, assign) BOOL internalOrderRevenueEvidenceAvailable;
 @property (nonatomic, strong, nullable) NSError *internalOrderRevenueError;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, PPAccountingWorkspaceSnapshot *> *workspacesByFilter;
+@property (nonatomic, copy, nullable) NSString *currentFilterKey;
 @end
 
 @implementation PPAccountingService
@@ -208,6 +322,7 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
     if (self) {
         _internalTransactions = [NSMutableArray array];
         _internalExpenses = [NSMutableArray array];
+        _workspacesByFilter = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -218,6 +333,64 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 - (NSInteger)orderCount { return self.internalOrderCount; }
 - (BOOL)orderRevenueEvidenceAvailable { return self.internalOrderRevenueEvidenceAvailable; }
 - (NSError *)orderRevenueError { return self.internalOrderRevenueError; }
+- (double)liveTotalExpenses {
+    double total = 0.0;
+    @synchronized (self.internalExpenses) {
+        for (PPAccountingExpense *exp in self.internalExpenses) {
+            total += exp.amount;
+        }
+    }
+    return total;
+}
+
+- (NSInteger)liveExpenseCount {
+    @synchronized (self.internalExpenses) {
+        return self.internalExpenses.count;
+    }
+}
+
+- (double)liveTransactionRevenue {
+    double total = 0.0;
+    @synchronized (self.internalTransactions) {
+        for (PPAccountingTransaction *txn in self.internalTransactions) {
+            NSString *type = [txn.type lowercaseString];
+            if ([type isEqualToString:@"refund"] || [type isEqualToString:@"refunded"] ||
+                [type isEqualToString:@"cancel"] || [type isEqualToString:@"cancelled"]) {
+                total -= txn.amount;
+            } else if ([type isEqualToString:@"expense"]) {
+                // skip
+            } else {
+                total += txn.amount;
+            }
+        }
+    }
+    return total;
+}
+
+- (NSInteger)liveTransactionCount {
+    NSInteger count = 0;
+    @synchronized (self.internalTransactions) {
+        for (PPAccountingTransaction *txn in self.internalTransactions) {
+            NSString *type = [txn.type lowercaseString];
+            if (![type isEqualToString:@"expense"] && ![type isEqualToString:@"cancel"] && ![type isEqualToString:@"cancelled"]) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+- (PPAccountingWorkspaceSnapshot *)currentWorkspace {
+    if (self.currentFilterKey && self.workspacesByFilter[self.currentFilterKey]) {
+        return self.workspacesByFilter[self.currentFilterKey];
+    }
+    return self.workspacesByFilter[@"this_month"] ?: self.workspacesByFilter.allValues.firstObject;
+}
+
+- (PPAccountingWorkspaceSnapshot *)workspaceForFilter:(NSString *)filter {
+    NSString *period = PPAccountingNormalizePeriod(filter);
+    return self.workspacesByFilter[period];
+}
 
 - (BOOL)currentStaffCanReadOrderRevenue {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
@@ -379,10 +552,83 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
     return composite;
 }
 
+- (void)fetchAccountingWorkspaceWithFilter:(NSString *)filter
+                                completion:(void(^ _Nullable)(PPAccountingWorkspaceSnapshot * _Nullable snapshot, NSError * _Nullable error))completion {
+    NSString *period = PPAccountingNormalizePeriod(filter);
+    self.currentFilterKey = period;
+    FIRFunctions *functions = [FIRFunctions functionsForRegion:@"us-central1"];
+    FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getAccountingWorkspace"];
+    NSDictionary *payload = @{
+        @"period": period,
+        @"pageSize": @100,
+    };
+    __weak typeof(self) weakSelf = self;
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : @{};
+        PPAccountingWorkspaceSnapshot *snapshot = [[PPAccountingWorkspaceSnapshot alloc] initWithDictionary:data];
+        @synchronized (self.workspacesByFilter) {
+            self.workspacesByFilter[period] = snapshot;
+        }
+        if (snapshot.primaryDashboard) {
+            self.internalOrderRevenue = snapshot.primaryDashboard.income;
+            self.internalOrderCount = snapshot.incomeCount;
+            self.internalOrderRevenueEvidenceAvailable = YES;
+            self.internalOrderRevenueError = nil;
+        }
+        if (completion) completion(snapshot, nil);
+    }];
+}
+
+- (id<FIRListenerRegistration>)subscribeAccountingWorkspaceWithFilter:(NSString *)filter
+                                                              callback:(void(^)(PPAccountingWorkspaceSnapshot * _Nullable snapshot))callback {
+    NSString *requestedFilter = [filter copy] ?: @"this_month";
+    NSString *period = PPAccountingNormalizePeriod(requestedFilter);
+    self.currentFilterKey = period;
+
+    // 1. Initial fetch
+    [self fetchAccountingWorkspaceWithFilter:requestedFilter completion:^(PPAccountingWorkspaceSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (callback) callback(snapshot);
+        });
+    }];
+
+    // 2. Debounced refresh signal on AccountingDailySummaries, skipping the initial snapshot
+    FIRFirestore *db = [FIRFirestore firestore];
+    FIRQuery *summaryQuery = [[[db collectionWithPath:@"AccountingDailySummaries"] queryOrderedByField:@"dateKey" descending:YES] queryLimitedTo:15];
+    __weak typeof(self) weakSelf = self;
+    __block BOOL isInitial = YES;
+    __block BOOL debouncePending = NO;
+    return [summaryQuery addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self || error) return;
+        if (isInitial) {
+            isInitial = NO;
+            return;
+        }
+        if (debouncePending) return;
+        debouncePending = YES;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            debouncePending = NO;
+            [self fetchAccountingWorkspaceWithFilter:requestedFilter completion:^(PPAccountingWorkspaceSnapshot * _Nullable freshSnapshot, NSError * _Nullable err) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (callback) callback(freshSnapshot);
+                });
+            }];
+        });
+    }];
+}
+
 - (void)addExpense:(double)amount category:(NSString *)category description:(NSString *)desc completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     NSString *uid = [FIRAuth auth].currentUser.uid ?: @"unknown";
     // Strictly adheres to firestore.rules: keys().hasOnly(['amount','category','description','createdAt','createdBy'])
+    __weak typeof(self) weakSelf = self;
     [[db collectionWithPath:@"expenses"] addDocumentWithData:@{
         @"amount": @(amount),
         @"category": category ?: @"other",
@@ -390,13 +636,46 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
         @"createdBy": uid,
         @"createdAt": [FIRTimestamp timestampWithDate:[NSDate date]]
     } completion:^(NSError *error) {
+        if (!error && weakSelf) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
+            });
+            NSArray *activePeriods = nil;
+            @synchronized (weakSelf.workspacesByFilter) {
+                activePeriods = weakSelf.workspacesByFilter.allKeys.copy;
+            }
+            if (activePeriods.count) {
+                for (NSString *activePeriod in activePeriods) {
+                    [weakSelf fetchAccountingWorkspaceWithFilter:activePeriod completion:nil];
+                }
+            } else {
+                [weakSelf fetchAccountingWorkspaceWithFilter:@"this_month" completion:nil];
+            }
+        }
         if (completion) completion(error);
     }];
 }
 
 - (void)deleteExpense:(NSString *)expenseID completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
     FIRFirestore *db = [FIRFirestore firestore];
+    __weak typeof(self) weakSelf = self;
     [[[db collectionWithPath:@"expenses"] documentWithPath:expenseID] deleteDocumentWithCompletion:^(NSError *error) {
+        if (!error && weakSelf) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
+            });
+            NSArray *activePeriods = nil;
+            @synchronized (weakSelf.workspacesByFilter) {
+                activePeriods = weakSelf.workspacesByFilter.allKeys.copy;
+            }
+            if (activePeriods.count) {
+                for (NSString *activePeriod in activePeriods) {
+                    [weakSelf fetchAccountingWorkspaceWithFilter:activePeriod completion:nil];
+                }
+            } else {
+                [weakSelf fetchAccountingWorkspaceWithFilter:@"this_month" completion:nil];
+            }
+        }
         if (completion) completion(error);
     }];
 }

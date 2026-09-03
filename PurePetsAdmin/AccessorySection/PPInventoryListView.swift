@@ -221,9 +221,93 @@ struct PPLivePetReservation: Identifiable, Equatable {
     }
 }
 
-struct PPInventoryBranchOption: Identifiable, Equatable {
+struct PPInventoryBranchOption: Identifiable, Equatable, Hashable {
     let id: String
-    let name: String
+    let code: String
+    let nameAr: String
+    let nameEn: String
+    let address: String
+    let phone: String
+    let isDefault: Bool
+    let stockMode: String
+
+    init(id: String, name: String) {
+        self.id = id
+        self.code = ""
+        self.nameAr = name
+        self.nameEn = name
+        self.address = ""
+        self.phone = ""
+        self.isDefault = false
+        self.stockMode = ""
+    }
+
+    init(
+        id: String,
+        code: String = "",
+        nameAr: String = "",
+        nameEn: String = "",
+        address: String = "",
+        phone: String = "",
+        isDefault: Bool = false,
+        stockMode: String = ""
+    ) {
+        self.id = id
+        self.code = code
+        self.nameAr = nameAr
+        self.nameEn = nameEn
+        self.address = address
+        self.phone = phone
+        self.isDefault = isDefault
+        self.stockMode = stockMode
+    }
+
+    var name: String { displayName }
+
+    var displayName: String {
+        if Language.isRTL() {
+            if !nameAr.isEmpty { return nameAr }
+            if !nameEn.isEmpty { return nameEn }
+        } else {
+            if !nameEn.isEmpty { return nameEn }
+            if !nameAr.isEmpty { return nameAr }
+        }
+        if id == "main_store" || id.lowercased() == "main_store" || id.lowercased() == "main store" {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        if id.lowercased().contains("reservation") {
+            return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if !code.isEmpty { return code }
+        return id
+    }
+
+    var fullMeaningfulTitle: String {
+        var parts: [String] = [displayName]
+        if !code.isEmpty && !displayName.contains(code) {
+            parts.append("(\(code))")
+        }
+        if isDefault {
+            parts.append("★ " + Language.get("DefaultBranch", alter: "الفرع الافتراضي"))
+        }
+        return parts.joined(separator: " ")
+    }
+
+    var locationDetail: String {
+        var parts: [String] = []
+        if !address.isEmpty { parts.append(address) }
+        if !phone.isEmpty { parts.append(phone) }
+        return parts.joined(separator: " • ")
+    }
+
+    var stockModeTitle: String {
+        if stockMode.lowercased() == "shared" || stockMode.lowercased() == "branch" {
+            return Language.get("StockMode_Shared", alter: "مخزون مشترك للفرع")
+        } else if stockMode.lowercased() == "separate" || stockMode.lowercased() == "peragent" {
+            return Language.get("StockMode_PerAgent", alter: "مخزون مستقل لكل موظف")
+        }
+        return ""
+    }
 }
 
 struct PPPosCustomerRecord: Equatable {
@@ -299,6 +383,10 @@ enum PPLivePetInventoryService {
         default:
             break
         }
+        let backendMsg = string(details["message"] ?? details["error"] ?? nsError.userInfo[NSLocalizedDescriptionKey])
+        if !backendMsg.isEmpty && !backendMsg.contains("com.firebase.functions") && !backendMsg.lowercased().contains("the operation couldn") {
+            return backendMsg
+        }
         let reference = domainCode.isEmpty ? "\(nsError.domain):\(nsError.code)" : domainCode
         return String(
             format: Language.get("LivePet_Error_RequestFailed_Format", alter: "تعذر إكمال العملية بأمان. حدّث البيانات وحاول مرة أخرى. المرجع: %@"),
@@ -371,14 +459,74 @@ enum PPLivePetInventoryService {
         }
     }
 
+    static var cachedBranches: [PPInventoryBranchOption] = []
+
+    static func branch(for id: String) -> PPInventoryBranchOption? {
+        cachedBranches.first { $0.id == id }
+    }
+
     static func listBranches() async throws -> [PPInventoryBranchOption] {
         let snapshot = try await Firestore.firestore().collection("branches").getDocuments()
-        return snapshot.documents.compactMap { document -> PPInventoryBranchOption? in
+        let branches = snapshot.documents.compactMap { document -> PPInventoryBranchOption? in
             let data = document.data()
             if data["isActive"] as? Bool == false { return nil }
-            let name = string(data["name"] ?? data["nameAr"] ?? data["branchName"])
-            return PPInventoryBranchOption(id: document.documentID, name: name.isEmpty ? document.documentID : name)
-        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+            var nameAr = string(data["nameAr"])
+            var nameEn = string(data["nameEn"])
+
+            if let nameMap = data["name"] as? [String: Any] {
+                if nameAr.isEmpty { nameAr = string(nameMap["ar"]) }
+                if nameEn.isEmpty { nameEn = string(nameMap["en"]) }
+            } else if let nameStr = data["name"] as? String {
+                if nameAr.isEmpty {
+                    if nameStr.lowercased().contains("reservation") {
+                        nameAr = Language.get("ReservationBranch", alter: "فرع الحجوزات")
+                        nameEn = "Reservation Branch"
+                    } else {
+                        nameAr = nameStr
+                    }
+                }
+            }
+
+            if let branchName = data["branchName"] as? String, nameAr.isEmpty {
+                nameAr = branchName
+            }
+
+            if nameAr.isEmpty && nameEn.isEmpty {
+                if document.documentID.lowercased().contains("reservation") {
+                    nameAr = Language.get("ReservationBranch", alter: "فرع الحجوزات")
+                    nameEn = "Reservation Branch"
+                } else if document.documentID.lowercased() == "main_store" {
+                    nameAr = Language.get("MainStore", alter: "المتجر الرئيسي")
+                    nameEn = "Main Store"
+                }
+            }
+
+            let code = string(data["code"])
+            let address = string(data["address"])
+            let phone = string(data["phone"])
+            let stockMode = string(data["stockMode"])
+            let isDefault = data["isDefault"] as? Bool ?? false
+
+            return PPInventoryBranchOption(
+                id: document.documentID,
+                code: code,
+                nameAr: nameAr,
+                nameEn: nameEn,
+                address: address,
+                phone: phone,
+                isDefault: isDefault,
+                stockMode: stockMode
+            )
+        }.sorted {
+            if $0.isDefault != $1.isDefault {
+                return $0.isDefault && !$1.isDefault
+            }
+            return $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending
+        }
+
+        cachedBranches = branches
+        return branches
     }
 
     static func createOrMatchCustomer(name: String, phone: String, branchID: String) async throws -> PPPosCustomerRecord {
@@ -1324,23 +1472,7 @@ public struct PPInventoryListView: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $viewModel.selectedItemForDossier) { item in
-            PPInventoryItemDossierSheet(
-                item: item,
-                viewModel: viewModel,
-                onOpenFullEditor: {
-                    let editVC = AddAccessoryViewController(accessory: item)
-                    editVC.showTypeRow = false
-                    editVC.defaultKind = viewModel.currentKind
-                    onPushViewController(editVC)
-                },
-                onOpenPOS: {
-                    if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
-                        onPushViewController(controller)
-                    }
-                }
-            )
-        }
+
         .onAppear {
             viewModel.startListening()
         }
@@ -1819,7 +1951,31 @@ public struct PPInventoryListView: View {
                     item: item,
                     onTap: {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        viewModel.selectedItemForDossier = item
+                        let detailVC = PPInventoryItemDetailHostingController(
+                            item: item,
+                            viewModel: viewModel,
+                            onOpenFullEditor: {
+                                let editVC = AddAccessoryViewController(accessory: item)
+                                editVC.showTypeRow = false
+                                editVC.defaultKind = viewModel.currentKind
+                                onPushViewController(editVC)
+                            },
+                            onOpenPOS: {
+                                if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
+                                    onPushViewController(controller)
+                                }
+                            },
+                            onAdjustQuantity: { delta in
+                                viewModel.adjustQuantity(by: delta, for: item)
+                            },
+                            onToggleStock: {
+                                viewModel.toggleStockAvailability(for: item)
+                            },
+                            onDelete: {
+                                confirmDelete(item: item)
+                            }
+                        )
+                        onPushViewController(detailVC)
                     },
                     onEdit: {
                         let editVC = AddAccessoryViewController(accessory: item)
@@ -1941,8 +2097,9 @@ public struct PPInventoryListView: View {
     }
 }
 
-// MARK: - Flagship Category-Defining Inventory Card
+// MARK: - Flagship Category-Defining Inventory Specimen Monolith
 
+@available(iOS 16.0, *)
 private struct FlagshipInventoryCard: View {
     let item: PetAccessory
     let onTap: () -> Void
@@ -1984,52 +2141,49 @@ private struct FlagshipInventoryCard: View {
         }
     }
 
-    private var stockText: String {
+    private var stockStatusText: String {
         if item.quantity <= 0 || item.noStock {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if item.quantity <= 3 {
-            return String(format: Language.get("LowStock_Qty_Format", alter: "مخزون منخفض (%d)"), item.quantity)
+            return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%d)"), item.quantity)
         } else {
             return String(format: Language.get("InStock_Qty_Format", alter: "متوفر (%d)"), item.quantity)
         }
     }
 
+    private var stockStatusIcon: String {
+        if item.quantity <= 0 || item.noStock {
+            return "xmark.circle.fill"
+        } else if item.quantity <= 3 {
+            return "exclamationmark.triangle.fill"
+        } else {
+            return "checkmark.circle.fill"
+        }
+    }
+
     var body: some View {
-        Button(action: onTap) {
-            VStack(spacing: 12) {
-                // Top Row: Image Thumbnail + Details + Stock Beacon
+        VStack(spacing: 0) {
+            // Main Specimen Presentation Chamber (Tappable Area)
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onTap()
+            }) {
                 HStack(alignment: .top, spacing: 14) {
-                    // Visual Specimen Thumbnail
-                    ZStack(alignment: .topLeading) {
-                        productThumbnail
-                            .frame(width: 82, height: 82)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                            )
+                    // Visual Specimen Vessel (92x92)
+                    specimenShowcase
+                        .frame(width: 92, height: 92)
+                        .clipped()
 
-                        if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
-                            Text("-\(percent.intValue)%")
-                                .font(.system(size: 10, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .padding(5)
-                        }
-                    }
-
-                    // Metadata Runway
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Chips Row: Condition + Store
-                        HStack(spacing: 6) {
+                    // Identity, Lineage & Valuation Track
+                    VStack(alignment: .leading, spacing: 6) {
+                        // Top Meta Runway: Origin + Condition + Weight + Vitality Pill
+                        HStack(alignment: .center, spacing: 6) {
                             if let store = item.storeName, !store.isEmpty {
                                 Text(store)
                                     .font(AdminType.caption2Bold)
                                     .foregroundColor(AdminSurface.primary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 3)
                                     .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
                             }
 
@@ -2040,50 +2194,50 @@ private struct FlagshipInventoryCard: View {
                                     .foregroundColor(AdminCommandInk.secondary)
                             }
 
+                            if let weight = item.weightText, !weight.isEmpty {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "scalemass.fill")
+                                        .font(.system(size: 8))
+                                    Text(weight)
+                                        .font(AdminType.caption2)
+                                }
+                                .foregroundColor(AdminCommandInk.tertiary)
+                            }
+
                             Spacer(minLength: 4)
 
-                            // Stock Capsule
+                            // Stock Vitality Pill
                             HStack(spacing: 4) {
-                                Circle()
-                                    .fill(stockTone)
-                                    .frame(width: 6, height: 6)
-                                Text(stockText)
+                                Image(systemName: stockStatusIcon)
+                                    .font(.system(size: 8, weight: .bold))
+                                Text(stockStatusText)
                                     .font(AdminType.caption2Bold)
-                                    .foregroundColor(stockTone)
                             }
+                            .foregroundColor(stockTone)
                             .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(stockTone.opacity(0.10), in: Capsule(style: .continuous))
+                            .padding(.vertical, 3.5)
+                            .background(
+                                stockTone.opacity(0.10),
+                                in: Capsule(style: .continuous)
+                            )
+                            .overlay(
+                                Capsule(style: .continuous)
+                                    .strokeBorder(stockTone.opacity(0.25), lineWidth: 0.5)
+                            )
                         }
 
-                        // Product Title
+                        // Specimen Nomenclature (Title)
                         Text(item.name)
                             .font(AdminType.headline)
                             .foregroundColor(AdminSurface.primaryText)
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                        // Micro Detail (Weight or Expiry if present)
-                        if let weight = item.weightText, !weight.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "scalemass.fill")
-                                    .font(.system(size: 9))
-                                Text(weight)
-                                    .font(AdminType.caption2)
-                            }
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                        }
-                    }
-                }
+                        Spacer(minLength: 2)
 
-                Divider()
-                    .background(Color(uiColor: .ppSurfaceBorder).opacity(0.5))
-
-                // Bottom Flight Deck: Price + Stepper + Quick Stock Pill
-                HStack(alignment: .center, spacing: 10) {
-                    // Financial Readout
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        // Financial Valuation Readout
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(finalPriceFormatted)
                                 .font(AdminType.title3)
                                 .foregroundColor(item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning))
@@ -2091,58 +2245,93 @@ private struct FlagshipInventoryCard: View {
 
                             if let original = originalPriceFormatted {
                                 Text(original)
-                                    .font(AdminType.caption2)
+                                    .font(AdminType.caption)
                                     .foregroundColor(AdminCommandInk.tertiary)
                                     .strikethrough()
                             }
                         }
                     }
+                }
+                .padding(14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CatalogPressStyle())
 
-                    Spacer()
+            // Integrated Tactile Horizon Cockpit
+            HStack(alignment: .center, spacing: 10) {
+                // Catalog Availability / Store Visibility Switch
+                if !item.isLivePet {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onToggleStock()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
+                                .font(.system(size: 11, weight: .bold))
 
-                    if item.isLivePet {
-                        Label(Language.get("LivePet_Manage_Units", alter: "إدارة الحيوانات"), systemImage: "pawprint.fill")
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 10)
-                            .frame(minHeight: 34)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                    } else {
-                        if !item.isLivePet {
-                            // Quick Out-of-Stock / Stock Toggle
-                            Button {
-                                onToggleStock()
-                            } label: {
-                                Image(systemName: item.noStock ? "bolt.slash.fill" : "bolt.fill")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundStyle(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
-                                    .frame(width: 32, height: 32)
-                                    .background(
-                                        (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.12),
-                                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    )
-                            }
-                            .buttonStyle(CatalogPressStyle())
-                            .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
+                            Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
+                                .font(AdminType.caption2Bold)
                         }
-
-                        // Quantity-tracked inventory remains adjustable from the card.
-                        stepperControl
+                        .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .padding(.horizontal, 10)
+                        .frame(height: 36)
+                        .background(
+                            (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.09),
+                            in: Capsule(style: .continuous)
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.22), lineWidth: 0.75)
+                        )
                     }
+                    .buttonStyle(CatalogPressStyle())
+                    .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
+                }
+
+                Spacer(minLength: 6)
+
+                // Stepper or Live Pet Unit Registry
+                if item.isLivePet {
+                    Button(action: {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onTap()
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات"))
+                                .font(AdminType.captionBold)
+                            Image(systemName: "chevron.forward")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 12)
+                        .frame(height: 36)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(CatalogPressStyle())
+                } else {
+                    // Quantum Precision Stepper
+                    quantumStepper
                 }
             }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
-            )
+            .padding(.horizontal, 14)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
         }
-        .buttonStyle(CatalogPressStyle())
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
+        )
         .contextMenu {
             Button(action: onEdit) {
                 Label(Language.get("Edit", alter: "تعديل الصنف"), systemImage: "pencil")
@@ -2176,30 +2365,69 @@ private struct FlagshipInventoryCard: View {
         }
     }
 
-    // MARK: - Quantity Stepper
+    // MARK: - Specimen Visual Showcase (92x92)
 
-    private var stepperControl: some View {
-        HStack(spacing: 2) {
+    private var specimenShowcase: some View {
+        ZStack(alignment: .topLeading) {
+            productThumbnail
+                .frame(width: 92, height: 92)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+                )
+
+            // Dynamic Discount Tag
+            if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
+                HStack(spacing: 1) {
+                    Text("-\(percent.intValue)%")
+                        .font(.system(size: 9.5, weight: .black, design: .rounded))
+                        .foregroundColor(.white)
+                }
+                .padding(.horizontal, 5.5)
+                .padding(.vertical, 2.5)
+                .background(
+                    LinearGradient(
+                        colors: [Color(uiColor: .ppError), Color(uiColor: .ppPrimary)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                )
+                .shadow(color: Color(uiColor: .ppError).opacity(0.35), radius: 3, x: 0, y: 1.5)
+                .padding(6)
+            }
+        }
+        .frame(width: 92, height: 92)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    // MARK: - Quantum Stepper
+
+    private var quantumStepper: some View {
+        HStack(spacing: 0) {
             // Decrement (-)
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onAdjustQuantity(-1)
             } label: {
                 Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(item.quantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary)
-                    .frame(width: 32, height: 32)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(item.quantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
+                    .frame(width: 36, height: 34)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(CatalogPressStyle())
             .disabled(item.quantity <= 0)
 
-            // Value Display
+            // Monospaced Count Display
             Text("\(item.quantity)")
                 .font(.system(size: 13, weight: .bold, design: .monospaced))
                 .foregroundColor(AdminSurface.primaryText)
                 .frame(minWidth: 32)
                 .multilineTextAlignment(.center)
+                .contentTransition(.numericText())
 
             // Increment (+)
             Button {
@@ -2207,165 +2435,882 @@ private struct FlagshipInventoryCard: View {
                 onAdjustQuantity(1)
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 11, weight: .black))
                     .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 32, height: 32)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 36, height: 34)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(CatalogPressStyle())
         }
-        .padding(3)
-        .background(AdminSurface.control.opacity(0.60), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(AdminSurface.control.opacity(0.70), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.70), lineWidth: 0.75)
         )
     }
 
-    // MARK: - Product Thumbnail
+    // MARK: - Product Thumbnail Loader
 
     @ViewBuilder
     private var productThumbnail: some View {
-        if let imageURL = imageURL {
-            AsyncImage(url: imageURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                case .failure:
-                    placeholderThumbnail
-                case .empty:
-                    ZStack {
-                        AdminSurface.control
-                        ProgressView()
-                            .tint(AdminSurface.primary)
+        Group {
+            if let imageURL = imageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 92, height: 92)
+                            .clipped()
+                    case .failure:
+                        placeholderThumbnail
+                    case .empty:
+                        ZStack {
+                            AdminSurface.control
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        }
+                        .frame(width: 92, height: 92)
+                    @unknown default:
+                        placeholderThumbnail
                     }
-                @unknown default:
-                    placeholderThumbnail
                 }
+                .frame(width: 92, height: 92)
+                .clipped()
+            } else {
+                placeholderThumbnail
             }
-        } else {
-            placeholderThumbnail
         }
+        .frame(width: 92, height: 92)
+        .clipped()
     }
 
     private var placeholderThumbnail: some View {
         ZStack {
-            AdminSurface.control
+            LinearGradient(
+                colors: [AdminSurface.control, AdminSurface.surface],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
             Image(systemName: "shippingbox.fill")
-                .font(.system(size: 24))
-                .foregroundColor(AdminCommandInk.tertiary)
+                .font(.system(size: 26, weight: .medium))
+                .foregroundColor(AdminCommandInk.tertiary.opacity(0.7))
         }
+        .frame(width: 92, height: 92)
+        .clipped()
     }
 }
 
-// MARK: - Flagship Item Quick Dossier Sheet
+// MARK: - Flagship Item Master Detail Screen (Push Navigation)
 
 @available(iOS 16.0, *)
-private struct PPInventoryItemDossierSheet: View {
+public struct PPInventoryItemDetailView: View {
     let item: PetAccessory
-    @ObservedObject var viewModel: PPInventoryListViewModel
+    let viewModel: PPInventoryListViewModel?
+    let onDismiss: () -> Void
     let onOpenFullEditor: () -> Void
     let onOpenPOS: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var hasEntered = false
+    let onAdjustQuantity: ((Int) -> Void)?
+    let onToggleStock: (() -> Void)?
+    let onDelete: (() -> Void)?
+
     @StateObject private var liveModel: PPLivePetOperationsViewModel
+    @State private var selectedImageIndex: Int = 0
+    @State private var isDescriptionExpanded: Bool = false
+    @State private var showDeleteConfirm: Bool = false
+    @State private var copiedField: String? = nil
+    @State private var copiedTask: Task<Void, Never>? = nil
+    @State private var hasAppeared: Bool = false
+    @State private var isLightboxPresented: Bool = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     init(
         item: PetAccessory,
-        viewModel: PPInventoryListViewModel,
+        viewModel: PPInventoryListViewModel? = nil,
+        onDismiss: @escaping () -> Void,
         onOpenFullEditor: @escaping () -> Void,
-        onOpenPOS: @escaping () -> Void
+        onOpenPOS: @escaping () -> Void,
+        onAdjustQuantity: ((Int) -> Void)? = nil,
+        onToggleStock: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
     ) {
         self.item = item
         self.viewModel = viewModel
+        self.onDismiss = onDismiss
         self.onOpenFullEditor = onOpenFullEditor
         self.onOpenPOS = onOpenPOS
+        self.onAdjustQuantity = onAdjustQuantity
+        self.onToggleStock = onToggleStock
+        self.onDelete = onDelete
         _liveModel = StateObject(wrappedValue: PPLivePetOperationsViewModel(item: item))
     }
 
-    var body: some View {
-        NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+    public var body: some View {
+        ZStack(alignment: .bottom) {
+            AdminSurface.background.ignoresSafeArea()
 
-                ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: AdminSpacing.base) {
-                        dossierHero
-                        dossierSignalDeck
-                        dossierIdentityRail
+            // Dynamic Ambient Aura
+            ambientLuminousAura
 
-                        if item.isLivePet {
-                            livePetOperationsSection
-                        }
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 16) {
+                    // Custom Sovereign Navigation Bar (Symmetrical Jewels & Beiruti-Bold Title)
+                    apexNavigationBar
+
+                    // Flagship Specimen Identity Deck (Squircle Vessel + Live Beacon + Metadata)
+                    flagshipSpecimenIdentityDeck
+
+                    // Executive Valuation & Stock Velocity Bento Matrix
+                    executiveBentoMatrix
+
+                    // Technical Specifications Matrix
+                    operationalDossierGrid
+
+                    // Expandable Description Chamber
+                    if !item.desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        specimenDescriptionSection
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.md)
-                    .padding(.bottom, AdminSpacing.xl)
-                    .opacity(hasEntered ? 1 : 0)
-                    .offset(y: accessibilityReduceMotion || hasEntered ? 0 : 10)
+
+                    // Live Pet Lifecycle Operations Chamber
+                    if item.isLivePet {
+                        livePetOperationsSection
+                    }
+
+                    // Bottom clearance
+                    Color.clear.frame(height: 100)
                 }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, AdminSpacing.xs)
+                .padding(.bottom, AdminSpacing.base)
+                .opacity(hasAppeared ? 1 : 0)
+                .offset(y: accessibilityReduceMotion || hasAppeared ? 0 : 8)
             }
-            .navigationTitle(Language.get("ItemDetails", alter: "تفاصيل الصنف"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                            .background(AdminSurface.surface, in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-                    }
-                    .buttonStyle(CatalogPressStyle())
-                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
-                    .accessibilityHint(Language.get("LivePetDossier_CloseHint", alter: "يغلق التفاصيل ويعيدك إلى قائمة المخزون"))
-                }
 
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        dismiss()
-                        onOpenFullEditor()
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
-                    }
-                    .buttonStyle(CatalogPressStyle())
-                    .accessibilityLabel(Language.get("EditFullDetails", alter: "فتح محرر البيانات الكامل"))
-                    .accessibilityHint(Language.get("LivePetDossier_EditHint", alter: "يفتح محرر بيانات الكتالوج الكامل"))
-                }
-            }
+            // Persistent Floating Command Dock
+            floatingMasterCommandDock
         }
-        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, .rightToLeft)
         .onAppear {
             if accessibilityReduceMotion {
-                hasEntered = true
+                hasAppeared = true
             } else {
-                withAnimation(.easeOut(duration: 0.24)) {
-                    hasEntered = true
+                withAnimation(.easeOut(duration: 0.28)) {
+                    hasAppeared = true
                 }
             }
         }
         .task {
-            if item.isLivePet { await liveModel.load() }
+            if item.isLivePet {
+                await liveModel.load()
+            }
         }
         .sheet(item: $liveModel.operation) { operation in
             PPLivePetOperationSheet(context: operation, model: liveModel)
         }
+        .sheet(isPresented: $isLightboxPresented) {
+            specimenLightboxView
+        }
+        .alert(Language.get("DeleteConfirm_Title", alter: "تأكيد حذف الصنف"), isPresented: $showDeleteConfirm) {
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
+                onDelete?()
+            }
+        } message: {
+            Text(Language.get("DeleteConfirm_Message", alter: "هل أنت متأكد من حذف هذا الصنف من المخزون نهائياً؟"))
+        }
     }
 
+    // MARK: - Ambient Luminous Aura
+
+    private var ambientLuminousAura: some View {
+        VStack {
+            RadialGradient(
+                colors: [
+                    AdminSurface.primary.opacity(0.14),
+                    (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.06),
+                    Color.clear
+                ],
+                center: .top,
+                startRadius: 10,
+                endRadius: 360
+            )
+            .frame(height: 380)
+            .ignoresSafeArea()
+            Spacer()
+        }
+        .allowsHitTesting(false)
+    }
+
+    // MARK: - Apex Navigation Bar
+
+    private var apexNavigationBar: some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Dismiss / Close Jewel (Leading in RTL / Right side physically)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 38, height: 38)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            // Center Header Title & Specimen Lineage in Brand Typography
+            VStack(spacing: 2) {
+                Text(Language.get("ItemDetails", alter: "تفاصيل الصنف"))
+                    .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                Text(item.name)
+                    .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 200)
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            // Quick Actions / Edit Jewel (Trailing in RTL / Left side physically)
+            Menu {
+                Button {
+                    onOpenFullEditor()
+                } label: {
+                    Label(Language.get("Edit", alter: "تعديل الصنف"), systemImage: "pencil")
+                }
+
+                Button {
+                    onOpenPOS()
+                } label: {
+                    Label(Language.get("LivePet_Open_POS", alter: "فتح في نقطة البيع"), systemImage: "cart.fill")
+                }
+
+                if !item.isLivePet {
+                    Button {
+                        toggleStockVisibility()
+                    } label: {
+                        Label(
+                            item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"),
+                            systemImage: item.noStock ? "checkmark.circle" : "xmark.circle"
+                        )
+                    }
+                }
+
+                Button {
+                    if let root = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene })
+                        .flatMap({ $0.windows })
+                        .first(where: { $0.isKeyWindow })?.rootViewController {
+                        PetAccessory.share(item, from: root)
+                    }
+                } label: {
+                    Label(Language.get("Share", alter: "مشاركة الصنف"), systemImage: "square.and.arrow.up")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
+                }
+            } label: {
+                Image(systemName: "pencil")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 38, height: 38)
+                    .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(Language.get("Edit", alter: "تعديل الصنف"))
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Flagship Specimen Identity Deck
+
+    private var flagshipSpecimenIdentityDeck: some View {
+        HStack(alignment: .top, spacing: 14) {
+            // Squircle Visual Specimen Vessel (100x100) on Leading (Right in RTL)
+            Button {
+                isLightboxPresented = true
+            } label: {
+                ZStack(alignment: .bottomTrailing) {
+                    if let firstURL = PetAccessory.firstImageURL(for: item) {
+                        AsyncImage(url: firstURL) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 100, height: 100)
+                                    .clipped()
+                            default:
+                                placeholderSpecimenBox
+                            }
+                        }
+                    } else {
+                        placeholderSpecimenBox
+                    }
+
+                    // Live Availability Beacon Dot
+                    Circle()
+                        .fill(item.noStock || item.quantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
+                        .padding(6)
+                }
+                .frame(width: 100, height: 100)
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.75)
+                )
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(CatalogPressStyle())
+
+            // Specimen Lineage, Nomenclature & Telemetry Track (RTL)
+            VStack(alignment: .leading, spacing: 6) {
+                // Top Row: Specimen Name & Condition Pill
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.name)
+                        .font(Font.custom("Beiruti-Bold", size: 22))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    let cond = PetAccessory.conditionText(for: item)
+                    if !cond.isEmpty {
+                        Text(cond)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                            .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.5))
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                // Lineage / Subtitle Description
+                if !item.desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(item.desc)
+                        .font(Font.custom("Beiruti-Regular", size: 13))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Badges: Tracking Mode + Store
+                HStack(spacing: 6) {
+                    // Tracking Mode Pill
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(inventoryTrackingTint)
+                            .frame(width: 6, height: 6)
+                        Text(inventoryTrackingTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                    }
+                    .foregroundStyle(inventoryTrackingTint)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(inventoryTrackingTint.opacity(0.10), in: Capsule(style: .continuous))
+                    .overlay(Capsule(style: .continuous).strokeBorder(inventoryTrackingTint.opacity(0.25), lineWidth: 0.5))
+
+                    // Store Location Pill
+                    let storeName = item.storeName ?? Language.get("MainStore", alter: "المتجر الرئيسي")
+                    if !storeName.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "building.2.fill")
+                                .font(.system(size: 9))
+                            Text(localizedBranchName(storeName, id: storeName))
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3.5)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+                    }
+                }
+
+                // Copyable Technical ID Chip
+                Button {
+                    copyToClipboard(item.accessoryID, field: "id")
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: copiedField == "id" ? "checkmark.circle.fill" : "number")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(copiedField == "id" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+
+                        Text(copiedField == "id" ? Language.get("Copied", alter: "تم النسخ") : "# " + item.accessoryID)
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(copiedField == "id" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+                }
+                .buttonStyle(CatalogPressStyle())
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+        )
+    }
+
+    private var placeholderSpecimenBox: some View {
+        ZStack {
+            LinearGradient(
+                colors: [AdminSurface.control, AdminSurface.surface],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(AdminCommandInk.tertiary.opacity(0.6))
+        }
+    }
+
+    // MARK: - Lightbox Specimen Gallery
+
+    private var specimenLightboxView: some View {
+        NavigationView {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let firstURL = PetAccessory.firstImageURL(for: item) {
+                    AsyncImage(url: firstURL) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                        default:
+                            placeholderSpecimenBox
+                        }
+                    }
+                } else {
+                    placeholderSpecimenBox
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        isLightboxPresented = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(8)
+                            .background(Color.white.opacity(0.2), in: Circle())
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Executive Bento Matrix (Valuation & Stock Velocity)
+
+    private var executiveBentoMatrix: some View {
+        HStack(spacing: 12) {
+            // Valuation Pod (Leading / Right in RTL)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "tag.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Price", alter: "السعر"))
+                        .font(Font.custom("Beiruti-Bold", size: 13))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Spacer()
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.inventoryDisplayPrice)
+                        .font(Font.custom("Beiruti-Bold", size: 24))
+                        .foregroundStyle(AdminSurface.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+
+                    Text(Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .lineLimit(1)
+                }
+
+                if let orig = originalPriceFormatted {
+                    HStack(spacing: 4) {
+                        Text(orig)
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .strikethrough()
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Text(Language.get("DiscountActive", alter: "خصم مفعّل"))
+                            .font(Font.custom("Beiruti-Bold", size: 10))
+                            .foregroundStyle(Color(uiColor: .ppError))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(Color(uiColor: .ppError).opacity(0.1), in: Capsule())
+                    }
+                }
+            }
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 0.75)
+            )
+
+            // Stock Health & Live Velocity Pod (Trailing / Left in RTL)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(stockTone)
+                    Text(Language.get("Quantity", alter: "الكمية"))
+                        .font(Font.custom("Beiruti-Bold", size: 13))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Spacer()
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(item.quantity)")
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
+                        .foregroundStyle(stockTone)
+                        .lineLimit(1)
+
+                    Text(stockStatusText)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .lineLimit(1)
+                }
+
+                // Interactive Precision Stepper for non-live pets
+                if !item.isLivePet {
+                    HStack(spacing: 0) {
+                        Button {
+                            adjustQuantity(-1)
+                        } label: {
+                            Image(systemName: "minus")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(item.quantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
+                                .frame(width: 32, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(CatalogPressStyle())
+                        .disabled(item.quantity <= 0)
+
+                        Text("\(item.quantity)")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .frame(minWidth: 26)
+                            .multilineTextAlignment(.center)
+
+                        Button {
+                            adjustQuantity(1)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 11, weight: .black))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(width: 32, height: 28)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(CatalogPressStyle())
+                    }
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    )
+                }
+            }
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(stockTone.opacity(0.20), lineWidth: 0.75)
+            )
+        }
+    }
+
+    // MARK: - Operational Specifications Matrix
+
+    private var operationalDossierGrid: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                let storeName = item.storeName ?? Language.get("MainStore", alter: "المتجر الرئيسي")
+                dossierAttributeCard(
+                    title: Language.get("Store", alter: "المتجر"),
+                    value: localizedBranchName(storeName, id: storeName),
+                    icon: "building.2.fill"
+                )
+                dossierAttributeCard(
+                    title: Language.get("Condition", alter: "الحالة"),
+                    value: PetAccessory.conditionText(for: item),
+                    icon: "checkmark.seal.fill"
+                )
+            }
+
+            HStack(spacing: 10) {
+                dossierAttributeCard(
+                    title: Language.get("Weight", alter: "الوزن / المواصفة"),
+                    value: item.weightText?.isEmpty == false ? item.weightText! : Language.get("StandardUnit", alter: "وحدة قياسية"),
+                    icon: "scalemass.fill"
+                )
+                dossierAttributeCard(
+                    title: Language.get("Category", alter: "القسم"),
+                    value: item.accessoryCategoryID?.isEmpty == false ? item.accessoryCategoryID! : PetAccessory.typeText(for: item),
+                    icon: "folder.fill"
+                )
+            }
+        }
+    }
+
+    private func dossierAttributeCard(title: String, value: String, icon: String) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.09))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(value)
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Specimen Description Chamber
+
+    private var specimenDescriptionSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Description", alter: "الوصف والتفاصيل"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Spacer()
+            }
+
+            Text(item.desc)
+                .font(Font.custom("Beiruti-Regular", size: 14))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(isDescriptionExpanded ? nil : 3)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if item.desc.count > 100 {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isDescriptionExpanded.toggle()
+                    }
+                } label: {
+                    Text(isDescriptionExpanded ? Language.get("ShowLess", alter: "عرض أقل") : Language.get("ShowMore", alter: "قراءة المزيد"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Floating Master Command Dock
+
+    private var floatingMasterCommandDock: some View {
+        HStack(spacing: 10) {
+            // Primary POS Checkout / FastSell Trigger
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onOpenPOS()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("LivePet_Open_POS", alter: "نقطة البيع (POS)"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.35), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(Language.get("LivePet_Open_POS", alter: "فتح في نقطة البيع"))
+
+            // Secondary Full Catalog Editor Trigger
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onOpenFullEditor()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("Edit", alter: "تعديل"))
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                }
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75)
+                )
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(Language.get("EditFullDetails", alter: "فتح محرر البيانات الكامل"))
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 10)
+        .padding(.bottom, 22)
+        .background(
+            .ultraThinMaterial,
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: -4)
+        .padding(.horizontal, 10)
+    }
+
+    // MARK: - State Helpers
+
+    private var originalPriceFormatted: String? {
+        guard let percent = item.discountPercent, percent.intValue > 0,
+              item.price.doubleValue > 0 else {
+            return nil
+        }
+        return PetAccessory.formatCurrency(item.price)
+    }
+
+    private var stockTone: Color {
+        if item.quantity <= 0 || item.noStock {
+            return Color(uiColor: .ppError)
+        } else if item.quantity <= 3 {
+            return Color(uiColor: .ppWarning)
+        } else {
+            return Color(uiColor: .ppSuccess)
+        }
+    }
+
+    private var stockStatusText: String {
+        if item.noStock {
+            return Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً")
+        } else if item.quantity <= 0 {
+            return Language.get("OutOfStock", alter: "نفذ من المخزون")
+        } else if item.quantity <= 3 {
+            return Language.get("LowStock", alter: "وشك النفاذ")
+        } else {
+            return Language.get("InStock", alter: "متوفر بالمخزون")
+        }
+    }
+
+    private func copyToClipboard(_ text: String, field: String) {
+        UIPasteboard.general.string = text
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        copiedTask?.cancel()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            copiedField = field
+        }
+        copiedTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation(.easeOut(duration: 0.2)) {
+                if copiedField == field {
+                    copiedField = nil
+                }
+            }
+        }
+    }
+
+    private func adjustQuantity(_ delta: Int) {
+        let newQty = max(0, item.quantity + delta)
+        guard newQty != item.quantity else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        item.quantity = newQty
+        if item.quantity == 0 {
+            item.noStock = true
+        } else if item.noStock && delta > 0 {
+            item.noStock = false
+        }
+        onAdjustQuantity?(delta)
+    }
+
+    private func toggleStockVisibility() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            item.noStock.toggle()
+        }
+        onToggleStock?()
+    }
+
+    // MARK: - Live-Pet Operations Section
+
     private var livePetOperationsSection: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+        VStack(alignment: .leading, spacing: 14) {
             livePetCommandHeader
 
             if let success = liveModel.successMessage {
@@ -2400,16 +3345,16 @@ private struct PPInventoryItemDossierSheet: View {
                 activeReservationsLedger
             }
         }
-        .padding(AdminSpacing.md)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
         )
     }
 
     private var livePetCommandHeader: some View {
-        HStack(alignment: .top, spacing: AdminSpacing.md) {
+        HStack(alignment: .top, spacing: 12) {
             ZStack {
                 Circle()
                     .fill(AdminSurface.primary.opacity(0.12))
@@ -2422,10 +3367,10 @@ private struct PPInventoryItemDossierSheet: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(Language.get("LivePet_Operations_Title", alter: "عمليات دورة حياة الحيوان"))
-                    .font(AdminType.headline)
+                    .font(Font.custom("Beiruti-Bold", size: 17))
                     .foregroundStyle(AdminSurface.primaryText)
                 Text(Language.get("LivePet_Operations_Hint", alter: "كل تغيير يُنفذ من الخادم ويُسجل في حركة المخزون والتدقيق."))
-                    .font(AdminType.caption2)
+                    .font(Font.custom("Beiruti-Regular", size: 12))
                     .foregroundStyle(AdminCommandInk.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -2438,14 +3383,13 @@ private struct PPInventoryItemDossierSheet: View {
                 Image(systemName: "arrow.clockwise")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
-                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .frame(width: 36, height: 36)
                     .background(AdminSurface.primary.opacity(0.09), in: Circle())
                     .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 0.75))
             }
             .buttonStyle(CatalogPressStyle())
             .disabled(liveModel.isLoading || liveModel.isMutating)
             .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
-            .accessibilityHint(Language.get("LivePetDossier_RefreshHint", alter: "يعيد تحميل حالة الحيوانات والحجوزات من الخادم"))
         }
     }
 
@@ -2458,10 +3402,10 @@ private struct PPInventoryItemDossierSheet: View {
                     .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("LivePet_Legacy_Mode_Title", alter: "يلزم اعتماد نمط التتبع"))
-                        .font(AdminType.calloutBold)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(Language.get("LivePet_Legacy_Mode_Hint", alter: "هذا سجل قديم. اختر تتبعاً فردياً أو إدارة بالكمية قبل تنفيذ أي حركة جديدة."))
-                        .font(AdminType.caption2)
+                        .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(AdminCommandInk.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2471,14 +3415,13 @@ private struct PPInventoryItemDossierSheet: View {
                 liveModel.operation = .migrate
             } label: {
                 Label(Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون"), systemImage: "arrow.triangle.branch")
-                    .font(AdminType.calloutBold)
+                    .font(Font.custom("Beiruti-Bold", size: 15))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
                     .background(Color(uiColor: .ppWarning), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
             }
             .buttonStyle(CatalogPressStyle())
             .disabled(!liveModel.canManageStock || liveModel.isMutating)
-            .accessibilityHint(Language.get("LivePetDossier_MigrateHint", alter: "يفتح اختيار نمط تتبع المخزون لهذا السجل القديم"))
         }
         .padding(AdminSpacing.md)
         .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
@@ -2490,44 +3433,80 @@ private struct PPInventoryItemDossierSheet: View {
 
     @ViewBuilder
     private var livePetPrimaryCommands: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: AdminSpacing.sm) {
-                intakeCommand
-                posCommand
+        HStack(spacing: 12) {
+            // Intake Action Tile (Emerald)
+            dossierOperationTile(
+                title: Language.get("LivePet_Intake_Action", alter: "إضافة مخزون"),
+                detail: Language.get("LivePetDossier_IntakeDetail", alter: "تسجيل وصول حيوان أو كمية جديدة"),
+                symbol: "plus.circle.fill",
+                tint: Color(uiColor: .ppSuccess),
+                enabled: liveModel.canManageStock
+            ) {
+                liveModel.operation = .intake
             }
-        } else {
-            HStack(spacing: AdminSpacing.sm) {
-                intakeCommand
-                posCommand
+
+            // POS Sell Action Tile (Brand Red)
+            dossierOperationTile(
+                title: Language.get("LivePet_Open_POS", alter: "فتح نقطة البيع"),
+                detail: Language.get("LivePetDossier_POSDetail", alter: "بيع أو حجز حيوان لعميل"),
+                symbol: "cart.fill",
+                tint: AdminSurface.primary,
+                enabled: liveModel.canSell
+            ) {
+                onOpenPOS()
             }
         }
     }
 
-    private var intakeCommand: some View {
-        dossierOperationCommand(
-            title: Language.get("LivePet_Intake_Action", alter: "إضافة مخزون"),
-            detail: Language.get("LivePetDossier_IntakeDetail", alter: "تسجيل وصول حيوان أو كمية جديدة"),
-            symbol: "arrow.down.to.line.compact",
-            tint: Color(uiColor: .ppSuccess),
-            prominent: false,
-            enabled: liveModel.canManageStock
-        ) {
-            liveModel.operation = .intake
-        }
-    }
+    private func dossierOperationTile(
+        title: String,
+        detail: String,
+        symbol: String,
+        tint: Color,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(tint.opacity(0.16))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: symbol)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(tint)
+                    }
+                    Spacer(minLength: 0)
+                    if !enabled {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
 
-    private var posCommand: some View {
-        dossierOperationCommand(
-            title: Language.get("LivePet_Open_POS", alter: "فتح نقطة البيع"),
-            detail: Language.get("LivePetDossier_POSDetail", alter: "بيع أو حجز حيوان لعميل"),
-            symbol: "cart.fill",
-            tint: AdminSurface.primary,
-            prominent: true,
-            enabled: liveModel.canSell
-        ) {
-            dismiss()
-            onOpenPOS()
+                Text(title)
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                Text(detail)
+                    .font(Font.custom("Beiruti-Regular", size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+            .background(tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(tint.opacity(0.24), lineWidth: 0.75)
+            )
         }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(!enabled || liveModel.isMutating)
+        .opacity(enabled ? 1 : 0.6)
     }
 
     private var archiveCatalogCommand: some View {
@@ -2537,8 +3516,8 @@ private struct PPInventoryItemDossierSheet: View {
             ? Language.get("LivePet_Restore_Action", alter: "استعادة سجل الكتالوج")
             : Language.get("LivePet_Archive_Action", alter: "أرشفة سجل الكتالوج")
         let detail = archived
-            ? Language.get("LivePetDossier_RestoreDetail", alter: "إعادة السجل إلى مساحة العمل" )
-            : Language.get("LivePetDossier_ArchiveDetail", alter: "إيقاف السجل دون حذف تاريخه" )
+            ? Language.get("LivePetDossier_RestoreDetail", alter: "إعادة السجل إلى مساحة العمل")
+            : Language.get("LivePetDossier_ArchiveDetail", alter: "إيقاف السجل دون حذف تاريخه")
 
         return Button {
             liveModel.operation = .archive(!archived)
@@ -2550,10 +3529,10 @@ private struct PPInventoryItemDossierSheet: View {
                     .frame(width: 28, height: 28)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(AdminType.captionBold)
+                        .font(Font.custom("Beiruti-Bold", size: 14))
                         .foregroundStyle(enabled ? AdminSurface.primaryText : AdminSurface.secondaryText)
                     Text(detail)
-                        .font(AdminType.caption2)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -2562,12 +3541,10 @@ private struct PPInventoryItemDossierSheet: View {
                     Image(systemName: "lock.fill")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color(uiColor: .ppTextTertiary))
-                        .accessibilityHidden(true)
                 } else {
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminCommandInk.tertiary)
-                        .accessibilityHidden(true)
                 }
             }
             .padding(.horizontal, AdminSpacing.md)
@@ -2580,36 +3557,34 @@ private struct PPInventoryItemDossierSheet: View {
         }
         .buttonStyle(CatalogPressStyle())
         .disabled(!enabled || liveModel.isMutating)
-        .accessibilityLabel(title)
-        .accessibilityValue(enabled ? "" : Language.get("LivePetDossier_AccessLimited", alter: "غير متاح بصلاحيتك"))
-        .accessibilityHint(detail)
     }
 
     private var groupReconciliationCommand: some View {
-        dossierOperationCommand(
+        dossierOperationTile(
             title: Language.get("LivePet_Group_Adjust_Action", alter: "مطابقة كمية المجموعة"),
             detail: Language.get("LivePet_Group_Exact_Action_Hint", alter: "الحجز الفردي والنقل والوفاة لكل حيوان تتطلب نمط التتبع الفردي."),
             symbol: "slider.horizontal.3",
             tint: Color(uiColor: .ppInfo),
-            prominent: false,
             enabled: liveModel.canManageStock
         ) {
             liveModel.operation = .groupAdjustment
         }
     }
 
+    // MARK: - Individual Animal Ledger
+
     private var individualAnimalLedger: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
-                        .font(AdminType.calloutBold)
+                        .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(String(
                         format: Language.get("LivePetDossier_UnitLedgerCount", alter: "%ld سجلات هوية مستقلة"),
                         liveModel.units.count
                     ))
-                    .font(AdminType.caption2)
+                    .font(Font.custom("Beiruti-Regular", size: 12))
                     .foregroundStyle(AdminCommandInk.secondary)
                 }
                 Spacer(minLength: AdminSpacing.xs)
@@ -2625,27 +3600,26 @@ private struct PPInventoryItemDossierSheet: View {
             } else if liveModel.units.isEmpty {
                 dossierUnitEmptyState
             } else {
-                VStack(spacing: AdminSpacing.sm) {
+                VStack(spacing: 8) {
                     ForEach(liveModel.units) { unit in
                         livePetUnitRow(unit)
                     }
                 }
             }
         }
-        .padding(.top, AdminSpacing.xs)
+        .padding(.top, 4)
     }
 
     private var dossierLoadingState: some View {
         HStack(spacing: AdminSpacing.md) {
             ProgressView()
                 .tint(AdminSurface.primary)
-                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(Language.get("LivePet_Units_Loading", alter: "جارٍ تحميل سجلات الحيوانات..."))
-                    .font(AdminType.captionBold)
+                    .font(Font.custom("Beiruti-Bold", size: 13))
                     .foregroundStyle(AdminSurface.primaryText)
                 Text(Language.get("LivePetDossier_LoadingHint", alter: "يتم جلب الحالة الحالية قبل إتاحة الإجراءات."))
-                    .font(AdminType.caption2)
+                    .font(Font.custom("Beiruti-Regular", size: 11))
                     .foregroundStyle(AdminCommandInk.secondary)
             }
             Spacer(minLength: 0)
@@ -2653,7 +3627,6 @@ private struct PPInventoryItemDossierSheet: View {
         .padding(AdminSpacing.md)
         .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -2666,15 +3639,15 @@ private struct PPInventoryItemDossierSheet: View {
                     : Language.get("LivePetDossier_UnitsRestricted", alter: "سجلات الحيوانات الفردية غير متاحة لصلاحيتك."),
                 systemImage: canReadVisibleUnits ? "tray" : "lock.shield"
             )
-            .font(AdminType.captionBold)
+            .font(Font.custom("Beiruti-Bold", size: 13))
             .foregroundStyle(canReadVisibleUnits ? AdminSurface.secondaryText : Color(uiColor: .ppWarning))
 
             Text(
                 canReadVisibleUnits
                     ? Language.get("LivePetDossier_EmptyUnitsHint", alter: "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.")
-                    : Language.get("LivePetDossier_RestrictedUnitsHint", alter: "اطلب صلاحية المخزون أو المبيعات لرؤية السجلات التي يسمح لك بها الدور." )
+                    : Language.get("LivePetDossier_RestrictedUnitsHint", alter: "اطلب صلاحية المخزون أو المبيعات لرؤية السجلات التي يسمح لك بها الدور.")
             )
-            .font(AdminType.caption2)
+            .font(Font.custom("Beiruti-Regular", size: 11))
             .foregroundStyle(AdminCommandInk.secondary)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -2697,13 +3670,13 @@ private struct PPInventoryItemDossierSheet: View {
                     .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(Language.get("LivePet_Reservations_Title", alter: "الحجوزات النشطة"))
-                        .font(AdminType.calloutBold)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(String(
                         format: Language.get("LivePetDossier_ReservationCount", alter: "%ld حجوزات بحاجة إلى متابعة"),
                         liveModel.reservations.count
                     ))
-                    .font(AdminType.caption2)
+                    .font(Font.custom("Beiruti-Regular", size: 11))
                     .foregroundStyle(AdminCommandInk.secondary)
                 }
             }
@@ -2727,18 +3700,17 @@ private struct PPInventoryItemDossierSheet: View {
                     .foregroundStyle(AdminSurface.primary)
                     .frame(width: 36, height: 36)
                     .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(reservation.customerName.isEmpty ? reservation.customerPhone : reservation.customerName)
-                        .font(AdminType.captionBold)
+                        .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
-                    Text(String(format: Language.get("LivePet_Reservation_Branch_Format", alter: "الفرع: %@"), reservation.branchID))
-                        .font(AdminType.caption2)
+                    Text(String(format: Language.get("LivePet_Reservation_Branch_Format", alter: "الفرع: %@"), localizedBranchName(reservation.branchID, id: reservation.branchID)))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
                         .foregroundStyle(AdminCommandInk.secondary)
                     if let validUntil = reservation.validUntil {
                         Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
-                            .font(AdminType.caption2)
+                            .font(Font.custom("Beiruti-Regular", size: 11))
                             .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
                     }
                 }
@@ -2747,13 +3719,11 @@ private struct PPInventoryItemDossierSheet: View {
 
                 VStack(alignment: .trailing, spacing: 5) {
                     Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
-                        .font(AdminType.captionBold)
+                        .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primary)
-                        .environment(\.layoutDirection, .leftToRight)
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminCommandInk.tertiary)
-                        .accessibilityHidden(true)
                 }
             }
             .padding(AdminSpacing.md)
@@ -2766,7 +3736,6 @@ private struct PPInventoryItemDossierSheet: View {
         }
         .buttonStyle(CatalogPressStyle())
         .disabled(liveModel.isMutating)
-        .accessibilityHint(Language.get("LivePetDossier_ReservationHint", alter: "يفتح إجراءات هذا الحجز"))
     }
 
     private func livePetUnitRow(_ unit: PPLivePetInventoryUnit) -> some View {
@@ -2774,27 +3743,28 @@ private struct PPInventoryItemDossierSheet: View {
         let status = liveUnitStatus(unit.status)
         let statusColor = liveUnitStatusColor(unit.status)
 
-        return VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
+                // Status Jewel (Right in RTL)
                 ZStack {
-                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(statusColor.opacity(0.12))
                     Image(systemName: liveUnitStatusSymbol(unit.status))
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(statusColor)
                 }
-                .frame(width: 40, height: 40)
+                .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 5) {
+                // Identity + Badges Track
+                VStack(alignment: .leading, spacing: 4) {
                     Text(identity)
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
                         .foregroundStyle(AdminSurface.primaryText)
-                        .environment(\.layoutDirection, .leftToRight)
                         .lineLimit(1)
                         .truncationMode(.middle)
 
-                    HStack(spacing: AdminSpacing.xs) {
+                    HStack(spacing: 6) {
                         dossierStatusPill(
                             title: status,
                             symbol: liveUnitStatusSymbol(unit.status),
@@ -2802,26 +3772,31 @@ private struct PPInventoryItemDossierSheet: View {
                         )
 
                         if !unit.currentBranchID.isEmpty {
-                            Label(unit.currentBranchID, systemImage: "building.2")
-                                .font(AdminType.caption2)
-                                .foregroundStyle(AdminSurface.secondaryText)
-                                .environment(\.layoutDirection, .leftToRight)
-                                .lineLimit(1)
+                            HStack(spacing: 3) {
+                                Image(systemName: "building.2")
+                                    .font(.system(size: 9))
+                                Text(localizedBranchName(unit.currentBranchID, id: unit.currentBranchID))
+                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                            }
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
                         }
                     }
                 }
 
                 Spacer(minLength: AdminSpacing.xs)
 
-                VStack(alignment: .trailing, spacing: AdminSpacing.xs) {
+                // Price & Actions (Left in RTL)
+                VStack(alignment: .trailing, spacing: 6) {
                     if let price = unit.sellingPrice {
                         Text(PetAccessory.formatCurrency(NSNumber(value: price)))
-                            .font(AdminType.captionBold)
+                            .font(Font.custom("Beiruti-Bold", size: 15))
                             .foregroundStyle(AdminSurface.primary)
-                            .environment(\.layoutDirection, .leftToRight)
                     } else {
                         Text(Language.get("LivePetDossier_PriceUnspecified", alter: "السعر غير محدد"))
-                            .font(AdminType.caption2)
+                            .font(Font.custom("Beiruti-Regular", size: 11))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
@@ -2829,54 +3804,51 @@ private struct PPInventoryItemDossierSheet: View {
                         livePetUnitActions(unit)
                     } label: {
                         Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(AdminSurface.primary)
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .frame(width: 34, height: 34)
                             .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.75))
+                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75))
                     }
                     .disabled(liveModel.isMutating)
                     .accessibilityLabel(String(
                         format: Language.get("LivePetDossier_UnitActionsAccessibility", alter: "إجراءات الحيوان %@"),
                         identity
                     ))
-                    .accessibilityHint(Language.get("LivePetDossier_UnitActionsHint", alter: "يفتح الإجراءات المسموح بها حسب حالة الحيوان وصلاحيتك"))
                 }
             }
 
             if unit.status == "RESERVED" {
-                HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "person.text.rectangle.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color(uiColor: .ppWarning))
-                        .frame(width: 24, height: 24)
-                        .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
-                        .accessibilityHidden(true)
+                        .frame(width: 28, height: 28)
+                        .background(Color(uiColor: .ppWarning).opacity(0.12), in: Circle())
                     VStack(alignment: .leading, spacing: 2) {
                         Text(unit.reservationCustomerName.isEmpty ? unit.reservationCustomerPhone : unit.reservationCustomerName)
-                            .font(AdminType.captionBold)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundStyle(AdminSurface.primaryText)
                         if let validUntil = unit.reservationValidUntil {
                             Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
-                                .font(AdminType.caption2)
+                                .font(Font.custom("Beiruti-Regular", size: 11))
                                 .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(AdminSpacing.sm)
-                .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                .padding(10)
+                .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
-        .padding(AdminSpacing.md)
+        .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(statusColor.opacity(0.22), lineWidth: 0.75)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(statusColor.opacity(0.25), lineWidth: 0.75)
         )
-        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -2938,6 +3910,22 @@ private struct PPInventoryItemDossierSheet: View {
         }
     }
 
+    private func localizedBranchName(_ name: String, id: String) -> String {
+        if id == "main_store" || name.lowercased() == "main_store" || name.lowercased() == "main store" {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        if name.lowercased().contains("reservation") || id.lowercased().contains("reservation") {
+            return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if let branch = liveModel.branches.first(where: { $0.id == id }) {
+            return branch.fullMeaningfulTitle
+        }
+        if let cached = PPLivePetInventoryService.branch(for: id) {
+            return cached.fullMeaningfulTitle
+        }
+        return name.isEmpty ? id : name
+    }
+
     private func liveUnitStatus(_ status: String) -> String {
         switch status {
         case "AVAILABLE": return Language.get("LivePet_Status_Available", alter: "متاح")
@@ -2959,280 +3947,22 @@ private struct PPInventoryItemDossierSheet: View {
         }
     }
 
-    // MARK: - Dossier visual system
-
-    /// The single visual anchor: the catalog item is immediately identifiable,
-    /// its operational condition is legible, and the tracking mode is visible
-    /// before any mutation controls compete for attention.
-    private var dossierHero: some View {
-        HStack(alignment: .top, spacing: AdminSpacing.md) {
-            dossierThumbnail
-
-            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                Text(item.name)
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                dossierStatusPill(
-                    title: PetAccessory.conditionText(for: item),
-                    symbol: "checkmark.seal.fill",
-                    tint: AdminSurface.primary
-                )
-
-                if !item.desc.isEmpty {
-                    Text(item.desc)
-                        .font(AdminType.caption1)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(3)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if item.isLivePet {
-                    Label(inventoryTrackingTitle, systemImage: inventoryTrackingSymbol)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(inventoryTrackingTint)
-                        .padding(.top, AdminSpacing.xxs)
-                }
-            }
+    private func liveUnitStatusSymbol(_ status: String) -> String {
+        switch status {
+        case "AVAILABLE": return "checkmark.circle.fill"
+        case "RESERVED": return "calendar.badge.clock"
+        case "SOLD": return "checkmark.seal.fill"
+        case "QUARANTINED": return "cross.case.fill"
+        case "DECEASED": return "heart.slash.fill"
+        case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
+        default: return "minus.circle.fill"
         }
-        .padding(AdminSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
-    private var dossierThumbnail: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .fill(AdminSurface.primary.opacity(0.09))
-
-            if let firstURL = PetAccessory.firstImageURL(for: item) {
-                AsyncImage(url: firstURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .empty:
-                        ProgressView()
-                            .tint(AdminSurface.primary)
-                    case .failure:
-                        dossierThumbnailFallback
-                    @unknown default:
-                        dossierThumbnailFallback
-                    }
-                }
-            } else {
-                dossierThumbnailFallback
-            }
-        }
-        .frame(width: 74, height: 74)
-        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .accessibilityHidden(true)
-    }
-
-    private var dossierThumbnailFallback: some View {
-        Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
-            .font(.system(size: 25, weight: .semibold))
-            .foregroundStyle(AdminSurface.primary)
-    }
-
-    @ViewBuilder
-    private var dossierSignalDeck: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(spacing: AdminSpacing.sm) {
-                dossierSignalCard(
-                    title: Language.get("Price", alter: "السعر الحالي"),
-                    detail: Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"),
-                    value: item.inventoryDisplayPrice,
-                    symbol: "tag.fill",
-                    tint: item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning)
-                )
-                dossierSignalCard(
-                    title: Language.get("Quantity", alter: "الكمية المتاحة"),
-                    detail: Language.get("LivePetDossier_QuantityDetail", alter: "المتاح حالياً في المخزون"),
-                    value: "\(item.quantity)",
-                    symbol: "shippingbox.fill",
-                    tint: item.quantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
-                )
-            }
-        } else {
-            HStack(spacing: AdminSpacing.sm) {
-                dossierSignalCard(
-                    title: Language.get("Price", alter: "السعر الحالي"),
-                    detail: Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"),
-                    value: item.inventoryDisplayPrice,
-                    symbol: "tag.fill",
-                    tint: item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning)
-                )
-                dossierSignalCard(
-                    title: Language.get("Quantity", alter: "الكمية المتاحة"),
-                    detail: Language.get("LivePetDossier_QuantityDetail", alter: "المتاح حالياً في المخزون"),
-                    value: "\(item.quantity)",
-                    symbol: "shippingbox.fill",
-                    tint: item.quantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
-                )
-            }
-        }
-    }
-
-    private func dossierSignalCard(
-        title: String,
-        detail: String,
-        value: String,
-        symbol: String,
-        tint: Color
-    ) -> some View {
-        HStack(alignment: .top, spacing: AdminSpacing.sm) {
-            Image(systemName: symbol)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 30)
-                .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                Text(value)
-                    .font(.system(size: 23, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(tint)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                Text(detail)
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.tertiary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(AdminSpacing.md)
-        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(tint.opacity(0.20), lineWidth: 0.75)
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title)، \(value)، \(detail)")
-    }
-
-    private var dossierIdentityRail: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            dossierTechnicalFact(
-                title: Language.get("ID", alter: "معرّف الصنف"),
-                value: item.accessoryID,
-                symbol: "number"
-            )
-
-            Divider().background(AdminSurface.hairline)
-
-            if dynamicTypeSize.isAccessibilitySize {
-                VStack(spacing: AdminSpacing.sm) {
-                    if let store = item.storeName, !store.isEmpty {
-                        dossierFact(
-                            title: Language.get("Store", alter: "المتجر / الفرع"),
-                            value: store,
-                            symbol: "building.2"
-                        )
-                    }
-                    dossierFact(
-                        title: Language.get("Condition", alter: "الحالة"),
-                        value: PetAccessory.conditionText(for: item),
-                        symbol: "checkmark.seal"
-                    )
-                }
-            } else {
-                HStack(alignment: .top, spacing: AdminSpacing.md) {
-                    if let store = item.storeName, !store.isEmpty {
-                        dossierFact(
-                            title: Language.get("Store", alter: "المتجر / الفرع"),
-                            value: store,
-                            symbol: "building.2"
-                        )
-                    }
-                    dossierFact(
-                        title: Language.get("Condition", alter: "الحالة"),
-                        value: PetAccessory.conditionText(for: item),
-                        symbol: "checkmark.seal"
-                    )
-                }
-            }
-        }
-        .padding(AdminSpacing.md)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-        )
-    }
-
-    private func dossierTechnicalFact(title: String, value: String, symbol: String) -> some View {
-        HStack(alignment: .center, spacing: AdminSpacing.sm) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(AdminSurface.secondaryText)
-                .frame(width: 28, height: 28)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
-                .accessibilityHidden(true)
-
-            Text(title)
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminSurface.secondaryText)
-
-            Spacer(minLength: AdminSpacing.xs)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(value)
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .textSelection(.enabled)
-            }
-            .frame(maxWidth: 235, alignment: .trailing)
-            .accessibilityHidden(true)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title): \(value)")
-    }
-
-    private func dossierFact(title: String, value: String, symbol: String) -> some View {
-        HStack(alignment: .top, spacing: AdminSpacing.xs) {
-            Image(systemName: symbol)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(AdminSurface.primary)
-                .frame(width: 20, height: 20)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                Text(value)
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .combine)
     }
 
     private func dossierStateNotice(_ text: String, symbol: String, tone: Color) -> some View {
         Label {
             Text(text)
-                .font(AdminType.caption1)
+                .font(Font.custom("Beiruti-SemiBold", size: 12))
                 .fixedSize(horizontal: false, vertical: true)
         } icon: {
             Image(systemName: symbol)
@@ -3246,63 +3976,11 @@ private struct PPInventoryItemDossierSheet: View {
             RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
                 .strokeBorder(tone.opacity(0.22), lineWidth: 0.75)
         )
-        .accessibilityElement(children: .combine)
-    }
-
-    private func dossierOperationCommand(
-        title: String,
-        detail: String,
-        symbol: String,
-        tint: Color,
-        prominent: Bool,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                HStack {
-                    Image(systemName: symbol)
-                        .font(.system(size: 17, weight: .semibold))
-                    Spacer(minLength: 0)
-                    if !enabled {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .accessibilityHidden(true)
-                    }
-                }
-                Text(title)
-                    .font(AdminType.calloutBold)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(detail)
-                    .font(AdminType.caption2)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .opacity(prominent ? 0.82 : 1)
-            }
-            .foregroundStyle(prominent ? Color.white : (enabled ? tint : AdminSurface.secondaryText))
-            .padding(AdminSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-            .background(
-                prominent ? tint : tint.opacity(enabled ? 0.11 : 0.06),
-                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .strokeBorder(prominent ? tint : tint.opacity(enabled ? 0.28 : 0.14), lineWidth: 0.75)
-            )
-        }
-        .buttonStyle(CatalogPressStyle())
-        .disabled(!enabled || liveModel.isMutating)
-        .opacity(enabled ? 1 : 0.64)
-        .accessibilityLabel(title)
-        .accessibilityValue(enabled ? "" : Language.get("LivePetDossier_AccessLimited", alter: "غير متاح بصلاحيتك"))
-        .accessibilityHint(detail)
     }
 
     private func dossierStatusPill(title: String, symbol: String, tint: Color) -> some View {
         Label(title, systemImage: symbol)
-            .font(AdminType.caption2Bold)
+            .font(Font.custom("Beiruti-Bold", size: 11))
             .foregroundStyle(tint)
             .lineLimit(1)
             .padding(.horizontal, AdminSpacing.xs)
@@ -3314,11 +3992,11 @@ private struct PPInventoryItemDossierSheet: View {
     private var inventoryTrackingTitle: String {
         switch liveModel.mode {
         case .some(.individual):
-            return Language.get("LivePetDossier_IndividualTracking", alter: "تتبع فردي" )
+            return Language.get("LivePetDossier_IndividualTracking", alter: "تتبع فردي")
         case .some(.quantity):
-            return Language.get("LivePetDossier_QuantityTracking", alter: "تتبع بالكمية" )
+            return Language.get("LivePetDossier_QuantityTracking", alter: "تتبع بالكمية")
         case .none:
-            return Language.get("LivePetDossier_TrackingPending", alter: "يتطلب اعتماد نمط التتبع" )
+            return Language.get("LivePetDossier_TrackingPending", alter: "يتطلب اعتماد نمط التتبع")
         }
     }
 
@@ -3337,19 +4015,146 @@ private struct PPInventoryItemDossierSheet: View {
         case .none: return Color(uiColor: .ppWarning)
         }
     }
+}
 
-    private func liveUnitStatusSymbol(_ status: String) -> String {
-        switch status {
-        case "AVAILABLE": return "checkmark.circle.fill"
-        case "RESERVED": return "calendar.badge.clock"
-        case "SOLD": return "checkmark.seal.fill"
-        case "QUARANTINED": return "cross.case.fill"
-        case "DECEASED": return "heart.slash.fill"
-        case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
-        default: return "minus.circle.fill"
-        }
+
+// MARK: - Flagship Item Detail Hosting Controller (Push Citizenship)
+
+@available(iOS 16.0, *)
+@objc public final class PPInventoryItemDetailHostingController: UIViewController {
+    private let item: PetAccessory
+    private weak var viewModel: PPInventoryListViewModel?
+    private let onOpenFullEditor: (() -> Void)?
+    private let onOpenPOS: (() -> Void)?
+    private let onAdjustQuantity: ((Int) -> Void)?
+    private let onToggleStock: (() -> Void)?
+    private let onDelete: (() -> Void)?
+
+    init(
+        item: PetAccessory,
+        viewModel: PPInventoryListViewModel? = nil,
+        onOpenFullEditor: (() -> Void)? = nil,
+        onOpenPOS: (() -> Void)? = nil,
+        onAdjustQuantity: ((Int) -> Void)? = nil,
+        onToggleStock: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.viewModel = viewModel
+        self.onOpenFullEditor = onOpenFullEditor
+        self.onOpenPOS = onOpenPOS
+        self.onAdjustQuantity = onAdjustQuantity
+        self.onToggleStock = onToggleStock
+        self.onDelete = onDelete
+        super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
+    }
+
+    public required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.ppBackground
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+        navigationController?.interactivePopGestureRecognizer?.delegate = nil
+
+        let detailView = PPInventoryItemDetailView(
+            item: item,
+            viewModel: viewModel,
+            onDismiss: { [weak self] in
+                guard let self = self else { return }
+                if let nav = self.navigationController {
+                    nav.popViewController(animated: true)
+                } else {
+                    self.dismiss(animated: true)
+                }
+            },
+            onOpenFullEditor: { [weak self] in
+                guard let self = self else { return }
+                if let block = self.onOpenFullEditor {
+                    block()
+                } else {
+                    let editVC = AddAccessoryViewController(accessory: self.item)
+                    editVC.showTypeRow = false
+                    self.navigationController?.pushViewController(editVC, animated: true)
+                }
+            },
+            onOpenPOS: { [weak self] in
+                guard let self = self else { return }
+                if let block = self.onOpenPOS {
+                    block()
+                } else if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: self.item.accessoryID) {
+                    self.navigationController?.pushViewController(controller, animated: true)
+                }
+            },
+            onAdjustQuantity: { [weak self] delta in
+                self?.onAdjustQuantity?(delta)
+            },
+            onToggleStock: { [weak self] in
+                self?.onToggleStock?()
+            },
+            onDelete: { [weak self] in
+                self?.onDelete?()
+                self?.navigationController?.popViewController(animated: true)
+            }
+        )
+
+        let host = UIHostingController(rootView: detailView)
+        host.view.backgroundColor = .clear
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 }
+
+// MARK: - Legacy Compatibility Shim
+
+@available(iOS 16.0, *)
+private struct PPInventoryItemDossierSheet: View {
+    let item: PetAccessory
+    @ObservedObject var viewModel: PPInventoryListViewModel
+    let onOpenFullEditor: () -> Void
+    let onOpenPOS: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        PPInventoryItemDetailView(
+            item: item,
+            viewModel: viewModel,
+            onDismiss: { dismiss() },
+            onOpenFullEditor: {
+                dismiss()
+                onOpenFullEditor()
+            },
+            onOpenPOS: {
+                dismiss()
+                onOpenPOS()
+            },
+            onAdjustQuantity: { delta in
+                viewModel.adjustQuantity(by: delta, for: item)
+            },
+            onToggleStock: {
+                viewModel.toggleStockAvailability(for: item)
+            },
+            onDelete: nil
+        )
+    }
+}
+
 
 // MARK: - Live-Pet Operation Sheet
 
@@ -3375,6 +4180,8 @@ private struct PPLivePetOperationSheet: View {
     @State private var veterinaryReference: String = ""
     @State private var observedDeathAt: Date = Date()
     @State private var validationMessage: String?
+    @State private var isBranchPickerPresented: Bool = false
+    @State private var branchPickerExcludedID: String? = nil
 
     init(context: PPLivePetOperationContext, model: PPLivePetOperationsViewModel) {
         self.context = context
@@ -3421,12 +4228,13 @@ private struct PPLivePetOperationSheet: View {
 
                         if let message = validationMessage ?? model.errorMessage {
                             Label(message, systemImage: "exclamationmark.triangle.fill")
-                                .font(AdminType.caption1)
+                                .font(Font.custom("Beiruti-SemiBold", size: 13))
                                 .foregroundStyle(Color(uiColor: .ppError))
                                 .fixedSize(horizontal: false, vertical: true)
-                                .padding(12)
+                                .padding(14)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(uiColor: .ppError).opacity(0.20), lineWidth: 0.75))
                         }
 
                         actionButtons
@@ -3434,42 +4242,94 @@ private struct PPLivePetOperationSheet: View {
                     .padding(16)
                 }
             }
-            .navigationTitle(operationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(operationTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) { dismiss() }
-                        .disabled(model.isMutating)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .frame(width: 32, height: 32)
+                            .background(AdminSurface.control, in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    }
+                    .disabled(model.isMutating)
+                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
                 }
             }
         }
         .navigationViewStyle(.stack)
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .environment(\.layoutDirection, .rightToLeft)
+        .sheet(isPresented: $isBranchPickerPresented) {
+            PPBranchSelectionStudioSheet(
+                branches: model.branches,
+                selectedBranchID: $selectedBranchID,
+                excludedBranchID: branchPickerExcludedID
+            )
+        }
         .onAppear {
             normalizeBranchSelection()
         }
         .onChange(of: model.branches) { _ in
-            // Branches are fetched after the sheet is presented. Reconcile the
-            // initial branch selection again when the scoped options arrive so
-            // reservation and transfer actions never start on a stale/invalid
-            // branch identifier.
             normalizeBranchSelection()
         }
     }
 
     private var operationHeader: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Label(operationTitle, systemImage: operationIcon)
-                .font(AdminType.title3)
-                .foregroundStyle(AdminSurface.primaryText)
-            Text(operationHint)
-                .font(AdminType.caption1)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(operationColor.opacity(0.12))
+                    .frame(width: 48, height: 48)
+                Image(systemName: operationIcon)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(operationColor)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(operationTitle)
+                    .font(Font.custom("Beiruti-Bold", size: 19))
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(operationHint)
+                    .font(Font.custom("Beiruti-Regular", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+    }
+
+    private var operationColor: Color {
+        switch context {
+        case .intake:
+            return Color(uiColor: .ppSuccess)
+        case .transfer:
+            return AdminSurface.primary
+        case .reserve, .reservation:
+            return Color(uiColor: .ppWarning)
+        case .quarantine, .releaseQuarantine:
+            return Color(uiColor: .ppInfo)
+        case .mortality, .remove:
+            return Color(uiColor: .ppError)
+        case .price:
+            return AdminSurface.primary
+        case .groupAdjustment, .migrate:
+            return Color(uiColor: .ppInfo)
+        case .archive:
+            return Color(uiColor: .ppTextSecondary)
+        }
     }
 
     @ViewBuilder
@@ -3482,16 +4342,16 @@ private struct PPLivePetOperationSheet: View {
                 }
                 .pickerStyle(.segmented)
                 Text(selectedMode.localizedHint)
-                    .font(AdminType.caption2)
+                    .font(Font.custom("Beiruti-Regular", size: 12))
                     .foregroundStyle(AdminCommandInk.secondary)
                 if selectedMode == .individual {
                     if model.item.quantity > 100 {
                         Text(Language.get("LivePet_Migration_TooMany", alter: "لا يمكن تحويل أكثر من 100 حيوان قديم دفعة واحدة. طابق الكمية أولاً أو استخدم وضع المجموعة."))
-                            .font(AdminType.caption1)
+                            .font(Font.custom("Beiruti-SemiBold", size: 13))
                             .foregroundStyle(Color(uiColor: .ppError))
                     } else if model.item.quantity == 0 {
                         Text(Language.get("LivePet_Migration_Empty", alter: "سيتم اعتماد التتبع الفردي دون سجلات حالية، ويمكنك إضافة الحيوانات بعد ذلك."))
-                            .font(AdminType.caption1)
+                            .font(Font.custom("Beiruti-Regular", size: 13))
                             .foregroundStyle(AdminCommandInk.secondary)
                     } else {
                         migrationUnitFields
@@ -3507,22 +4367,51 @@ private struct PPLivePetOperationSheet: View {
                     if model.canViewCosts {
                         decimalField(Language.get("LivePet_Group_PurchaseCost", alter: "تكلفة الوحدة"), text: $costText)
                     }
-                    DatePicker(Language.get("LivePet_Unit_AcquisitionDate", alter: "تاريخ الاستلام"), selection: $unitDrafts[0].acquisitionDate, displayedComponents: .date)
-                    textField(Language.get("LivePet_Supplier_Placeholder", alter: "المورد، اختياري"), text: $supplier)
-                    textField(Language.get("LivePet_Group_Notes_Placeholder", alter: "ملاحظات الإدخال، اختيارية"), text: $notes)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "calendar")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(Language.get("LivePet_Unit_AcquisitionDate", alter: "تاريخ الاستلام"))
+                                .font(Font.custom("Beiruti-SemiBold", size: 13))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                        DatePicker("", selection: $unitDrafts[0].acquisitionDate, displayedComponents: .date)
+                            .labelsHidden()
+                            .datePickerStyle(.compact)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    }
+                    textField(Language.get("LivePet_Supplier_Placeholder", alter: "المورد (اختياري)"), text: $supplier, icon: "person.crop.square")
+                    textField(Language.get("LivePet_Group_Notes_Placeholder", alter: "ملاحظات الإدخال (اختيارية)"), text: $notes, icon: "note.text")
                 }
 
             case .reserve(let unit):
                 unitIdentity(unit)
-                textField(Language.get("LivePet_Customer_Name", alter: "اسم العميل"), text: $customerName)
-                textField(Language.get("LivePet_Customer_Phone", alter: "رقم هاتف العميل"), text: $customerPhone, keyboard: .phonePad)
+                textField(Language.get("LivePet_Customer_Name", alter: "اسم العميل"), text: $customerName, icon: "person.fill")
+                textField(Language.get("LivePet_Customer_Phone", alter: "رقم هاتف العميل"), text: $customerPhone, icon: "phone.fill", keyboard: .phonePad)
                 branchPicker(excluding: nil)
-                DatePicker(
-                    Language.get("LivePet_Reservation_ValidUntil", alter: "صلاحية الحجز حتى"),
-                    selection: $reservationValidUntil,
-                    in: Date().addingTimeInterval(60)...,
-                    displayedComponents: [.date, .hourAndMinute]
-                )
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock.badge.checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("LivePet_Reservation_ValidUntil", alter: "صلاحية الحجز حتى"))
+                            .font(Font.custom("Beiruti-SemiBold", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    DatePicker("", selection: $reservationValidUntil, in: Date().addingTimeInterval(60)..., displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
 
             case .reservation(let reservation):
                 reservationSummary(reservation)
@@ -3531,104 +4420,343 @@ private struct PPLivePetOperationSheet: View {
                 }
                 if !model.canReleaseReservations {
                     Text(Language.get("LivePet_Reservation_Release_Permission_Hint", alter: "تحرير الحجز يتطلب صلاحية البيع وصلاحية رد المدفوعات."))
-                        .font(AdminType.caption2)
+                        .font(Font.custom("Beiruti-Regular", size: 12))
                         .foregroundStyle(AdminCommandInk.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
             case .transfer(let unit):
                 unitIdentity(unit)
-                readOnlyField(
-                    Language.get("LivePet_Source_Branch", alter: "الفرع الحالي"),
-                    value: unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
-                )
-                branchPicker(excluding: unit.currentBranchID.isEmpty ? model.item.storeID : unit.currentBranchID)
-                textField(Language.get("LivePet_Transfer_Reason", alter: "سبب النقل"), text: $reason)
+                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
+                currentBranchDossierCard(currentBranch)
+                branchPicker(excluding: currentBranch)
+                textField(Language.get("LivePet_Transfer_Reason_Prompt", alter: "سبب النقل (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "arrow.left.arrow.right")
 
             case .quarantine(let unit), .releaseQuarantine(let unit), .remove(let unit):
                 unitIdentity(unit)
-                textField(Language.get("LivePet_Operation_Reason", alter: "سبب الإجراء"), text: $reason)
+                textField(Language.get("LivePet_Operation_Reason", alter: "سبب الإجراء"), text: $reason, icon: "questionmark.circle")
 
             case .mortality(let unit):
                 unitIdentity(unit)
-                Picker(Language.get("LivePet_Mortality_Cause", alter: "سبب الوفاة"), selection: $causeCode) {
-                    ForEach(mortalityCauses) { cause in
-                        Text(cause.title).tag(cause.code)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "heart.slash")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(Color(uiColor: .ppError))
+                        Text(Language.get("LivePet_Mortality_Cause", alter: "سبب الوفاة"))
+                            .font(Font.custom("Beiruti-SemiBold", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    Menu {
+                        ForEach(mortalityCauses) { cause in
+                            Button { causeCode = cause.code } label: { Text(cause.title) }
+                        }
+                    } label: {
+                        HStack {
+                            Text(mortalityCauses.first(where: { $0.code == causeCode })?.title ?? causeCode)
+                                .font(Font.custom("Beiruti-Bold", size: 15))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                     }
                 }
-                .pickerStyle(.menu)
-                DatePicker(
-                    Language.get("LivePet_Mortality_ObservedAt", alter: "وقت ملاحظة الوفاة"),
-                    selection: $observedDeathAt,
-                    in: ...Date(),
-                    displayedComponents: [.date, .hourAndMinute]
-                )
-                textField(Language.get("LivePet_Mortality_Reason", alter: "وصف السبب"), text: $reason)
-                textField(Language.get("LivePet_Mortality_Notes", alter: "ملاحظات داخلية، اختيارية"), text: $notes)
-                textField(Language.get("LivePet_Mortality_VetReference", alter: "مرجع الطبيب البيطري، اختياري"), text: $veterinaryReference)
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("LivePet_Mortality_ObservedAt", alter: "وقت ملاحظة الوفاة"))
+                            .font(Font.custom("Beiruti-SemiBold", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    DatePicker("", selection: $observedDeathAt, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                        .datePickerStyle(.compact)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                }
+                textField(Language.get("LivePet_Mortality_Reason", alter: "وصف السبب"), text: $reason, icon: "text.alignleft")
+                textField(Language.get("LivePet_Mortality_Notes", alter: "ملاحظات داخلية (اختيارية)"), text: $notes, icon: "note.text")
+                textField(Language.get("LivePet_Mortality_VetReference", alter: "مرجع الطبيب البيطري (اختياري)"), text: $veterinaryReference, icon: "cross.case")
 
             case .price(let unit):
                 unitIdentity(unit)
-                decimalField(Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع"), text: $standardPriceText)
+                decimalField(Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع الجديد"), text: $standardPriceText)
 
             case .groupAdjustment:
                 numberField(Language.get("LivePet_Group_TargetQuantity", alter: "الكمية الفعلية الحالية"), text: $quantityText)
-                textField(Language.get("LivePet_Adjustment_Reason", alter: "سبب المطابقة"), text: $reason)
+                textField(Language.get("LivePet_Adjustment_Reason", alter: "سبب المطابقة"), text: $reason, icon: "slider.horizontal.3")
 
             case .archive:
-                textField(Language.get("LivePet_Operation_Reason", alter: "سبب الإجراء"), text: $reason)
+                textField(Language.get("LivePet_Operation_Reason", alter: "سبب الإجراء"), text: $reason, icon: "archivebox")
             }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
     }
 
-    private var actionButtons: some View {
-        Group {
-            if case .reservation(let reservation) = context {
-                VStack(spacing: 10) {
-                    Button {
-                        submitReservationCompletion(reservation)
-                    } label: {
-                        operationButtonLabel(Language.get("LivePet_Complete_Sale", alter: "إكمال البيع"), icon: "checkmark.seal.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AdminSurface.primary)
-                    .disabled(model.isMutating || !model.canSell)
+    private func unitIdentity(_ unit: PPLivePetInventoryUnit) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(uiColor: .ppSuccess).opacity(0.12))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color(uiColor: .ppSuccess))
+            }
 
-                    Button(role: .destructive) {
-                        submitReservationRelease(reservation)
-                    } label: {
-                        operationButtonLabel(Language.get("LivePet_Release_Reservation", alter: "تحرير الحجز"), icon: "xmark.circle")
+            VStack(alignment: .leading, spacing: 3) {
+                Text(unit.ringTag.isEmpty ? unit.id : unit.ringTag)
+                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                HStack(spacing: 6) {
+                    Text(liveUnitStatus(unit.status))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(liveUnitStatusColor(unit.status))
+                    if !unit.currentBranchID.isEmpty {
+                        Text("•")
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Text(localizedBranchName(unit.currentBranchID, id: unit.currentBranchID))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(model.isMutating || !model.canReleaseReservations)
                 }
-            } else {
-                Button {
-                    submitPrimaryAction()
-                } label: {
-                    operationButtonLabel(primaryActionTitle, icon: operationIcon)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+    }
+
+    private func localizedBranchName(_ name: String, id: String) -> String {
+        if id == "main_store" || name.lowercased() == "main_store" || name.lowercased() == "main store" {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        if name.lowercased().contains("reservation") || id.lowercased().contains("reservation") {
+            return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if let branch = model.branches.first(where: { $0.id == id }) {
+            return branch.fullMeaningfulTitle
+        }
+        if let cached = PPLivePetInventoryService.branch(for: id) {
+            return cached.fullMeaningfulTitle
+        }
+        return name.isEmpty ? id : name
+    }
+
+    private func currentBranchDossierCard(_ branchID: String) -> some View {
+        let branch = model.branches.first(where: { $0.id == branchID }) ?? PPLivePetInventoryService.branch(for: branchID)
+        let branchTitle = branch?.displayName ?? (branchID.isEmpty ? Language.get("MainStore", alter: "المتجر الرئيسي") : branchID)
+        let branchCode = branch?.code ?? ""
+        let branchAddress = branch?.address ?? ""
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "arrow.up.left.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(Language.get("LivePet_Source_Branch", alter: "الفرع الحالي (نقطة الانطلاق)"))
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.08))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "building.2")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(isDestructive ? Color(uiColor: .ppError) : AdminSurface.primary)
-                .disabled(model.isMutating || !canSubmitByPermission)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(localizedBranchName(branchTitle, id: branchID))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
+                        if !branchCode.isEmpty {
+                            Text("# " + branchCode)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+
+                    if !branchAddress.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 10))
+                            Text(branchAddress)
+                                .font(Font.custom("Beiruti-Regular", size: 12))
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 0)
+
+                Text(Language.get("CurrentCustody", alter: "العهدة الحالية"))
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(AdminSurface.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func liveUnitStatus(_ status: String) -> String {
+        switch status {
+        case "AVAILABLE": return Language.get("LivePet_Status_Available", alter: "متاح")
+        case "RESERVED": return Language.get("LivePet_Status_Reserved", alter: "محجوز")
+        case "SOLD": return Language.get("LivePet_Status_Sold", alter: "مباع")
+        case "QUARANTINED": return Language.get("LivePet_Status_Quarantined", alter: "في الحجر")
+        case "DECEASED": return Language.get("LivePet_Status_Deceased", alter: "متوفى")
+        case "TRANSFERRED": return Language.get("LivePet_Status_Transferred", alter: "منقول نهائياً")
+        default: return Language.get("LivePet_Status_Removed", alter: "مزال")
+        }
+    }
+
+    private func liveUnitStatusColor(_ status: String) -> Color {
+        switch status {
+        case "AVAILABLE": return Color(uiColor: .ppSuccess)
+        case "RESERVED", "QUARANTINED": return Color(uiColor: .ppWarning)
+        case "SOLD", "TRANSFERRED": return AdminCommandInk.secondary
+        default: return Color(uiColor: .ppError)
+        }
+    }
+
+    private func reservationSummary(_ reservation: PPLivePetReservation) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(reservation.customerName.isEmpty ? reservation.customerPhone : reservation.customerName)
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundStyle(AdminSurface.primaryText)
+                Spacer()
+                Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            Text(String(format: Language.get("LivePet_Reservation_Branch_Format", alter: "الفرع: %@"), localizedBranchName(reservation.branchID, id: reservation.branchID)))
+                .font(Font.custom("Beiruti-Regular", size: 12))
+                .foregroundStyle(AdminCommandInk.secondary)
+            if let validUntil = reservation.validUntil {
+                Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "صلاحية الحجز حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
+                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                performAction()
+            } label: {
+                HStack(spacing: 10) {
+                    if model.isMutating {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: operationActionIcon)
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    Text(model.isMutating ? Language.get("LivePet_Operation_Processing", alter: "جارٍ التأكيد من الخادم...") : actionTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 17))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(
+                    LinearGradient(
+                        colors: [operationColor, operationColor.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .shadow(color: operationColor.opacity(0.35), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .disabled(model.isMutating)
+
+            if case .reservation = context {
+                releaseReservationButton
             }
         }
     }
 
-    private func operationButtonLabel(_ title: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            if model.isMutating { ProgressView().tint(.white) }
-            else { Image(systemName: icon) }
-            Text(model.isMutating ? Language.get("LivePet_Operation_Processing", alter: "جارٍ التأكيد من الخادم...") : title)
-                .font(AdminType.headline)
+    private var operationActionIcon: String {
+        switch context {
+        case .intake: return "plus.circle.fill"
+        case .transfer: return "arrow.left.arrow.right"
+        case .reserve: return "calendar.badge.plus"
+        case .reservation: return "checkmark.seal.fill"
+        case .quarantine: return "cross.case.fill"
+        case .releaseQuarantine: return "checkmark.shield.fill"
+        case .mortality: return "heart.slash.fill"
+        case .price: return "tag.fill"
+        case .remove: return "minus.circle.fill"
+        case .groupAdjustment: return "slider.horizontal.3"
+        case .migrate: return "arrow.triangle.branch"
+        case .archive: return "archivebox.fill"
         }
-        .frame(maxWidth: .infinity, minHeight: 52)
+    }
+
+    private var releaseReservationButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task {
+                if case .reservation(let reservation) = context {
+                    let ok = await model.cancel(reservation: reservation)
+                    if ok { dismiss() }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "xmark.circle")
+                    .font(.system(size: 15, weight: .bold))
+                Text(Language.get("LivePet_Release_Reservation", alter: "تحرير الحجز"))
+                    .font(Font.custom("Beiruti-Bold", size: 16))
+            }
+            .foregroundStyle(Color(uiColor: .ppWarning))
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Color(uiColor: .ppWarning).opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(uiColor: .ppWarning).opacity(0.24), lineWidth: 0.75))
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(!model.canReleaseReservations || model.isMutating)
     }
 
     private var migrationUnitFields: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             ForEach($unitDrafts) { $unit in
                 unitDraftFields($unit, showRemove: false)
             }
@@ -3636,398 +4764,312 @@ private struct PPLivePetOperationSheet: View {
     }
 
     private func unitDraftFields(_ unit: Binding<PPLivePetUnitDraft>, showRemove: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            textField(Language.get("LivePet_Ring_Placeholder", alter: "رقم الحلقة أو الشريحة"), text: unit.ringTag)
-                .environment(\.layoutDirection, .leftToRight)
-            HStack(spacing: 10) {
-                decimalField(Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع"), text: unit.sellingPriceText)
+        VStack(alignment: .leading, spacing: 12) {
+            textField(
+                Language.get("LivePet_Ring_Placeholder", alter: "رقم الحلقة أو الشريحة"),
+                text: unit.ringTag,
+                icon: "barcode.viewfinder"
+            )
+
+            HStack(spacing: 12) {
+                decimalField(
+                    Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع"),
+                    text: unit.sellingPriceText,
+                    icon: "tag.fill"
+                )
                 if model.canViewCosts {
-                    decimalField(Language.get("LivePet_Unit_PurchaseCost", alter: "تكلفة الشراء"), text: unit.purchaseCostText)
+                    decimalField(
+                        Language.get("LivePet_Unit_PurchaseCost", alter: "تكلفة الشراء"),
+                        text: unit.purchaseCostText,
+                        icon: "creditcard.fill"
+                    )
                 }
             }
-            DatePicker(Language.get("LivePet_Unit_AcquisitionDate", alter: "تاريخ الاستلام"), selection: unit.acquisitionDate, displayedComponents: .date)
-            textField(Language.get("LivePet_Supplier_Placeholder", alter: "المورد، اختياري"), text: unit.supplier)
-            textField(Language.get("LivePet_Unit_Notes_Placeholder", alter: "ملاحظات داخلية، اختيارية"), text: unit.notes)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 5) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("LivePet_Unit_AcquisitionDate", alter: "تاريخ الاستلام"))
+                        .font(Font.custom("Beiruti-SemiBold", size: 13))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                DatePicker("", selection: unit.acquisitionDate, displayedComponents: .date)
+                    .labelsHidden()
+                    .datePickerStyle(.compact)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            }
+
+            textField(
+                Language.get("LivePet_Supplier_Placeholder", alter: "المورد (اختياري)"),
+                text: unit.supplier,
+                icon: "person.crop.square"
+            )
+
+            textField(
+                Language.get("LivePet_Unit_Notes_Placeholder", alter: "ملاحظات داخلية (اختيارية)"),
+                text: unit.notes,
+                icon: "note.text"
+            )
         }
-        .padding(12)
-        .background(AdminSurface.control.opacity(0.65), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
     }
 
-    private func textField(_ title: String, text: Binding<String>, keyboard: UIKeyboardType = .default) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(AdminType.caption2Bold).foregroundStyle(AdminCommandInk.secondary)
+    private func textField(_ title: String, text: Binding<String>, icon: String? = nil, keyboard: UIKeyboardType = .default) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                Text(title)
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
             TextField(title, text: text)
                 .keyboardType(keyboard)
-                .font(AdminType.callout)
-                .padding(12)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .font(Font.custom("Beiruti-Regular", size: 16))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func decimalField(_ title: String, text: Binding<String>) -> some View {
-        textField(title, text: text, keyboard: .decimalPad)
-            .environment(\.layoutDirection, .leftToRight)
+    private func decimalField(_ title: String, text: Binding<String>, icon: String? = "tag.fill") -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                Text(title)
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            HStack(spacing: 8) {
+                TextField(title, text: text)
+                    .keyboardType(.decimalPad)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .environment(\.layoutDirection, .leftToRight)
+                Text("ر.ق")
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func numberField(_ title: String, text: Binding<String>) -> some View {
-        textField(title, text: text, keyboard: .numberPad)
-            .environment(\.layoutDirection, .leftToRight)
+    private func numberField(_ title: String, text: Binding<String>, icon: String? = "number") -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                if let icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                Text(title)
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            TextField(title, text: text)
+                .keyboardType(.numberPad)
+                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .environment(\.layoutDirection, .leftToRight)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func readOnlyField(_ title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(AdminType.caption2Bold).foregroundStyle(AdminCommandInk.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(Font.custom("Beiruti-SemiBold", size: 13))
+                .foregroundStyle(AdminSurface.secondaryText)
             Text(value.isEmpty ? Language.get("LivePet_Branch_Unknown", alter: "الفرع غير محدد") : value)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                .font(Font.custom("Beiruti-Bold", size: 15))
+                .foregroundStyle(AdminSurface.primaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func branchPicker(excluding excludedID: String?) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(Language.get("LivePet_Destination_Branch", alter: "الفرع"))
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminCommandInk.secondary)
-            Picker(Language.get("LivePet_Select_Branch", alter: "اختر الفرع"), selection: $selectedBranchID) {
-                Text(Language.get("LivePet_Select_Branch", alter: "اختر الفرع")).tag("")
-                ForEach(model.branches.filter { $0.id != excludedID }) { branch in
-                    Text(branch.name).tag(branch.id)
-                }
-            }
-            .pickerStyle(.menu)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .padding(.horizontal, 10)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
-    }
+        let selectedBranch = model.branches.first(where: { $0.id == selectedBranchID }) ?? PPLivePetInventoryService.branch(for: selectedBranchID)
 
-    private func normalizeBranchSelection() {
-        let excludedID: String?
-        switch context {
-        case .transfer(let unit):
-            excludedID = unit.currentBranchID.isEmpty ? model.item.storeID : unit.currentBranchID
-        case .reserve:
-            excludedID = nil
-        default:
-            return
-        }
-        let destinations = model.branches.filter { $0.id != excludedID }
-        guard let firstDestination = destinations.first else {
-            selectedBranchID = ""
-            return
-        }
-        if !destinations.contains(where: { $0.id == selectedBranchID }) {
-            selectedBranchID = firstDestination.id
-        }
-    }
-
-    private func unitIdentity(_ unit: PPLivePetInventoryUnit) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("LivePet_Selected_Animal", alter: "الحيوان المحدد"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                Text(unit.ringTag.isEmpty ? unit.id : unit.ringTag)
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
-            }
-            Spacer()
-            Text(unit.status)
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminSurface.primary)
-        }
-        .padding(12)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func reservationSummary(_ reservation: PPLivePetReservation) -> some View {
-        VStack(spacing: 10) {
-            readOnlyField(Language.get("LivePet_Customer_Name", alter: "اسم العميل"), value: reservation.customerName)
-            readOnlyField(Language.get("LivePet_Customer_Phone", alter: "رقم الهاتف"), value: reservation.customerPhone)
-            readOnlyField(Language.get("LivePet_Source_Branch", alter: "فرع الحجز"), value: reservation.branchID)
-            HStack {
-                Text(Language.get("LivePet_Reservation_Total", alter: "إجمالي الحجز"))
-                    .font(AdminType.caption2Bold)
-                Spacer()
-                Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
-                    .font(AdminType.headline)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(AdminSurface.primary)
-            }
-            if let validUntil = reservation.validUntil {
-                HStack {
-                    Text(Language.get("LivePet_Reservation_ValidUntil", alter: "صالح حتى"))
-                        .font(AdminType.caption2Bold)
-                    Spacer()
-                    Text(validUntil.formatted(date: .abbreviated, time: .shortened))
-                        .font(AdminType.caption1)
-                        .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
-                }
-            }
-        }
-    }
-
-    private var mortalityCauses: [PPLivePetMortalityCause] {
-        [
-            PPLivePetMortalityCause(code: "ILLNESS", title: Language.get("LivePet_Mortality_Illness", alter: "مرض")),
-            PPLivePetMortalityCause(code: "INJURY", title: Language.get("LivePet_Mortality_Injury", alter: "إصابة")),
-            PPLivePetMortalityCause(code: "NATURAL", title: Language.get("LivePet_Mortality_Natural", alter: "أسباب طبيعية")),
-            PPLivePetMortalityCause(code: "VETERINARY_EUTHANASIA", title: Language.get("LivePet_Mortality_Euthanasia", alter: "إنهاء رحيم بيطري")),
-            PPLivePetMortalityCause(code: "ACCIDENT", title: Language.get("LivePet_Mortality_Accident", alter: "حادث")),
-            PPLivePetMortalityCause(code: "UNKNOWN", title: Language.get("LivePet_Mortality_Unknown", alter: "غير معروف")),
-            PPLivePetMortalityCause(code: "OTHER", title: Language.get("LivePet_Mortality_Other", alter: "سبب آخر")),
-        ]
-    }
-
-    private func submitPrimaryAction() {
-        validationMessage = nil
-        Task { @MainActor in
-            let success: Bool
-            switch context {
-            case .migrate:
-                guard selectedMode != .individual || model.item.quantity <= 100 else {
-                    validationMessage = Language.get("LivePet_Migration_TooMany", alter: "عدد السجلات يتجاوز الحد الآمن للتحويل الفردي.")
-                    return
-                }
-                guard let price = validPositiveMoney(standardPriceText, required: selectedMode == .individual) else {
-                    validationMessage = Language.get("LivePet_Validation_UnitPrice", alter: "أدخل سعراً قياسياً صالحاً.")
-                    return
-                }
-                success = await model.migrate(mode: selectedMode, units: selectedMode == .individual ? unitDrafts : [], standardSellingPrice: price)
-
-            case .intake:
-                if model.mode == .individual {
-                    let unit = unitDrafts[0]
-                    let cost: Double
-                    if model.canViewCosts {
-                        guard !unit.purchaseCostText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                              let validatedCost = validNonnegativeMoney(unit.purchaseCostText) else {
-                            validationMessage = Language.get("LivePet_Validation_UnitCost", alter: "أدخل تكلفة استلام صالحة.")
-                            return
-                        }
-                        cost = validatedCost
-                    } else {
-                        cost = 0
+                Text(Language.get("LivePet_Destination_Branch", alter: "الفرع المستهدف"))
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Spacer()
+                if let b = selectedBranch, b.isDefault {
+                    HStack(spacing: 3) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 9))
+                        Text(Language.get("DefaultBranch", alter: "الفرع الافتراضي"))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
                     }
-                    success = await model.intake(mode: .individual, unit: unit, quantity: 1, cost: cost, supplier: unit.supplier, notes: unit.notes)
+                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2.5)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                }
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                branchPickerExcludedID = excludedID
+                isBranchPickerPresented = true
+            } label: {
+                if let b = selectedBranch {
+                    HStack(alignment: .center, spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "building.2.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(b.displayName)
+                                    .font(Font.custom("Beiruti-Bold", size: 16))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .lineLimit(1)
+                                if !b.code.isEmpty {
+                                    Text("# " + b.code)
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(AdminSurface.primary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: 6))
+                                }
+                            }
+
+                            HStack(spacing: 8) {
+                                if !b.address.isEmpty {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "mappin.and.ellipse")
+                                            .font(.system(size: 10))
+                                        Text(b.address)
+                                            .font(Font.custom("Beiruti-Regular", size: 12))
+                                    }
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                                }
+
+                                if !b.stockModeTitle.isEmpty {
+                                    Text(b.stockModeTitle)
+                                        .font(Font.custom("Beiruti-Regular", size: 11))
+                                        .foregroundStyle(Color(uiColor: .ppInfo))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 1.5)
+                                        .background(Color(uiColor: .ppInfo).opacity(0.08), in: Capsule())
+                                }
+                            }
+                        }
+
+                        Spacer(minLength: 6)
+
+                        HStack(spacing: 4) {
+                            Text(Language.get("Change", alter: "تغيير"))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(AdminSurface.primary)
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                        .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.5))
+                    }
+                    .padding(12)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                 } else {
-                    guard let quantity = Int(quantityText), quantity > 0 else {
-                        validationMessage = Language.get("LivePet_Validation_GroupQuantity", alter: "أدخل كمية صحيحة أكبر من صفر.")
-                        return
+                    HStack {
+                        Image(systemName: "building.2")
+                            .font(.system(size: 16))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("LivePet_Select_Branch", alter: "اضغط لاختيار الفرع المستهدف..."))
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Spacer()
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.tertiary)
                     }
-                    let cost: Double
-                    if model.canViewCosts {
-                        guard !costText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                              let validatedCost = validNonnegativeMoney(costText) else {
-                            validationMessage = Language.get("LivePet_Validation_UnitCost", alter: "أدخل تكلفة استلام صالحة.")
-                            return
-                        }
-                        cost = validatedCost
-                    } else {
-                        cost = 0
-                    }
-                    success = await model.intake(mode: .quantity, unit: unitDrafts[0], quantity: quantity, cost: cost, supplier: supplier, notes: notes)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 14)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                 }
-
-            case .reserve(let unit):
-                guard customerName.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2 else {
-                    validationMessage = Language.get("LivePet_Validation_CustomerName", alter: "أدخل اسم العميل بصورة واضحة.")
-                    return
-                }
-                guard customerPhone.filter(\.isNumber).count >= 7 else {
-                    validationMessage = Language.get("LivePet_Validation_CustomerPhone", alter: "أدخل رقم هاتف صالحاً للعميل.")
-                    return
-                }
-                guard !selectedBranchID.isEmpty else {
-                    validationMessage = Language.get("LivePet_Validation_Branch", alter: "اختر فرع الحجز.")
-                    return
-                }
-                guard reservationValidUntil > Date() else {
-                    validationMessage = Language.get("LivePet_Error_ReservationExpired", alter: "يجب أن تكون صلاحية الحجز في المستقبل.")
-                    return
-                }
-                success = await model.reserve(
-                    unit: unit,
-                    customerName: customerName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    phone: customerPhone.trimmingCharacters(in: .whitespacesAndNewlines),
-                    branchID: selectedBranchID,
-                    validUntil: reservationValidUntil
-                )
-
-            case .transfer(let unit):
-                let source = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
-                guard !source.isEmpty, !selectedBranchID.isEmpty, source != selectedBranchID else {
-                    validationMessage = Language.get("LivePet_Validation_TransferBranch", alter: "اختر فرعاً مختلفاً عن الفرع الحالي.")
-                    return
-                }
-                guard validateReason() else { return }
-                success = await model.transfer(unit: unit, sourceBranchID: source, destinationBranchID: selectedBranchID, reason: reasonTrimmed)
-
-            case .quarantine(let unit):
-                guard validateReason() else { return }
-                success = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: reasonTrimmed)
-
-            case .releaseQuarantine(let unit):
-                guard validateReason() else { return }
-                success = await model.lifecycle(action: "release_quarantine", unit: unit, reason: reasonTrimmed)
-
-            case .mortality(let unit):
-                guard validateReason() else { return }
-                success = await model.lifecycle(
-                    action: "record_mortality",
-                    unit: unit,
-                    reason: reasonTrimmed,
-                    causeCode: causeCode,
-                    notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                    veterinaryReference: veterinaryReference.trimmingCharacters(in: .whitespacesAndNewlines),
-                    observedDeathAt: observedDeathAt
-                )
-
-            case .remove(let unit):
-                guard validateReason() else { return }
-                success = await model.remove(unit: unit, reason: reasonTrimmed)
-
-            case .price(let unit):
-                guard let price = validPositiveMoney(standardPriceText) else {
-                    validationMessage = Language.get("LivePet_Validation_UnitPrice", alter: "أدخل سعر بيع صالحاً.")
-                    return
-                }
-                success = await model.updatePrice(unit: unit, price: price)
-
-            case .groupAdjustment:
-                guard let quantity = Int(quantityText), quantity >= 0 else {
-                    validationMessage = Language.get("LivePet_Validation_TargetQuantity", alter: "أدخل كمية فعلية صحيحة لا تقل عن صفر.")
-                    return
-                }
-                guard validateReason() else { return }
-                success = await model.adjustGroup(targetQuantity: quantity, reason: reasonTrimmed)
-
-            case .archive(let archived):
-                guard validateReason() else { return }
-                success = await model.archive(archived, reason: reasonTrimmed)
-
-            case .reservation:
-                return
             }
-            if success { dismiss() }
+            .buttonStyle(CatalogPressStyle())
+            .contextMenu {
+                ForEach(model.branches.filter { $0.id != excludedID }) { branch in
+                    Button {
+                        selectedBranchID = branch.id
+                    } label: {
+                        Text(branch.fullMeaningfulTitle)
+                        if selectedBranchID == branch.id {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    private func submitReservationCompletion(_ reservation: PPLivePetReservation) {
-        validationMessage = nil
-        guard reservation.validUntil.map({ $0 > Date() }) == true else {
-            validationMessage = Language.get("LivePet_Error_ReservationExpired", alter: "انتهت صلاحية الحجز. حرره ولا تكمل البيع.")
-            return
-        }
-        let cashReceived = validNonnegativeMoney(cashReceivedText) ?? 0
-        if reservation.paymentMethod == "cash", cashReceived < reservation.total {
-            validationMessage = Language.get("LivePet_Validation_Cash", alter: "يجب أن يغطي المبلغ النقدي إجمالي الحجز.")
-            return
-        }
-        Task { @MainActor in
-            if await model.complete(reservation: reservation, cashReceived: cashReceived) { dismiss() }
-        }
-    }
-
-    private func submitReservationRelease(_ reservation: PPLivePetReservation) {
-        validationMessage = nil
-        Task { @MainActor in
-            if await model.cancel(reservation: reservation) { dismiss() }
-        }
-    }
-
-    private var reasonTrimmed: String { reason.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private func validateReason() -> Bool {
-        if reasonTrimmed.count >= 3 { return true }
-        validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
-        return false
-    }
-
-    private func validPositiveMoney(_ text: String, required: Bool = true) -> Double? {
-        if !required && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return 0 }
-        guard let value = Double(text.replacingOccurrences(of: ",", with: ".")),
-              value > 0,
-              value <= 999_999_999.99,
-              abs(value * 100 - (value * 100).rounded()) < 0.000_001 else { return nil }
-        return value
-    }
-
-    private func validNonnegativeMoney(_ text: String) -> Double? {
-        guard let value = Double(text.replacingOccurrences(of: ",", with: ".")), value >= 0 else { return nil }
-        return value
-    }
-
-    private var canSubmitByPermission: Bool {
-        switch context {
-        case .reserve: return model.canSell
-        case .reservation: return false
-        case .releaseQuarantine: return model.canReleaseQuarantine
-        default: return model.canManageStock
-        }
-    }
-
-    private var isDestructive: Bool {
-        switch context {
-        case .mortality, .remove, .archive(true): return true
-        default: return false
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var operationTitle: String {
         switch context {
-        case .migrate: return Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون")
-        case .intake: return Language.get("LivePet_Intake_Action", alter: "إضافة مخزون حي")
-        case .reserve: return Language.get("LivePet_Reserve_Action", alter: "حجز الحيوان")
-        case .reservation: return Language.get("LivePet_Manage_Reservation", alter: "إدارة الحجز")
-        case .transfer: return Language.get("LivePet_Transfer_Action", alter: "نقل الحيوان إلى فرع")
-        case .quarantine: return Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر")
-        case .releaseQuarantine: return Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر")
-        case .mortality: return Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة")
-        case .remove: return Language.get("LivePet_Remove_Action", alter: "إزالة سجل")
-        case .price: return Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع")
-        case .groupAdjustment: return Language.get("LivePet_Group_Adjust_Action", alter: "مطابقة كمية المجموعة")
-        case .archive(let archived): return archived
-            ? Language.get("LivePet_Archive_Action", alter: "أرشفة سجل الكتالوج")
-            : Language.get("LivePet_Restore_Action", alter: "استعادة سجل الكتالوج")
-        }
-    }
-
-    private var primaryActionTitle: String {
-        switch context {
-        case .migrate: return Language.get("LivePet_Migration_Confirm", alter: "تأكيد نمط التتبع")
-        case .intake: return Language.get("LivePet_Intake_Confirm", alter: "تأكيد إضافة المخزون")
-        case .reserve: return Language.get("LivePet_Reservation_Confirm", alter: "تأكيد الحجز")
-        case .transfer: return Language.get("LivePet_Transfer_Confirm", alter: "تأكيد النقل")
-        case .quarantine: return Language.get("LivePet_Quarantine_Confirm", alter: "تأكيد الحجر")
-        case .releaseQuarantine: return Language.get("LivePet_Release_Confirm", alter: "تأكيد الإخراج")
-        case .mortality: return Language.get("LivePet_Mortality_Confirm", alter: "تأكيد تسجيل الوفاة")
-        case .remove: return Language.get("LivePet_Remove_Confirm", alter: "تأكيد الإزالة")
-        case .price: return Language.get("LivePet_Price_Confirm", alter: "حفظ السعر")
-        case .groupAdjustment: return Language.get("LivePet_Group_Adjust_Confirm", alter: "تأكيد المطابقة")
-        case .archive(let archived): return archived
-            ? Language.get("LivePet_Archive_Confirm", alter: "تأكيد الأرشفة")
-            : Language.get("LivePet_Restore_Confirm", alter: "تأكيد الاستعادة")
-        case .reservation: return ""
-        }
-    }
-
-    private var operationHint: String {
-        switch context {
-        case .migrate: return Language.get("LivePet_Migration_Hint", alter: "يحافظ الخادم على الكمية الحالية وينشئ سجلات الهوية عند اختيار التتبع الفردي.")
-        case .intake: return Language.get("LivePet_Intake_Hint", alter: "تُضاف الكمية أو الهوية داخل معاملة واحدة مع حركة مخزون وسجل تدقيق.")
-        case .reserve: return Language.get("LivePet_Reservation_Hint", alter: "سيُحفظ العميل في دليل نقطة البيع ويُحجز هذا الحيوان حتى الموعد المحدد.")
-        case .reservation: return Language.get("LivePet_Manage_Reservation_Hint", alter: "أكمل البيع بعد استلام المبلغ، أو حرر الحجز لإعادة الحيوان إلى المتاح.")
-        case .transfer: return Language.get("LivePet_Transfer_Hint", alter: "يتغير فرع العهدة فقط؛ هوية الحيوان وحالته وسجله تبقى محفوظة.")
-        case .quarantine: return Language.get("LivePet_Quarantine_Hint", alter: "يخرج الحيوان من الكمية المتاحة حتى يتم إخراجه من الحجر بصلاحية مستقلة.")
-        case .releaseQuarantine: return Language.get("LivePet_Release_Hint", alter: "يعيد الحيوان إلى المتاح ويعيد حساب سعر عرض الكتالوج من السجلات المتاحة.")
-        case .mortality: return Language.get("LivePet_Mortality_Hint", alter: "حالة نهائية. يسجل الخادم التكلفة والسبب ويلغي الحجز النشط بأمان عند الحاجة.")
-        case .remove: return Language.get("LivePet_Remove_Hint", alter: "متاح فقط للسجل المتاح، ويحتفظ الخادم بأثر الإزالة.")
-        case .price: return Language.get("LivePet_Price_Hint", alter: "سعر هذا الحيوان هو مرجع نقطة البيع النهائي.")
-        case .groupAdjustment: return Language.get("LivePet_Group_Adjust_Hint", alter: "استخدم العدد الفعلي بعد الجرد؛ لا تستخدمه لتسجيل بيع.")
-        case .archive(let archived): return archived
-            ? Language.get("LivePet_Archive_Hint", alter: "يُخفى السجل من قنوات البيع مع بقاء الوحدات والحركات محفوظة.")
-            : Language.get("LivePet_Restore_Hint", alter: "يعاد السجل إلى الكتالوج وفق حالته الحالية وتوفره الفعلي.")
+        case .migrate: return Language.get("LivePet_Migrate_Title", alter: "اعتماد نمط المخزون")
+        case .intake: return Language.get("LivePet_Intake_Title", alter: "إضافة مخزون")
+        case .reserve: return Language.get("LivePet_Reserve_Title", alter: "حجز لعميل")
+        case .reservation: return Language.get("LivePet_Reservation_Details_Title", alter: "تفاصيل الحجز")
+        case .transfer: return Language.get("LivePet_Transfer_Title", alter: "نقل إلى فرع")
+        case .quarantine: return Language.get("LivePet_Quarantine_Title", alter: "إدخال الحجر الصحي")
+        case .releaseQuarantine: return Language.get("LivePet_Release_Quarantine_Title", alter: "إخراج من الحجر الصحي")
+        case .mortality: return Language.get("LivePet_Mortality_Title", alter: "تسجيل وفاة")
+        case .price: return Language.get("LivePet_Edit_Price_Title", alter: "تعديل سعر البيع")
+        case .remove: return Language.get("LivePet_Remove_Title", alter: "إزالة من المخزون")
+        case .groupAdjustment: return Language.get("LivePet_Group_Adjust_Title", alter: "مطابقة كمية المجموعة")
+        case .archive(let target):
+            return target
+                ? Language.get("LivePet_Archive_Title", alter: "أرشفة سجل الكتالوج")
+                : Language.get("LivePet_Restore_Title", alter: "استعادة سجل الكتالوج")
         }
     }
 
@@ -4036,18 +5078,443 @@ private struct PPLivePetOperationSheet: View {
         case .migrate: return "arrow.triangle.branch"
         case .intake: return "plus.circle.fill"
         case .reserve: return "calendar.badge.plus"
-        case .reservation: return "creditcard"
+        case .reservation: return "creditcard.fill"
         case .transfer: return "arrow.left.arrow.right"
-        case .quarantine: return "cross.case"
-        case .releaseQuarantine: return "checkmark.shield"
-        case .mortality: return "heart.slash"
-        case .remove: return "minus.circle"
-        case .price: return "tag"
+        case .quarantine: return "cross.case.fill"
+        case .releaseQuarantine: return "checkmark.shield.fill"
+        case .mortality: return "heart.slash.fill"
+        case .price: return "tag.fill"
+        case .remove: return "minus.circle.fill"
         case .groupAdjustment: return "slider.horizontal.3"
-        case .archive(let archived): return archived ? "archivebox" : "arrow.uturn.backward.circle"
+        case .archive(let target): return target ? "archivebox.fill" : "arrow.uturn.backward.circle.fill"
+        }
+    }
+
+    private var operationHint: String {
+        switch context {
+        case .migrate: return Language.get("LivePet_Migrate_Hint", alter: "اختر نمط الإدارة المناسب لهذا الحيوان لتأكيد هيكل التتبع المعتمد.")
+        case .intake: return Language.get("LivePet_Intake_Hint", alter: "تضاف الكمية أو الهوية داخل معاملة واحدة مع حركة مخزون وسجل تدقيق.")
+        case .reserve: return Language.get("LivePet_Reserve_Hint", alter: "يُحجز الحيوان للعميل حصرياً مع تحديد الفرع ومدة الصلاحية.")
+        case .reservation: return Language.get("LivePet_Reservation_Hint", alter: "متابعة بيانات الحجز والدفع أو تحرير الحيوان لإتاحته من جديد.")
+        case .transfer: return Language.get("LivePet_Transfer_Hint", alter: "بتغيير فرع العهدة فقط، وتبقى هوية الحيوان وحالته وسجله محفوظة.")
+        case .quarantine: return Language.get("LivePet_Quarantine_Hint", alter: "يُعزل الحيوان طبياً ويُمنع بيعه حتى يتم التأكد من سلامته.")
+        case .releaseQuarantine: return Language.get("LivePet_Release_Quarantine_Hint", alter: "يُعاد الحيوان إلى المخزون المتاح بعد انتهاء فترة الفحص.")
+        case .mortality: return Language.get("LivePet_Mortality_Hint", alter: "يوثق سبب الوفاة رسمياً ويُسوى المخزون مع إلغاء أي حجز قائم.")
+        case .price: return Language.get("LivePet_Price_Hint", alter: "يُحدث سعر البيع المعتمد لهذا الحيوان فقط ويُسجل التغيير في السجل.")
+        case .remove: return Language.get("LivePet_Remove_Hint", alter: "تتم إزالة هذا السجل مع حفظ التدقيق لضبط المطابقة والعهدة.")
+        case .groupAdjustment: return Language.get("LivePet_Group_Adjust_Hint", alter: "تُطابق الكمية الفعلية للمجموعة مع تسجيل الفارق وسبب التسوية.")
+        case .archive(let target):
+            return target
+                ? Language.get("LivePet_Archive_Hint", alter: "يُوقف ظهور السجل في القوائم النشطة دون حذف بياناته أو حركاته السابقة.")
+                : Language.get("LivePet_Restore_Hint", alter: "يُعاد السجل إلى الحالة النشطة للاستمرار في إدارته والبيع منه.")
+        }
+    }
+
+    private var actionTitle: String {
+        switch context {
+        case .migrate: return Language.get("LivePet_Confirm_Migrate", alter: "تأكيد نمط المخزون")
+        case .intake: return Language.get("LivePet_Confirm_Intake", alter: "تأكيد إضافة المخزون")
+        case .reserve: return Language.get("LivePet_Confirm_Reserve", alter: "تأكيد الحجز")
+        case .reservation: return Language.get("LivePet_Confirm_Sale", alter: "إتمام البيع الآن")
+        case .transfer: return Language.get("LivePet_Confirm_Transfer", alter: "تأكيد النقل إلى الفرع")
+        case .quarantine: return Language.get("LivePet_Confirm_Quarantine", alter: "تأكيد العزل الطبي")
+        case .releaseQuarantine: return Language.get("LivePet_Confirm_Release", alter: "تأكيد الإخراج من الحجر")
+        case .mortality: return Language.get("LivePet_Confirm_Mortality", alter: "تسجيل الوفاة رسمياً")
+        case .price: return Language.get("LivePet_Confirm_Price", alter: "تحديث سعر البيع")
+        case .remove: return Language.get("LivePet_Confirm_Remove", alter: "تأكيد الإزالة")
+        case .groupAdjustment: return Language.get("LivePet_Confirm_Group_Adjust", alter: "تأكيد مطابقة الكمية")
+        case .archive(let target):
+            return target
+                ? Language.get("LivePet_Confirm_Archive", alter: "تأكيد الأرشفة")
+                : Language.get("LivePet_Confirm_Restore", alter: "تأكيد الاستعادة")
+        }
+    }
+
+    private var mortalityCauses: [PPLivePetMortalityCause] {
+        [
+            PPLivePetMortalityCause(code: "ILLNESS", title: Language.get("LivePet_Mortality_Illness", alter: "مرض أو عدوى")),
+            PPLivePetMortalityCause(code: "INJURY", title: Language.get("LivePet_Mortality_Injury", alter: "إصابة أو حادث")),
+            PPLivePetMortalityCause(code: "NATURAL", title: Language.get("LivePet_Mortality_Natural", alter: "أسباب طبيعية")),
+            PPLivePetMortalityCause(code: "UNKNOWN", title: Language.get("LivePet_Mortality_Unknown", alter: "سبب غير محدد"))
+        ]
+    }
+
+    private func normalizeBranchSelection() {
+        if selectedBranchID.isEmpty {
+            if case .transfer(let unit) = context {
+                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
+                if let next = model.branches.first(where: { $0.id != currentBranch })?.id {
+                    selectedBranchID = next
+                }
+            } else if let first = model.branches.first?.id {
+                selectedBranchID = first
+            }
+        }
+    }
+
+    private func performAction() {
+        validationMessage = nil
+        Task {
+            let ok: Bool
+            switch context {
+            case .migrate:
+                let price = Double(standardPriceText) ?? 0
+                ok = await model.migrate(
+                    mode: selectedMode,
+                    units: selectedMode == .individual ? unitDrafts : [],
+                    standardSellingPrice: price
+                )
+            case .intake:
+                if model.mode == .individual {
+                    let cost = Double(unitDrafts[0].purchaseCostText) ?? 0
+                    ok = await model.intake(
+                        mode: .individual,
+                        unit: unitDrafts[0],
+                        quantity: 1,
+                        cost: cost,
+                        supplier: unitDrafts[0].supplier,
+                        notes: unitDrafts[0].notes
+                    )
+                } else {
+                    let qty = Int(quantityText) ?? 0
+                    guard qty > 0 else {
+                        validationMessage = Language.get("LivePet_Quantity_Invalid", alter: "أدخل كمية صحيحة أكبر من صفر")
+                        return
+                    }
+                    let cost = Double(costText) ?? 0
+                    ok = await model.intake(
+                        mode: .quantity,
+                        unit: unitDrafts[0],
+                        quantity: qty,
+                        cost: cost,
+                        supplier: supplier,
+                        notes: notes
+                    )
+                }
+            case .reserve(let unit):
+                guard !customerName.isEmpty || !customerPhone.isEmpty else {
+                    validationMessage = Language.get("LivePet_Customer_Required", alter: "أدخل اسم العميل أو رقم هاتفه")
+                    return
+                }
+                guard !selectedBranchID.isEmpty else {
+                    validationMessage = Language.get("LivePet_Branch_Required", alter: "اختر الفرع المراد ربط الحجز به")
+                    return
+                }
+                ok = await model.reserve(
+                    unit: unit,
+                    customerName: customerName,
+                    phone: customerPhone,
+                    branchID: selectedBranchID,
+                    validUntil: reservationValidUntil
+                )
+            case .reservation(let reservation):
+                let cash = Double(cashReceivedText) ?? reservation.total
+                ok = await model.complete(reservation: reservation, cashReceived: cash)
+            case .transfer(let unit):
+                guard !selectedBranchID.isEmpty else {
+                    validationMessage = Language.get("LivePet_Branch_Required", alter: "اختر الفرع المنقول إليه")
+                    return
+                }
+                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
+                guard selectedBranchID != currentBranch else {
+                    validationMessage = Language.get("LivePet_Transfer_SameBranch", alter: "الفرع المختار هو نفس الفرع الحالي")
+                    return
+                }
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Transfer_Reason_Required", alter: "يرجى كتابة سبب النقل (٣ أحرف على الأقل)")
+                    return
+                }
+                ok = await model.transfer(
+                    unit: unit,
+                    sourceBranchID: currentBranch,
+                    destinationBranchID: selectedBranchID,
+                    reason: trimmedReason
+                )
+            case .quarantine(let unit):
+                ok = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: reason)
+            case .releaseQuarantine(let unit):
+                ok = await model.lifecycle(action: "release_quarantine", unit: unit, reason: reason)
+            case .mortality(let unit):
+                ok = await model.lifecycle(
+                    action: "record_mortality",
+                    unit: unit,
+                    reason: reason,
+                    causeCode: causeCode,
+                    notes: notes,
+                    veterinaryReference: veterinaryReference,
+                    observedDeathAt: observedDeathAt
+                )
+            case .price(let unit):
+                guard let price = Double(standardPriceText), price >= 0 else {
+                    validationMessage = Language.get("LivePet_Price_Invalid", alter: "أدخل سعراً صحيحاً")
+                    return
+                }
+                ok = await model.updatePrice(unit: unit, price: price)
+            case .remove(let unit):
+                ok = await model.remove(unit: unit, reason: reason)
+            case .groupAdjustment:
+                guard let target = Int(quantityText), target >= 0 else {
+                    validationMessage = Language.get("LivePet_Quantity_Invalid", alter: "أدخل كمية صحيحة")
+                    return
+                }
+                ok = await model.adjustGroup(targetQuantity: target, reason: reason)
+            case .archive(let target):
+                ok = await model.archive(target, reason: reason)
+            }
+
+            if ok {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                dismiss()
+            }
         }
     }
 }
+
+
+
+// MARK: - Dedicated Branch Selection Studio Sheet
+
+private struct PPBranchSelectionStudioSheet: View {
+    let branches: [PPInventoryBranchOption]
+    @Binding var selectedBranchID: String
+    let excludedBranchID: String?
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchQuery: String = ""
+
+    private var filteredBranches: [PPInventoryBranchOption] {
+        let q = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if q.isEmpty { return branches }
+        return branches.filter { b in
+            b.displayName.lowercased().contains(q) ||
+            b.nameAr.lowercased().contains(q) ||
+            b.nameEn.lowercased().contains(q) ||
+            b.code.lowercased().contains(q) ||
+            b.address.lowercased().contains(q) ||
+            b.phone.contains(q)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 14) {
+                        // Search Bar Container
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                            TextField(Language.get("SearchBranch_Placeholder", alter: "ابحث بالاسم، الكود، المنطقة أو الهاتف..."), text: $searchQuery)
+                                .font(Font.custom("Beiruti-Regular", size: 15))
+                            if !searchQuery.isEmpty {
+                                Button {
+                                    searchQuery = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(AdminCommandInk.tertiary)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+
+                        // Branches Count Banner
+                        HStack {
+                            Text(String(format: Language.get("AvailableBranchesCount", alter: "%ld فرع متاح"), filteredBranches.count))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
+
+                        // Branch Cards Stack
+                        VStack(spacing: 10) {
+                            ForEach(filteredBranches) { branch in
+                                branchOptionCard(branch)
+                            }
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(Language.get("SelectDestinationBranch", alter: "اختيار الفرع المستهدف"))
+                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .frame(width: 32, height: 32)
+                            .background(AdminSurface.control, in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    }
+                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+                }
+            }
+        }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, .rightToLeft)
+    }
+
+    private func branchOptionCard(_ branch: PPInventoryBranchOption) -> some View {
+        let isSelected = selectedBranchID == branch.id
+        let isCurrent = branch.id == excludedBranchID
+
+        return Button {
+            if !isCurrent {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                selectedBranchID = branch.id
+                dismiss()
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 12) {
+                // Radio Selection Jewel (Right in RTL)
+                ZStack {
+                    if isSelected {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 22, height: 22)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .black))
+                            .foregroundStyle(.white)
+                    } else {
+                        Circle()
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 1.5)
+                            .frame(width: 22, height: 22)
+                    }
+                }
+
+                // Building Jewel
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected ? Color(uiColor: .ppSuccess).opacity(0.12) : AdminSurface.primary.opacity(0.10))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: isSelected ? "building.2.fill" : "building.2")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(isSelected ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
+                }
+
+                // Branch Details Track
+                VStack(alignment: .leading, spacing: 4) {
+                    // Top: Name + Default Badge
+                    HStack(spacing: 6) {
+                        Text(branch.displayName)
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(isCurrent ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        if !branch.code.isEmpty {
+                            Text("# " + branch.code)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
+
+                        if branch.isDefault {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 9))
+                                Text(Language.get("DefaultBranch", alter: "الفرع الافتراضي"))
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                            }
+                            .foregroundStyle(Color(uiColor: .ppSuccess))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    // Second: English Name if different
+                    if !branch.nameEn.isEmpty && branch.nameEn != branch.displayName {
+                        Text(branch.nameEn)
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                            .lineLimit(1)
+                    }
+
+                    // Third: Address & Location
+                    if !branch.address.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "mappin.and.ellipse")
+                                .font(.system(size: 10))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(branch.address)
+                                .font(Font.custom("Beiruti-Regular", size: 12))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Fourth: Stock mode & Phone
+                    HStack(spacing: 8) {
+                        if !branch.stockModeTitle.isEmpty {
+                            Text(branch.stockModeTitle)
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(Color(uiColor: .ppInfo))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .ppInfo).opacity(0.08), in: Capsule())
+                        }
+                        if !branch.phone.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 9))
+                                Text(branch.phone)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            }
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+
+                    if isCurrent {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 9))
+                            Text(Language.get("LivePet_Current_Source_Branch_Hint", alter: "الفرع الحالي للحيوان (لا يمكن النقل لنفس الفرع)"))
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                        }
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                        .padding(.top, 2)
+                    }
+                }
+
+                Spacer(minLength: 4)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isSelected ? Color(uiColor: .ppSuccess).opacity(0.06) : (isCurrent ? AdminSurface.control.opacity(0.5) : AdminSurface.surface),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? Color(uiColor: .ppSuccess).opacity(0.4) : (isCurrent ? Color(uiColor: .ppWarning).opacity(0.2) : AdminSurface.hairline),
+                        lineWidth: isSelected ? 1.5 : 0.75
+                    )
+            )
+            .opacity(isCurrent ? 0.6 : 1.0)
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(isCurrent)
+    }
+}
+
 
 // MARK: - Press Style
 

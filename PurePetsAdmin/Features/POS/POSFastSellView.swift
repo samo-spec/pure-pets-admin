@@ -742,6 +742,7 @@ final class POSFastSellViewModel: ObservableObject {
                     customerName: customerName ?? "",
                     customerPhone: customerPhone ?? ""
                 )
+                NotificationCenter.default.post(name: Notification.Name("PPAccountingDataDidChangeNotification"), object: nil)
                 self.invalidateSubmissionCommand()
                 self.isSubmitting = false
                 self.isPreparingReceipt = true
@@ -1138,8 +1139,11 @@ struct AdminPOSFastSellView: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, AdminSpacing.md)
                 .frame(minHeight: AdminTouchTarget.minimum)
-                .background(AdminSurface.primary, in: Capsule())
-                .overlay(Capsule().strokeBorder(Color.white.opacity(0.24), lineWidth: AdminStroke.thin))
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.24), lineWidth: AdminStroke.thin)
+                )
                 .shadow(color: AdminSurface.primary.opacity(0.18), radius: 8, y: 3)
             }
             .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))

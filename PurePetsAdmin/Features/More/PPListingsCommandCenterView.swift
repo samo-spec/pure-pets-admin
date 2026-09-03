@@ -796,12 +796,16 @@ public struct PPListingsCommandCenterScreen: View {
                     if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
                         AsyncImage(url: url) { phase in
                             if let img = phase.image {
-                                img.resizable().aspectRatio(contentMode: .fill)
+                                img.resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 86, height: 86)
+                                    .clipped()
                             } else {
                                 thumbnailPlaceholder(item)
                             }
                         }
                         .frame(width: 86, height: 86)
+                        .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
                         thumbnailPlaceholder(item)

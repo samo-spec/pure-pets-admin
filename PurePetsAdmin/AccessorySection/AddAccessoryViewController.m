@@ -9,7 +9,7 @@
 #import "PPDesignTokens.h"
 #import "PurePetsAdmin-Swift.h"
 
-@interface AddAccessoryViewController ()
+@interface AddAccessoryViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) UIViewController *hostingController;
 @end
 
@@ -32,6 +32,11 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = [UIColor ppBackground];
+    
+    UITapGestureRecognizer *dismissTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pp_dismissKeyboard)];
+    dismissTap.cancelsTouchesInView = NO;
+    dismissTap.delegate = self;
+    [self.view addGestureRecognizer:dismissTap];
     
     __weak typeof(self) weakSelf = self;
     UIViewController *host = [PPAccessoryEditorHostingBridge makeViewControllerWithAccessory:self.editingAccessory
@@ -59,6 +64,28 @@
     // Safe area layout note: content views pin to self.view.safeAreaLayoutGuide.bottomAnchor within SwiftUI save dock.
     [host didMoveToParentViewController:self];
     self.hostingController = host;
+}
+
+- (void)pp_dismissKeyboard {
+    [[UIApplication sharedApplication] sendAction:@selector(resignFirstResponder) to:nil from:nil forEvent:nil];
+    [self.view endEditing:YES];
+}
+
+#pragma mark - UIGestureRecognizerDelegate
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch {
+    UIView *touchView = touch.view;
+    while (touchView != nil && touchView != self.view) {
+        if ([touchView isKindOfClass:[UITextField class]] || [touchView isKindOfClass:[UITextView class]]) {
+            return NO;
+        }
+        touchView = touchView.superview;
+    }
+    return YES;
+}
+
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    return YES;
 }
 
 - (void)viewWillAppear:(BOOL)animated {

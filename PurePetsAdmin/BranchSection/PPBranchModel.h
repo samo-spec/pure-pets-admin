@@ -49,6 +49,12 @@ typedef NS_ENUM(NSInteger, PPBranchStockMode) {
 @property (nonatomic, assign) BOOL isDefault;   ///< Only one branch should be default at a time
 @property (nonatomic, assign) PPBranchStockMode stockMode;
 
+// ── Enterprise Metadata ──────────────────────────────────────────────────
+@property (nonatomic, copy, nullable) NSString *managerId;
+@property (nonatomic, copy, nullable) NSString *operatingHours;
+@property (nonatomic, copy, nullable) NSString *taxNumber;
+@property (nonatomic, copy, nullable) NSString *crNumber;
+
 // ── Meta ──────────────────────────────────────────────────────────────────
 @property (nonatomic, strong, nullable) NSDate *createdAt;
 @property (nonatomic, strong, nullable) NSDate *updatedAt;

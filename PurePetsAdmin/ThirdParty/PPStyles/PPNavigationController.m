@@ -9,12 +9,14 @@
 // In PPNavigationController.m
 #import "PPNavigationController.h"
 #import "Language.h"
+#import "UIViewController+PPNavBar.h"
 
 @implementation PPNavigationController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
     [self pp_applyPurePetsNavigationAppearance];
+    [self pp_enableSwipeToPop];
 }
 
 - (void)pp_applyPurePetsNavigationAppearance {

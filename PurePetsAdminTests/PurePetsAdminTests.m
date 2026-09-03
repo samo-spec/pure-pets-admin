@@ -10,6 +10,8 @@
 #import "PPStaffAuth.h"
 #import "PetAccessory.h"
 #import "PPPOSService.h"
+#import "PPBranchModel.h"
+#import "PPBranchContextManager.h"
 
 @interface PurePetsAdminTests : XCTestCase
 
@@ -236,6 +238,97 @@
     XCTAssertEqual(receipt.items.count, 1);
     XCTAssertEqualObjects(receipt.items.firstObject.unitRingTags, (@[@"QA-101", @"QA-102"]));
     XCTAssertEqualWithAccuracy(receipt.items.firstObject.lineTotal, 225, 0.001);
+}
+
+- (void)testBranchModelSerializationAndEnterpriseFields {
+    NSDictionary *raw = @{
+        @"code": @"DOH-01",
+        @"nameAr": @"فرع الدوحة",
+        @"nameEn": @"Doha Branch",
+        @"address": @"Al Sadd, Doha",
+        @"phone": @"+974 4444 1111",
+        @"isActive": @YES,
+        @"isDefault": @YES,
+        @"stockMode": @"branch",
+        @"managerId": @"staff_manager_99",
+        @"operatingHours": @"8:00 AM - 11:00 PM",
+        @"taxNumber": @"QA-974000123",
+        @"crNumber": @"CR-104928"
+    };
+
+    PPBranchModel *model = [PPBranchModel fromDictionary:raw withID:@"branch_doha_01"];
+    XCTAssertEqualObjects(model.branchID, @"branch_doha_01");
+    XCTAssertEqualObjects(model.code, @"DOH-01");
+    XCTAssertEqualObjects(model.nameAr, @"فرع الدوحة");
+    XCTAssertEqualObjects(model.nameEn, @"Doha Branch");
+    XCTAssertTrue(model.isActive);
+    XCTAssertTrue(model.isDefault);
+    XCTAssertEqual(model.stockMode, PPBranchStockModeBranch);
+    XCTAssertEqualObjects(model.managerId, @"staff_manager_99");
+    XCTAssertEqualObjects(model.operatingHours, @"8:00 AM - 11:00 PM");
+    XCTAssertEqualObjects(model.taxNumber, @"QA-974000123");
+    XCTAssertEqualObjects(model.crNumber, @"CR-104928");
+
+    NSDictionary *serialized = [model toDictionary];
+    XCTAssertEqualObjects(serialized[@"code"], @"DOH-01");
+    XCTAssertEqualObjects(serialized[@"managerId"], @"staff_manager_99");
+    XCTAssertEqualObjects(serialized[@"operatingHours"], @"8:00 AM - 11:00 PM");
+    XCTAssertEqualObjects(serialized[@"taxNumber"], @"QA-974000123");
+    XCTAssertEqualObjects(serialized[@"crNumber"], @"CR-104928");
+    XCTAssertEqualObjects(serialized[@"stockMode"], @"branch");
+}
+
+- (void)testStaffDocMultiBranchScopeAndPermissions {
+    NSDictionary *staffDict = @{
+        @"role": @"sales",
+        @"status": @"active",
+        @"displayName": @"Sales Representative",
+        @"permissions": @[@"pos.view", @"pos.sell"],
+        @"scope": @{
+            @"global": @NO,
+            @"branchIds": @[@"branch_doha_01", @"branch_wakrah_02"],
+            @"defaultBranchId": @"branch_doha_01",
+            @"branchPermissions": @{
+                @"branch_wakrah_02": @[@"pos.view", @"pos.sell", @"pos.history"]
+            }
+        }
+    };
+
+    PPStaffDoc *doc = [[PPStaffDoc alloc] initWithDictionary:staffDict uid:@"staff_sales_1"];
+    XCTAssertTrue(doc.isActive);
+    XCTAssertFalse(doc.isAdmin);
+    XCTAssertFalse(doc.hasGlobalScope);
+    XCTAssertEqualObjects(doc.defaultBranchID, @"branch_doha_01");
+    XCTAssertEqual(doc.assignedBranchIDs.count, 2);
+
+    // Branch Access
+    XCTAssertTrue([doc hasAccessToBranch:@"branch_doha_01"]);
+    XCTAssertTrue([doc hasAccessToBranch:@"branch_wakrah_02"]);
+    XCTAssertFalse([doc hasAccessToBranch:@"branch_unauthorized_99"]);
+
+    // General vs Branch-Specific Permissions
+    XCTAssertTrue([doc hasPermission:@"pos.sell" inBranch:@"branch_doha_01"]);
+    XCTAssertFalse([doc hasPermission:@"pos.history" inBranch:@"branch_doha_01"]);
+    XCTAssertTrue([doc hasPermission:@"pos.history" inBranch:@"branch_wakrah_02"]);
+    XCTAssertFalse([doc hasPermission:@"pos.sell" inBranch:@"branch_unauthorized_99"]);
+}
+
+- (void)testStaffDocLocalizedRoleNames {
+    NSDictionary *managerDict = @{@"role": @"branch_manager", @"status": @"active"};
+    PPStaffDoc *manager = [[PPStaffDoc alloc] initWithDictionary:managerDict uid:@"m1"];
+    XCTAssertEqualObjects(manager.role, PPStaffRoleBranchManager);
+
+    NSDictionary *accountantDict = @{@"role": @"accountant", @"status": @"active"};
+    PPStaffDoc *accountant = [[PPStaffDoc alloc] initWithDictionary:accountantDict uid:@"a1"];
+    XCTAssertEqualObjects(accountant.role, PPStaffRoleAccountant);
+
+    NSDictionary *warehouseDict = @{@"role": @"warehouse", @"status": @"active"};
+    PPStaffDoc *warehouse = [[PPStaffDoc alloc] initWithDictionary:warehouseDict uid:@"w1"];
+    XCTAssertEqualObjects(warehouse.role, PPStaffRoleWarehouse);
+
+    NSDictionary *salesDict = @{@"role": @"sales", @"status": @"active"};
+    PPStaffDoc *sales = [[PPStaffDoc alloc] initWithDictionary:salesDict uid:@"s1"];
+    XCTAssertEqualObjects(sales.role, PPStaffRoleSales);
 }
 
 @end

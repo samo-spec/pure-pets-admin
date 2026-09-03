@@ -27,6 +27,7 @@
 #import "CategoriesSection/PPCategoriesViewController.h"
 #import "CategoriesSection/PPListingsAdminViewController.h"
 #import "BranchSection/PPBranchesViewController.h"
+#import "BranchSection/PPBranchContextManager.h"
 #import "AgentSection/PPAgentsViewController.h"
 #import "PurePetsAdmin-Swift.h"
 #import "Accounting/PPAccountingViewController.h"
@@ -1379,6 +1380,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 @property (nonatomic, strong) UIButton *heroAvatarEditButton;
 @property (nonatomic, strong) UIView *avatarBadgeView;
 @property (nonatomic, strong) PPHero *heroGlassBG;
+@property (nonatomic, strong) UIButton *heroBranchButton;
 @property (nonatomic, strong) UIButton *heroLanguageButton;
 @property (nonatomic, strong) UIButton *heroLogoutButton;
 @property (nonatomic, strong) UILabel *statAdsValueLbl;
@@ -1466,6 +1468,10 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                              selector:@selector(pp_commandAuthorizationDidChange:)
                                                  name:@"PPAdminCommandAuthorizationDidChangeNotification"
                                                object:self];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(pp_branchContextDidChange:)
+                                                 name:PPActiveBranchDidChangeNotification
+                                               object:nil];
     [self pp_buildDashboardLoadingStateIfNeeded];
 
     NSString *currentUID = [FIRAuth auth].currentUser.uid;
@@ -1765,13 +1771,19 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                                                  critical:NO];
     self.heroLanguageButton = languageButton;
 
+    UIButton *branchButton = [self pp_makeHeroIconButtonWithSystemName:@"building.2"
+                                                     accessibilityLabel:kLang(@"BranchContext_Switcher_Title")
+                                                                 action:@selector(didTapBranchSwitcher)
+                                                               critical:NO];
+    self.heroBranchButton = branchButton;
+
     UIButton *logoutButton = [self pp_makeHeroIconButtonWithSystemName:@"power"
                                                      accessibilityLabel:kLang(@"Logout")
                                                                  action:@selector(didTapAuthButton)
                                                                critical:YES];
     self.heroLogoutButton = logoutButton;
 
-    UIStackView *topActionStack = [[UIStackView alloc] initWithArrangedSubviews:@[accessPill, languageButton, logoutButton]];
+    UIStackView *topActionStack = [[UIStackView alloc] initWithArrangedSubviews:@[accessPill, branchButton, languageButton, logoutButton]];
     topActionStack.translatesAutoresizingMaskIntoConstraints = NO;
     topActionStack.axis = UILayoutConstraintAxisHorizontal;
     topActionStack.alignment = UIStackViewAlignmentCenter;
@@ -3598,6 +3610,50 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     } else {
         [self.dashboardLoadingIndicator stopAnimating];
     }
+}
+
+- (void)didTapBranchSwitcher {
+    [PPFunc pp_playTapEffect];
+    PPBranchContextManager *mgr = [PPBranchContextManager sharedManager];
+    NSArray<PPBranchModel *> *branches = mgr.availableBranches;
+    if (branches.count == 0) return;
+
+    UIAlertController *sheet = [UIAlertController alertControllerWithTitle:kLang(@"BranchContext_Switcher_Title")
+                                                                   message:kLang(@"BranchContext_Switcher_Message")
+                                                            preferredStyle:UIAlertControllerStyleActionSheet];
+    for (PPBranchModel *branch in branches) {
+        BOOL isCurrent = [mgr.activeBranch.branchID isEqualToString:branch.branchID];
+        NSString *title = isCurrent ? [NSString stringWithFormat:@"✓ %@", [branch localizedName]] : [branch localizedName];
+        UIAlertAction *action = [UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction * _Nonnull a) {
+            [mgr selectBranch:branch];
+        }];
+        [sheet addAction:action];
+    }
+    [sheet addAction:[UIAlertAction actionWithTitle:kLang(@"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+
+    if (sheet.popoverPresentationController) {
+        sheet.popoverPresentationController.sourceView = self.heroBranchButton ?: self.view;
+        sheet.popoverPresentationController.sourceRect = self.heroBranchButton ? self.heroBranchButton.bounds : self.view.bounds;
+    }
+    [self presentViewController:sheet animated:YES completion:nil];
+}
+
+- (void)pp_branchContextDidChange:(NSNotification *)note {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self pp_refreshBranchContextUI];
+        [self refreshCommandFeedsFromUser];
+    });
+}
+
+- (void)pp_refreshBranchContextUI {
+    PPBranchContextManager *mgr = [PPBranchContextManager sharedManager];
+    if (mgr.activeBranch) {
+        NSString *branchName = [mgr.activeBranch localizedName];
+        if (branchName.length > 0) {
+            self.heroBadgeLabel.text = [NSString stringWithFormat:@"%@ • %@", branchName, kLang(@"AdminBadge_Live")];
+        }
+    }
+    [self.tableView reloadData];
 }
 
 - (void)didTapLanguage {

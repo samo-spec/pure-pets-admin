@@ -2126,6 +2126,10 @@
 "Fulfillment_DetailCustomer" = "Customer";
 "Fulfillment_DetailMode" = "Mode";
 "Fulfillment_DetailOwner" = "Fulfilled By";
+"Fulfillment_Section_Logistics" = "Fulfillment & Logistics";
+"Fulfillment_Delivery_Awaiting_Prep" = "Awaiting Preparation";
+"Fulfillment_Delivery_Mode_Company" = "Fleet Delivery";
+"Fulfillment_Delivery_Mode_Pickup" = "Store Pickup";
 "Fulfillment_DetailCreated" = "Created";
 "Fulfillment_DetailUpdated" = "Last Movement";
 "Fulfillment_NoItems" = "No fulfillment items";
@@ -2358,7 +2362,7 @@
 "Accounting_AddExpenseSubtitle" = "Record a controlled expense with category and audit metadata.";
 "Accounting_AmountPlaceholder" = "0.00";
 "Accounting_DescriptionPlaceholder" = "Optional note";
-"Accounting_OrdersCount_Format" = "%@ paid orders";
+"Accounting_OrdersCount_Format" = "%@ income entries";
 "Accounting_ExpensesCount_Format" = "%@ expense entries";
 "Accounting_ProfitSubtitle" = "Revenue minus expenses";
 "Accounting_Transaction" = "Transaction";
@@ -5013,3 +5017,156 @@
 "LivePetDossier_IndividualTracking" = "Individual tracking";
 "LivePetDossier_QuantityTracking" = "Quantity tracking";
 "LivePetDossier_TrackingPending" = "Tracking mode needs approval";
+
+
+/* MARK: - Live animal intake passport identity lens */
+"LivePetIntake_PassportIdentityTitle" = "Identity signal";
+"LivePetIntake_PassportIdentitySubtitle" = "An operational photo and unique identifier distinguish this animal from the rest of the intake.";
+"LivePetIntake_PassportCommercialTitle" = "Commercial coordinates";
+"LivePetIntake_PassportCommercialSubtitle" = "Selling and acquisition values belong to this animal only.";
+"LivePetIntake_PassportProvenanceTitle" = "Arrival provenance";
+"LivePetIntake_PassportProvenanceSubtitle" = "When and where this animal entered inventory, with internal team notes.";
+
+"LivePetIntake_UnitPhotoSourceTitle" = "This animal's photo";
+"LivePetIntake_UnitPhotoSourceMessage" = "The photo is linked only to this animal's record and is never copied to another animal.";
+"LivePetIntake_UnitPhotoCamera" = "Take photo";
+"LivePetIntake_UnitPhotoLibrary" = "Choose from Photo Library";
+"LivePetIntake_UnitPhotoCameraPermissionTitle" = "Allow Camera Access";
+"LivePetIntake_UnitPhotoCameraPermissionMessage" = "Enable camera access in Settings to photograph this animal, or choose an image from the library.";
+"LivePetIntake_OpenSettings" = "Open Settings";
+"LivePetIntake_UnitPhotoCameraUnavailable" = "The camera is unavailable on this device. Choose an image from the library.";
+"LivePetIntake_UnitPhotoImportFailed" = "The selected image could not be imported. Choose another image and try again.";
+"LivePetIntake_UnitPhotoSelectedAnnouncement" = "The photo was attached only to this animal.";
+
+"LivePetIntake_UnitPhotoAdd" = "Add photo";
+"LivePetIntake_UnitPhotoChoose" = "Choose photo";
+"LivePetIntake_UnitPhotoReplace" = "Replace photo";
+"LivePetIntake_UnitPhotoPreview" = "Preview";
+"LivePetIntake_UnitPhotoInternalNote" = "Linked only to this animal's record";
+"LivePetIntake_UnitPhotoAddAccessibility" = "Add a photo for this animal";
+"LivePetIntake_UnitPhotoPreviewAccessibility" = "Preview this animal's photo";
+"LivePetIntake_UnitPhotoAddHint" = "Opens the camera or Photo Library";
+"LivePetIntake_UnitPhotoPreviewHint" = "Opens the photo full screen";
+"LivePetIntake_UnitPhotoRemove" = "Remove this animal's photo";
+"LivePetIntake_UnitPhotoRemoveHint" = "Removes the local photo before the intake is saved";
+
+"LivePetIntake_UnitPhotoPermissionRequired" = "Inventory management permission is required to attach an animal photo.";
+"LivePetIntake_UnitPhotoPrepareFailed" = "This image could not be prepared. Choose another image and try again.";
+"LivePetIntake_UnitPhotoSessionExpired" = "The staff session expired. Sign in again before uploading the animal photo.";
+"LivePetIntake_UnitPhotoStagedConflict" = "The prepared photo conflicts with an existing staged file. Choose the image again and retry.";
+"LivePetIntake_UnitPhotoUploadFailed" = "The uploaded animal photo could not be verified. Try again.";
+"LivePetIntake_UnitPhotoUploadFailureFormat" = "The animal photo could not be completed. Inventory was not created. Details: %@";
+
+/* NextGen V6 Sovereign Admin Fulfillment Override Terminal */
+"Fulfillment_Override_Terminal_Title" = "Admin Fulfillment Override Terminal";
+"Fulfillment_Override_Terminal_Subtitle" = "Operational Recovery & Cloud Transition • Pure Pets";
+"Fulfillment_Override_Security_Banner" = "Sovereign Intervention • 256-bit Encrypted Audit";
+"Fulfillment_Override_Operator_Role" = "Operations Supervisor";
+"Fulfillment_Override_Ref_Copy_Toast" = "Execution reference copied";
+"Fulfillment_Override_Circuit_Title" = "Operational State Machine Circuit";
+"Fulfillment_Override_Circuit_Subtitle" = "Direct state transition to authorized target";
+"Fulfillment_Override_Current_State" = "Current Status";
+"Fulfillment_Override_Target_State" = "Target Status";
+"Fulfillment_Override_No_Targets_Title" = "Terminal Locked State";
+"Fulfillment_Override_No_Targets_Desc" = "This order has reached a terminal or locked state that cannot be modified directly to preserve audit integrity.";
+"Fulfillment_Override_Select_Target_Prompt" = "Select target status to proceed";
+"Fulfillment_Override_Hint_Select_Target" = "Please select target stage to proceed";
+"Fulfillment_Override_Hint_Enter_Reason" = "Enter reason (at least 3 characters) to commit";
+"Fulfillment_Override_Reason_Section" = "Administrative Intervention Rationale";
+"Fulfillment_Override_Reason_Section_Sub" = "Mandatory justification recorded in audit log";
+"Fulfillment_Override_Reason_Placeholder" = "State detailed reason for operational audit...";
+"Fulfillment_Override_Reason_Chars" = "%d / 256 chars";
+"Fulfillment_Override_Preset_Driver" = "Driver unreachable";
+"Fulfillment_Override_Preset_Stock" = "Merchant out of stock";
+"Fulfillment_Override_Preset_Customer" = "Customer direct request";
+"Fulfillment_Override_Preset_Delay" = "Operational prep delay";
+"Fulfillment_Override_Preset_Address" = "Address & zone correction";
+"Fulfillment_Override_Preset_Reschedule" = "Reschedule pickup";
+"Fulfillment_Override_Notes_Section" = "Internal Ops Notes (Optional)";
+"Fulfillment_Override_Notes_Placeholder" = "Any shift handover details for staff...";
+"Fulfillment_Override_Notify_Section" = "Customer Notification Broadcast";
+"Fulfillment_Override_Notify_Title" = "Notify Customer of Change";
+"Fulfillment_Override_Notify_Sub" = "Send instant push notification & update tracking feed";
+"Fulfillment_Override_Simulated_Notification_Title" = "Live Customer Notification Preview";
+"Fulfillment_Override_Simulated_Notification_Body" = "Order update: Your order [%@] status has been updated to [%@] by operations.";
+"Fulfillment_Override_Notify_Off_Notice" = "Notice: No notification will be sent to the customer; change is internal only.";
+"Fulfillment_Override_Impact_Title" = "Operational Impact Breakdown";
+"Fulfillment_Override_Impact_1" = "Update cloud fulfillment document (FulfillmentOrders)";
+"Fulfillment_Override_Impact_2" = "Record immutable audit log entry (AuditLogs)";
+"Fulfillment_Override_Impact_3" = "Recalculate parent order summary (Orders)";
+"Fulfillment_Override_Submit_CTA" = "Commit Administrative Override";
+"Fulfillment_Override_Submit_Sub" = "Instant execution with audit seal";
+"Fulfillment_Override_Destructive_Alert_Title" = "Confirm High-Impact Action";
+"Fulfillment_Override_Destructive_Alert_Msg" = "You are about to transition this order to a sensitive state (%@). Do you confirm?";
+"Fulfillment_Override_Success_Toast" = "Administrative override applied successfully";
+"Fulfillment_Override_ConflictReloading" = "Refreshing the live fulfillment status…";
+"Fulfillment_Override_ConflictRefreshFailed" = "The live status could not be refreshed. Check the connection and try again.";
+"Fulfillment_Override_ConflictRetry" = "Refresh live status";
+"Fulfillment_Override_ConflictRetry_Hint" = "Loads the current server status before allowing another attempt.";
+
+/* Admin Authentication Extensions */
+"SignInWithApple" = "Sign in with Apple";
+"LoginWithPhone" = "Mobile Number";
+"LoginWithEmail" = "Email & Password";
+"PhoneNumber" = "Mobile Number";
+"PhoneNumberPlaceholder" = "Enter mobile number";
+"SendVerificationCode" = "Send Verification Code";
+"VerificationCode" = "Verification Code";
+"VerificationCodePlaceholder" = "Enter 6-digit code";
+"VerifyAndLogin" = "Verify & Sign In";
+"ResendCode" = "Resend Code";
+"ResendCodeInFormat" = "Resend in %d s";
+"ChangePhoneNumber" = "Change Number";
+"auth_phone_live_hint" = "Fast and secure access via one-time SMS code";
+"auth_phone_required_message" = "Please enter your mobile number to proceed.";
+"auth_phone_error_invalid" = "Please verify the mobile number and try again.";
+"auth_otp_error_empty" = "Please enter the verification code.";
+"auth_apple_no_token" = "Could not verify Apple account. Please try again.";
+"auth_apple_configuration_error" = "Apple sign-in is not available in this build. Update the app or contact the platform administrator.";
+
+/* Multi-Branch Context & Access Control */
+"BranchContext_Switcher_Title" = "Switch Working Branch";
+"BranchContext_Switcher_Message" = "Select a branch to set your operational context and scope data views.";
+"BranchContext_AllBranches_Global" = "All Branches (Global Access)";
+"BranchContext_SelectBranch_Prompt" = "Select Branch";
+"BranchContext_DefaultBadge" = "Default Branch";
+"BranchContext_Gate_Title" = "Select Working Branch";
+"BranchContext_Gate_Subtitle" = "Please choose your active working branch. All operations, stock, sales, and accounting will run under this branch context.";
+"BranchContext_AccessDenied_Title" = "Branch Access Denied";
+"BranchContext_AccessDenied_Message" = "You do not have permission to access or perform actions in this branch.";
+"BranchContext_Horizon_Active" = "Active Operational Horizon";
+"BranchContext_Search_Placeholder" = "Search by name, code (PP-1), or address...";
+"BranchContext_Current_Active" = "Current Active Branch";
+"BranchContext_Status_Live" = "Live • Operations Ready";
+"BranchContext_Available_Section" = "Authorized Branches";
+"BranchContext_Set_Default" = "Set as Default Branch";
+"BranchContext_Default_Success" = "Branch set as default across system";
+"BranchContext_Global_Title" = "Global Multi-Branch Access";
+"BranchContext_Global_Subtitle" = "View all platform operations without branch boundaries";
+"BranchContext_No_Results" = "No branches match your search";
+
+/* Enterprise Staff Roles */
+"StaffRole_SuperAdmin" = "Super Admin";
+"StaffRole_Owner" = "System Owner";
+"StaffRole_OperationsManager" = "Operations Manager";
+"StaffRole_BranchManager" = "Branch Manager";
+"StaffRole_InventoryManager" = "Inventory Manager";
+"StaffRole_Accountant" = "Accountant";
+"StaffRole_Warehouse" = "Warehouse Manager";
+"StaffRole_Sales" = "Sales Agent";
+"StaffRole_PaymentsManager" = "Payments Manager";
+"StaffRole_SupportAgent" = "Support Agent";
+"StaffRole_Viewer" = "Viewer";
+
+/* Working Branch Scope & Permissions */
+"Staff_Branch_Scope_Title" = "Working Branch & Scope Permissions";
+"Staff_Branch_Global_Pill" = "Global Scope • All Branches";
+"Staff_Branch_Count_Pill" = "branches assigned";
+"Staff_Branch_Global_Access" = "Global Scope (All Branches Access)";
+"Staff_Branch_Global_Access_Desc" = "Grants the staff member authority to access, switch, and operate across all company branches and warehouses";
+"Staff_Branch_Authorized_List" = "Authorized Working Branches";
+"Staff_Branch_Tap_Hint" = "Tap to select branches or configure default branch";
+"Staff_Branch_Selection_Empty_Warning" = "Warning: At least one branch must be assigned, or enable Global Scope.";
+"Staff_Branch_Default_Badge" = "Default";
+"Staff_Branch_Set_Default" = "Set Default";
+"Staff_Error_BranchRequired" = "Please select at least one branch or enable Global Scope.";

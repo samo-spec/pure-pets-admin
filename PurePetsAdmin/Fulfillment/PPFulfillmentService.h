@@ -13,6 +13,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *parentUserId;
 @property (nonatomic, copy) NSString *customerID;
 @property (nonatomic, copy) NSString *customerName;
+@property (nonatomic, copy, nullable) NSString *customerPhone;
+@property (nonatomic, copy, nullable) NSString *deliveryAddress;
 @property (nonatomic, copy) NSString *ownerID;
 @property (nonatomic, copy) NSString *ownerType;
 @property (nonatomic, copy) NSString *fulfillmentMode;
@@ -50,6 +52,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)fetchFulfillmentDetail:(NSString *)fulfillmentID completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSArray *events, NSError * _Nullable error))completion
     NS_SWIFT_NAME(fetchFulfillmentDetail(_:completion:));
+
+/// Reads the canonical fulfillment document from Firestore's server, never the
+/// local cache. Use this only to reconcile a rejected optimistic command; it
+/// intentionally does not make a client-side fulfillment mutation possible.
+- (void)refreshFulfillmentFromServer:(NSString *)fulfillmentID
+                          completion:(void(^)(PPFulfillmentRecord * _Nullable record, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(refreshFulfillmentFromServer(_:completion:));
 
 /// Resolves the single official, platform-owned child using only the exact IDs
 /// already bound to the parent order. Partner children are never returned.

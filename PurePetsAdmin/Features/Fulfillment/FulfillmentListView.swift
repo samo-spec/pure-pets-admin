@@ -230,12 +230,18 @@ struct FulfillmentRecordSnapshot: Identifiable, Sendable {
         self.customerID = record.customerID ?? record.parentUserId ?? ""
         let cust = record.customerName ?? ""
         self.customerName = cust.isEmpty ? Language.get("Fulfillment_UnknownCustomer", alter: "عميل بطلب مباشر") : cust
-        self.customerPhone = nil
-        self.deliveryAddress = nil
-        self.ownerID = record.ownerID ?? ""
+        self.customerPhone = record.customerPhone
+        self.deliveryAddress = record.deliveryAddress
+        let rawOwnerID = record.ownerID ?? ""
+        self.ownerID = rawOwnerID
         let rawOwnerType = (record.ownerType ?? "").lowercased()
         self.ownerType = rawOwnerType.isEmpty ? "platform" : rawOwnerType
-        self.storeName = record.ownerType == "platform" ? Language.get("Fulfillment_Mode_Platform", alter: "مستودع المنصة") : (record.ownerID ?? Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك"))
+        if record.ownerType == "platform" {
+            self.storeName = Language.get("Fulfillment_Mode_Platform", alter: "مستودع المنصة")
+        } else {
+            let fallbackPartner = Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك")
+            self.storeName = rawOwnerID.count > 15 ? fallbackPartner : (rawOwnerID.isEmpty ? fallbackPartner : rawOwnerID)
+        }
         self.fulfillmentMode = record.fulfillmentMode ?? "standard"
         self.status = (record.status ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         self.deliveryMode = "company"
@@ -390,6 +396,48 @@ struct FulfillmentCockpitMetrics: Sendable {
     let completedCount: Int
     let totalGrossValue: Double
     let slaUrgentCount: Int
+}
+
+/// Keeps transport errors out of the presentation contract while preserving the
+/// one recovery case that must rebind to an authoritative server snapshot.
+enum FulfillmentOverrideCommitResult: Sendable {
+    case succeeded
+    case conflict(requiresLiveRecordReload: Bool)
+    case denied
+    case invalid
+    case failed
+
+    static func from(error: Error) -> Self {
+        var currentError: NSError? = error as NSError
+        var isConcurrencyConflict = false
+        var isStatusChangedConflict = false
+
+        for _ in 0..<4 {
+            guard let candidate = currentError else { break }
+            if candidate.domain == "com.firebase.functions" {
+                switch candidate.code {
+                case 7, 16: // permission-denied, unauthenticated
+                    return .denied
+                case 6, 9, 10: // already-exists, failed-precondition, aborted
+                    isConcurrencyConflict = true
+                    let message = candidate.localizedDescription.lowercased()
+                    if message.contains("fulfillment status changed") {
+                        isStatusChangedConflict = true
+                    }
+                case 3, 5: // invalid-argument, not-found
+                    return .invalid
+                default:
+                    break
+                }
+            }
+            currentError = candidate.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+
+        if isConcurrencyConflict {
+            return .conflict(requiresLiveRecordReload: isStatusChangedConflict)
+        }
+        return .failed
+    }
 }
 
 // MARK: - Fulfillment List ViewModel
@@ -583,16 +631,17 @@ final class FulfillmentListViewModel: ObservableObject {
 
     func executeAdminOverride(
         record: FulfillmentRecordSnapshot,
+        expectedStatus: String,
         targetStatus: String,
         reason: String,
         note: String?,
         notify: Bool,
-        completion: @escaping @Sendable (Bool, String?) -> Void
+        completion: @escaping @Sendable (FulfillmentOverrideCommitResult) -> Void
     ) {
         let cmdID = "override_\(UUID().uuidString.prefix(8))"
         PPFulfillmentService.shared().adminOverride(
             record.id,
-            expectedStatus: record.status,
+            expectedStatus: expectedStatus,
             targetStatus: targetStatus,
             reason: reason,
             note: note,
@@ -601,10 +650,10 @@ final class FulfillmentListViewModel: ObservableObject {
         ) { _, error in
             Task { @MainActor in
                 if let error = error {
-                    completion(false, error.localizedDescription)
+                    completion(FulfillmentOverrideCommitResult.from(error: error))
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    completion(true, nil)
+                    completion(.succeeded)
                 }
             }
         }
@@ -622,7 +671,9 @@ struct AdminFulfillmentListView: View {
 
     // Presentation sheets
     @State private var selectedRecordForDossier: FulfillmentRecordSnapshot?
+    @State private var recordForDossierPush: FulfillmentRecordSnapshot?
     @State private var recordForOverride: FulfillmentRecordSnapshot?
+    @State private var recordForOverridePush: FulfillmentRecordSnapshot?
     @State private var showingFiltersSheet: Bool = false
     @State private var activeSearch: Bool = false
     @State private var parentPaymentOrderIDToOpen: String?
@@ -682,14 +733,16 @@ struct AdminFulfillmentListView: View {
                 }
             }
         }
+        .background(overridePushLink)
+        .background(dossierPushLink)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $selectedRecordForDossier) { record in
             FulfillmentDossierSheet(
                 record: record,
                 onOverride: { r in
                     selectedRecordForDossier = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        recordForOverride = r
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        recordForOverridePush = r
                     }
                 },
                 onOpenParentOrder: { orderID in
@@ -705,16 +758,24 @@ struct AdminFulfillmentListView: View {
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $recordForOverride) { record in
-            FulfillmentOverrideModal(record: record) { target, reason, note, notify, completion in
-                viewModel.executeAdminOverride(
-                    record: record,
-                    targetStatus: target,
-                    reason: reason,
-                    note: note,
-                    notify: notify,
-                    completion: completion
-                )
-            }
+            FulfillmentOverrideView(
+                record: record,
+                isPushMode: false,
+                onDismiss: {
+                    recordForOverride = nil
+                },
+                onCommit: { expectedStatus, target, reason, note, notify, completion in
+                    viewModel.executeAdminOverride(
+                        record: record,
+                        expectedStatus: expectedStatus,
+                        targetStatus: target,
+                        reason: reason,
+                        note: note,
+                        notify: notify,
+                        completion: completion
+                    )
+                }
+            )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $showingFiltersSheet) {
@@ -736,6 +797,86 @@ struct AdminFulfillmentListView: View {
         }
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
+    }
+
+    private var overridePushLink: some View {
+        NavigationLink(
+            destination: overridePushDestination,
+            isActive: Binding(
+                get: { recordForOverridePush != nil },
+                set: { if !$0 { recordForOverridePush = nil } }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var overridePushDestination: some View {
+        if let record = recordForOverridePush {
+            FulfillmentOverrideView(
+                record: record,
+                isPushMode: true,
+                onDismiss: {
+                    recordForOverridePush = nil
+                },
+                onCommit: { expectedStatus, target, reason, note, notify, completion in
+                    viewModel.executeAdminOverride(
+                        record: record,
+                        expectedStatus: expectedStatus,
+                        targetStatus: target,
+                        reason: reason,
+                        note: note,
+                        notify: notify
+                    ) { result in
+                        if case .succeeded = result {
+                            recordForOverridePush = nil
+                        }
+                        completion(result)
+                    }
+                }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var dossierPushLink: some View {
+        NavigationLink(
+            destination: dossierPushDestination,
+            isActive: Binding(
+                get: { recordForDossierPush != nil },
+                set: { if !$0 { recordForDossierPush = nil } }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var dossierPushDestination: some View {
+        if let record = recordForDossierPush {
+            FulfillmentDossierView(
+                record: record,
+                isPushMode: true,
+                onDismiss: {
+                    recordForDossierPush = nil
+                },
+                onOverride: { r in
+                    recordForOverridePush = r
+                },
+                onOpenParentOrder: { orderID in
+                    parentPaymentOrderIDToOpen = orderID
+                },
+                onQuickAdvance: { r, target in
+                    viewModel.quickAdvance(record: r, targetStatus: target)
+                }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
     }
 
     // MARK: - 1. Sovereign Navigation Header
@@ -1048,7 +1189,10 @@ struct AdminFulfillmentListView: View {
                     FulfillmentHeroCard(
                         record: record,
                         onTapCard: {
-                            selectedRecordForDossier = record
+                            recordForDossierPush = record
+                        },
+                        onOverride: {
+                            recordForOverridePush = record
                         },
                         onQuickAdvance: { target in
                             viewModel.quickAdvance(record: record, targetStatus: target)
@@ -1123,6 +1267,7 @@ private struct CockpitMetricCard: View {
 private struct FulfillmentHeroCard: View {
     let record: FulfillmentRecordSnapshot
     let onTapCard: () -> Void
+    var onOverride: (() -> Void)? = nil
     let onQuickAdvance: (String) -> Void
 
     @State private var copied: Bool = false
@@ -1324,6 +1469,20 @@ private struct FulfillmentHeroCard: View {
                     .buttonStyle(.plain)
                 }
 
+                // Privileged Admin Override Push Trigger
+                if let onOverride {
+                    Button(action: onOverride) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(FulfillmentTokens.crimson)
+                            .frame(width: 32, height: 32)
+                            .background(FulfillmentTokens.crimsonSoft, in: Circle())
+                            .overlay(Circle().stroke(FulfillmentTokens.crimson.opacity(0.3), lineWidth: 0.8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Fulfillment_Admin_Override_Title", alter: "تعديل إداري"))
+                }
+
                 // Details Chevron Button
                 Button(action: onTapCard) {
                     Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
@@ -1350,8 +1509,12 @@ private struct FulfillmentHeroCard: View {
 
 // MARK: - Subviews: Fulfillment Order Dossier & Command Suite
 
-private struct FulfillmentDossierSheet: View {
+private typealias FulfillmentDossierSheet = FulfillmentDossierView
+
+struct FulfillmentDossierView: View {
     let record: FulfillmentRecordSnapshot
+    var isPushMode: Bool = true
+    var onDismiss: (() -> Void)? = nil
     let onOverride: (FulfillmentRecordSnapshot) -> Void
     let onOpenParentOrder: (String) -> Void
     let onQuickAdvance: (FulfillmentRecordSnapshot, String) -> Void
@@ -1360,11 +1523,41 @@ private struct FulfillmentDossierSheet: View {
     @State private var events: [FulfillmentEventSnapshot] = []
     @State private var isLoadingEvents: Bool = true
     @State private var eventsListener: AnyObject?
+    @State private var recordForOverridePush: FulfillmentRecordSnapshot?
+
+    private var statusBarHeight: CGFloat {
+        if let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) {
+            return max(window.safeAreaInsets.top, 44)
+        }
+        return 47
+    }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                FulfillmentTokens.canvas.ignoresSafeArea()
+        if isPushMode {
+            dossierContent
+                .navigationBarHidden(true)
+                .ignoresSafeArea(.container, edges: .top)
+        } else {
+            NavigationView {
+                dossierContent
+                    .navigationBarHidden(true)
+            }
+        }
+    }
+
+    private var dossierContent: some View {
+        ZStack {
+            FulfillmentTokens.canvas.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                if isPushMode {
+                    sovereignPushHeader
+                } else {
+                    sovereignSheetHeader
+                }
 
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 20) {
@@ -1377,41 +1570,147 @@ private struct FulfillmentDossierSheet: View {
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 14)
-                    .padding(.bottom, 100) // Clearance for sticky dock
-                }
-
-                // Sticky Action Dock at bottom
-                VStack {
-                    Spacer()
-                    stickyCommandDock
+                    .padding(.bottom, 120)
                 }
             }
-            .navigationTitle(record.parentOrderNumber)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(Language.get("Close", alter: "إغلاق")) {
-                        dismiss()
-                    }
-                    .font(AdminType.subheadlineBold)
-                    .foregroundStyle(FulfillmentTokens.primary)
-                }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onOverride(record)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "slider.horizontal.3")
-                            Text(Language.get("Fulfillment_Admin_Override_Title", alter: "تعديل إداري"))
+            // Sticky Action Dock at bottom
+            VStack {
+                Spacer()
+                stickyCommandDock
+            }
+        }
+        .background(overridePushLink)
+        .onAppear(perform: startListeningEvents)
+        .onDisappear(perform: stopListeningEvents)
+    }
+
+    private var sovereignPushHeader: some View {
+        AdminSovereignNavigationBar(
+            title: record.parentOrderNumber,
+            subtitle: record.displayStatus,
+            statusDotColor: record.statusTone,
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
+            }
+        ) {
+            Button {
+                recordForOverridePush = record
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3")
+                    Text(Language.get("Fulfillment_Admin_Override_Title", alter: "تعديل إداري"))
+                }
+                .font(AdminType.captionBold)
+                .foregroundStyle(FulfillmentTokens.crimson)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+                .overlay(Capsule().stroke(FulfillmentTokens.crimson.opacity(0.3), lineWidth: 0.75))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.top, isPushMode ? statusBarHeight : 0)
+    }
+
+    private var sovereignSheetHeader: some View {
+        HStack(alignment: .center) {
+            Button(Language.get("Close", alter: "إغلاق")) {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
+            }
+            .font(AdminType.subheadlineBold)
+            .foregroundStyle(FulfillmentTokens.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(FulfillmentTokens.primarySoft, in: Capsule())
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text(record.parentOrderNumber)
+                    .font(AdminType.headline)
+                    .foregroundStyle(FulfillmentTokens.inkPrimary)
+                Text(record.displayStatus)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(record.statusTone)
+            }
+
+            Spacer()
+
+            Button {
+                recordForOverridePush = record
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "slider.horizontal.3")
+                    Text(Language.get("Fulfillment_Admin_Override_Title", alter: "تعديل إداري"))
+                }
+                .font(AdminType.captionBold)
+                .foregroundStyle(FulfillmentTokens.crimson)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, 14)
+        .background(AdminSurface.surface)
+        .overlay(Divider().background(FulfillmentTokens.hairline), alignment: .bottom)
+    }
+
+    private var overridePushLink: some View {
+        NavigationLink(
+            destination: overridePushDestination,
+            isActive: Binding(
+                get: { recordForOverridePush != nil },
+                set: { if !$0 { recordForOverridePush = nil } }
+            )
+        ) {
+            EmptyView()
+        }
+        .hidden()
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var overridePushDestination: some View {
+        if let rec = recordForOverridePush {
+            FulfillmentOverrideView(
+                record: rec,
+                isPushMode: true,
+                onDismiss: {
+                    recordForOverridePush = nil
+                },
+                onCommit: { expectedStatus, target, reason, note, notify, completion in
+                    PPFulfillmentService.shared().adminOverride(
+                        rec.id,
+                        expectedStatus: expectedStatus,
+                        targetStatus: target,
+                        reason: reason,
+                        note: note,
+                        notify: notify,
+                        commandID: "cmd_\(UUID().uuidString.prefix(8))"
+                    ) { _, error in
+                        Task { @MainActor in
+                            if let error = error {
+                                completion(FulfillmentOverrideCommitResult.from(error: error))
+                            } else {
+                                recordForOverridePush = nil
+                                completion(.succeeded)
+                            }
                         }
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(FulfillmentTokens.crimson)
                     }
                 }
-            }
-            .onAppear(perform: startListeningEvents)
-            .onDisappear(perform: stopListeningEvents)
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
 
@@ -1638,24 +1937,57 @@ private struct FulfillmentDossierSheet: View {
         .overlay(RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous).stroke(FulfillmentTokens.hairline))
     }
 
-    // 5. Delivery & Courier Card
+    // 5. Delivery & Logistics Card
     private var deliveryCourierCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let isDeliveryActive = record.status == "delivery_requested" ||
+                              record.status == "delivery_assigned" ||
+                              record.status == "awaiting_handover" ||
+                              record.status == "handed_over" ||
+                              record.status == "in_transit" ||
+                              record.status == "delivered"
+
+        let deliveryModeDisplay: String = {
+            if record.deliveryMode == "pickup" {
+                return Language.get("Fulfillment_Delivery_Mode_Pickup", alter: "استلام من المتجر")
+            } else {
+                return Language.get("Fulfillment_Delivery_Mode_Company", alter: "أسطول التوصيل")
+            }
+        }()
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(Language.get("Fulfillment_Status_DeliveryRequested", alter: "خدمات التوصيل والشحن"), systemImage: "box.truck.fill")
+                Label(Language.get("Fulfillment_Section_Logistics", alter: "بيانات التنفيذ والشحن"), systemImage: "box.truck.fill")
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(FulfillmentTokens.inkPrimary)
                 Spacer()
-                Text(record.deliveryMode.capitalized)
+
+                if isDeliveryActive {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(record.statusTone)
+                            .frame(width: 6, height: 6)
+                        Text(record.displayStatus)
+                    }
                     .font(AdminType.caption2Bold)
-                    .foregroundStyle(FulfillmentTokens.indigo)
+                    .foregroundStyle(record.statusTone)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(record.statusTone.opacity(0.12), in: Capsule())
+                } else {
+                    Text(deliveryModeDisplay)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(FulfillmentTokens.indigo)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(FulfillmentTokens.indigoSoft, in: Capsule())
+                }
             }
 
             Divider().background(FulfillmentTokens.hairline)
 
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Fulfillment_DetailOwner", alter: "المتجر المنفذ"))
+                    Text(Language.get("Fulfillment_DetailOwner", alter: "التنفيذ بواسطة"))
                         .font(AdminType.caption2)
                         .foregroundStyle(FulfillmentTokens.inkTertiary)
                     Text(record.storeName)
@@ -1669,9 +2001,29 @@ private struct FulfillmentDossierSheet: View {
                     Text(Language.get("Fulfillment_DetailMode", alter: "نوع التنفيذ"))
                         .font(AdminType.caption2)
                         .foregroundStyle(FulfillmentTokens.inkTertiary)
-                    Text(record.isPlatformOwned ? Language.get("Fulfillment_Mode_Platform", alter: "المنصة الرسمية") : Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك"))
+                    Text(record.isPlatformOwned ? Language.get("Fulfillment_Mode_Platform", alter: "تنفيذ المنصة") : Language.get("Fulfillment_Mode_Partner", alter: "متجر شريك"))
                         .font(AdminType.captionBold)
                         .foregroundStyle(FulfillmentTokens.primary)
+                }
+            }
+
+            if isDeliveryActive {
+                Divider().background(FulfillmentTokens.hairline)
+
+                HStack {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(record.statusTone)
+
+                    Text(record.displayStatus)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+
+                    Spacer()
+
+                    Text(deliveryModeDisplay)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(FulfillmentTokens.inkTertiary)
                 }
             }
         }
@@ -1838,119 +2190,1061 @@ private struct DossierLedgerRow: View {
     }
 }
 
-// MARK: - Subviews: Privileged Admin Override Modal
+// MARK: - Subviews: Sovereign Admin Fulfillment Override Terminal
 
-private struct FulfillmentOverrideModal: View {
+struct FulfillmentOverrideView: View {
     let record: FulfillmentRecordSnapshot
-    let onCommit: (String, String, String?, Bool, @escaping @Sendable (Bool, String?) -> Void) -> Void
+    var isPushMode: Bool = true
+    var onDismiss: () -> Void
+    /// The first argument is the server-reconciled status that must be used as
+    /// the callable's optimistic-concurrency precondition.
+    var onCommit: (String, String, String, String?, Bool, @escaping @Sendable (FulfillmentOverrideCommitResult) -> Void) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @State private var targetStatus: String = "preparing"
+    @State private var targetStatus: String = ""
     @State private var reason: String = ""
     @State private var internalNote: String = ""
     @State private var notifyCustomer: Bool = true
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String?
+    @State private var hasCopiedRef: Bool = false
+    @State private var showDestructiveConfirmation: Bool = false
+    @State private var refreshedRecord: FulfillmentRecordSnapshot?
+    @State private var isRefreshingLiveRecord: Bool = false
+    @State private var requiresLiveRecordRefresh: Bool = false
+    @FocusState private var isReasonFocused: Bool
 
-    private let availableStatuses = [
-        "new_request",
-        "accepted",
-        "preparing",
-        "ready_for_pickup",
-        "delivery_requested",
-        "delivery_assigned",
-        "in_transit",
-        "delivered",
-        "completed",
-        "cancelled"
-    ]
+    private var currentRecord: FulfillmentRecordSnapshot {
+        refreshedRecord ?? record
+    }
+
+    private var allowedTargets: [String] {
+        PPFulfillmentService.allowedOverrideTargets(forStatus: currentRecord.status)
+    }
+
+    private var selectedTargetMeta: (title: String, desc: String, symbol: String, tone: Color, isDestructive: Bool) {
+        statusMeta(for: targetStatus)
+    }
+
+    private var currentStatusMeta: (title: String, desc: String, symbol: String, tone: Color, isDestructive: Bool) {
+        statusMeta(for: currentRecord.status)
+    }
+
+    private var isCommitValid: Bool {
+        !targetStatus.isEmpty &&
+        !allowedTargets.isEmpty &&
+        reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 &&
+        !isSubmitting &&
+        !isRefreshingLiveRecord &&
+        !requiresLiveRecordRefresh
+    }
+
+    private var statusBarHeight: CGFloat {
+        if let window = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow }) {
+            return max(window.safeAreaInsets.top, 44)
+        }
+        return 47
+    }
 
     var body: some View {
-        NavigationView {
-            Form {
-                Section(header: Text(Language.get("Fulfillment_Ref", alter: "الطلب المختار"))) {
-                    HStack {
-                        Text(record.parentOrderNumber)
-                            .font(AdminType.headline)
-                        Spacer()
-                        Text(record.displayStatus)
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(record.statusTone)
-                    }
+        ZStack {
+            FulfillmentTokens.canvas.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Adaptive Header
+                if isPushMode {
+                    sovereignPushHeader
+                } else {
+                    sovereignSheetHeader
                 }
 
-                Section(header: Text(Language.get("Fulfillment_Admin_Override_Title", alter: "الحالة المستهدفة"))) {
-                    Picker(Language.get("Fulfillment_Target_Status", alter: "الحالة الجديدة"), selection: $targetStatus) {
-                        ForEach(availableStatuses, id: \.self) { st in
-                            Text(st.replacingOccurrences(of: "_", with: " ").capitalized)
-                                .tag(st)
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        // 1. Operator Authority & Sovereign Security Filament
+                        operatorSecurityFilamentCard
+
+                        // 2. State Machine Circuit (Dynamic Before -> Target Hologram)
+                        stateTransitionCircuitCard
+
+                        // 3. Standardized Operational Rationale Studio
+                        operationalRationaleStudioCard
+
+                        // 4. Customer Notification Broadcast & Live Blueprint
+                        customerNotificationBlueprintCard
+
+                        // 5. Operational Impact Breakdown
+                        operationalImpactBreakdownCard
+
+                        // 6. Diagnostic Error Recovery Box
+                        if let err = errorMessage {
+                            errorDiagnosticCard(err)
                         }
                     }
-                    .pickerStyle(.menu)
-                }
-
-                Section(header: Text(Language.get("Fulfillment_Admin_Override_Reason", alter: "سبب التعديل الإداري (مطلوب)"))) {
-                    TextField(Language.get("Fulfillment_Reason_Placeholder", alter: "اكتب سبب التعديل للتدقيق الأمني..."), text: $reason)
-                        .font(AdminType.subheadline)
-                }
-
-                Section(header: Text(Language.get("Fulfillment_Admin_Override_Note", alter: "ملاحظات تشغيلية (اختياري)"))) {
-                    TextField(Language.get("Fulfillment_Note_Placeholder", alter: "أي تفاصيل داخلية إضافية..."), text: $internalNote)
-                        .font(AdminType.subheadline)
-                }
-
-                Section {
-                    Toggle(Language.get("Fulfillment_Admin_Override_Notify", alter: "إشعار العميل بالتعديل"), isOn: $notifyCustomer)
-                        .tint(FulfillmentTokens.primary)
-                }
-
-                if let err = errorMessage {
-                    Section {
-                        Text(err)
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(FulfillmentTokens.crimson)
-                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, 14)
+                    .padding(.bottom, 150)
                 }
             }
-            .navigationTitle(Language.get("Fulfillment_Admin_Override_Title", alter: "تعديل الحالة الإداري"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
-                        dismiss()
+
+            // Floating Glass Safe-Action Pedestal
+            safeActionPedestalDock
+        }
+        .navigationBarHidden(true)
+        .ignoresSafeArea(.container, edges: isPushMode ? .top : [])
+        .onAppear {
+            if targetStatus.isEmpty {
+                if let safeTarget = allowedTargets.first(where: { !statusMeta(for: $0).isDestructive }) {
+                    targetStatus = safeTarget
+                }
+            }
+        }
+        .alert(
+            Language.get("Fulfillment_Override_Destructive_Alert_Title", alter: "تأكيد الإجراء الحساس"),
+            isPresented: $showDestructiveConfirmation
+        ) {
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+            Button(Language.get("Confirm", alter: "تأكيد"), role: .destructive) {
+                executeCommit()
+            }
+        } message: {
+            Text(String(
+                format: Language.get("Fulfillment_Override_Destructive_Alert_Msg", alter: "أنت على وشك تحويل الطلب إلى حالة حساسة (%@). هل تؤكد المتابعة؟"),
+                selectedTargetMeta.title
+            ))
+        }
+    }
+
+    // MARK: - Headers
+
+    private var sovereignPushHeader: some View {
+        AdminSovereignNavigationBar(
+            title: Language.get("Fulfillment_Override_Terminal_Title", alter: "تعديل مسار التنفيذ الإداري"),
+            subtitle: Language.get("Fulfillment_Override_Terminal_Subtitle", alter: "التدخل التشغيلي والتعافي السحابي • Pure Pets"),
+            statusDotColor: FulfillmentTokens.crimson,
+            onBack: {
+                onDismiss()
+                dismiss()
+            }
+        )
+        .padding(.top, isPushMode ? statusBarHeight : 0)
+    }
+
+    private var sovereignSheetHeader: some View {
+        HStack(alignment: .center) {
+            Button {
+                onDismiss()
+                dismiss()
+            } label: {
+                Text(Language.get("Cancel", alter: "إلغاء"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(FulfillmentTokens.crimson)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+            }
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text(Language.get("Fulfillment_Override_Terminal_Title", alter: "تعديل مسار التنفيذ الإداري"))
+                    .font(AdminType.headline)
+                    .foregroundStyle(FulfillmentTokens.inkPrimary)
+                Text(currentRecord.parentOrderNumber)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(FulfillmentTokens.inkTertiary)
+                    .monospacedDigit()
+            }
+
+            Spacer()
+
+            Color.clear
+                .frame(width: 54, height: 32)
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, 14)
+        .background(AdminSurface.surface)
+        .overlay(Divider().background(FulfillmentTokens.hairline), alignment: .bottom)
+    }
+
+    // MARK: - 1. Operator Authority & Sovereign Security Filament
+
+    private var operatorSecurityFilamentCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "shield.lefthalf.filled")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(FulfillmentTokens.crimson)
+                    Text(Language.get("Fulfillment_Override_Operator_Role", alter: "المسؤول التشغيلي"))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(FulfillmentTokens.crimson)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+
+                Spacer()
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(FulfillmentTokens.emerald)
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("Fulfillment_Override_Security_Banner", alter: "تدخل سيادي موثق • تدقيق أمني 256-bit"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(FulfillmentTokens.surfaceSecondary, in: Capsule())
+            }
+
+            Divider().background(FulfillmentTokens.hairline)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("Fulfillment_Ref", alter: "مرجع التنفيذ"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkTertiary)
+
+                    Button {
+                        UIPasteboard.general.string = currentRecord.parentOrderNumber
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation { hasCopiedRef = true }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            withAnimation { hasCopiedRef = false }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(currentRecord.parentOrderNumber)
+                                .font(.system(size: 16, weight: .heavy, design: .monospaced))
+                                .foregroundStyle(FulfillmentTokens.inkPrimary)
+                            Image(systemName: hasCopiedRef ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(hasCopiedRef ? FulfillmentTokens.emerald : FulfillmentTokens.primary)
+                        }
                     }
+                    .buttonStyle(.plain)
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    if isSubmitting {
-                        ProgressView()
-                    } else {
-                        Button(Language.get("Fulfillment_Admin_Override_Submit", alter: "تأكيد")) {
-                            submitOverride()
-                        }
-                        .font(AdminType.subheadlineBold)
-                        .disabled(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 4) {
+                    HStack(spacing: 5) {
+                        Text(currentRecord.customerName)
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.inkPrimary)
+                            .lineLimit(1)
+                        Image(systemName: "person.circle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(FulfillmentTokens.primary)
+                    }
+
+                    HStack(spacing: 5) {
+                        Text(currentRecord.storeName)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            .lineLimit(1)
+                        Image(systemName: currentRecord.isPlatformOwned ? "building.2.fill" : "storefront.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(currentRecord.isPlatformOwned ? FulfillmentTokens.indigo : FulfillmentTokens.amber)
                     }
                 }
             }
         }
+        .padding(16)
+        .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous)
+                .stroke(FulfillmentTokens.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
     }
 
-    private func submitOverride() {
+    // MARK: - 2. State Machine Circuit (Dynamic Before -> Target Hologram)
+
+    private var stateTransitionCircuitCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "point.3.filled.connected.trianglepath.dotted")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(FulfillmentTokens.primary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Fulfillment_Override_Circuit_Title", alter: "مخطط مسار الحالة التشغيلية"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(FulfillmentTokens.inkPrimary)
+                    Text(Language.get("Fulfillment_Override_Circuit_Subtitle", alter: "الانتقال المباشر من الحالة الراهنة إلى المرحلة المستهدفة"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+            }
+
+            // Holographic Bridge Row
+            HStack(spacing: 12) {
+                // Current State
+                VStack(spacing: 6) {
+                    Text(Language.get("Fulfillment_Override_Current_State", alter: "الحالة الراهنة"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkTertiary)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: currentStatusMeta.symbol)
+                            .font(.system(size: 12, weight: .bold))
+                        Text(currentStatusMeta.title)
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundStyle(currentStatusMeta.tone)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(currentStatusMeta.tone.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(currentStatusMeta.tone.opacity(0.3), lineWidth: 0.8))
+                }
+                .frame(maxWidth: .infinity)
+
+                // Pulse Transition Beam
+                VStack(spacing: 3) {
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(selectedTargetMeta.tone)
+
+                    Text("OVERRIDE")
+                        .font(.system(size: 8, weight: .heavy, design: .monospaced))
+                        .foregroundStyle(FulfillmentTokens.inkTertiary)
+                }
+                .padding(.horizontal, 4)
+
+                // Target State
+                VStack(spacing: 6) {
+                    Text(Language.get("Fulfillment_Override_Target_State", alter: "الحالة المستهدفة"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkTertiary)
+
+                    if targetStatus.isEmpty {
+                        Text(Language.get("Fulfillment_Override_Select_Target_Prompt", alter: "اختر الحالة"))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.inkTertiary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(FulfillmentTokens.surfaceSecondary, in: Capsule())
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: selectedTargetMeta.symbol)
+                                .font(.system(size: 12, weight: .bold))
+                            Text(selectedTargetMeta.title)
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundStyle(selectedTargetMeta.tone)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(selectedTargetMeta.tone.opacity(0.14), in: Capsule())
+                        .overlay(Capsule().stroke(selectedTargetMeta.tone.opacity(0.4), lineWidth: 1))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(12)
+            .background(FulfillmentTokens.surfaceSecondary.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+            // Target Options Grid
+            if allowedTargets.isEmpty {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 24))
+                        .foregroundStyle(FulfillmentTokens.neutral)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("Fulfillment_Override_No_Targets_Title", alter: "حالة نهائية مقفلة"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(FulfillmentTokens.inkPrimary)
+                        Text(Language.get("Fulfillment_Override_No_Targets_Desc", alter: "وصل هذا الطلب إلى حالة نهائية أو مسار تسليم نشط لا يقبل التعديل الإداري المباشر منعاً للتضارب المالي وحماية لسجلات الأسطول."))
+                            .font(AdminType.caption)
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(14)
+                .background(FulfillmentTokens.neutralSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(FulfillmentTokens.neutral.opacity(0.3), lineWidth: 1))
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(allowedTargets, id: \.self) { statusKey in
+                        let meta = statusMeta(for: statusKey)
+                        let isSelected = targetStatus == statusKey
+
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                targetStatus = statusKey
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: meta.symbol)
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(meta.tone)
+                                    .frame(width: 38, height: 38)
+                                    .background(meta.tone.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 6) {
+                                        Text(meta.title)
+                                            .font(AdminType.subheadlineBold)
+                                            .foregroundStyle(FulfillmentTokens.inkPrimary)
+
+                                        if meta.isDestructive {
+                                            HStack(spacing: 3) {
+                                                Image(systemName: "exclamationmark.triangle.fill")
+                                                Text(Language.get("HighRisk", alter: "حساس"))
+                                            }
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(FulfillmentTokens.crimson)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(FulfillmentTokens.crimsonSoft, in: Capsule())
+                                        }
+                                    }
+
+                                    Text(meta.desc)
+                                        .font(AdminType.caption2)
+                                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                                        .lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
+
+                                Spacer()
+
+                                ZStack {
+                                    Circle()
+                                        .stroke(isSelected ? meta.tone : FulfillmentTokens.hairline, lineWidth: isSelected ? 2 : 1.5)
+                                        .frame(width: 20, height: 20)
+
+                                    if isSelected {
+                                        Circle()
+                                            .fill(meta.tone)
+                                            .frame(width: 10, height: 10)
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .background(
+                                isSelected ? meta.tone.opacity(0.06) : FulfillmentTokens.surface,
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(isSelected ? meta.tone.opacity(0.5) : FulfillmentTokens.hairline, lineWidth: isSelected ? 1.5 : 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous)
+                .stroke(FulfillmentTokens.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+    }
+
+    // MARK: - 3. Standardized Operational Rationale Studio
+
+    private var operationalRationaleStudioCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Image(systemName: "signature")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(FulfillmentTokens.indigo)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(Language.get("Fulfillment_Override_Reason_Section", alter: "سبب التدخل والرقابة الإدارية"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(FulfillmentTokens.inkPrimary)
+                        Text("*")
+                            .font(AdminType.headline)
+                            .foregroundStyle(FulfillmentTokens.crimson)
+                    }
+
+                    Text(Language.get("Fulfillment_Override_Reason_Section_Sub", alter: "وثيقة إلزامية تسجل في سجل العمليات السيادية"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+            }
+
+            // Quick Preset Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    let presets = [
+                        Language.get("Fulfillment_Override_Preset_Driver", alter: "تعذر التواصل مع السائق"),
+                        Language.get("Fulfillment_Override_Preset_Stock", alter: "نفاد المخزون لدى المزود"),
+                        Language.get("Fulfillment_Override_Preset_Customer", alter: "طلب مباشر من العميل"),
+                        Language.get("Fulfillment_Override_Preset_Delay", alter: "تأخر في التحضير التشغيلي"),
+                        Language.get("Fulfillment_Override_Preset_Address", alter: "تصحيح العنوان والمنطقة"),
+                        Language.get("Fulfillment_Override_Preset_Reschedule", alter: "إعادة جدولة الاستلام")
+                    ]
+
+                    ForEach(presets, id: \.self) { preset in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if reason.isEmpty {
+                                reason = preset
+                            } else if !reason.contains(preset) {
+                                reason = "\(reason) - \(preset)"
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 10))
+                                Text(preset)
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(FulfillmentTokens.primarySoft, in: Capsule())
+                            .foregroundStyle(FulfillmentTokens.primary)
+                            .overlay(Capsule().stroke(FulfillmentTokens.primary.opacity(0.3), lineWidth: 0.8))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+            }
+
+            // Multiline Editor Container
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .topLeading) {
+                    if reason.isEmpty {
+                        Text(Language.get("Fulfillment_Override_Reason_Placeholder", alter: "اكتب سبب التعديل بالتفصيل للتدقيق الأمني والعمليات..."))
+                            .font(AdminType.subheadline)
+                            .foregroundStyle(FulfillmentTokens.inkTertiary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 12)
+                            .allowsHitTesting(false)
+                    }
+
+                    TextEditor(text: $reason)
+                        .font(AdminType.subheadline)
+                        .focused($isReasonFocused)
+                        .frame(minHeight: 80)
+                        .padding(8)
+                        .background(Color.clear)
+                        .onChange(of: reason) { val in
+                            if val.count > 256 {
+                                reason = String(val.prefix(256))
+                            }
+                        }
+                }
+                .background(FulfillmentTokens.surfaceSecondary.opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isReasonFocused ? FulfillmentTokens.primary : FulfillmentTokens.hairline, lineWidth: isReasonFocused ? 1.5 : 1)
+                )
+
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? "checkmark.circle.fill" : "exclamationmark.circle")
+                            .font(.system(size: 11))
+                            .foregroundStyle(reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? FulfillmentTokens.emerald : FulfillmentTokens.amber)
+
+                        Text(reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+                             ? Language.get("ValidReason", alter: "السبب مكتمل وموثق")
+                             : Language.get("ReasonRequired", alter: "مطلوب لتجاوز فحص التدقيق"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(reason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3 ? FulfillmentTokens.emerald : FulfillmentTokens.inkTertiary)
+                    }
+
+                    Spacer()
+
+                    Text("\(reason.count) / 256")
+                        .font(AdminType.caption2)
+                        .foregroundStyle(reason.count > 240 ? FulfillmentTokens.crimson : FulfillmentTokens.inkTertiary)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, 4)
+            }
+
+            Divider().background(FulfillmentTokens.hairline)
+
+            // Optional Internal Ops Notes
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("Fulfillment_Override_Notes_Section", alter: "ملاحظات تشغيلية داخلية للمناوبة (اختياري)"))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+
+                TextField(
+                    Language.get("Fulfillment_Override_Notes_Placeholder", alter: "أي تفاصيل داخلية لفريق العمليات والمناوبة القادمة..."),
+                    text: $internalNote
+                )
+                .font(AdminType.subheadline)
+                .padding(10)
+                .background(FulfillmentTokens.surfaceSecondary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(FulfillmentTokens.hairline, lineWidth: 1))
+            }
+        }
+        .padding(16)
+        .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous)
+                .stroke(FulfillmentTokens.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+    }
+
+    // MARK: - 4. Customer Notification Broadcast & Live Blueprint
+
+    private var customerNotificationBlueprintCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Image(systemName: "bell.badge.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(FulfillmentTokens.primary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Fulfillment_Override_Notify_Title", alter: "إشعار العميل بالتعديل"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(FulfillmentTokens.inkPrimary)
+                    Text(Language.get("Fulfillment_Override_Notify_Sub", alter: "إرسال إشعار فوري وتحديث مسار التتبع في تطبيق العميل"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $notifyCustomer)
+                    .labelsHidden()
+                    .tint(FulfillmentTokens.primary)
+            }
+
+            if notifyCustomer {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "iphone.radiowaves.left.and.right")
+                            .font(.system(size: 11))
+                        Text(Language.get("Fulfillment_Override_Simulated_Notification_Title", alter: "معاينة الإشعار الفوري للعميل"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(FulfillmentTokens.primary)
+
+                    HStack(alignment: .top, spacing: 10) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(LinearGradient(colors: [FulfillmentTokens.primary, Color(red: 1.0, green: 0.3, blue: 0.43)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 15, weight: .black))
+                                .foregroundStyle(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack {
+                                Text("Pure Pets")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(FulfillmentTokens.inkPrimary)
+                                Spacer()
+                                Text(Language.get("Time_JustNow", alter: "الآن"))
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(FulfillmentTokens.inkTertiary)
+                            }
+
+                            Text(String(
+                                format: Language.get("Fulfillment_Override_Simulated_Notification_Body", alter: "تحديث على طلبك: تم تعديل مسار طلبك [%@] إلى [%@] من قبل إدارة العمليات."),
+                                currentRecord.parentOrderNumber,
+                                selectedTargetMeta.title
+                            ))
+                            .font(.system(size: 12))
+                            .foregroundStyle(FulfillmentTokens.inkSecondary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        }
+                    }
+                    .padding(12)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                    )
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+                }
+                .padding(12)
+                .background(FulfillmentTokens.primarySoft.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(FulfillmentTokens.amber)
+                    Text(Language.get("Fulfillment_Override_Notify_Off_Notice", alter: "تنبيه: لن يتم إرسال أي إشعار للعميل، سيتغير المسار داخلياً فقط."))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(FulfillmentTokens.inkSecondary)
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(FulfillmentTokens.amberSoft, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(FulfillmentTokens.surface, in: RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: FulfillmentTokens.cornerCard, style: .continuous)
+                .stroke(FulfillmentTokens.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, y: 2)
+    }
+
+    // MARK: - 5. Operational Impact Breakdown
+
+    private var operationalImpactBreakdownCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "cpu.fill")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(FulfillmentTokens.inkTertiary)
+                Text(Language.get("Fulfillment_Override_Impact_Title", alter: "الآثار التشغيلية لهذا الإجراء"))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(FulfillmentTokens.inkSecondary)
+            }
+
+            VStack(spacing: 6) {
+                impactRow(icon: "doc.badge.gearshape.fill", text: Language.get("Fulfillment_Override_Impact_1", alter: "تحديث وثيقة التنفيذ السحابية (FulfillmentOrders)"))
+                impactRow(icon: "lock.doc.fill", text: Language.get("Fulfillment_Override_Impact_2", alter: "تسجيل حدث تدقيق أمني غير قابل للتعديل (AuditLogs)"))
+                impactRow(icon: "arrow.triangle.2.circlepath.circle.fill", text: Language.get("Fulfillment_Override_Impact_3", alter: "إعادة احتساب وتزامن ملخص الطلب الأب (Orders)"))
+            }
+        }
+        .padding(14)
+        .background(FulfillmentTokens.surfaceSecondary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func impactRow(icon: String, text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(FulfillmentTokens.primary)
+            Text(text)
+                .font(AdminType.caption2)
+                .foregroundStyle(FulfillmentTokens.inkSecondary)
+            Spacer()
+        }
+    }
+
+    // MARK: - 6. Error Diagnostic Box
+
+    private func errorDiagnosticCard(_ error: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.octagon.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(FulfillmentTokens.crimson)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("Error", alter: "تعذر تنفيذ العملية"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(FulfillmentTokens.crimson)
+                Text(error)
+                    .font(AdminType.caption)
+                    .foregroundStyle(FulfillmentTokens.inkPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if requiresLiveRecordRefresh {
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    if isRefreshingLiveRecord {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(FulfillmentTokens.primary)
+                            Text(Language.get("Fulfillment_Override_ConflictReloading", alter: "جارٍ تحديث حالة التنفيذ المباشرة…"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(FulfillmentTokens.inkSecondary)
+                        }
+                        .accessibilityElement(children: .combine)
+                    } else {
+                        Button(action: refreshLiveRecordAfterConflict) {
+                            Label(
+                                Language.get("Fulfillment_Override_ConflictRetry", alter: "تحديث الحالة المباشرة"),
+                                systemImage: "arrow.clockwise.circle.fill"
+                            )
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(FulfillmentTokens.primary)
+                            .frame(minHeight: FulfillmentTokens.touchTarget)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(Language.get("Fulfillment_Override_ConflictRetry_Hint", alter: "يجلب الحالة الحالية من الخادم قبل السماح بمحاولة جديدة"))
+                    }
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(FulfillmentTokens.crimsonSoft, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(FulfillmentTokens.crimson.opacity(0.35), lineWidth: 1))
+    }
+
+    // MARK: - Floating Safe-Action Pedestal Dock
+
+    private var safeActionPedestalDock: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 10) {
+                if !isCommitValid {
+                    HStack(spacing: 6) {
+                        Image(systemName: targetStatus.isEmpty ? "arrow.triangle.branch" : "pencil.line")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(targetStatus.isEmpty
+                             ? Language.get("Fulfillment_Override_Hint_Select_Target", alter: "يرجى تحديد المرحلة المستهدفة للمتابعة")
+                             : (reason.trimmingCharacters(in: .whitespacesAndNewlines).count < 3
+                                ? Language.get("Fulfillment_Override_Hint_Enter_Reason", alter: "يرجى كتابة سبب التعديل (3 أحرف على الأقل) للاعتماد")
+                                : ""))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(FulfillmentTokens.inkTertiary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(FulfillmentTokens.surfaceSecondary, in: Capsule())
+                    .transition(.opacity)
+                }
+
+                Button {
+                    if selectedTargetMeta.isDestructive {
+                        showDestructiveConfirmation = true
+                    } else {
+                        executeCommit()
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        if isSubmitting {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: targetStatus.isEmpty ? "arrow.triangle.branch" : selectedTargetMeta.symbol)
+                                .font(.system(size: 16, weight: .bold))
+
+                            VStack(spacing: 2) {
+                                Text(Language.get("Fulfillment_Override_Submit_CTA", alter: "تأكيد وتطبيق التعديل الإداري"))
+                                    .font(AdminType.subheadlineBold)
+
+                                Text(Language.get("Fulfillment_Override_Submit_Sub", alter: "اعتماد فوري مع توثيق الرقابة"))
+                                    .font(.system(size: 10, weight: .medium))
+                                    .opacity(0.85)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        isCommitValid
+                            ? (selectedTargetMeta.isDestructive
+                               ? LinearGradient(colors: [FulfillmentTokens.crimson, Color(red: 0.8, green: 0.15, blue: 0.15)], startPoint: .leading, endPoint: .trailing)
+                               : LinearGradient(colors: [FulfillmentTokens.primary, Color(red: 1.0, green: 0.3, blue: 0.43)], startPoint: .leading, endPoint: .trailing))
+                            : LinearGradient(colors: [AdminSurface.control, AdminSurface.control], startPoint: .leading, endPoint: .trailing),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .foregroundStyle(isCommitValid ? Color.white : AdminSurface.secondaryText)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(isCommitValid ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                    )
+                    .shadow(
+                        color: isCommitValid
+                            ? (selectedTargetMeta.isDestructive ? FulfillmentTokens.crimson.opacity(0.35) : FulfillmentTokens.primary.opacity(0.35))
+                            : Color.clear,
+                        radius: 8,
+                        y: 3
+                    )
+                }
+                .disabled(!isCommitValid)
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+            .background(
+                AdminSurface.surface
+                    .shadow(color: Color.black.opacity(0.06), radius: 12, y: -4)
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .overlay(
+                Rectangle()
+                    .fill(FulfillmentTokens.hairline)
+                    .frame(height: 0.75),
+                alignment: .top
+            )
+        }
+    }
+
+    private func executeCommit() {
         let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanReason.isEmpty else { return }
+        guard !cleanReason.isEmpty, !targetStatus.isEmpty, !requiresLiveRecordRefresh, !isRefreshingLiveRecord else { return }
 
         isSubmitting = true
         errorMessage = nil
 
-        onCommit(targetStatus, cleanReason, internalNote.isEmpty ? nil : internalNote, notifyCustomer) { success, err in
+        onCommit(currentRecord.status, targetStatus, cleanReason, internalNote.isEmpty ? nil : internalNote, notifyCustomer) { result in
             self.isSubmitting = false
-            if success {
+            switch result {
+            case .succeeded:
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                onDismiss()
                 dismiss()
-            } else {
-                self.errorMessage = err
+            case .conflict(let requiresLiveRecordReload):
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                if requiresLiveRecordReload {
+                    beginLiveRecordConflictRecovery()
+                } else {
+                    errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.")
+                }
+            case .denied:
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                errorMessage = Language.get("Fulfillment_OverridePermissionDenied", alter: "ليس لديك صلاحية لتنفيذ هذا التعديل الإداري.")
+            case .invalid:
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                errorMessage = Language.get("Fulfillment_OverrideInvalid", alter: "لم يعد أمر التنفيذ صالحاً. راجع الحالة المختارة والمعلومات المطلوبة.")
+            case .failed:
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                errorMessage = Language.get("Fulfillment_OverrideFailed", alter: "تعذر إكمال أمر التنفيذ. أبقِ هذا السجل مفتوحاً وتحقق من الحالة المباشرة قبل المحاولة مرة أخرى.")
             }
         }
+    }
+
+    private func beginLiveRecordConflictRecovery() {
+        targetStatus = ""
+        showDestructiveConfirmation = false
+        requiresLiveRecordRefresh = true
+        errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.")
+        refreshLiveRecordAfterConflict()
+    }
+
+    private func refreshLiveRecordAfterConflict() {
+        guard requiresLiveRecordRefresh, !isRefreshingLiveRecord else { return }
+        isRefreshingLiveRecord = true
+        PPFulfillmentService.shared().refreshFulfillmentFromServer(record.id) { rawRecord, error in
+            Task { @MainActor in
+                self.isRefreshingLiveRecord = false
+                guard error == nil, let rawRecord = rawRecord else {
+                    self.errorMessage = Language.get("Fulfillment_Override_ConflictRefreshFailed", alter: "تعذر تحديث الحالة المباشرة. تحقق من الاتصال ثم حاول مرة أخرى.")
+                    return
+                }
+                self.refreshedRecord = FulfillmentRecordSnapshot(record: rawRecord)
+                self.requiresLiveRecordRefresh = false
+                self.targetStatus = ""
+                self.errorMessage = Language.get("Fulfillment_OverrideConflict", alter: "تغيرت حالة التنفيذ قبل تطبيق هذا الأمر. راجع الحالة المباشرة قبل المحاولة مرة أخرى.")
+            }
+        }
+    }
+
+    private func statusMeta(for statusKey: String) -> (title: String, desc: String, symbol: String, tone: Color, isDestructive: Bool) {
+        switch statusKey {
+        case "accepted":
+            return (
+                Language.get("Fulfillment_Status_Accepted", alter: "تم القبول"),
+                Language.get("Fulfillment_Status_Accepted_Desc", alter: "قبول الطلب من المتجر والبدء في دورة التجهيز"),
+                "hand.thumbsup.fill",
+                FulfillmentTokens.blue,
+                false
+            )
+        case "preparing", "processing", "in_progress":
+            return (
+                Language.get("Fulfillment_Status_Preparing", alter: "قيد التجهيز"),
+                Language.get("Fulfillment_Status_Preparing_Desc", alter: "الطلب قيد التجهيز والتغليف في مستودع المتجر"),
+                "gearshape.2.fill",
+                FulfillmentTokens.blue,
+                false
+            )
+        case "ready_for_pickup":
+            return (
+                Language.get("Fulfillment_Status_ReadyForPickup", alter: "جاهز للاستلام"),
+                Language.get("Fulfillment_Status_ReadyForPickup_Desc", alter: "اكتمال التجهيز وبانتظار وصول مندوب التوصيل"),
+                "shippingbox.fill",
+                FulfillmentTokens.indigo,
+                false
+            )
+        case "delivery_requested":
+            return (
+                Language.get("Fulfillment_Status_DeliveryRequested", alter: "تم طلب التوصيل"),
+                Language.get("Fulfillment_Status_DeliveryRequested_Desc", alter: "تم إرسال طلب استدعاء لأسطول التوصيل المعتمد"),
+                "person.badge.shield.checkmark.fill",
+                FulfillmentTokens.indigo,
+                false
+            )
+        case "delivery_assigned":
+            return (
+                Language.get("Fulfillment_Status_DeliveryAssigned", alter: "تم تعيين مندوب"),
+                Language.get("Fulfillment_Status_DeliveryAssigned_Desc", alter: "تم تعيين مندوب توصيل لاستلام الشحنة"),
+                "person.badge.shield.checkmark.fill",
+                Color.purple,
+                false
+            )
+        case "awaiting_handover":
+            return (
+                Language.get("Fulfillment_Status_AwaitingHandover", alter: "بانتظار التسليم"),
+                Language.get("Fulfillment_Status_AwaitingHandover_Desc", alter: "المندوب وصل للمتجر وبانتظار تسليم البضاعة"),
+                "clock.badge.checkmark.fill",
+                Color.purple,
+                false
+            )
+        case "handed_over":
+            return (
+                Language.get("Fulfillment_Status_HandedOver", alter: "تم التسليم للمندوب"),
+                Language.get("Fulfillment_Status_HandedOver_Desc", alter: "تم تسليم الشحنة للمندوب بنجاح وبدء الرحلة"),
+                "shippingbox.and.arrow.backward.fill",
+                Color.purple,
+                false
+            )
+        case "in_transit":
+            return (
+                Language.get("Fulfillment_Status_InTransit", alter: "في الطريق للعميل"),
+                Language.get("Fulfillment_Status_InTransit_Desc", alter: "الشحنة في الطريق إلى عنوان العميل النهائي"),
+                "box.truck.badge.clock.fill",
+                Color.purple,
+                false
+            )
+        case "cancelled":
+            return (
+                Language.get("Fulfillment_Status_Cancelled", alter: "إلغاء الطلب"),
+                Language.get("Fulfillment_Status_Cancelled_Desc", alter: "إلغاء التنفيذ بالكامل وإعادة احتساب الطلب الأب"),
+                "xmark.octagon.fill",
+                FulfillmentTokens.crimson,
+                true
+            )
+        case "rejected":
+            return (
+                Language.get("Fulfillment_Status_Rejected", alter: "رفض الطلب"),
+                Language.get("Fulfillment_Status_Rejected_Desc", alter: "رفض التنفيذ من قبل الإدارة مع إشعار المتجر"),
+                "xmark.circle.fill",
+                FulfillmentTokens.crimson,
+                true
+            )
+        default:
+            return (
+                statusKey.replacingOccurrences(of: "_", with: " ").capitalized,
+                Language.get("Fulfillment_Status_Generic_Desc", alter: "تحديث الحالة إلى هذه المرحلة التشغيلية"),
+                "arrow.triangle.branch",
+                FulfillmentTokens.primary,
+                false
+            )
+        }
+    }
+}
+
+// Backward-compatibility wrapper so existing modal call sites remain functional
+private struct FulfillmentOverrideModal: View {
+    let record: FulfillmentRecordSnapshot
+    let onCommit: (String, String, String, String?, Bool, @escaping @Sendable (FulfillmentOverrideCommitResult) -> Void) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        FulfillmentOverrideView(
+            record: record,
+            isPushMode: false,
+            onDismiss: { dismiss() },
+            onCommit: onCommit
+        )
     }
 }
 

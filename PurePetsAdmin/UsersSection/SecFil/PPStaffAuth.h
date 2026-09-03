@@ -18,7 +18,11 @@ typedef NSString * PPStaffRole NS_TYPED_ENUM;
 extern PPStaffRole const PPStaffRoleSuperAdmin;
 extern PPStaffRole const PPStaffRoleOwner;
 extern PPStaffRole const PPStaffRoleOperationsManager;
+extern PPStaffRole const PPStaffRoleBranchManager;
 extern PPStaffRole const PPStaffRoleInventoryManager;
+extern PPStaffRole const PPStaffRoleAccountant;
+extern PPStaffRole const PPStaffRoleWarehouse;
+extern PPStaffRole const PPStaffRoleSales;
 extern PPStaffRole const PPStaffRolePaymentsManager;
 extern PPStaffRole const PPStaffRoleSupportAgent;
 extern PPStaffRole const PPStaffRoleViewer;
@@ -162,6 +166,10 @@ extern NSString * const kStaffPermVeterinariansManage;
 @property (nonatomic, assign) NSInteger claimsVersion;
 @property (nonatomic, copy, nullable) NSString *updatedBy;
 
+@property (nonatomic, copy, readonly) NSArray<NSString *> *assignedBranchIDs;
+@property (nonatomic, copy, readonly, nullable) NSString *defaultBranchID;
+@property (nonatomic, copy, readonly, nullable) NSDictionary<NSString *, NSArray<NSString *> *> *branchPermissions;
+
 - (instancetype)initWithDictionary:(NSDictionary *)dict uid:(NSString *)uid;
 - (BOOL)isActive;
 - (BOOL)isAdmin;
@@ -169,6 +177,9 @@ extern NSString * const kStaffPermVeterinariansManage;
 - (BOOL)canAccessStaffWorkspace;
 - (BOOL)hasPermission:(NSString *)perm;
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms;
+- (BOOL)hasAccessToBranch:(NSString *)branchID;
+- (BOOL)hasPermission:(NSString *)perm inBranch:(NSString * _Nullable)branchID;
+- (NSString *)localizedRoleName;
 
 @end
 

@@ -108,4 +108,12 @@ static NSString * const kPPKeyBaseButton = @"__base_button";
 - (UIView * _Nullable)PPNavBarForceRightView:(UIView *)navBarTitleView ;
 @end
 
+@interface UINavigationController (PPSwipeToPop) <UIGestureRecognizerDelegate>
+
+/// Configures and enables interactive swipe-to-pop gesture recognizer
+/// with support for hidden navigation bars, custom back buttons, and RTL.
+- (void)pp_enableSwipeToPop;
+
+@end
+
 NS_ASSUME_NONNULL_END

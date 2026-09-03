@@ -2079,6 +2079,10 @@
 "Fulfillment_DetailCustomer" = "العميل";
 "Fulfillment_DetailMode" = "الوضع";
 "Fulfillment_DetailOwner" = "التنفيذ بواسطة";
+"Fulfillment_Section_Logistics" = "بيانات التنفيذ والشحن";
+"Fulfillment_Delivery_Awaiting_Prep" = "بانتظار تجهيز الطلب";
+"Fulfillment_Delivery_Mode_Company" = "أسطول التوصيل";
+"Fulfillment_Delivery_Mode_Pickup" = "استلام من المتجر";
 "Fulfillment_DetailCreated" = "تاريخ الإنشاء";
 "Fulfillment_DetailUpdated" = "آخر حركة";
 "Fulfillment_NoItems" = "لا توجد عناصر تنفيذ";
@@ -2553,7 +2557,7 @@
 "Accounting_AddExpenseSubtitle" = "سجّل مصروفًا منضبطًا مع التصنيف وبيانات التدقيق.";
 "Accounting_AmountPlaceholder" = "0.00";
 "Accounting_DescriptionPlaceholder" = "ملاحظة اختيارية";
-"Accounting_OrdersCount_Format" = "%@ طلب مدفوع";
+"Accounting_OrdersCount_Format" = "%@ عملية دخل";
 "Accounting_ExpensesCount_Format" = "%@ قيد مصروف";
 "Accounting_ProfitSubtitle" = "الإيرادات ناقص المصروفات";
 "Accounting_Transaction" = "معاملة";
@@ -5074,3 +5078,156 @@
 "LivePetDossier_IndividualTracking" = "تتبع فردي";
 "LivePetDossier_QuantityTracking" = "تتبع بالكمية";
 "LivePetDossier_TrackingPending" = "يتطلب اعتماد نمط التتبع";
+
+
+/* MARK: - Live animal intake passport identity lens */
+"LivePetIntake_PassportIdentityTitle" = "إشارة الهوية";
+"LivePetIntake_PassportIdentitySubtitle" = "صورة تشغيلية وهوية فريدة تميّزان هذا الحيوان عن بقية الدفعة.";
+"LivePetIntake_PassportCommercialTitle" = "الإحداثيات التجارية";
+"LivePetIntake_PassportCommercialSubtitle" = "قيم البيع والاستلام تخص هذا الحيوان وحده.";
+"LivePetIntake_PassportProvenanceTitle" = "سياق الوصول";
+"LivePetIntake_PassportProvenanceSubtitle" = "متى وصل الحيوان ومن أين، مع ملاحظات الفريق الداخلية.";
+
+"LivePetIntake_UnitPhotoSourceTitle" = "صورة هذا الحيوان";
+"LivePetIntake_UnitPhotoSourceMessage" = "سترتبط الصورة بسجل هذا الحيوان فقط ولن تُنسخ إلى الحيوانات الأخرى.";
+"LivePetIntake_UnitPhotoCamera" = "التقاط صورة";
+"LivePetIntake_UnitPhotoLibrary" = "اختيار من مكتبة الصور";
+"LivePetIntake_UnitPhotoCameraPermissionTitle" = "السماح باستخدام الكاميرا";
+"LivePetIntake_UnitPhotoCameraPermissionMessage" = "فعّل إذن الكاميرا من الإعدادات لتصوير هذا الحيوان، أو اختر صورة من المكتبة.";
+"LivePetIntake_OpenSettings" = "فتح الإعدادات";
+"LivePetIntake_UnitPhotoCameraUnavailable" = "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة.";
+"LivePetIntake_UnitPhotoImportFailed" = "تعذر استيراد الصورة المحددة. اختر صورة أخرى وحاول مجدداً.";
+"LivePetIntake_UnitPhotoSelectedAnnouncement" = "تم إرفاق الصورة بهذا الحيوان فقط.";
+
+"LivePetIntake_UnitPhotoAdd" = "أضف صورة";
+"LivePetIntake_UnitPhotoChoose" = "اختيار صورة";
+"LivePetIntake_UnitPhotoReplace" = "استبدال الصورة";
+"LivePetIntake_UnitPhotoPreview" = "معاينة";
+"LivePetIntake_UnitPhotoInternalNote" = "ترتبط بسجل هذا الحيوان فقط";
+"LivePetIntake_UnitPhotoAddAccessibility" = "إضافة صورة لهذا الحيوان";
+"LivePetIntake_UnitPhotoPreviewAccessibility" = "معاينة صورة هذا الحيوان";
+"LivePetIntake_UnitPhotoAddHint" = "يفتح الكاميرا أو مكتبة الصور";
+"LivePetIntake_UnitPhotoPreviewHint" = "يفتح الصورة بملء الشاشة";
+"LivePetIntake_UnitPhotoRemove" = "إزالة صورة هذا الحيوان";
+"LivePetIntake_UnitPhotoRemoveHint" = "يزيل الصورة المحلية قبل حفظ الإدخال";
+
+"LivePetIntake_UnitPhotoPermissionRequired" = "تحتاج إلى صلاحية إدارة المخزون لإرفاق صورة الحيوان.";
+"LivePetIntake_UnitPhotoPrepareFailed" = "تعذر تجهيز هذه الصورة. اختر صورة أخرى وحاول مجدداً.";
+"LivePetIntake_UnitPhotoSessionExpired" = "انتهت جلسة الموظف. سجّل الدخول مجدداً قبل رفع صورة الحيوان.";
+"LivePetIntake_UnitPhotoStagedConflict" = "تعارضت الصورة المجهزة مع ملف موجود. اختر الصورة مجدداً وحاول مرة أخرى.";
+"LivePetIntake_UnitPhotoUploadFailed" = "تعذر التحقق من صورة الحيوان المرفوعة. حاول مرة أخرى.";
+"LivePetIntake_UnitPhotoUploadFailureFormat" = "تعذر إكمال صورة الحيوان. لم يتم إنشاء المخزون. التفاصيل: %@";
+
+/* NextGen V6 Sovereign Admin Fulfillment Override Terminal */
+"Fulfillment_Override_Terminal_Title" = "تعديل مسار التنفيذ الإداري";
+"Fulfillment_Override_Terminal_Subtitle" = "التدخل التشغيلي والتعافي السحابي • Pure Pets";
+"Fulfillment_Override_Security_Banner" = "تدخل سيادي موثق • تدقيق أمني مشفر 256-bit";
+"Fulfillment_Override_Operator_Role" = "المسؤول التشغيلي";
+"Fulfillment_Override_Ref_Copy_Toast" = "تم نسخ مرجع التنفيذ";
+"Fulfillment_Override_Circuit_Title" = "مخطط مسار الحالة التشغيلية";
+"Fulfillment_Override_Circuit_Subtitle" = "الانتقال المباشر من الحالة الحالية إلى المرحلة المستهدفة المصرح بها";
+"Fulfillment_Override_Current_State" = "الحالة الراهنة";
+"Fulfillment_Override_Target_State" = "الحالة المستهدفة";
+"Fulfillment_Override_No_Targets_Title" = "حالة نهائية مقفلة";
+"Fulfillment_Override_No_Targets_Desc" = "وصل هذا الطلب إلى حالة نهائية أو مسار تسليم نشط لا يقبل التعديل الإداري المباشر منعاً للتضارب المالي وحماية لسجلات الأسطول.";
+"Fulfillment_Override_Select_Target_Prompt" = "حدد الحالة الجديدة للمتابعة";
+"Fulfillment_Override_Hint_Select_Target" = "يرجى تحديد المرحلة المستهدفة للمتابعة";
+"Fulfillment_Override_Hint_Enter_Reason" = "يرجى كتابة سبب التعديل (3 أحرف على الأقل) للاعتماد";
+"Fulfillment_Override_Reason_Section" = "سبب التدخل والرقابة الإدارية";
+"Fulfillment_Override_Reason_Section_Sub" = "وثيقة إلزامية تسجل في سجل العمليات السيادية";
+"Fulfillment_Override_Reason_Placeholder" = "اكتب سبب التعديل بالتفصيل للتدقيق الأمني والعمليات...";
+"Fulfillment_Override_Reason_Chars" = "%d / 256 حرف";
+"Fulfillment_Override_Preset_Driver" = "تعذر التواصل مع السائق";
+"Fulfillment_Override_Preset_Stock" = "نفاد المخزون لدى المزود";
+"Fulfillment_Override_Preset_Customer" = "طلب مباشر من العميل";
+"Fulfillment_Override_Preset_Delay" = "تأخر في التحضير التشغيلي";
+"Fulfillment_Override_Preset_Address" = "تصحيح العنوان والمنطقة";
+"Fulfillment_Override_Preset_Reschedule" = "إعادة جدولة الاستلام";
+"Fulfillment_Override_Notes_Section" = "ملاحظات تشغيلية داخلية (اختياري)";
+"Fulfillment_Override_Notes_Placeholder" = "أي تفاصيل داخلية لفريق العمليات والمناوبة القادمة...";
+"Fulfillment_Override_Notify_Section" = "بث الإشعارات وتحديث العميل";
+"Fulfillment_Override_Notify_Title" = "إشعار العميل بالتعديل";
+"Fulfillment_Override_Notify_Sub" = "إرسال إشعار فوري وتحديث مسار التتبع في تطبيق العميل";
+"Fulfillment_Override_Simulated_Notification_Title" = "معاينة الإشعار الفوري للعميل";
+"Fulfillment_Override_Simulated_Notification_Body" = "تحديث على طلبك: تم تعديل مسار طلبك [%@] إلى [%@] من قبل إدارة العمليات.";
+"Fulfillment_Override_Notify_Off_Notice" = "تنبيه: لن يتم إرسال أي إشعار للعميل، سيتغير المسار داخلياً فقط.";
+"Fulfillment_Override_Impact_Title" = "الآثار التشغيلية لهذا الإجراء";
+"Fulfillment_Override_Impact_1" = "تحديث وثيقة التنفيذ السحابية (FulfillmentOrders)";
+"Fulfillment_Override_Impact_2" = "تسجيل حدث تدقيق أمني غير قابل للتعديل (AuditLogs)";
+"Fulfillment_Override_Impact_3" = "إعادة احتساب وتزامن ملخص الطلب الأب (Orders)";
+"Fulfillment_Override_Submit_CTA" = "تأكيد وتطبيق التعديل الإداري";
+"Fulfillment_Override_Submit_Sub" = "اعتماد فوري مع توثيق الرقابة";
+"Fulfillment_Override_Destructive_Alert_Title" = "تأكيد الإجراء الحساس";
+"Fulfillment_Override_Destructive_Alert_Msg" = "أنت على وشك تحويل الطلب إلى حالة حساسة (%@). هل تؤكد المتابعة؟";
+"Fulfillment_Override_Success_Toast" = "تم تطبيق التعديل الإداري وتحديث النظام بنجاح";
+"Fulfillment_Override_ConflictReloading" = "جارٍ تحديث حالة التنفيذ المباشرة…";
+"Fulfillment_Override_ConflictRefreshFailed" = "تعذر تحديث الحالة المباشرة. تحقق من الاتصال ثم حاول مرة أخرى.";
+"Fulfillment_Override_ConflictRetry" = "تحديث الحالة المباشرة";
+"Fulfillment_Override_ConflictRetry_Hint" = "يجلب الحالة الحالية من الخادم قبل السماح بمحاولة جديدة.";
+
+/* Admin Authentication Extensions */
+"SignInWithApple" = "تسجيل الدخول باستخدام Apple";
+"LoginWithPhone" = "رقم الجوال";
+"LoginWithEmail" = "البريد وكلمة المرور";
+"PhoneNumber" = "رقم الجوال";
+"PhoneNumberPlaceholder" = "أدخل رقم الجوال";
+"SendVerificationCode" = "إرسال رمز التحقق";
+"VerificationCode" = "رمز التحقق";
+"VerificationCodePlaceholder" = "أدخل الرمز المكون من 6 أرقام";
+"VerifyAndLogin" = "تأكيد وتسجيل الدخول";
+"ResendCode" = "إعادة إرسال الرمز";
+"ResendCodeInFormat" = "إعادة الإرسال بعد %d ثانية";
+"ChangePhoneNumber" = "تعديل الرقم";
+"auth_phone_live_hint" = "دخول سريع وآمن عبر رمز تحقق لمرة واحدة";
+"auth_phone_required_message" = "يرجى إدخال رقم جوالك للمتابعة.";
+"auth_phone_error_invalid" = "يرجى التحقق من رقم الجوال والمحاولة مرة أخرى.";
+"auth_otp_error_empty" = "يرجى إدخال رمز التحقق.";
+"auth_apple_no_token" = "تعذر التحقق من حساب Apple. يرجى المحاولة مرة أخرى.";
+"auth_apple_configuration_error" = "تسجيل الدخول عبر Apple غير متاح في هذا الإصدار. حدّث التطبيق أو تواصل مع مسؤول المنصة.";
+
+/* Multi-Branch Context & Access Control */
+"BranchContext_Switcher_Title" = "تبديل فرع العمل";
+"BranchContext_Switcher_Message" = "اختر الفرع لتفعيل سياق العمليات وعرض البيانات الخاصة به.";
+"BranchContext_AllBranches_Global" = "جميع الفروع (وصول شامل)";
+"BranchContext_SelectBranch_Prompt" = "يرجى تحديد الفرع";
+"BranchContext_DefaultBadge" = "الفرع الافتراضي";
+"BranchContext_Gate_Title" = "اختر فرع العمل";
+"BranchContext_Gate_Subtitle" = "يرجى تحديد الفرع لبدء جلسة العمل. سيتم حصر العمليات والمخزون والمبيعات وفقاً للفرع المختار.";
+"BranchContext_AccessDenied_Title" = "غير مصرح بالوصول للفرع";
+"BranchContext_AccessDenied_Message" = "ليس لديك صلاحية للوصول إلى هذا الفرع أو إجراء عمليات ضمنه.";
+"BranchContext_Horizon_Active" = "نطاق العمليات النشط";
+"BranchContext_Search_Placeholder" = "بحث بالاسم، الرمز (PP-1)، أو العنوان...";
+"BranchContext_Current_Active" = "الفرع النشط حالياً";
+"BranchContext_Status_Live" = "متصل • جاهز للعمليات";
+"BranchContext_Available_Section" = "الفروع المصرح بها";
+"BranchContext_Set_Default" = "تعيين كفرع افتراضي";
+"BranchContext_Default_Success" = "تم تعيين الفرع كافتراضي في النظام";
+"BranchContext_Global_Title" = "وصول شامل لكافة الفروع";
+"BranchContext_Global_Subtitle" = "عرض جميع العمليات والمخزون دون حصر بفرع محدد";
+"BranchContext_No_Results" = "لا توجد فروع مطابقة للبحث";
+
+/* Enterprise Staff Roles */
+"StaffRole_SuperAdmin" = "مدير عام";
+"StaffRole_Owner" = "مالك النظام";
+"StaffRole_OperationsManager" = "مدير العمليات";
+"StaffRole_BranchManager" = "مدير فرع";
+"StaffRole_InventoryManager" = "مدير المخزون";
+"StaffRole_Accountant" = "محاسب";
+"StaffRole_Warehouse" = "مسؤول مستودع";
+"StaffRole_Sales" = "مبيعات";
+"StaffRole_PaymentsManager" = "مدير المدفوعات";
+"StaffRole_SupportAgent" = "وكيل دعم";
+"StaffRole_Viewer" = "مشاهد";
+
+/* Working Branch Scope & Permissions */
+"Staff_Branch_Scope_Title" = "نطاق العمل وفروع الصلاحيات";
+"Staff_Branch_Global_Pill" = "وصول شامل لكافة الفروع";
+"Staff_Branch_Count_Pill" = "فروع محددة";
+"Staff_Branch_Global_Access" = "وصول شامل لكافة الفروع (Global Scope)";
+"Staff_Branch_Global_Access_Desc" = "يمنح العضو صلاحية التنقل والوصول والعمل عبر كافة فروع ومستودعات المنصة";
+"Staff_Branch_Authorized_List" = "فروع العمل المصرح بها";
+"Staff_Branch_Tap_Hint" = "انقر لتحديد الفروع أو تعيين الفرع الافتراضي";
+"Staff_Branch_Selection_Empty_Warning" = "تنبيه: يجب اختيار فرع واحد على الأقل، أو تفعيل خيار الوصول الشامل لجميع الفروع.";
+"Staff_Branch_Default_Badge" = "الافتراضي";
+"Staff_Branch_Set_Default" = "تعيين افتراضي";
+"Staff_Error_BranchRequired" = "يرجى تحديد فرع عمل واحد على الأقل، أو تفعيل الوصول الشامل لكافة الفروع.";

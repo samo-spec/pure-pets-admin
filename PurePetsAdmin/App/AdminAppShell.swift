@@ -12,12 +12,20 @@ struct AdminAppShell: View {
     @StateObject private var commandState: CommandCenterState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    private var availableTabs: [AdminTab] {
+        let tabs = AdminTab.allCases.filter { $0.isAuthorized(for: session) }
+        return tabs.isEmpty ? [.more] : tabs
+    }
+
     init(session: AdminSession, sessionStore: AdminSessionStore, router: AdminRouter) {
         self.session = session
         self.sessionStore = sessionStore
         self.router = router
         _commandState = StateObject(wrappedValue: CommandCenterState(session: session))
         UITabBar.appearance().isHidden = true
+
+        let authorized = AdminTab.allCases.filter { $0.isAuthorized(for: session) }
+        _selectedTab = State(initialValue: authorized.first ?? .more)
     }
 
     var body: some View {
@@ -89,7 +97,7 @@ struct AdminAppShell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if !(selectedTab == .command && commandShowsNestedWorkflow) {
-                V6GlobalTabBar(selectedTab: $selectedTab)
+                V6GlobalTabBar(selectedTab: $selectedTab, tabs: availableTabs)
             }
         }
         .ignoresSafeArea()
@@ -107,6 +115,9 @@ struct AdminAppShell: View {
             Text(Language.get("Logout_Confirm_Message", alter: nil))
         }
         .onAppear {
+            if !availableTabs.contains(selectedTab) {
+                selectedTab = availableTabs.first ?? .more
+            }
             router.consumePendingRoute(session: session)
         }
         .onChange(of: selectedTab) { tab in
@@ -116,10 +127,21 @@ struct AdminAppShell: View {
         }
         .onChange(of: session) { updatedSession in
             commandState.updateSession(updatedSession)
+            let updatedTabs = AdminTab.allCases.filter { $0.isAuthorized(for: updatedSession) }
+            if !updatedTabs.contains(selectedTab) {
+                selectedTab = updatedTabs.first ?? .more
+            }
             guard let route = router.presentedRoute else { return }
             if !route.isAuthorized(for: updatedSession) {
                 router.presentedRoute = nil
             }
+        }
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: NSNotification.Name.PPActiveBranchDidChange)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            commandState.refresh()
         }
     }
 
@@ -363,6 +385,7 @@ private final class AdminCommandOrbitNavigationController: UINavigationControlle
     override func viewDidLoad() {
         super.viewDidLoad()
         super.setNavigationBarHidden(true, animated: false)
+        pp_enableSwipeToPop()
     }
 
     override func setNavigationBarHidden(_ hidden: Bool, animated: Bool) {
@@ -383,13 +406,14 @@ private enum AdminShellMetric {
 
 struct V6GlobalTabBar: View {
     @Binding var selectedTab: AdminTab
+    var tabs: [AdminTab] = AdminTab.allCases
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var tabAnimationNamespace
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(alignment: .center, spacing: 4) {
-            ForEach(AdminTab.allCases) { tab in
+            ForEach(tabs) { tab in
                 tabItem(tab)
             }
         }
@@ -554,7 +578,14 @@ private struct AdminModuleListView: View {
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
-                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                HStack {
+                    Spacer()
+                    PPAdminBranchSwitcherBar()
+                }
+
+                if AdminTab.command.isAuthorized(for: session) {
+                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                }
 
                 if routes.isEmpty {
                     AdminEmptyRoutesView()
@@ -594,7 +625,14 @@ private struct AdminMoreView: View {
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
-                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                HStack {
+                    Spacer()
+                    PPAdminBranchSwitcherBar()
+                }
+
+                if AdminTab.command.isAuthorized(for: session) {
+                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+                }
 
                 Button {
                     router.present(.account, session: session)

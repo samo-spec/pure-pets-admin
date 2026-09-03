@@ -392,6 +392,10 @@ struct AdminCommandCenterScreenView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                        // ── Active Working Branch Horizon Hero Banner ───
+                        PPAdminBranchSwitcherBar(style: .prominentHero)
+                            .padding(.bottom, 2)
+
                         CommandEscalationHero(
                             model: heroModel,
                             isRegular: isRegular,
@@ -425,6 +429,13 @@ struct AdminCommandCenterScreenView: View {
         ) { _ in
             store.localeCode = Language.currentLanguageCode()
         }
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: NSNotification.Name.PPActiveBranchDidChange)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            refresh()
+        }
     }
 
     private func fixedNavBar(safeTop: CGFloat, isRegular: Bool) -> some View {
@@ -447,13 +458,7 @@ struct AdminCommandCenterScreenView: View {
         .padding(.bottom, 10)
         .frame(maxWidth: isRegular ? 980 : .infinity)
         .frame(maxWidth: .infinity)
-        .background(
-            AdminSurface.background
-                .ignoresSafeArea(edges: .top)
-        )
-        .overlay(alignment: .bottom) {
-            Divider().background(AdminSurface.hairline.opacity(0.5))
-        }
+        .zIndex(100)
     }
 
     @ViewBuilder
@@ -842,6 +847,7 @@ private struct CommandCenterChrome: View {
     let onLanguage: () -> Void
     let onLogout: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var isMoreMenuPresented: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -951,37 +957,178 @@ private struct CommandCenterChrome: View {
             .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
             .accessibilityValue(languageTitle)
 
-            Menu {
-                Button(action: onRefresh) {
-                    Label(Language.get("AdminCommandCenter_Refresh", alter: nil), systemImage: "arrow.clockwise")
-                }
-                Button(action: onAccount) {
-                    Label(Language.get("EditMyAccount_Title", alter: nil), systemImage: "person.crop.circle")
-                }
-                Button(action: onLanguage) {
-                    Label(Language.get("Confirm_LanguageChange_Title", alter: nil), systemImage: "globe")
-                }
-                Divider()
-                Button(role: .destructive, action: onLogout) {
-                    Label(Language.get("Logout", alter: nil), systemImage: "rectangle.portrait.and.arrow.right")
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                        )
-
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
-            }
-            .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
+            moreActionsMenuTrigger
         }
+    }
+
+    private var moreActionsMenuTrigger: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isMoreMenuPresented.toggle()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(isMoreMenuPresented ? AdminSurface.primary.opacity(0.12) : AdminSurface.control)
+                    .frame(width: 44, height: 44)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(isMoreMenuPresented ? AdminSurface.primary.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: isMoreMenuPresented ? 1 : 0.75)
+                    )
+
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(isMoreMenuPresented ? AdminSurface.primary : AdminSurface.primaryText)
+            }
+        }
+        .buttonStyle(CommandPressStyle())
+        .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
+        .background {
+            if isMoreMenuPresented {
+                Color.black.opacity(0.001)
+                    .frame(width: 2500, height: 2500)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                            isMoreMenuPresented = false
+                        }
+                    }
+            }
+        }
+        .overlay(alignment: Language.isRTL() ? .topLeading : .topTrailing) {
+            if isMoreMenuPresented {
+                customHomeMoreActionsMenuCard
+                    .offset(y: 52)
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.88, anchor: Language.isRTL() ? .topLeading : .topTrailing).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+                    .zIndex(300)
+            }
+        }
+    }
+
+    private var customHomeMoreActionsMenuCard: some View {
+        VStack(spacing: 0) {
+            // 1. Refresh
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                onRefresh()
+            } label: {
+                HStack(spacing: 12) {
+                    Text(Language.get("AdminCommandCenter_Refresh", alter: "تحديث العمليات"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.75)
+                .padding(.horizontal, 12)
+
+            // 2. Account
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                onAccount()
+            } label: {
+                HStack(spacing: 12) {
+                    Text(Language.get("EditMyAccount_Title", alter: "تعديل حسابي"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.75)
+                .padding(.horizontal, 12)
+
+            // 3. Language
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                onLanguage()
+            } label: {
+                HStack(spacing: 12) {
+                    Text(Language.get("Confirm_LanguageChange_Title", alter: "تغيير اللغة"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "globe")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.75)
+                .padding(.horizontal, 12)
+
+            // 4. Logout (Destructive)
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                onLogout()
+            } label: {
+                HStack(spacing: 12) {
+                    Text(Language.get("Logout", alter: "تسجيل الخروج"))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundColor(Color(uiColor: .systemRed))
+                        .lineLimit(1)
+                    Spacer()
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .systemRed))
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 48)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+        }
+        .frame(width: 220)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.14), radius: 18, y: 8)
     }
 }
 
@@ -2709,16 +2856,33 @@ private final class CommandAccountingCardViewModel: ObservableObject {
     @Published private(set) var expenseCount: Int = 0
     @Published private(set) var isLoading: Bool = true
 
+    private var baseRevenue: Double = 0.0
+    private var baseOrderCount: Int = 0
+    private var workspaceFetchDate: Date = Date()
+    private nonisolated(unsafe) var notificationToken: (any NSObjectProtocol)? = nil
+
     private let service: PPAccountingService
     private nonisolated(unsafe) var listeners: [any ListenerRegistration] = []
 
     init(service: PPAccountingService = .shared()) {
         self.service = service
+        self.notificationToken = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPAccountingDataDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.sync()
+            }
+        }
         subscribe()
     }
 
     deinit {
         listeners.forEach { $0.remove() }
+        if let token = notificationToken {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     func subscribe() {
@@ -2727,28 +2891,79 @@ private final class CommandAccountingCardViewModel: ObservableObject {
         isLoading = true
 
         let filter = "month"
+        let wsReg = service.subscribeAccountingWorkspace(withFilter: filter) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.workspaceFetchDate = Date()
+                if let ws = self.service.currentWorkspace, let dash = ws.primaryDashboard {
+                    self.baseRevenue = dash.income
+                    self.baseOrderCount = ws.incomeCount
+                }
+                self.sync()
+            }
+        }
         let expReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
                 self.sync()
             }
         }
-        let revReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+        let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
                 self.sync()
             }
         }
-        listeners = [expReg, revReg]
+        let ordReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sync()
+            }
+        }
+        listeners = [wsReg, expReg, txnReg, ordReg]
         sync()
     }
 
     private func sync() {
-        grossRevenue = service.orderRevenue
-        paidOrderCount = service.orderCount
+        // 1. Live authoritative expenses from real-time snapshot
         let exps = service.expenses ?? []
-        totalExpenses = exps.reduce(0.0) { $0 + $1.amount }
-        expenseCount = exps.count
+        if !exps.isEmpty {
+            totalExpenses = exps.reduce(0.0) { $0 + $1.amount }
+            expenseCount = exps.count
+        } else if let ws = service.currentWorkspace, let dash = ws.primaryDashboard, dash.expenses > 0 {
+            totalExpenses = dash.expenses
+            expenseCount = ws.expenseCount
+        } else {
+            totalExpenses = 0.0
+            expenseCount = 0
+        }
+
+        // 2. Live incremental revenue from transactions committed after baseline fetch
+        let txns = service.transactions ?? []
+        let newTransactions = txns.filter { txn in
+            guard let created = txn.createdAt else { return false }
+            return created > self.workspaceFetchDate
+        }
+        let newRevenue = newTransactions.reduce(0.0) { acc, txn in
+            let type = txn.type.lowercased()
+            if type == "refund" || type == "refunded" || type == "cancel" || type == "cancelled" {
+                return acc - txn.amount
+            } else if type == "expense" {
+                return acc
+            } else {
+                return acc + txn.amount
+            }
+        }
+
+        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
+            let confirmedIncome = max(dash.income, self.baseRevenue)
+            grossRevenue = confirmedIncome + newRevenue
+            paidOrderCount = max(ws.incomeCount, self.baseOrderCount) + newTransactions.count
+        } else {
+            grossRevenue = service.orderRevenue + newRevenue
+            paidOrderCount = service.orderCount + newTransactions.count
+        }
+
         isLoading = false
     }
 
@@ -2941,7 +3156,7 @@ private struct CommandAccountingSovereignCard: View {
             pillarCell(
                 title: Language.isRTL() ? "الإيرادات" : "Revenue",
                 amount: viewModel.grossRevenue,
-                subtitle: Language.isRTL() ? "\(viewModel.paidOrderCount) طلب مسدد" : "\(viewModel.paidOrderCount) orders",
+                subtitle: Language.isRTL() ? "\(viewModel.paidOrderCount) عملية دخل" : "\(viewModel.paidOrderCount) income entries",
                 symbol: "arrow.up.forward.circle.fill",
                 tint: Color(red: 0.16, green: 0.78, blue: 0.48)
             )

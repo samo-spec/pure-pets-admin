@@ -228,3 +228,28 @@ Independent proof status: source review and static gates cover the session/IAM s
 `BLOCKED / UNVERIFIED`
 
 No score is displayed. The exact SwiftyMax Proof V3 certification object has not passed.
+
+## Phase 9 - Apple Sign In Entitlement Repair (2026-09-03)
+
+Status: `SOURCE COMPLETE / DEVICE PROOF PENDING`.
+
+- Trigger: the Admin operations-login screen surfaced `com.apple.AuthenticationServices.AuthorizationError` code `1000` immediately after selecting Apple sign-in.
+- Root cause: the Admin target's Debug and Release entitlement files did not declare `com.apple.developer.applesignin`, even though `PPProLoginCoordinator` correctly creates the Apple authorization request and only reaches Firebase after Apple has issued a credential. The failure therefore occurs before Firebase Auth, App Check, or the canonical `staff_users/{uid}` authorization gate.
+- Fixed `PurePetsAdmin/PurePetsAdmin.entitlements` and `PurePetsAdmin/PurePetsAdmin Release.entitlements` with the same `Default` Sign in with Apple service entitlement used by the consumer iOS and Pro targets.
+- Added `auth_apple_configuration_error` in both Arabic and English and mapped Apple `ASAuthorizationErrorUnknown` to that safe recovery copy. The raw Apple implementation error is no longer exposed to staff.
+- Preserved the existing nonce flow, Firebase Apple credential exchange, App Check behavior, `PPStaffAuth` active-`staff_users/{uid}` + `dashboard.view` gate, and all permission/route behavior. No Firebase schema, rule, function, role, or client direct-write path changed.
+
+Validation completed:
+
+| Gate | Result |
+|---|---|
+| Both entitlement plists parse and contain `com.apple.developer.applesignin = [Default]` | `PASS` |
+| Arabic and English localization files parse | `PASS` |
+| Scoped `git diff --check` | `PASS` |
+| Command Center diff-scope verification | `PASS` |
+| Command Center Admin static verification | `PASS` |
+
+Remaining device prerequisite and proof:
+
+1. Apple Developer must have Sign in with Apple enabled for bundle identifier `Ali-Ahmed.PurePetsAdmin`, so automatic signing can issue a provisioning profile containing the new entitlement.
+2. Install a newly signed build on the connected iPhone and exercise Apple sign-in. A successful Apple credential must still pass the existing Firebase exchange and active, permissioned `staff_users/{uid}` gate; a non-staff account must remain denied.

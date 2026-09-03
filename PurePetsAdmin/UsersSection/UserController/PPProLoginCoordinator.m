@@ -15,6 +15,7 @@
 #import "RPManager.h"
 @import Firebase;
 @import FirebaseAuth;
+@import AuthenticationServices;
 
 @interface PPStaffAuth (PPProLoginCoordinatorCacheAccess)
 @property (nonatomic, strong, nullable, readwrite) PPStaffDoc *cachedCurrentStaff;
@@ -26,9 +27,11 @@ extern void PPAdminSetLoginInProgress(BOOL inProgress);
 static NSString * const kPPFIRAuthInternalErrorDomain = @"FIRAuthInternalErrorDomain";
 static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserInfoDeserializedResponseKey";
 
-@interface PPProLoginCoordinator ()
+@interface PPProLoginCoordinator () <ASAuthorizationControllerDelegate, ASAuthorizationControllerPresentationContextProviding>
 @property (nonatomic, weak) UIViewController *presentingViewController;
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> combinedReg;
+@property (nonatomic, copy, nullable) NSString *currentAppleNonce;
+@property (nonatomic, copy, nullable) PPProLoginCompletion appleCompletion;
 @end
 
 @implementation PPProLoginCoordinator
@@ -37,6 +40,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
     self = [super init];
     if (self) {
         _presentingViewController = viewController;
+        _suppressesHUD = YES;
     }
     return self;
 }
@@ -99,9 +103,11 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
 
 - (void)signInWithGoogleWithCompletion:(PPProLoginCompletion)completion {
     PPAdminSetLoginInProgress(YES);
-    [PPHUD showIndeterminateIn:self.presentingViewController.view
-                          title:kLang(@"Please wait")
-                       subtitle:kLang(@"StatusLoggingIn")];
+    if (!self.suppressesHUD) {
+        [PPHUD showIndeterminateIn:self.presentingViewController.view
+                              title:kLang(@"Please wait")
+                           subtitle:kLang(@"StatusLoggingIn")];
+    }
 
     __weak typeof(self) weakSelf = self;
     [[FUManager shared] signInWithGoogle:self.presentingViewController completion:^(FIRUser * _Nullable user, NSError * _Nullable error) {
@@ -109,7 +115,7 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
         if (!self) return;
 
         if (error || !user) {
-            [PPHUD dismiss];
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
             PPAdminSetLoginInProgress(NO);
             if (completion) {
                 if (error.code == -5) {
@@ -126,6 +132,170 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
                                password:@""
                           fromBiometric:NO
                              completion:completion];
+    }];
+}
+
+- (void)signInWithAppleWithCompletion:(PPProLoginCompletion)completion {
+    self.appleCompletion = completion;
+    NSString *rawNonce = [FUManager randomNonceString:32];
+    self.currentAppleNonce = rawNonce;
+    NSString *nonceHash = [FUManager sha256:rawNonce];
+
+    ASAuthorizationAppleIDProvider *appleIDProvider = [[ASAuthorizationAppleIDProvider alloc] init];
+    ASAuthorizationAppleIDRequest *request = [appleIDProvider createRequest];
+    request.requestedScopes = @[ASAuthorizationScopeFullName, ASAuthorizationScopeEmail];
+    request.nonce = nonceHash;
+
+    ASAuthorizationController *authorizationController = [[ASAuthorizationController alloc] initWithAuthorizationRequests:@[request]];
+    authorizationController.delegate = self;
+    authorizationController.presentationContextProvider = self;
+    [authorizationController performRequests];
+}
+
+#pragma mark - ASAuthorizationControllerDelegate & Presentation
+
+- (ASPresentationAnchor)presentationAnchorForAuthorizationController:(ASAuthorizationController *)controller {
+    return self.presentingViewController.view.window ?: [UIApplication sharedApplication].windows.firstObject;
+}
+
+- (void)authorizationController:(ASAuthorizationController *)controller didCompleteWithAuthorization:(ASAuthorization *)authorization {
+    if ([authorization.credential isKindOfClass:[ASAuthorizationAppleIDCredential class]]) {
+        ASAuthorizationAppleIDCredential *appleIDCredential = (ASAuthorizationAppleIDCredential *)authorization.credential;
+        NSData *identityToken = appleIDCredential.identityToken;
+        if (identityToken.length == 0 || self.currentAppleNonce.length == 0) {
+            PPAdminSetLoginInProgress(NO);
+            if (self.appleCompletion) {
+                self.appleCompletion(NO, kLang(@"auth_apple_no_token"));
+                self.appleCompletion = nil;
+            }
+            return;
+        }
+
+        NSString *idToken = [[NSString alloc] initWithData:identityToken encoding:NSUTF8StringEncoding];
+        FIROAuthCredential *credential = [FIROAuthProvider appleCredentialWithIDToken:idToken
+                                                                             rawNonce:self.currentAppleNonce
+                                                                             fullName:appleIDCredential.fullName];
+
+        PPAdminSetLoginInProgress(YES);
+        [PPHUD showIndeterminateIn:self.presentingViewController.view
+                              title:kLang(@"Please wait")
+                           subtitle:kLang(@"StatusLoggingIn")];
+
+        __weak typeof(self) weakSelf = self;
+        [[FIRAuth auth] signInWithCredential:credential completion:^(FIRAuthDataResult * _Nullable authResult, NSError * _Nullable error) {
+            __strong typeof(weakSelf) self = weakSelf;
+            if (!self) return;
+
+            if (error || !authResult.user) {
+                if (!self.suppressesHUD) { [PPHUD dismiss]; }
+                PPAdminSetLoginInProgress(NO);
+                if (self.appleCompletion) {
+                    self.appleCompletion(NO, [self pp_authErrorSubtitle:error]);
+                    self.appleCompletion = nil;
+                }
+                return;
+            }
+
+            FIRUser *user = authResult.user;
+            PPProLoginCompletion comp = self.appleCompletion;
+            self.appleCompletion = nil;
+
+            [self pp_gatekeepStaffAccessForUID:user.uid
+                                         email:user.email ?: @""
+                                      password:@""
+                                 fromBiometric:NO
+                                    completion:comp];
+        }];
+    }
+}
+
+- (void)authorizationController:(ASAuthorizationController *)controller didCompleteWithError:(NSError *)error {
+    PPAdminSetLoginInProgress(NO);
+    if (self.appleCompletion) {
+        if (error.code == ASAuthorizationErrorCanceled) {
+            self.appleCompletion(NO, nil);
+        } else {
+            self.appleCompletion(NO, [self pp_authErrorSubtitle:error]);
+        }
+        self.appleCompletion = nil;
+    }
+}
+
+#pragma mark - Phone Authentication
+
+- (void)sendVerificationCodeToPhone:(NSString *)phoneNumber
+                         completion:(void(^)(NSString * _Nullable verificationID, NSString * _Nullable error))completion
+{
+    NSString *trimmedPhone = [((NSString *)phoneNumber ?: @"")
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedPhone.length == 0) {
+        if (completion) completion(nil, kLang(@"auth_phone_required_message"));
+        return;
+    }
+
+    if (!self.suppressesHUD) {
+        [PPHUD showIndeterminateIn:self.presentingViewController.view
+                              title:kLang(@"Please wait")
+                           subtitle:kLang(@"StatusLoggingIn")];
+    }
+
+    [[FIRPhoneAuthProvider provider] verifyPhoneNumber:trimmedPhone
+                                            UIDelegate:nil
+                                            completion:^(NSString * _Nullable verificationID, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
+            if (error) {
+                if (completion) completion(nil, [self pp_authErrorSubtitle:error]);
+                return;
+            }
+            if (verificationID.length == 0) {
+                if (completion) completion(nil, kLang(@"auth_phone_error_invalid"));
+                return;
+            }
+            if (completion) completion(verificationID, nil);
+        });
+    }];
+}
+
+- (void)signInWithPhoneVerificationID:(NSString *)verificationID
+                                 code:(NSString *)code
+                           completion:(PPProLoginCompletion)completion
+{
+    NSString *trimmedCode = [((NSString *)code ?: @"")
+        stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (verificationID.length == 0 || trimmedCode.length == 0) {
+        if (completion) completion(NO, kLang(@"auth_otp_error_empty"));
+        return;
+    }
+
+    PPAdminSetLoginInProgress(YES);
+    if (!self.suppressesHUD) {
+        [PPHUD showIndeterminateIn:self.presentingViewController.view
+                              title:kLang(@"Please wait")
+                           subtitle:kLang(@"StatusLoggingIn")];
+    }
+
+    FIRAuthCredential *credential = [[FIRPhoneAuthProvider provider] credentialWithVerificationID:verificationID
+                                                                                 verificationCode:trimmedCode];
+
+    __weak typeof(self) weakSelf = self;
+    [[FIRAuth auth] signInWithCredential:credential completion:^(FIRAuthDataResult * _Nullable authResult, NSError * _Nullable error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!self) return;
+
+        if (error || !authResult.user) {
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
+            PPAdminSetLoginInProgress(NO);
+            if (completion) completion(NO, [self pp_authErrorSubtitle:error]);
+            return;
+        }
+
+        FIRUser *user = authResult.user;
+        [self pp_gatekeepStaffAccessForUID:user.uid
+                                     email:user.phoneNumber ?: user.email ?: @""
+                                  password:@""
+                             fromBiometric:NO
+                                completion:completion];
     }];
 }
 
@@ -199,9 +369,11 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
                 completion:(PPProLoginCompletion)completion
 allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 {
-    [PPHUD showIndeterminateIn:self.presentingViewController.view
-                          title:kLang(@"Please wait")
-                       subtitle:kLang(@"StatusLoggingIn")];
+    if (!self.suppressesHUD) {
+        [PPHUD showIndeterminateIn:self.presentingViewController.view
+                              title:kLang(@"Please wait")
+                           subtitle:kLang(@"StatusLoggingIn")];
+    }
 
     __weak typeof(self) weakSelf = self;
     [[FUManager shared] signInWithEmail:email password:password completion:^(FIRUser * _Nullable user, NSError * _Nullable error) {
@@ -224,7 +396,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
             if (allowRetryOnInternalError && [self pp_shouldRetryInternalAuthError:error]) {
                 [UsrMgr signOutWithCompletion:^(__unused NSError * _Nullable signOutError) {
-                    [PPHUD dismiss];
+                    if (!self.suppressesHUD) { [PPHUD dismiss]; }
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(350 * NSEC_PER_MSEC)),
                                    dispatch_get_main_queue(), ^{
                         [self pp_signInWithEmail:email
@@ -237,7 +409,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
                 return;
             }
 
-            [PPHUD dismiss];
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
             PPAdminSetLoginInProgress(NO);
             if (completion) completion(NO, [self pp_authErrorSubtitle:error]);
             return;
@@ -259,7 +431,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
         [[FUManager shared] ensureUserDocumentExistsForCurrentUserWithExtra:nil completion:^(NSError * _Nullable eDoc) {
             if (eDoc && ![self pp_shouldContinueAfterEnsureUserDocError:eDoc]) {
-                [PPHUD dismiss];
+                if (!self.suppressesHUD) { [PPHUD dismiss]; }
                 PPAdminSetLoginInProgress(NO);
                 if (completion) completion(NO, [self pp_firestoreAccessSubtitleForError:eDoc]);
                 return;
@@ -303,7 +475,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
                        completion:(PPProLoginCompletion)completion
 {
     if (uid.length == 0) {
-        [PPHUD dismiss];
+        if (!self.suppressesHUD) { [PPHUD dismiss]; }
         PPAdminSetLoginInProgress(NO);
         [UsrMgr signOut];
         if (completion) completion(NO, kLang(@"StatusUserDocError"));
@@ -317,13 +489,13 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
         if (staffError) {
             if ([self pp_errorLooksLikeAppCheckFailure:staffError]) {
-                [PPHUD dismiss];
+                if (!self.suppressesHUD) { [PPHUD dismiss]; }
                 PPAdminSetLoginInProgress(NO);
                 if (completion) completion(NO, [self pp_firestoreAccessSubtitleForError:staffError]);
                 return;
             }
 
-            [PPHUD dismiss];
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
             PPAdminSetLoginInProgress(NO);
             [UsrMgr signOut];
             if (completion) completion(NO, kLang(@"StatusUserDocError"));
@@ -343,7 +515,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
             [PPBiometric.shared disableBiometric];
             [self pp_setBiometricDisabledUntilManualLogin:YES];
         }
-        [PPHUD dismiss];
+        if (!self.suppressesHUD) { [PPHUD dismiss]; }
         PPAdminSetLoginInProgress(NO);
         [UsrMgr signOut];
         if (completion) {
@@ -372,7 +544,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
         if (err || !u) {
             PPAdminSetLoginInProgress(NO);
-            [PPHUD dismiss];
+            if (!self.suppressesHUD) { [PPHUD dismiss]; }
             [self.combinedReg remove];
             self.combinedReg = nil;
             if (![self pp_errorLooksLikeAppCheckFailure:err]) {
@@ -387,7 +559,7 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 
         [UsrMgr p_writeUserToDisk:u forUID:u.uid];
 
-        [PPHUD dismiss];
+        if (!self.suppressesHUD) { [PPHUD dismiss]; }
         [self.combinedReg remove];
         self.combinedReg = nil;
         PPAdminSetLoginInProgress(NO);
@@ -509,6 +681,14 @@ allowRetryOnInternalError:(BOOL)allowRetryOnInternalError
 - (NSString *)pp_authErrorSubtitle:(NSError * _Nullable)error {
     NSString *fallback = kLang(@"StatusLoginFailed");
     if (!error) return fallback;
+
+    if ([error.domain isEqualToString:ASAuthorizationErrorDomain] &&
+        error.code == ASAuthorizationErrorUnknown) {
+        // An Apple authorization error at this point happens before Firebase
+        // receives a credential. Keep the recovery action clear for staff and
+        // avoid surfacing Apple's implementation-specific error text.
+        return kLang(@"auth_apple_configuration_error");
+    }
 
     if ([self pp_isFirebaseAuthError:error]) {
         switch ([self pp_normalizedAuthErrorCode:error]) {

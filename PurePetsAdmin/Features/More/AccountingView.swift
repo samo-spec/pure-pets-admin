@@ -204,16 +204,33 @@ final class AccountingViewModel: ObservableObject {
     // Operational Feedback
     @Published var toastMessage: String? = nil
 
+    private var baseRevenue: Double = 0.0
+    private var baseOrderCount: Int = 0
+    private var workspaceFetchDate: Date = Date()
+    private nonisolated(unsafe) var notificationToken: (any NSObjectProtocol)? = nil
+
     private let service: PPAccountingService
     private nonisolated(unsafe) var listeners: [any ListenerRegistration] = []
 
     init(service: PPAccountingService = .shared()) {
         self.service = service
+        self.notificationToken = NotificationCenter.default.addObserver(
+            forName: Notification.Name("PPAccountingDataDidChangeNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.syncFromService()
+            }
+        }
         subscribeToData()
     }
 
     deinit {
         listeners.forEach { $0.remove() }
+        if let token = notificationToken {
+            NotificationCenter.default.removeObserver(token)
+        }
     }
 
     func subscribeToData() {
@@ -222,6 +239,18 @@ final class AccountingViewModel: ObservableObject {
         isLoading = true
 
         let filter = selectedPeriod.rawValue
+
+        let wsReg = service.subscribeAccountingWorkspace(withFilter: filter) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.workspaceFetchDate = Date()
+                if let ws = self.service.currentWorkspace, let dash = ws.primaryDashboard {
+                    self.baseRevenue = dash.income
+                    self.baseOrderCount = ws.incomeCount
+                }
+                self.syncFromService()
+            }
+        }
 
         let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
             Task { @MainActor in
@@ -237,23 +266,47 @@ final class AccountingViewModel: ObservableObject {
             }
         }
 
-        let revReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+        let ordReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
             Task { @MainActor in
                 guard let self else { return }
                 self.syncFromService()
             }
         }
 
-        listeners = [txnReg, expReg, revReg]
+        listeners = [wsReg, txnReg, expReg, ordReg]
     }
 
     private func syncFromService() {
         transactions = service.transactions
         expenses = service.expenses
-        grossRevenue = service.orderRevenue
-        paidOrderCount = service.orderCount
         evidenceAvailable = service.orderRevenueEvidenceAvailable
         evidenceErrorDescription = service.orderRevenueError?.localizedDescription
+
+        // Live incremental revenue from transactions committed after baseline fetch
+        let newTransactions = transactions.filter { txn in
+            guard let created = txn.createdAt else { return false }
+            return created > self.workspaceFetchDate
+        }
+        let newTransactionRevenue = newTransactions.reduce(0.0) { acc, txn in
+            let type = txn.type.lowercased()
+            if type == "refund" || type == "refunded" || type == "cancel" || type == "cancelled" {
+                return acc - txn.amount
+            } else if type == "expense" {
+                return acc
+            } else {
+                return acc + txn.amount
+            }
+        }
+
+        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
+            let confirmedIncome = max(dash.income, self.baseRevenue)
+            grossRevenue = confirmedIncome + newTransactionRevenue
+            paidOrderCount = max(ws.incomeCount, self.baseOrderCount) + newTransactions.count
+        } else {
+            grossRevenue = service.orderRevenue + newTransactionRevenue
+            paidOrderCount = service.orderCount + newTransactions.count
+        }
+
         isLoading = false
         isRefreshing = false
     }
@@ -266,7 +319,14 @@ final class AccountingViewModel: ObservableObject {
     // MARK: - Computed Financial Analytics
 
     var totalExpenses: Double {
-        expenses.reduce(0.0) { $0 + $1.amount }
+        let liveExpensesSum = expenses.reduce(0.0) { $0 + $1.amount }
+        if !expenses.isEmpty {
+            return liveExpensesSum
+        }
+        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard, dash.expenses > 0 {
+            return dash.expenses
+        }
+        return 0.0
     }
 
     var netProfit: Double {
@@ -295,7 +355,7 @@ final class AccountingViewModel: ObservableObject {
     }
 
     var categoryBreakdown: [CategoryCostItem] {
-        let total = totalExpenses
+        let total = expenses.reduce(0.0) { $0 + $1.amount }
         var grouped: [String: (total: Double, count: Int)] = [:]
         for exp in expenses {
             let cat = exp.category.isEmpty ? "other" : exp.category.lowercased()
@@ -820,7 +880,7 @@ struct AdminAccountingView: View {
             metricPod(
                 title: Language.get("Accounting_GrossRevenue", alter: "إجمالي الإيرادات"),
                 value: PPFormatMoneyString(viewModel.grossRevenue),
-                subtitle: String(format: Language.get("Accounting_OrdersCount_Format", alter: "%@ طلب مسوى"), "\(viewModel.paidOrderCount)"),
+                subtitle: String(format: Language.get("Accounting_OrdersCount_Format", alter: Language.isRTL() ? "%@ عملية دخل" : "%@ income entries"), "\(viewModel.paidOrderCount)"),
                 symbol: "arrow.up.circle.fill",
                 tint: Color(uiColor: .ppSuccess)
             )

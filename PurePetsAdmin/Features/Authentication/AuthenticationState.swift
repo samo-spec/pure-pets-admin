@@ -2,9 +2,19 @@ import Combine
 import Foundation
 import UIKit
 
+enum AdminAuthMode: String, CaseIterable, Identifiable {
+    case phone
+    case email
+
+    var id: String { rawValue }
+}
+
 enum AdminAuthenticationAction: Equatable {
     case email
+    case phoneSendCode
+    case phoneVerify
     case google
+    case apple
     case biometric
     case passwordReset
 }
@@ -51,6 +61,30 @@ final class AdminAuthenticationService {
         coordinator.signInWithGoogle(completion: completion)
     }
 
+    func signInWithApple(completion: @escaping (Bool, String?) -> Void) {
+        guard let coordinator else {
+            completion(false, localized("StatusLoginFailed"))
+            return
+        }
+        coordinator.signInWithApple(completion: completion)
+    }
+
+    func sendVerificationCode(to phone: String, completion: @escaping (String?, String?) -> Void) {
+        guard let coordinator else {
+            completion(nil, localized("StatusLoginFailed"))
+            return
+        }
+        coordinator.sendVerificationCode(toPhone: phone, completion: completion)
+    }
+
+    func signInWithPhone(verificationID: String, code: String, completion: @escaping (Bool, String?) -> Void) {
+        guard let coordinator else {
+            completion(false, localized("StatusLoginFailed"))
+            return
+        }
+        coordinator.signIn(withPhoneVerificationID: verificationID, code: code, completion: completion)
+    }
+
     func signInWithBiometric(completion: @escaping (Bool, String?) -> Void) {
         guard let coordinator else {
             completion(false, localized("BiometricNotAvailable"))
@@ -74,8 +108,15 @@ final class AdminAuthenticationService {
 
 @MainActor
 final class AuthenticationState: ObservableObject {
+    @Published var authMode: AdminAuthMode = .phone
     @Published var email: String
     @Published var password = ""
+    @Published var phoneNumber: String = ""
+    @Published var phoneCountryCode: String = "+974"
+    @Published var verificationCode: String = ""
+    @Published var verificationID: String? = nil
+    @Published var isCodeSent: Bool = false
+    @Published var resendCountdown: Int = 0
     @Published var rememberMe: Bool
     @Published var revealPassword = false
     @Published private(set) var activeAction: AdminAuthenticationAction?
@@ -83,6 +124,7 @@ final class AuthenticationState: ObservableObject {
     @Published private(set) var languageCode: String
     @Published private(set) var canUseBiometric: Bool
 
+    private var countdownTimer: AnyCancellable?
     private let service: AdminAuthenticationService
     private let onAuthenticated: () -> Void
 
@@ -100,6 +142,15 @@ final class AuthenticationState: ObservableObject {
     var biometricTitle: String { service.biometricTitle }
     var languageToggleLabel: String {
         localized(languageCode == "ar" ? "Language_English_Code" : "Language_Arabic_Code")
+    }
+
+    var formattedFullPhone: String {
+        let trimmedPhone = phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedPhone.hasPrefix("+") {
+            return trimmedPhone
+        }
+        let code = phoneCountryCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(code)\(trimmedPhone)"
     }
 
     func localized(_ key: String) -> String { Language.get(key, alter: nil) }
@@ -122,9 +173,79 @@ final class AuthenticationState: ObservableObject {
         }
     }
 
+    func sendPhoneCode() {
+        let fullPhone = formattedFullPhone
+        guard !phoneNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            alert = AdminAuthenticationAlert(title: localized("Warning"), message: localized("auth_phone_required_message"))
+            return
+        }
+        guard begin(.phoneSendCode) else { return }
+        service.sendVerificationCode(to: fullPhone) { [weak self] vID, message in
+            Task { @MainActor in
+                guard let self else { return }
+                self.activeAction = nil
+                if let vID, !vID.isEmpty {
+                    self.verificationID = vID
+                    self.isCodeSent = true
+                    self.verificationCode = ""
+                    self.startResendTimer()
+                } else if let message, !message.isEmpty {
+                    self.alert = AdminAuthenticationAlert(title: self.localized("Error"), message: message)
+                }
+            }
+        }
+    }
+
+    func verifyPhoneCode() {
+        guard let vID = verificationID, !vID.isEmpty else {
+            alert = AdminAuthenticationAlert(title: localized("Error"), message: localized("auth_verification_start_failed"))
+            return
+        }
+        guard !verificationCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            alert = AdminAuthenticationAlert(title: localized("Warning"), message: localized("auth_otp_error_empty"))
+            return
+        }
+        guard begin(.phoneVerify) else { return }
+        service.signInWithPhone(verificationID: vID, code: verificationCode) { [weak self] success, message in
+            Task { @MainActor in self?.complete(success: success, message: message) }
+        }
+    }
+
+    func resetPhoneFlow() {
+        isCodeSent = false
+        verificationCode = ""
+        verificationID = nil
+        countdownTimer?.cancel()
+        countdownTimer = nil
+        resendCountdown = 0
+    }
+
+    private func startResendTimer() {
+        resendCountdown = 60
+        countdownTimer?.cancel()
+        countdownTimer = Timer.publish(every: 1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self else { return }
+                if self.resendCountdown > 0 {
+                    self.resendCountdown -= 1
+                } else {
+                    self.countdownTimer?.cancel()
+                    self.countdownTimer = nil
+                }
+            }
+    }
+
     func signInWithGoogle() {
         guard begin(.google) else { return }
         service.signInWithGoogle { [weak self] success, message in
+            Task { @MainActor in self?.complete(success: success, message: message) }
+        }
+    }
+
+    func signInWithApple() {
+        guard begin(.apple) else { return }
+        service.signInWithApple { [weak self] success, message in
             Task { @MainActor in self?.complete(success: success, message: message) }
         }
     }
@@ -163,6 +284,9 @@ final class AuthenticationState: ObservableObject {
         canUseBiometric = service.canUseBiometric
         if success {
             password = ""
+            verificationCode = ""
+            countdownTimer?.cancel()
+            countdownTimer = nil
             onAuthenticated()
         } else if let message, !message.isEmpty {
             alert = AdminAuthenticationAlert(title: localized("Error"), message: message)

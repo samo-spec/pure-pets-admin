@@ -41,3 +41,54 @@ enum AdminTab: String, CaseIterable, Identifiable {
         }
     }
 }
+
+extension AdminTab {
+    func routes(for session: AdminSession) -> [AdminRoute] {
+        switch self {
+        case .command:
+            return []
+        case .work:
+            return [
+                .payments, .paymentSettings, .fulfillment,
+                .pointOfSale, .pointOfSaleHistory,
+                .accessories, .food, .livePets
+            ].filter { $0.isAuthorized(for: session) }
+        case .operations:
+            return [
+                .delivery, .providerApplications, .providerPlans,
+                .providerFeatures, .providerAccounting, .branches,
+                .agents, .homeControl, .services, .veterinarians,
+                .moderation
+            ].filter { $0.isAuthorized(for: session) }
+        case .customers:
+            return [
+                .users, .staff, .chats
+            ].filter { $0.isAuthorized(for: session) }
+        case .more:
+            return [
+                .account, .notifications, .notificationComposer,
+                .notificationSettings, .accounting, .audit,
+                .categories, .banners, .listings
+            ].filter { $0.isAuthorized(for: session) }
+        }
+    }
+
+    func isAuthorized(for session: AdminSession) -> Bool {
+        switch self {
+        case .command:
+            return session.hasAnyPermission(["admin.all", "command.center", "dashboard.view"]) ||
+                   session.grantsAllPermissions ||
+                   session.roleIdentifier == "super_admin" ||
+                   session.roleIdentifier == "owner" ||
+                   session.roleIdentifier == "operations_manager"
+        case .work:
+            return !routes(for: session).isEmpty
+        case .operations:
+            return !routes(for: session).isEmpty
+        case .customers:
+            return !routes(for: session).isEmpty
+        case .more:
+            return true
+        }
+    }
+}
