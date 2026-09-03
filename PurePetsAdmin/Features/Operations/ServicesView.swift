@@ -26,42 +26,20 @@ struct AdminServicesView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
+        AdminSovereignNavigationBar(
+            title: Language.get("Services_Title", alter: "إدارة الخدمات المقدمة"),
+            subtitle: Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"),
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
                 }
-
-                Spacer()
             }
-
-            Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات") + " / " + Language.get("Services_Title", alter: "الخدمات"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("Services_Title", alter: "إدارة الخدمات المقدمة"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
+        )
     }
 }
 

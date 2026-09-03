@@ -320,7 +320,7 @@ struct AdminLegacyRouteView: UIViewControllerRepresentable {
     }
 }
 
-private final class AdminLegacyRouteContainerController: UIViewController, UINavigationControllerDelegate {
+internal final class AdminLegacyRouteContainerController: UIViewController, UINavigationControllerDelegate {
     private let rootViewController: UIViewController
     private let route: AdminRoute
     private let dismissTarget: AnyObject
@@ -337,6 +337,10 @@ private final class AdminLegacyRouteContainerController: UIViewController, UINav
         self.dismissTarget = dismissTarget
         self.dismissAction = dismissAction
         super.init(nibName: nil, bundle: nil)
+    }
+
+    @objc func dismissWorkflowRoute() {
+        _ = (dismissTarget as? NSObject)?.perform(dismissAction)
     }
 
     @available(*, unavailable)
@@ -498,3 +502,90 @@ private enum AdminConnectedRouteChrome {
         }
     }
 }
+
+// MARK: - Workflow Route Dismissal & Fallback Navigation
+
+extension UIViewController {
+    @objc public func pp_dismissWorkflowRouteIfPossible() -> Bool {
+        if let container = self as? AdminLegacyRouteContainerController {
+            container.dismissWorkflowRoute()
+            return true
+        }
+        var current: UIViewController? = self
+        while let parent = current?.parent ?? current?.presentingViewController {
+            if let container = parent as? AdminLegacyRouteContainerController {
+                container.dismissWorkflowRoute()
+                return true
+            }
+            current = parent
+        }
+        return false
+    }
+}
+
+@objc(PPAdminNavigationFallback)
+@MainActor
+public final class PPAdminNavigationFallback: NSObject {
+    @objc(popOrDismissFrom:)
+    public static func popOrDismiss(from viewController: UIViewController?) {
+        if let vc = viewController {
+            if vc.pp_dismissWorkflowRouteIfPossible() {
+                return
+            }
+            if let nav = vc.navigationController, nav.viewControllers.count > 1 {
+                nav.popViewController(animated: true)
+                return
+            }
+            if let presenting = vc.presentingViewController {
+                vc.dismiss(animated: true)
+                return
+            }
+            if let nav = vc.navigationController, let presenting = nav.presentingViewController {
+                nav.dismiss(animated: true)
+                return
+            }
+        }
+
+        // Global fallback via key window's top view controller
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
+              let topVC = topViewController(from: window.rootViewController) else {
+            return
+        }
+
+        if topVC.pp_dismissWorkflowRouteIfPossible() {
+            return
+        } else if let nav = topVC.navigationController, nav.viewControllers.count > 1 {
+            nav.popViewController(animated: true)
+        } else if let nav = topVC as? UINavigationController, nav.viewControllers.count > 1 {
+            nav.popViewController(animated: true)
+        } else if let presenting = topVC.presentingViewController {
+            topVC.dismiss(animated: true)
+        } else if let nav = topVC.navigationController, let presenting = nav.presentingViewController {
+            nav.dismiss(animated: true)
+        }
+    }
+
+    @objc
+    public static func popOrDismiss() {
+        popOrDismiss(from: nil)
+    }
+
+    @objc(topViewControllerFrom:)
+    public static func topViewController(from root: UIViewController?) -> UIViewController? {
+        if let presented = root?.presentedViewController {
+            return topViewController(from: presented)
+        }
+        if let navigation = root as? UINavigationController {
+            return topViewController(from: navigation.visibleViewController ?? navigation.topViewController)
+        }
+        if let tabs = root as? UITabBarController {
+            return topViewController(from: tabs.selectedViewController)
+        }
+        return root
+    }
+}
+

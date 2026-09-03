@@ -5,6 +5,7 @@
 #import "PPHUD.h"
 #import "Language.h"
 #import "Styling.h"
+#import "PurePetsAdmin-Swift.h"
 @import Firebase;
 @import FirebaseAuth;
 static NSString *const kCategoryCellID = @"CategoryCell";
@@ -22,17 +23,33 @@ static NSString *const kCategoryCellID = @"CategoryCell";
 @implementation PPCategoriesViewController
 
 - (instancetype)init {
-    self = [super initWithStyle:UITableViewStyleInsetGrouped];
+    self = [super initWithStyle:UITableViewStylePlain];
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    [self setupNavigation];
-    [self setupTableView];
-    [self loadData];
-    [self evaluatePermissions];
+    self.view.backgroundColor = [UIColor ppBackground];
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    
+    AdminCategoriesHostingController *host = [AdminCategoriesHostingController new];
+    [self addChildViewController:host];
+    [self.view addSubview:host.view];
+    host.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [host.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [host.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [host.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [host.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+    ]];
+    [host didMoveToParentViewController:self];
 }
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+}
+
 
 - (void)setupNavigation {
     self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeAlways;

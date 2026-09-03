@@ -38,6 +38,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     let isAuthoritative: Bool
 
     var id: String { transactionID }
+    var formattedReceiptID: String { POSReceiptFormat.receiptID(transactionID) }
 
     init(receipt: PPPOSReceipt) {
         transactionID = receipt.receiptID
@@ -122,6 +123,8 @@ struct POSCompletedReceiptSheet: View {
     @State private var temporaryReceiptURL: URL?
     @State private var isSharing = false
     @State private var feedbackMessage: String?
+    @State private var copiedLabel: String?
+    @State private var copiedToastTask: Task<Void, Never>?
 
     var body: some View {
         ZStack {
@@ -311,8 +314,9 @@ struct POSCompletedReceiptSheet: View {
         VStack(spacing: 8) {
             receiptValueRow(
                 Language.get("POS_Receipt_Transaction", alter: "رقم المعاملة"),
-                value: receipt.transactionID,
-                monospaced: true
+                value: receipt.formattedReceiptID,
+                monospaced: true,
+                copyableValue: receipt.formattedReceiptID
             )
             receiptValueRow(
                 Language.get("POS_Receipt_Date", alter: "التاريخ"),
@@ -441,26 +445,86 @@ struct POSCompletedReceiptSheet: View {
         }
     }
 
-    private func receiptValueRow(_ label: String, value: String, monospaced: Bool = false) -> some View {
+    private func receiptValueRow(
+        _ label: String,
+        value: String,
+        monospaced: Bool = false,
+        copyableValue: String? = nil
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
                 .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
                 .foregroundColor(AdminSurface.secondaryText)
             Spacer(minLength: 12)
-            Group {
-                if monospaced {
-                    Text(value).monospacedDigit()
-                } else {
-                    Text(value)
+
+            if let copyableValue {
+                Button {
+                    copyValue(copyableValue, label: label)
+                } label: {
+                    HStack(spacing: 5) {
+                        if copiedLabel == label {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.green)
+                            Text(Language.get("Copied", alter: "تم النسخ"))
+                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                                .foregroundColor(.green)
+                        } else {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundColor(AdminSurface.primary.opacity(0.70))
+                            Text(value)
+                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .monospacedDigit()
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        copiedLabel == label
+                            ? Color.green.opacity(0.12)
+                            : AdminSurface.control.opacity(0.60),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(label): \(value)")
+            } else {
+                Group {
+                    if monospaced {
+                        Text(value).monospacedDigit()
+                    } else {
+                        Text(value)
+                    }
+                }
+                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(3)
+                .minimumScaleFactor(0.72)
             }
-            .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-            .foregroundColor(AdminSurface.primaryText)
-            .multilineTextAlignment(.trailing)
-            .lineLimit(3)
-            .minimumScaleFactor(0.72)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func copyValue(_ text: String, label: String) {
+        UIPasteboard.general.string = text
+        let generator = UIImpactFeedbackGenerator(style: .light)
+        generator.prepare()
+        generator.impactOccurred()
+        copiedToastTask?.cancel()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            copiedLabel = label
+        }
+        copiedToastTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation(.easeOut(duration: 0.2)) {
+                if copiedLabel == label {
+                    copiedLabel = nil
+                }
+            }
+        }
     }
 
     private var actionBar: some View {
@@ -587,6 +651,74 @@ enum POSReceiptFormat {
         default: return value.isEmpty ? Language.get("POS_Receipt_NotAvailable", alter: "غير متاح") : value
         }
     }
+
+    /// Normalizes raw transaction IDs or command IDs into a clean, professional receipt ID.
+    ///
+    /// Examples:
+    /// - `"pos_fa980a6c9f75c4aa4f9b75090219ef1521af7788"` -> `"PP-POS-FA980A6C9F"`
+    /// - `"PPPOS-20260903042712AB34EF"` -> `"PP-POS-0903-AB34EF"`
+    /// - `"POS12322"` -> `"PP-POS-12322"`
+    /// - `"POS-12322"` -> `"PP-POS-12322"`
+    /// - `"PP-POS-AGSHBG1221"` -> `"PP-POS-AGSHBG1221"`
+    /// - `"9B1DE264-742F-4A97-BF38-6D61053E5C8D"` -> `"PP-POS-9B1DE26474"`
+    nonisolated static func receiptID(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        // 1. Already in PP-POS- format
+        if trimmed.uppercased().hasPrefix("PP-POS-") {
+            let suffix = trimmed.dropFirst(7).uppercased()
+            return "PP-POS-\(suffix)"
+        }
+
+        // 2. Starts with PPPOS- (e.g. PPPOS-20260903042712AB34EF)
+        if trimmed.uppercased().hasPrefix("PPPOS-") {
+            let body = String(trimmed.dropFirst(6)).uppercased()
+            if body.count >= 14, body.prefix(14).allSatisfy({ $0.isNumber }) {
+                let monthDay = body.dropFirst(4).prefix(4)
+                let entropy = body.dropFirst(14)
+                if !entropy.isEmpty {
+                    return "PP-POS-\(monthDay)-\(entropy.prefix(6))"
+                } else {
+                    let time = body.dropFirst(8).prefix(4)
+                    return "PP-POS-\(monthDay)-\(time)"
+                }
+            }
+            let clean = body.replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+            return "PP-POS-\(clean.prefix(10))"
+        }
+
+        // 3. Starts with pos_ or POS_ (e.g. pos_fa980a6c9f75c4aa4f9b75090219ef1521af7788)
+        if trimmed.lowercased().hasPrefix("pos_") {
+            let body = String(trimmed.dropFirst(4)).uppercased()
+            let clean = body.replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+            return "PP-POS-\(clean.prefix(10))"
+        }
+
+        // 4. Starts with POS (e.g. POS12322 or POS-12322)
+        if trimmed.uppercased().hasPrefix("POS") {
+            var body = String(trimmed.dropFirst(3))
+            while body.hasPrefix("-") || body.hasPrefix("_") {
+                body = String(body.dropFirst())
+            }
+            let clean = body.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+            return "PP-POS-\(clean.prefix(10))"
+        }
+
+        // 5. General fallback: strip non-alphanumeric, uppercase, format with PP-POS- prefix
+        let clean = trimmed.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+        if clean.count >= 6 {
+            return "PP-POS-\(clean.prefix(10))"
+        }
+        return "PP-POS-\(clean)"
+    }
+}
+
+extension PPPOSReceipt {
+    @MainActor
+    var formattedReceiptID: String {
+        POSReceiptFormat.receiptID(receiptID)
+    }
 }
 
 // MARK: - PDF
@@ -678,7 +810,7 @@ private enum POSReceiptPDFExporter {
         let rendererFormat = UIGraphicsPDFRendererFormat()
         rendererFormat.documentInfo = [
             kCGPDFContextCreator as String: "Pure Pets Admin",
-            kCGPDFContextTitle as String: "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.transactionID)"
+            kCGPDFContextTitle as String: "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.formattedReceiptID)"
         ]
 
         let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: rendererFormat)
@@ -795,7 +927,7 @@ private enum POSReceiptPDFExporter {
             }
 
             // 4. Metadata rows
-            drawRow(label: Language.get("POS_Receipt_Transaction", alter: "رقم المعاملة"), value: receipt.transactionID, y: currentY)
+            drawRow(label: Language.get("POS_Receipt_Transaction", alter: "رقم المعاملة"), value: receipt.formattedReceiptID, y: currentY)
             currentY += 16.0
             drawRow(label: Language.get("POS_Receipt_Date", alter: "التاريخ"), value: POSReceiptFormat.date(receipt.createdAt), y: currentY)
             currentY += 16.0
@@ -965,7 +1097,7 @@ private enum POSReceiptPDFExporter {
             currentY += 16.0
 
             // 11. Footer Tx ID
-            let txFooter = "#" + receipt.transactionID
+            let txFooter = "#" + receipt.formattedReceiptID
             txFooter.draw(in: CGRect(x: m, y: currentY, width: cw, height: 14.0), withAttributes: contactAttr)
         }
 
@@ -974,8 +1106,7 @@ private enum POSReceiptPDFExporter {
     }
 
     static func temporaryPDF(for receipt: POSCompletedReceipt) throws -> URL {
-        let shortID = String(receipt.transactionID.prefix(12))
-        let safeID = shortID.replacingOccurrences(
+        let safeID = receipt.formattedReceiptID.replacingOccurrences(
             of: "[^A-Za-z0-9_-]",
             with: "-",
             options: .regularExpression
@@ -1005,7 +1136,7 @@ private enum POSReceiptPrintCoordinator {
         let controller = UIPrintInteractionController.shared
         let info = UIPrintInfo(dictionary: nil)
         info.outputType = .general
-        info.jobName = "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.transactionID.prefix(10))"
+        info.jobName = "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.formattedReceiptID)"
         controller.printInfo = info
         controller.printingItem = data
 

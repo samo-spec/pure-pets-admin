@@ -76,6 +76,9 @@ static BOOL PPUsesCommandCenterSystemNavigation(UIViewController *vc) {
     if (PPCommandCenterNavigationIsManaged(vc.navigationController)) {
         return YES;
     }
+    if (vc.navigationController && vc.navigationController.isNavigationBarHidden) {
+        return NO;
+    }
     return vc.navigationController != nil;
 }
 
@@ -175,7 +178,7 @@ static BOOL PPIsRTL(UIViewController *vc) {
     return Language.isRTL;// (dir == UIUserInterfaceLayoutDirectionRightToLeft);
 }
 
-static NSString *PPNavBackSymbolName(void) {
+NSString *PPNavBackSymbolName(void) {
     return Language.isRTL ? @"arrow.right" : @"arrow.left";
 }
 
@@ -319,7 +322,8 @@ static NSDictionary *PPNavTitleAttributes(void) {
         UINavigationBarAppearance *settle = [[UINavigationBarAppearance alloc] init];
         [settle configureWithTransparentBackground];
         settle.backgroundColor = [UIColor clearColor];
-        settle.shadowColor = PPNavGoldHairline();
+        settle.shadowColor = [UIColor clearColor];
+        settle.shadowImage = [[UIImage alloc] init];
         settle.titleTextAttributes = PPNavTitleAttributes();
 
         navBar.standardAppearance = settle;
@@ -330,6 +334,8 @@ static NSDictionary *PPNavTitleAttributes(void) {
     } else {
         navBar.barTintColor = [UIColor clearColor];
         navBar.backgroundColor = [UIColor clearColor];
+        navBar.shadowImage = [[UIImage alloc] init];
+        [navBar setBackgroundImage:[[UIImage alloc] init] forBarMetrics:UIBarMetricsDefault];
         navBar.tintColor = PPNavGoldInk();
         navBar.titleTextAttributes = PPNavTitleAttributes();
     }
@@ -631,136 +637,98 @@ static NSDictionary *PPNavTitleAttributes(void) {
 
 
 - (UIButton *)pp_ButtonWithSystemName:(NSString *)imageName action:(SEL)action {
-    UIButton *btn;
-    CGFloat btnSize = 44;
-
-    if (@available(iOS 26.0, *)) {
-        UIButtonConfiguration *cfg = [UIButtonConfiguration glassButtonConfiguration];
-        cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-        //cfg.background.backgroundColor = AppBackgroundClrShiner;
-
-        btn = [UIButton new];
-        btn.configuration = cfg;
-        [btn setImage:[UIImage systemImageNamed:imageName] forState:UIControlStateNormal];
-    }
-    else if (@available(iOS 15.0, *)) {
-        UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
-        cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-        
-        // ✅ Set background color through configuration
-        cfg.background.backgroundColor = PPNavWarmRaised();
-        cfg.background.cornerRadius = 18;
-        cfg.background.strokeColor = PPNavGoldHairline();
-        cfg.background.strokeWidth = 1.0;
-        
-        btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
-    } else {
-        btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
-        btn.backgroundColor = PPNavWarmRaised();
-        btn.layer.cornerRadius = 18;
-        btn.layer.borderWidth = 1.0;
-        btn.layer.borderColor = PPNavGoldHairline().CGColor;
-    }
-
-    // Try SF Symbol first → fallback to asset
-    UIImage *icon = [UIImage systemImageNamed:imageName];
-    if (!icon) {
-        icon = [UIImage imageNamed:imageName];
-        icon = [UIImage pp_resizedImage:icon toPointSize:16];
-    }
-
-    if (!icon) {
-        DLog(@"[pp_circleButton] ⚠️ No image found for name: %@", imageName);
-        icon = [UIImage new]; // fallback empty
-    }
-    
-    if([imageName isEqualToString:@"headset"]) {
-        icon = [[UIImage pp_resizedImage:icon toPointSize:16] imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    }
-
-    [btn setImage:icon forState:UIControlStateNormal];
-
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
     btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tintColor = PPNavGoldInk();
-    
-    // ✅ Remove the old backgroundColor assignment for iOS 15+
-    if (@available(iOS 15.0, *)) {
-        // Background is already set in configuration
+
+    if ([imageName isEqualToString:@"checkmark"]) {
+        // Flagship Primary Action Pill (Matching "✓ حفظ" from Reference Design)
+        btn.backgroundColor = [UIColor ppPrimary];
+        btn.tintColor = UIColor.whiteColor;
+        btn.layer.cornerRadius = 19.0;
+        if (@available(iOS 13.0, *)) {
+            btn.layer.cornerCurve = kCACornerCurveContinuous;
+        }
+        btn.layer.shadowColor = [UIColor ppPrimary].CGColor;
+        btn.layer.shadowOffset = CGSizeMake(0, 3);
+        btn.layer.shadowRadius = 6;
+        btn.layer.shadowOpacity = 0.35;
+        btn.titleLabel.font = [Styling fontBold:14];
+
+        UIImageSymbolConfiguration *cfg = [UIImageSymbolConfiguration configurationWithPointSize:13 weight:UIImageSymbolWeightHeavy];
+        UIImage *img = [[UIImage systemImageNamed:@"checkmark"] imageByApplyingSymbolConfiguration:cfg];
+        [btn setImage:img forState:UIControlStateNormal];
+        [btn setTitle:[NSString stringWithFormat:@"  %@", kLang(@"Save")] forState:UIControlStateNormal];
+        btn.contentEdgeInsets = UIEdgeInsetsMake(8, 14, 8, 14);
+        [btn.heightAnchor constraintEqualToConstant:38].active = YES;
     } else {
-        btn.backgroundColor = PPNavWarmRaised();
-        btn.layer.cornerRadius = 18;
-        btn.layer.masksToBounds = YES;
+        // Flagship Glass Squircle Button (44x44)
+        CGFloat btnSize = 44.0;
+        btn.backgroundColor = [UIColor ppSurface];
+        btn.layer.cornerRadius = 14.0;
+        if (@available(iOS 13.0, *)) {
+            btn.layer.cornerCurve = kCACornerCurveContinuous;
+        }
+        btn.layer.borderWidth = 0.8;
+        btn.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+        btn.layer.shadowColor = UIColor.blackColor.CGColor;
+        btn.layer.shadowOpacity = 0.04;
+        btn.layer.shadowOffset = CGSizeMake(0, 2);
+        btn.layer.shadowRadius = 6;
+        btn.layer.masksToBounds = NO;
+        btn.tintColor = [UIColor ppTextPrimary];
+
+        UIImage *icon = [UIImage systemImageNamed:imageName];
+        if (!icon) {
+            icon = [UIImage imageNamed:imageName];
+            icon = [UIImage pp_resizedImage:icon toPointSize:16];
+        }
+        if (!icon) {
+            icon = [UIImage new];
+        }
+
+        UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
+        UIImage *configuredIcon = [icon imageByApplyingSymbolConfiguration:config] ?: icon;
+        [btn setImage:configuredIcon forState:UIControlStateNormal];
+        btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
+
+        [btn.widthAnchor constraintEqualToConstant:btnSize].active = YES;
+        [btn.heightAnchor constraintEqualToConstant:btnSize].active = YES;
     }
 
     [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
-    [btn.widthAnchor constraintEqualToConstant:btnSize].active = YES;
-    [btn.heightAnchor constraintEqualToConstant:btnSize].active = YES;
-
-    btn.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.18].CGColor;
-    btn.layer.shadowOpacity = 0.12;
-    btn.layer.shadowOffset = CGSizeMake(0, 2);
-    btn.layer.shadowRadius = 6;
-    btn.layer.masksToBounds = NO; // shadow needs this
-
-    
-    // 🔹 If it's SF Symbol, apply config
-    if ([UIImage systemImageNamed:imageName]) {
-        UIImageSymbolConfiguration *config =
-        [UIImageSymbolConfiguration configurationWithPointSize:16
-                                                        weight:UIImageSymbolWeightRegular
-                                                         scale:UIImageSymbolScaleMedium];
-        [btn setImage:[icon imageByApplyingSymbolConfiguration:config]
-              forState:UIControlStateNormal];
-        btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
-    } else {
-        btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
-    }
-
     [PPButtonHelper attachTapAnimationToButton:btn style:PPButtonAnimationStylePulse];
     return btn;
 }
 
 - (UIButton *)pp_BackButtonWithSystemName:(NSString *)imageName action:(SEL)action {
-    UIButton *btn;
-    CGFloat btnSize = 44;
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    CGFloat btnSize = 44.0;
 
-    if (@available(iOS 15.0, *)) {
-        UIButtonConfiguration *cfg = [UIButtonConfiguration plainButtonConfiguration];
-        cfg.contentInsets = NSDirectionalEdgeInsetsMake(6, 6, 6, 6);
-        cfg.background.backgroundColor = PPNavGold();
-        cfg.background.cornerRadius = 18;
-        cfg.background.strokeColor = [PPNavBackInk() colorWithAlphaComponent:0.10];
-        cfg.background.strokeWidth = 1.0;
-        btn = [UIButton buttonWithConfiguration:cfg primaryAction:nil];
-    } else {
-        btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.contentEdgeInsets = UIEdgeInsetsMake(6, 6, 6, 6);
-        btn.backgroundColor = PPNavGold();
-        btn.layer.cornerRadius = 18;
-    }
-
-    UIImage *icon = [UIImage systemImageNamed:imageName] ?: [UIImage new];
-    [btn setImage:icon forState:UIControlStateNormal];
     btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.tintColor = PPNavBackInk();
+    btn.backgroundColor = [UIColor ppSurface];
+    btn.layer.cornerRadius = 14.0;
+    if (@available(iOS 13.0, *)) {
+        btn.layer.cornerCurve = kCACornerCurveContinuous;
+    }
+    btn.layer.borderWidth = 0.8;
+    btn.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+    btn.layer.shadowColor = UIColor.blackColor.CGColor;
+    btn.layer.shadowOpacity = 0.04;
+    btn.layer.shadowOffset = CGSizeMake(0, 2);
+    btn.layer.shadowRadius = 6;
+    btn.layer.masksToBounds = NO;
+    btn.tintColor = [UIColor ppTextPrimary];
+
+    NSString *effectiveSym = imageName.length > 0 ? imageName : PPNavBackSymbolName();
+    UIImage *icon = [UIImage systemImageNamed:effectiveSym] ?: [UIImage systemImageNamed:PPNavBackSymbolName()];
+    UIImageSymbolConfiguration *config = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold];
+    UIImage *configuredIcon = [icon imageByApplyingSymbolConfiguration:config] ?: icon;
+    [btn setImage:configuredIcon forState:UIControlStateNormal];
+    btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
 
     [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
     [btn.widthAnchor constraintEqualToConstant:btnSize].active = YES;
     [btn.heightAnchor constraintEqualToConstant:btnSize].active = YES;
-
-    btn.layer.shadowColor = [PPNavGold() colorWithAlphaComponent:0.5].CGColor;
-    btn.layer.shadowOpacity = 0.22;
-    btn.layer.shadowOffset = CGSizeMake(0, 2);
-    btn.layer.shadowRadius = 7;
-    btn.layer.masksToBounds = NO;
-
-    UIImageSymbolConfiguration *config =
-    [UIImageSymbolConfiguration configurationWithPointSize:16
-                                                    weight:UIImageSymbolWeightSemibold
-                                                     scale:UIImageSymbolScaleMedium];
-    [btn setImage:[icon imageByApplyingSymbolConfiguration:config] forState:UIControlStateNormal];
-    btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
 
     [PPButtonHelper attachTapAnimationToButton:btn style:PPButtonAnimationStylePulse];
     return btn;

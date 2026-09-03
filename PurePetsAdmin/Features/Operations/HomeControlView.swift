@@ -305,21 +305,24 @@ struct AdminHomeControlView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: AdminSpacing.sectionSpacing) {
-                    dossierHeaderView
-                    heroHeader
-                    topSearchField
-                    generalSettingsAccordion
-                    sectionsOrderingCard
-                    livePreviewCard
+            VStack(spacing: 0) {
+                dossierHeaderView
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.sectionSpacing) {
+                        heroHeader
+                        topSearchField
+                        generalSettingsAccordion
+                        sectionsOrderingCard
+                        livePreviewCard
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.xs)
+                    .padding(.bottom, AdminSpacing.xxl)
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, AdminSpacing.xs)
-                .padding(.bottom, AdminSpacing.xxl)
-            }
-            .refreshable {
-                viewModel.loadConfig()
+                .refreshable {
+                    viewModel.loadConfig()
+                }
             }
 
             if let message = toastMessage {
@@ -355,56 +358,62 @@ struct AdminHomeControlView: View {
         }
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
+            AdminSovereignNavigationBar(
+                title: Language.get("HomeControl_Title", alter: "التحكم في الشاشة الرئيسية"),
+                subtitle: Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"),
+                onBack: {
                     if let onDismiss {
                         onDismiss()
                     } else {
                         dismiss()
                     }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
                 }
-
-                Spacer()
-
-                if viewModel.isLoading || viewModel.isSaving {
-                    ProgressView().tint(AdminSurface.primary)
-                } else {
-                    Button(action: { viewModel.loadConfig() }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                            .frame(width: 36, height: 36)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+            ) {
+                HStack(spacing: 8) {
+                    if viewModel.isDirty {
+                        AdminPrimaryPillButton(
+                            title: Language.get("Save", alter: "حفظ"),
+                            systemImage: "checkmark",
+                            isLoading: viewModel.isSaving
+                        ) {
+                            viewModel.save { success, msg in
+                                if success {
+                                    showToast(msg ?? "", isError: false)
+                                } else {
+                                    showToast(msg ?? "", isError: true)
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+
+                    if viewModel.isLoading || viewModel.isSaving {
+                        ProgressView().tint(AdminSurface.primary)
+                    } else {
+                        Button(action: { viewModel.loadConfig() }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .frame(width: 44, height: 44)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                )
+                                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                    }
                 }
             }
 
-            Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات") + " / " + Language.get("HomeControl_Title", alter: "الرئيسية"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("HomeControl_Title", alter: "التحكم في الشاشة الرئيسية"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-
             if let error = viewModel.errorMessage {
                 AdminErrorBanner(message: error) { viewModel.loadConfig() }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
             }
         }

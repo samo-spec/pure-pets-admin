@@ -145,74 +145,51 @@ struct AdminPaymentDetailView: View {
         .padding(AdminSpacing.xl)
     }
 
-    // MARK: - Dossier Header
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeader: some View {
-        HStack(spacing: AdminSpacing.md) {
-            // Tactile Back Button
-            Button(action: closeScreen) {
-                Image(systemName: "chevron.backward")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(AdminSurface.surface, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1.0))
-                    .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
-            }
-            .buttonStyle(NextGenScaleButtonStyle())
-            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
-
-            // Title & Scope
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("PaymentMgmt_Title_Details", alter: "ملف الطلب والمدفوعات"))
-                    .font(AdminType.title3)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(Color(UIColor.ppSuccess))
-                        .frame(width: 6, height: 6)
-                    Text(Language.get("PaymentDetail_LiveFeed", alter: "بث تشغيلي مباشر"))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-            }
-
-            Spacer(minLength: 0)
-
-            // Refresh Action
+        AdminSovereignNavigationBar(
+            title: Language.get("PaymentMgmt_Title_Details", alter: "ملف الطلب والمدفوعات"),
+            subtitle: Language.get("PaymentDetail_LiveFeed", alter: "بث تشغيلي مباشر"),
+            statusDotColor: Color(UIColor.ppSuccess),
+            onBack: closeScreen
+        ) {
             Button {
                 triggerHaptic()
                 viewModel.loadData()
             } label: {
                 ZStack {
-                    Circle()
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(AdminSurface.surface)
-                        .frame(width: 44, height: 44)
-                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 1.0))
-                        .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     if viewModel.isBusy {
                         ProgressView().tint(AdminSurface.primary)
                     } else {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(AdminSurface.primary)
+                            .foregroundColor(AdminSurface.primaryText)
                     }
                 }
+                .frame(width: 44, height: 44)
             }
-            .buttonStyle(NextGenScaleButtonStyle())
+            .buttonStyle(.plain)
             .disabled(viewModel.isBusy)
             .accessibilityLabel(Language.get("PaymentDetail_Refresh", alter: "تحديث"))
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
-        .padding(.bottom, AdminSpacing.sm)
-        .background(AdminSurface.background.opacity(0.94))
     }
 
     private func closeScreen() {
         triggerHaptic()
-        if let onDismiss { onDismiss() } else { dismiss() }
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+            PPAdminNavigationFallback.popOrDismiss()
+        }
     }
 
     // MARK: - Live Order Content

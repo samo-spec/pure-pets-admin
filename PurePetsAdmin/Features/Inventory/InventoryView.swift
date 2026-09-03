@@ -78,6 +78,14 @@ final class InventoryViewModel: ObservableObject {
                 ($0.accessoryCategoryID ?? "").lowercased().contains(q)
             }
         }
+        result.sort { a, b in
+            let dateA = a.createdAt
+            let dateB = b.createdAt
+            if dateA != dateB {
+                return dateA > dateB
+            }
+            return a.accessoryID > b.accessoryID
+        }
         return result
     }
 
@@ -107,7 +115,14 @@ final class InventoryViewModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                     return
                 }
-                self.items = items ?? []
+                self.items = (items ?? []).sorted { a, b in
+                    let dateA = a.createdAt
+                    let dateB = b.createdAt
+                    if dateA != dateB {
+                        return dateA > dateB
+                    }
+                    return a.accessoryID > b.accessoryID
+                }
             }
         }
     }
@@ -133,14 +148,18 @@ final class InventoryViewModel: ObservableObject {
     func updateQuantity(_ qty: Int, for accessory: PetAccessory) {
         let docID = accessory.accessoryID
         AccessoryManager.shared().updateQuantity(qty, forAccessoryID: docID) { [weak self] error in
-            if let error { self?.errorMessage = error.localizedDescription }
+            Task { @MainActor in
+                if let error { self?.errorMessage = error.localizedDescription }
+            }
         }
     }
 
     func toggleNoStock(for accessory: PetAccessory) {
         let docID = accessory.accessoryID
         AccessoryManager.shared().setNoStock(!accessory.noStock, forAccessoryID: docID) { [weak self] error in
-            if let error { self?.errorMessage = error.localizedDescription }
+            Task { @MainActor in
+                if let error { self?.errorMessage = error.localizedDescription }
+            }
         }
     }
 }
@@ -222,31 +241,25 @@ struct AdminInventoryView: View {
         }
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
+            AdminSovereignNavigationBar(
+                title: viewModel.navigationTitle,
+                subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون"),
+                onBack: {
                     if let onDismiss {
                         onDismiss()
                     } else {
                         dismiss()
                     }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
                 }
-
-                Spacer()
-
-                Button {
+            ) {
+                AdminPrimaryPillButton(
+                    title: Language.get("Add", alter: "إضافة"),
+                    systemImage: "plus"
+                ) {
                     let addVC = AddAccessoryViewController()
                     addVC.defaultKind = kind.accessKind
                     guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -254,37 +267,15 @@ struct AdminInventoryView: View {
                           let nav = root as? UINavigationController ?? root.navigationController
                     else { return }
                     nav.pushViewController(addVC, animated: true)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .bold))
-                        Text(Language.get("Add", alter: "إضافة"))
-                            .font(AdminType.captionBold)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 36)
-                    .background(AdminSurface.primary, in: Capsule())
                 }
-                .accessibilityLabel(Language.get("Add", alter: "إضافة"))
             }
-
-            Text(Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + " / " + viewModel.navigationTitle)
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(viewModel.navigationTitle)
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
 
             if let error = viewModel.errorMessage {
                 AdminErrorBanner(message: error) { viewModel.startListening() }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
     }
 
     private var statsRow: some View {

@@ -621,36 +621,31 @@ struct AdminDeliveryListView: View {
         }
     }
 
+    // MARK: - Sovereign Navigation Bar
+
     private var header: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: close) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                        Text(deliveryText("Back"))
-                    }
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
-                }
-                Spacer()
-                Text(deliveryText("DeliveryCompany_NavTitle"))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .accessibilityAddTraits(.isHeader)
-                Spacer()
+            AdminSovereignNavigationBar(
+                title: deliveryText("DeliveryCompany_NavTitle"),
+                subtitle: Language.get("CommandCenter_Delivery_Workspace", alter: "مساحة التوصيل"),
+                onBack: { close() }
+            ) {
                 if viewModel.isLoading || viewModel.isRefreshing {
                     ProgressView().tint(AdminSurface.primary)
                 } else {
                     Button { viewModel.load(refresh: true) } label: {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
                             .frame(width: 44, height: 44)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .foregroundColor(AdminSurface.primary)
                     .accessibilityLabel(deliveryText("CommandCenter_Refresh"))
                 }
             }
@@ -665,18 +660,17 @@ struct AdminDeliveryListView: View {
                         .font(AdminType.caption1)
                         .foregroundColor(AdminSurface.secondaryText)
                 }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+
                 if snapshot.permissionSource == "legacy_official_delivery_bridge" {
                     Label(deliveryText("Delivery_Legacy_Permission_Warning"), systemImage: "exclamationmark.shield.fill")
                         .font(AdminType.captionBold)
                         .foregroundColor(.orange)
                         .accessibilityElement(children: .combine)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
                 }
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
-        .padding(.bottom, AdminSpacing.sm)
-        .background(AdminSurface.background)
     }
 
     private var hero: some View {
@@ -1411,6 +1405,7 @@ struct AdminDeliveryListView: View {
 private struct DeliveryIncidentPanel: View {
     let incident: DeliveryIncident
     let retry: (() -> Void)?
+    var openFulfillment: (() -> Void)? = nil
 
     var body: some View {
         AdminCard {
@@ -1427,6 +1422,21 @@ private struct DeliveryIncidentPanel: View {
                     .font(.system(.caption2, design: .monospaced))
                     .foregroundColor(AdminSurface.secondaryText)
                     .textSelection(.enabled)
+                if incident.domainCode == "DELIVERY_AUTHORITY_MISMATCH", let openFulfillment {
+                    Button(action: openFulfillment) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "shippingbox.fill")
+                            Text(deliveryText("Delivery_Open_Fulfillment_Action"))
+                        }
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 4)
+                }
                 if let retry {
                     Button(deliveryText("Retry"), action: retry)
                         .buttonStyle(.borderedProminent)
@@ -1460,12 +1470,14 @@ private struct PendingDeliveryAssignment: Identifiable {
 private struct DeliveryDossierSheet: View {
     @ObservedObject var viewModel: DeliveryCommandCenterViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var pendingCommand: PendingDeliveryCommand?
     @State private var pendingAssignment: PendingDeliveryAssignment?
     @State private var handoverConfirmed = false
+    @State private var showingFulfillmentWorkspace = false
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            sovereignHeaderBar
+
             ZStack {
                 AdminSurface.background.ignoresSafeArea()
                 ScrollView {
@@ -1476,45 +1488,24 @@ private struct DeliveryDossierSheet: View {
                         } else if let incident = viewModel.dossierIncident {
                             DeliveryIncidentPanel(incident: incident, retry: {
                                 viewModel.loadDossier()
+                            }, openFulfillment: {
+                                showingFulfillmentWorkspace = true
                             })
                         } else if let dossier = viewModel.dossier {
                             dossierContent(dossier)
                         }
                         if let incident = viewModel.commandIncident {
-                            DeliveryIncidentPanel(incident: incident, retry: nil)
+                            DeliveryIncidentPanel(incident: incident, retry: nil, openFulfillment: {
+                                showingFulfillmentWorkspace = true
+                            })
                         }
                     }
                     .padding(AdminSpacing.screenMargin)
                     .padding(.bottom, 32)
                 }
             }
-            .navigationTitle(deliveryText("DeliveryCompany_Detail_NavTitle"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(deliveryText("Close")) {
-                        viewModel.closeDossier()
-                        dismiss()
-                    }
-                }
-            }
         }
-        .alert(item: $pendingCommand) { pending in
-            let destructive = ["REJECT", "CANCEL", "FAIL"].contains(pending.action.action)
-            let confirmAction = {
-                viewModel.execute(pending.action,
-                                  driverUID: pending.driverUID,
-                                  handoverConfirmed: pending.handoverConfirmed)
-            }
-            return Alert(
-                title: Text(deliveryCommandConfirmationTitle(pending.action.action)),
-                message: Text(deliveryCommandConfirmationMessage(pending.action.action)),
-                primaryButton: destructive
-                    ? .destructive(Text(deliveryText("Confirm")), action: confirmAction)
-                    : .default(Text(deliveryText("Confirm")), action: confirmAction),
-                secondaryButton: .cancel(Text(deliveryText("Cancel")))
-            )
-        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $pendingAssignment) { pending in
             DeliveryDriverPickerSheet(
                 action: pending.action,
@@ -1530,6 +1521,69 @@ private struct DeliveryDossierSheet: View {
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .sheet(isPresented: $showingFulfillmentWorkspace) {
+            AdminFulfillmentListView(session: AdminSession(source: PPAdminSessionSnapshot())) {
+                showingFulfillmentWorkspace = false
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var sovereignHeaderBar: some View {
+        HStack {
+            Spacer()
+            Text(deliveryText("DeliveryCompany_Detail_NavTitle"))
+                .font(AdminType.headline)
+                .foregroundColor(AdminSurface.primaryText)
+            Spacer()
+        }
+        .overlay(alignment: Language.isRTL() ? .trailing : .leading) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                viewModel.closeDossier()
+                dismiss()
+            }) {
+                Text(deliveryText("Close"))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                    .overlay(Capsule().stroke(AdminSurface.primary.opacity(0.20), lineWidth: 1.0))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .frame(height: 56)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .bottom) {
+            Divider().background(AdminSurface.hairline)
+        }
+    }
+
+    private func presentCommandAlert(for pending: PendingDeliveryCommand) {
+        let action = pending.action.action
+        let title = deliveryCommandConfirmationTitle(action)
+        let message = deliveryCommandConfirmationMessage(action)
+        let destructive = ["REJECT", "CANCEL", "FAIL"].contains(action)
+        let iconName = destructive ? "exclamationmark.triangle.fill" : "questionmark.circle.fill"
+        let icon = UIImage(systemName: iconName)
+
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: title,
+            subtitle: message,
+            confirmButton: deliveryText("Confirm"),
+            cancelButton: deliveryText("Cancel"),
+            icon: icon,
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.execute(pending.action,
+                                  driverUID: pending.driverUID,
+                                  handoverConfirmed: pending.handoverConfirmed)
+            },
+            cancelBlock: nil
+        )
     }
 
     private func dossierContent(_ dossier: PPDeliveryDossierSnapshot) -> some View {
@@ -1539,11 +1593,28 @@ private struct DeliveryDossierSheet: View {
 
             if record.authority == "FULFILLMENT_V1" {
                 deliveryCompanySurface {
-                    Label(deliveryText("Delivery_Fulfillment_Read_Only"), systemImage: "lock.shield")
-                        .font(AdminType.subheadline)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .padding(20)
-                        .accessibilityElement(children: .combine)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label(deliveryText("Delivery_Fulfillment_Read_Only"), systemImage: "lock.shield")
+                            .font(AdminType.subheadline)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .accessibilityElement(children: .combine)
+
+                        Button(action: {
+                            showingFulfillmentWorkspace = true
+                        }) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "shippingbox.fill")
+                                Text(deliveryText("Delivery_Open_Fulfillment_Action"))
+                            }
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 44)
+                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(20)
                 }
             }
 
@@ -1761,15 +1832,16 @@ private struct DeliveryDossierSheet: View {
                     .foregroundColor(AdminSurface.secondaryText)
             } else {
                 ForEach(Array(events.enumerated()), id: \.offset) { _, event in
-                    let value = deliveryDictionary(event)
+                    let dict = deliveryDictionary(event)
+                    let transitionArrow = Language.isRTL() ? "←" : "→"
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(deliveryEnumText(value["eventType"] as? String ?? "DELIVERY_EVENT"))
+                        Text(deliveryEnumText(dict["eventType"] as? String ?? "DELIVERY_EVENT"))
                             .font(AdminType.captionBold)
                             .foregroundColor(AdminSurface.primaryText)
-                        Text("\(deliveryEnumText(value["fromStatus"] as? String ?? "")) → \(deliveryEnumText(value["toStatus"] as? String ?? ""))")
+                        Text("\(deliveryEnumText(dict["fromStatus"] as? String ?? "")) \(transitionArrow) \(deliveryEnumText(dict["toStatus"] as? String ?? ""))")
                             .font(AdminType.caption1)
                             .foregroundColor(AdminSurface.secondaryText)
-                        Text(deliveryDateText(value["createdAt"]))
+                        Text(deliveryDateText(dict["createdAt"]))
                             .font(AdminType.caption1)
                             .foregroundColor(AdminSurface.secondaryText)
                     }
@@ -1802,9 +1874,10 @@ private struct DeliveryDossierSheet: View {
                             Toggle(deliveryText("Delivery_COD_Handover_Confirmed"), isOn: $handoverConfirmed)
                                 .font(AdminType.captionBold)
                             deliveryActionButton(reconcile, enabled: handoverConfirmed) {
-                                pendingCommand = PendingDeliveryCommand(action: reconcile,
-                                                                        driverUID: nil,
-                                                                        handoverConfirmed: true)
+                                let pending = PendingDeliveryCommand(action: reconcile,
+                                                                     driverUID: nil,
+                                                                     handoverConfirmed: true)
+                                presentCommandAlert(for: pending)
                             }
                         }
                         ForEach(actions.filter { $0.action != "RECONCILE_COD" }, id: \.action) { action in
@@ -1812,9 +1885,10 @@ private struct DeliveryDossierSheet: View {
                                 if assignmentNames.contains(action.action) {
                                     pendingAssignment = PendingDeliveryAssignment(action: action)
                                 } else {
-                                    pendingCommand = PendingDeliveryCommand(action: action,
-                                                                            driverUID: nil,
-                                                                            handoverConfirmed: false)
+                                    let pending = PendingDeliveryCommand(action: action,
+                                                                         driverUID: nil,
+                                                                         handoverConfirmed: false)
+                                    presentCommandAlert(for: pending)
                                 }
                             }
                         }
@@ -1975,8 +2049,6 @@ private struct DeliveryDriverDetailSheet: View {
     @ObservedObject var viewModel: DeliveryCommandCenterViewModel
     let driver: PPDeliveryDriverRecord
     let onDismiss: () -> Void
-    @State private var pendingCommand: PendingDriverCommand?
-    @State private var confirmsDisable = false
 
     private var member: PPDeliveryCompanyMemberRecord? {
         viewModel.member(for: driver.uid)
@@ -1994,7 +2066,9 @@ private struct DeliveryDriverDetailSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            sovereignHeaderBar
+
             ZStack {
                 AdminSurface.background.ignoresSafeArea()
                 ScrollView {
@@ -2026,40 +2100,77 @@ private struct DeliveryDriverDetailSheet: View {
                         .accessibilityAddTraits(.isModal)
                 }
             }
-            .navigationTitle(deliveryText("Delivery_Driver_Profile_Title"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(deliveryText("Close"), action: onDismiss)
-                }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var sovereignHeaderBar: some View {
+        HStack {
+            Spacer()
+            Text(deliveryText("Delivery_Driver_Profile_Title"))
+                .font(AdminType.headline)
+                .foregroundColor(AdminSurface.primaryText)
+            Spacer()
+        }
+        .overlay(alignment: Language.isRTL() ? .trailing : .leading) {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onDismiss()
+            }) {
+                Text(deliveryText("Close"))
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                    .overlay(Capsule().stroke(AdminSurface.primary.opacity(0.20), lineWidth: 1.0))
             }
+            .buttonStyle(.plain)
         }
-        .alert(item: $pendingCommand) { pending in
-            Alert(
-                title: Text(deliveryText("Delivery_Confirm_Driver_Command")),
-                message: Text("\(driver.displayName) · \(deliveryCommandText(pending.action))"),
-                primaryButton: pending.action == "SUSPEND"
-                    ? .destructive(Text(deliveryText("Confirm"))) {
-                        execute(pending)
-                    }
-                    : .default(Text(deliveryText("Confirm"))) {
-                        execute(pending)
-                    },
-                secondaryButton: .cancel(Text(deliveryText("Cancel")))
-            )
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .frame(height: 56)
+        .background(AdminSurface.surface)
+        .overlay(alignment: .bottom) {
+            Divider().background(AdminSurface.hairline)
         }
-        .confirmationDialog(deliveryText("Delivery_Driver_Disable_Confirm_Title"),
-                            isPresented: $confirmsDisable,
-                            titleVisibility: .visible) {
-            Button(deliveryText("Delivery_Driver_Disable_Membership"), role: .destructive) {
+    }
+
+    private func presentDriverCommandAlert(for pending: PendingDriverCommand) {
+        let destructive = pending.action == "SUSPEND"
+        let iconName = destructive ? "exclamationmark.triangle.fill" : "questionmark.circle.fill"
+        let icon = UIImage(systemName: iconName)
+
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: deliveryText("Delivery_Confirm_Driver_Command"),
+            subtitle: "\(driver.displayName) · \(deliveryCommandText(pending.action))",
+            confirmButton: deliveryText("Confirm"),
+            cancelButton: deliveryText("Cancel"),
+            icon: icon,
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                execute(pending)
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func presentDriverDisableAlert() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: deliveryText("Delivery_Driver_Disable_Confirm_Title"),
+            subtitle: deliveryText("Delivery_Driver_Disable_Confirm_Message"),
+            confirmButton: deliveryText("Confirm"),
+            cancelButton: deliveryText("Cancel"),
+            icon: UIImage(systemName: "person.crop.circle.badge.minus"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
                 viewModel.disableDriver(driver.uid) { succeeded in
                     if succeeded { onDismiss() }
                 }
-            }
-            Button(deliveryText("Cancel"), role: .cancel) {}
-        } message: {
-            Text(deliveryText("Delivery_Driver_Disable_Confirm_Message"))
-        }
+            },
+            cancelBlock: nil
+        )
     }
 
     private var profileHero: some View {
@@ -2227,7 +2338,7 @@ private struct DeliveryDriverDetailSheet: View {
                     if member?.status.lowercased() == "active" {
                         Divider().padding(.vertical, 2)
                         Button {
-                            confirmsDisable = true
+                            presentDriverDisableAlert()
                         } label: {
                             Label(deliveryText("Delivery_Driver_Disable_Membership"), systemImage: "person.crop.circle.badge.minus")
                                 .font(AdminType.subheadlineBold)
@@ -2245,7 +2356,8 @@ private struct DeliveryDriverDetailSheet: View {
 
     private func managementButton(action: String, destructive: Bool) -> some View {
         Button {
-            pendingCommand = PendingDriverCommand(action: action, driver: driver)
+            let pending = PendingDriverCommand(action: action, driver: driver)
+            presentDriverCommandAlert(for: pending)
         } label: {
             Label(deliveryCommandText(action), systemImage: driverActionSymbol(action))
                 .font(AdminType.subheadlineBold)

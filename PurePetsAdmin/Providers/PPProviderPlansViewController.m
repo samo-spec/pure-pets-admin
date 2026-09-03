@@ -465,15 +465,7 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     [self.customNavBar addSubview:navBorder];
 
     // Back Button
-    self.backButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    self.backButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.backButton.tintColor = [UIColor ppPrimary];
-    UIImage *backIcon = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left"
-                                 withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16.0 weight:UIImageSymbolWeightBold]];
-    [self.backButton setImage:backIcon forState:UIControlStateNormal];
-    [self.backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    self.backButton.titleLabel.font = [UIFont fontWithName:@"Beiruti-Medium" size:15.0] ?: [UIFont systemFontOfSize:15.0 weight:UIFontWeightMedium];
-    [self.backButton addTarget:self action:@selector(pp_handleBackAction) forControlEvents:UIControlEventTouchUpInside];
+    self.backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_handleBackAction)];
     [self.customNavBar addSubview:self.backButton];
 
     // Titles Container
@@ -524,8 +516,9 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
         [navBorder.heightAnchor constraintEqualToConstant:1.0],
 
         [self.backButton.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor constant:12.0],
-        [self.backButton.bottomAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor constant:-10.0],
-        [self.backButton.heightAnchor constraintEqualToConstant:34.0],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:self.addPlanButton.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
 
         [titleStack.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:10.0],
         [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.addPlanButton.leadingAnchor constant:-10.0],

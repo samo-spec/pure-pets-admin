@@ -983,7 +983,14 @@ final class PPInventoryListViewModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                     return
                 }
-                self.allItems = items ?? []
+                self.allItems = (items ?? []).sorted { a, b in
+                    let dateA = a.createdAt
+                    let dateB = b.createdAt
+                    if dateA != dateB {
+                        return dateA > dateB
+                    }
+                    return a.accessoryID > b.accessoryID
+                }
                 self.applyFilter()
             }
         }
@@ -1032,11 +1039,12 @@ final class PPInventoryListViewModel: ObservableObject {
         }
 
         result.sort { a, b in
-            // In-stock items first, then alphabetical
-            if a.noStock != b.noStock {
-                return !a.noStock && b.noStock
+            let dateA = a.createdAt
+            let dateB = b.createdAt
+            if dateA != dateB {
+                return dateA > dateB
             }
-            return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            return a.accessoryID > b.accessoryID
         }
         filteredItems = result
     }
@@ -1051,7 +1059,14 @@ final class PPInventoryListViewModel: ObservableObject {
         await withCheckedContinuation { continuation in
             AccessoryManager.shared().fetchAccessories(of: currentKind) { [weak self] items, _ in
                 DispatchQueue.main.async {
-                    self?.allItems = items ?? []
+                    self?.allItems = (items ?? []).sorted { a, b in
+                        let dateA = a.createdAt
+                        let dateB = b.createdAt
+                        if dateA != dateB {
+                            return dateA > dateB
+                        }
+                        return a.accessoryID > b.accessoryID
+                    }
                     self?.applyFilter()
                     continuation.resume()
                 }
@@ -1197,11 +1212,10 @@ final class PPInventoryListViewModel: ObservableObject {
 public struct PPInventoryListView: View {
     @StateObject private var viewModel: PPInventoryListViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dismiss) private var dismiss
     private let onPushViewController: (UIViewController) -> Void
     private let onDismiss: (() -> Void)?
 
-    @State private var itemToDelete: PetAccessory?
-    @State private var showDeleteConfirmation = false
     @State private var spinAngle: Double = 0
     @FocusState private var isSearchFocused: Bool
 
@@ -1275,23 +1289,22 @@ public struct PPInventoryListView: View {
         .onChange(of: viewModel.activeFilter) { _ in
             viewModel.applyFilter()
         }
-        .confirmationDialog(
-            Language.get("Confirm Delete", alter: "تأكيد حذف المنتج"),
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button(Language.get("Delete", alter: "حذف نهائي من المخزون"), role: .destructive) {
-                if let item = itemToDelete {
-                    viewModel.deleteAccessory(item)
-                }
-                itemToDelete = nil
-            }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {
-                itemToDelete = nil
-            }
-        } message: {
-            Text(Language.get("Are you sure you want to delete this accessory?", alter: "هل أنت متأكد من رغبتك في حذف هذا المنتج نهائياً من قاعدة بيانات المخزون؟"))
-        }
+    }
+
+    private func confirmDelete(item: PetAccessory) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Confirm Delete", alter: "تأكيد حذف المنتج"),
+            subtitle: Language.get("Are you sure you want to delete this accessory?", alter: "هل أنت متأكد من رغبتك في حذف هذا المنتج نهائياً من قاعدة بيانات المخزون؟"),
+            confirmButton: Language.get("Delete", alter: "حذف نهائي من المخزون"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.deleteAccessory(item)
+            },
+            cancelBlock: nil
+        )
     }
 
     // MARK: - Sovereign Header Bar
@@ -1303,10 +1316,13 @@ public struct PPInventoryListView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     if let onDismiss = onDismiss {
                         onDismiss()
+                    } else {
+                        dismiss()
+                        PPAdminNavigationFallback.popOrDismiss()
                     }
                 }) {
                     HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
+                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
                             .font(.system(size: 15, weight: .bold))
                         Text(Language.get("Back", alter: "رجوع"))
                             .font(AdminType.calloutBold)
@@ -1321,6 +1337,7 @@ public struct PPInventoryListView: View {
                     )
                 }
                 .buttonStyle(CatalogPressStyle())
+                .contentShape(Rectangle())
 
                 Spacer()
 
@@ -1754,8 +1771,7 @@ public struct PPInventoryListView: View {
                         viewModel.toggleStockAvailability(for: item)
                     },
                     onDelete: {
-                        itemToDelete = item
-                        showDeleteConfirmation = true
+                        confirmDelete(item: item)
                     }
                 )
             }
@@ -3366,15 +3382,27 @@ private struct CatalogPressStyle: ButtonStyle {
 @objc public final class PPInventoryListHostingController: UIViewController {
     private let kind: AccessKindType
     private var hostingController: UIHostingController<PPInventoryListView>?
+    private let onDismissBlock: (() -> Void)?
 
     @objc public init(kind: AccessKindType = .typeAccessory) {
         self.kind = kind
+        self.onDismissBlock = nil
         super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
+    }
+
+    @objc public init(kind: AccessKindType, onDismiss: (() -> Void)?) {
+        self.kind = kind
+        self.onDismissBlock = onDismiss
+        super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
     }
 
     public required init?(coder: NSCoder) {
         self.kind = .typeAccessory
+        self.onDismissBlock = nil
         super.init(coder: coder)
+        self.hidesBottomBarWhenPushed = true
     }
 
     @objc public static func makeForAccessories() -> UIViewController {
@@ -3403,11 +3431,15 @@ private struct CatalogPressStyle: ButtonStyle {
                 self?.navigationController?.pushViewController(targetVC, animated: true)
             },
             onDismiss: { [weak self] in
-                if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                    nav.popViewController(animated: true)
-                } else {
-                    self?.dismiss(animated: true)
+                if let block = self?.onDismissBlock {
+                    block()
+                    return
                 }
+                guard let self = self else {
+                    PPAdminNavigationFallback.popOrDismiss()
+                    return
+                }
+                PPAdminNavigationFallback.popOrDismiss(from: self)
             }
         )
 
@@ -3429,5 +3461,6 @@ private struct CatalogPressStyle: ButtonStyle {
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         navigationController?.setNavigationBarHidden(true, animated: animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 }

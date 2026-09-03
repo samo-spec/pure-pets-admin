@@ -1678,7 +1678,7 @@ private extension View {
     }
 }
 
-// MARK: - Quick Actions Deck (Two-Row Flagship Grid)
+// MARK: - Quick Actions Deck (Flagship Editorial Grid)
 
 private struct CommandQuickActionItem: Identifiable, Hashable {
     let id: String
@@ -1691,6 +1691,16 @@ private struct CommandQuickActionItem: Identifiable, Hashable {
     let isLive: Bool
 }
 
+private struct DeckWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat { 0 }
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
+        }
+    }
+}
+
 private struct CommandQuickActionsDeck: View {
     let signals: [AdminCommandOrbitSignal]
     let onRoute: (String) -> Void
@@ -1699,14 +1709,20 @@ private struct CommandQuickActionsDeck: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.layoutDirection) private var layoutDirection
 
+    @State private var deckWidth: CGFloat = 0
+    private let spacing: CGFloat = 11
+
+    // Temporarily hide payments action per user directive
+    private let showPaymentsAction = false
+
     private var items: [CommandQuickActionItem] {
         let fulfillmentSignal = signals.first { $0.id.contains("fulfillment") }
         let deliverySignal = signals.first { $0.id.contains("delivery") }
         let paymentSignal = signals.first { $0.id.contains("payment") }
         let stockSignal = signals.first { $0.id.contains("accessor") || $0.id.contains("stock") }
 
-        return [
-            // Row 1: Core Operations & Rapid Commerce
+        var deckItems: [CommandQuickActionItem] = [
+            // Index 0: POS (2 columns width)
             CommandQuickActionItem(
                 id: "pos",
                 tag: "pos",
@@ -1717,16 +1733,36 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: nil,
                 isLive: true
             ),
+            // Index 1: Stock & Items (1 column width)
             CommandQuickActionItem(
-                id: "fulfillment",
-                tag: "fulfillment",
-                title: Language.get("AdminQuickActions_Fulfillment", alter: "Fulfillment"),
-                subtitle: Language.get("AdminQuickActions_Fulfillment_Subtitle", alter: "Pack & Prepare"),
-                symbolName: "shippingbox.fill",
-                accent: Color(red: 0.96, green: 0.55, blue: 0.12),
-                badgeCount: (fulfillmentSignal?.count ?? 0) > 0 ? fulfillmentSignal?.count : nil,
-                isLive: fulfillmentSignal?.isLive ?? false
-            ),
+                id: "accessories",
+                tag: "accessories",
+                title: Language.get("AdminQuickActions_Inventory", alter: "Stock & Items"),
+                subtitle: Language.get("AdminQuickActions_Inventory_Subtitle", alter: "Catalog Levels"),
+                symbolName: "archivebox.fill",
+                accent: Color(red: 0.55, green: 0.36, blue: 0.96),
+                badgeCount: (stockSignal?.count ?? 0) > 0 ? stockSignal?.count : nil,
+                isLive: stockSignal?.isLive ?? false
+            )
+        ]
+
+        if showPaymentsAction {
+            deckItems.append(
+                CommandQuickActionItem(
+                    id: "payments",
+                    tag: "payments",
+                    title: Language.get("AdminQuickActions_Payments", alter: "Payments"),
+                    subtitle: Language.get("AdminQuickActions_Payments_Subtitle", alter: "QIB & Ledger"),
+                    symbolName: "creditcard.fill",
+                    accent: Color(red: 0.85, green: 0.20, blue: 0.35),
+                    badgeCount: (paymentSignal?.count ?? 0) > 0 ? paymentSignal?.count : nil,
+                    isLive: paymentSignal?.isLive ?? false
+                )
+            )
+        }
+
+        deckItems.append(contentsOf: [
+            // Delivery Fleet
             CommandQuickActionItem(
                 id: "delivery",
                 tag: "delivery",
@@ -1737,28 +1773,18 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: (deliverySignal?.count ?? 0) > 0 ? deliverySignal?.count : nil,
                 isLive: deliverySignal?.isLive ?? false
             ),
-
-            // Row 2: Management, Stock & Communications
+            // Fulfillment
             CommandQuickActionItem(
-                id: "payments",
-                tag: "payments",
-                title: Language.get("AdminQuickActions_Payments", alter: "Payments"),
-                subtitle: Language.get("AdminQuickActions_Payments_Subtitle", alter: "QIB & Ledger"),
-                symbolName: "creditcard.fill",
-                accent: Color(red: 0.85, green: 0.20, blue: 0.35),
-                badgeCount: (paymentSignal?.count ?? 0) > 0 ? paymentSignal?.count : nil,
-                isLive: paymentSignal?.isLive ?? false
+                id: "fulfillment",
+                tag: "fulfillment",
+                title: Language.get("AdminQuickActions_Fulfillment", alter: "Fulfillment"),
+                subtitle: Language.get("AdminQuickActions_Fulfillment_Subtitle", alter: "Pack & Prepare"),
+                symbolName: "shippingbox.fill",
+                accent: Color(red: 0.96, green: 0.55, blue: 0.12),
+                badgeCount: (fulfillmentSignal?.count ?? 0) > 0 ? fulfillmentSignal?.count : nil,
+                isLive: fulfillmentSignal?.isLive ?? false
             ),
-            CommandQuickActionItem(
-                id: "accessories",
-                tag: "accessories",
-                title: Language.get("AdminQuickActions_Inventory", alter: "Stock & Items"),
-                subtitle: Language.get("AdminQuickActions_Inventory_Subtitle", alter: "Catalog Levels"),
-                symbolName: "archivebox.fill",
-                accent: Color(red: 0.55, green: 0.36, blue: 0.96),
-                badgeCount: (stockSignal?.count ?? 0) > 0 ? stockSignal?.count : nil,
-                isLive: stockSignal?.isLive ?? false
-            ),
+            // Broadcast
             CommandQuickActionItem(
                 id: "notificationsCompose",
                 tag: "notificationsCompose",
@@ -1769,30 +1795,129 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: nil,
                 isLive: false
             )
-        ]
+        ])
+
+        return deckItems
     }
 
-    private var columns: [GridItem] {
-        if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible(), spacing: 11)]
-        }
-        return [
-            GridItem(.flexible(), spacing: 11),
-            GridItem(.flexible(), spacing: 11),
-            GridItem(.flexible(), spacing: 11)
-        ]
+    private func computeWidths(in totalWidth: CGFloat) -> (oneCol: CGFloat, twoCol: CGFloat) {
+        let heroInset = AdminCommandMetric.pageMargin
+        let available = totalWidth > 0 ? totalWidth : (UIScreen.main.bounds.width - 2 * heroInset)
+        let oneCol = max((available - 2 * spacing) / 3, 70)
+        let twoCol = 2 * oneCol + spacing
+        return (oneCol, twoCol)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             headerRow
 
-            LazyVGrid(columns: columns, spacing: 11) {
-                ForEach(items) { item in
-                    CommandQuickActionCard(item: item) {
-                        onRoute(item.tag)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: spacing) {
+                    ForEach(items) { item in
+                        CommandQuickActionCard(item: item, isTwoColumn: false) {
+                            onRoute(item.tag)
+                        }
                     }
                 }
+            } else {
+                let heroInset = AdminCommandMetric.pageMargin
+                let availableWidth = deckWidth > 0 ? deckWidth : (UIScreen.main.bounds.width - 2 * heroInset)
+                let widths = computeWidths(in: availableWidth)
+
+                VStack(spacing: spacing) {
+                    if showPaymentsAction && items.count >= 6 {
+                        // Row 1: POS (2 columns) + Stock & Items (1 column)
+                        HStack(spacing: spacing) {
+                            CommandQuickActionCard(item: items[0], isTwoColumn: true) {
+                                onRoute(items[0].tag)
+                            }
+                            .frame(width: widths.twoCol)
+
+                            CommandQuickActionCard(item: items[1], isTwoColumn: false) {
+                                onRoute(items[1].tag)
+                            }
+                            .frame(width: widths.oneCol)
+                        }
+
+                        // Row 2: Payments (2 columns) + Delivery Fleet (1 column)
+                        HStack(spacing: spacing) {
+                            CommandQuickActionCard(item: items[2], isTwoColumn: true) {
+                                onRoute(items[2].tag)
+                            }
+                            .frame(width: widths.twoCol)
+
+                            CommandQuickActionCard(item: items[3], isTwoColumn: false) {
+                                onRoute(items[3].tag)
+                            }
+                            .frame(width: widths.oneCol)
+                        }
+
+                        // Row 3: Fulfillment (2 columns) + Broadcast (1 column)
+                        HStack(spacing: spacing) {
+                            CommandQuickActionCard(item: items[4], isTwoColumn: true) {
+                                onRoute(items[4].tag)
+                            }
+                            .frame(width: widths.twoCol)
+
+                            CommandQuickActionCard(item: items[5], isTwoColumn: false) {
+                                onRoute(items[5].tag)
+                            }
+                            .frame(width: widths.oneCol)
+                        }
+                    } else if items.count >= 5 {
+                        // Payments temporarily hidden per user request:
+                        // Row 1: POS (2 columns) + Stock & Items (1 column)
+                        HStack(spacing: spacing) {
+                            CommandQuickActionCard(item: items[0], isTwoColumn: true) {
+                                onRoute(items[0].tag)
+                            }
+                            .frame(width: widths.twoCol)
+
+                            CommandQuickActionCard(item: items[1], isTwoColumn: false) {
+                                onRoute(items[1].tag)
+                            }
+                            .frame(width: widths.oneCol)
+                        }
+
+                        // Row 2: Fulfillment (2 columns) + Delivery Fleet (1 column)
+                        if let fulfillment = items.first(where: { $0.id == "fulfillment" }),
+                           let delivery = items.first(where: { $0.id == "delivery" }) {
+                            HStack(spacing: spacing) {
+                                CommandQuickActionCard(item: fulfillment, isTwoColumn: true) {
+                                    onRoute(fulfillment.tag)
+                                }
+                                .frame(width: widths.twoCol)
+
+                                CommandQuickActionCard(item: delivery, isTwoColumn: false) {
+                                    onRoute(delivery.tag)
+                                }
+                                .frame(width: widths.oneCol)
+                            }
+                        }
+
+                        // Row 3: Broadcast (Full width action banner matching hero edge)
+                        if let broadcast = items.first(where: { $0.id == "notificationsCompose" }) {
+                            CommandQuickActionCard(item: broadcast, isTwoColumn: true) {
+                                onRoute(broadcast.tag)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(key: DeckWidthPreferenceKey.self, value: proxy.size.width)
+            }
+        )
+        .onPreferenceChange(DeckWidthPreferenceKey.self) { newWidth in
+            if newWidth > 0 && abs(deckWidth - newWidth) > 0.5 {
+                deckWidth = newWidth
             }
         }
         .accessibilityElement(children: .contain)
@@ -1835,6 +1960,7 @@ private struct CommandQuickActionsDeck: View {
 
 private struct CommandQuickActionCard: View {
     let item: CommandQuickActionItem
+    var isTwoColumn: Bool = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -1842,26 +1968,21 @@ private struct CommandQuickActionCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 11) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center, spacing: 8) {
-                    // Elevated icon glyph squircle with fine optical highlight
+                    // Elevated icon glyph squircle with crisp optical highlight
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(
-                                RadialGradient(
-                                    colors: [
-                                        item.accent.opacity(colorScheme == .dark ? 0.32 : 0.20),
-                                        item.accent.opacity(colorScheme == .dark ? 0.12 : 0.06)
-                                    ],
-                                    center: .center,
-                                    startRadius: 0,
-                                    endRadius: 22
-                                )
+                                colorScheme == .dark
+                                    ? item.accent.opacity(0.30)
+                                    : Color.white.opacity(0.88)
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.50 : 0.32), lineWidth: 0.75)
                             )
+                            .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, x: 0, y: 1)
 
                         Image(systemName: item.symbolName)
                             .font(.system(size: 16, weight: .semibold))
@@ -1871,30 +1992,61 @@ private struct CommandQuickActionCard: View {
                     .frame(width: 36, height: 36)
                     .accessibilityHidden(true)
 
-                    Spacer(minLength: 2)
+                    Spacer(minLength: 4)
 
                     if let count = item.badgeCount, count > 0 {
-                        HStack(spacing: 3) {
+                        HStack(spacing: 3.5) {
                             Circle()
                                 .fill(item.accent)
                                 .frame(width: 5, height: 5)
-                                .scaleEffect(isPulsing ? 1.2 : 0.8)
+                                .scaleEffect(isPulsing ? 1.25 : 0.85)
                             Text("\(count)")
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(item.accent)
                                 .monospacedDigit()
+                            if isTwoColumn {
+                                Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundStyle(item.accent.opacity(0.70))
+                            }
                         }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(item.accent.opacity(0.14), in: Capsule(style: .continuous))
+                        .padding(.horizontal, isTwoColumn ? 8 : 6)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                        )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.28), lineWidth: 0.5)
+                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                        )
+                    } else if isTwoColumn && item.isLive {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(item.accent)
+                                .frame(width: 5, height: 5)
+                                .scaleEffect(isPulsing ? 1.25 : 0.85)
+                            Text(Language.get("AdminQuickActions_Live", alter: "Live"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(item.accent)
+                            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(item.accent.opacity(0.70))
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
                         )
                     } else {
-                        Image(systemName: "chevron.forward")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(AdminCommandInk.tertiary.opacity(0.60))
+                        Image(systemName: Language.isRTL() ? "chevron.backward" : "chevron.forward")
+                            .font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(item.accent.opacity(0.75))
                             .accessibilityHidden(true)
                     }
                 }
@@ -1916,32 +2068,55 @@ private struct CommandQuickActionCard: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 102, alignment: .topLeading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: 104)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(AdminSurface.control)
-                    .overlay(
-                        RadialGradient(
-                            colors: [
-                                item.accent.opacity(colorScheme == .dark ? 0.08 : 0.04),
-                                .clear
-                            ],
-                            center: .topLeading,
-                            startRadius: 0,
-                            endRadius: 64
+                ZStack {
+                    // Base canvas to prevent transparency bleed
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+
+                    // Rich full-card accent gradient wash
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    item.accent.opacity(colorScheme == .dark ? 0.28 : 0.18),
+                                    item.accent.opacity(colorScheme == .dark ? 0.14 : 0.08)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                    // Optical radial glow from the leading corner
+                    RadialGradient(
+                        colors: [
+                            item.accent.opacity(colorScheme == .dark ? 0.20 : 0.12),
+                            .clear
+                        ],
+                        center: .topLeading,
+                        startRadius: 0,
+                        endRadius: isTwoColumn ? 120 : 70
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.68 : 0.45), lineWidth: 0.75)
+                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.45 : 0.28), lineWidth: 0.85)
+            )
+            .shadow(
+                color: item.accent.opacity(colorScheme == .dark ? 0.22 : 0.10),
+                radius: 6,
+                x: 0,
+                y: 2.5
             )
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(CommandQuickActionCardStyle())
         .onAppear {
-            if item.badgeCount != nil {
+            if item.badgeCount != nil || item.isLive {
                 withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                     isPulsing = true
                 }

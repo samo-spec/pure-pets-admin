@@ -114,10 +114,11 @@ struct PPVetsListView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
+        VStack(spacing: 0) {
+            dossierHeaderView
+
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    dossierHeaderView
                     statsHeader
                     filterSegment
                     searchField
@@ -127,9 +128,9 @@ struct PPVetsListView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 32)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
             .refreshable { await viewModel.refresh() }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             viewModel.startListening()
@@ -182,56 +183,39 @@ struct PPVetsListView: View {
         }
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
-                }
-
-                Spacer()
-
-                if viewModel.isLoading {
-                    ProgressView().tint(AdminSurface.primary)
+        AdminSovereignNavigationBar(
+            title: Language.get("Vet_Section_Title", alter: "إدارة الأطباء البيطريين والعيادات"),
+            subtitle: Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"),
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
                 } else {
-                    Button(action: { Task { await viewModel.refresh() } }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                            .frame(width: 36, height: 36)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                    dismiss()
                 }
             }
-
-            Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات") + " / " + Language.get("Vet_Section_Title", alter: "الأطباء البيطريين"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("Vet_Section_Title", alter: "إدارة الأطباء البيطريين والعيادات"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
+        ) {
+            if viewModel.isLoading {
+                ProgressView().tint(AdminSurface.primary)
+            } else {
+                Button(action: { Task { await viewModel.refresh() } }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, 12)
     }
 
     // MARK: - Stats Header

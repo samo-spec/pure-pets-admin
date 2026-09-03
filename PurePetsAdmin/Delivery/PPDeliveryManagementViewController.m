@@ -819,39 +819,23 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     UIView *navRow = [UIView new];
     navRow.translatesAutoresizingMaskIntoConstraints = NO;
 
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
-    [backBtn setImage:chevronImg forState:UIControlStateNormal];
-    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
-    backBtn.tintColor = [UIColor ppPrimary];
-    backBtn.titleLabel.font = [Styling fontBold:15];
-    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_onBackTapped)];
     [navRow addSubview:backBtn];
 
-    UIButton *refreshBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    refreshBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *refreshConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
-    [refreshBtn setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refreshConfig] forState:UIControlStateNormal];
-    refreshBtn.tintColor = [UIColor ppPrimary];
-    refreshBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
-    refreshBtn.layer.cornerRadius = 18.0;
-    refreshBtn.layer.masksToBounds = YES;
-    [refreshBtn addTarget:self action:@selector(loadData) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *refreshBtn = [self pp_ButtonWithSystemName:@"arrow.clockwise" action:@selector(loadData)];
     [navRow addSubview:refreshBtn];
 
     [NSLayoutConstraint activateConstraints:@[
         [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
         [backBtn.topAnchor constraintEqualToAnchor:navRow.topAnchor],
         [backBtn.bottomAnchor constraintEqualToAnchor:navRow.bottomAnchor],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44],
 
         [refreshBtn.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor],
         [refreshBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
-        [refreshBtn.widthAnchor constraintEqualToConstant:36],
-        [refreshBtn.heightAnchor constraintEqualToConstant:36]
+        [refreshBtn.widthAnchor constraintEqualToConstant:44],
+        [refreshBtn.heightAnchor constraintEqualToConstant:44]
     ]];
     [stack addArrangedSubview:navRow];
 

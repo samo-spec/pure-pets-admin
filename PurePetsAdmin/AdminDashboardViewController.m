@@ -3433,13 +3433,13 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPVetsListHostingController new];
     }
     if ([tag isEqualToString:@"branches"]) {
-        return [PPBranchesViewController new];
+        return [AdminBranchesHostingController new];
     }
     if ([tag isEqualToString:@"agents"]) {
         return [PPAgentsViewController new];
     }
     if ([tag isEqualToString:@"categories"]) {
-        return [PPCategoriesViewController new];
+        return [AdminCategoriesHostingController new];
     }
     if ([tag isEqualToString:@"moderation"]) {
         return [PPContentModerationViewController new];
@@ -3469,16 +3469,16 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         return [PPAdminWebAppViewController new];
     }
     if ([tag isEqualToString:@"homeControl"]) {
-        return [PPHomeControlPanelViewController new];
+        return [AdminHomeControlHostingController new];
     }
     if ([tag isEqualToString:@"fulfillment"]) {
-        return [PPFulfillmentOrdersViewController new];
+        return [AdminFulfillmentListHostingController new];
     }
     if ([tag isEqualToString:@"delivery"]) {
-        return [PPDeliveryManagementViewController new];
+        return [AdminDeliveryListHostingController new];
     }
     if ([tag isEqualToString:@"accounting"]) {
-        return [PPAccountingViewController new];
+        return [AdminAccountingHostingController new];
     }
     if ([tag isEqualToString:@"providerApplications"]) {
         return [PPProviderApplicationsHostingController new];

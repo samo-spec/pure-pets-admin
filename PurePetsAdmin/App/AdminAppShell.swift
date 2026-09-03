@@ -595,7 +595,17 @@ private struct AdminMoreView: View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
                 AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-                AdminProfileSummaryCard(session: session)
+
+                Button {
+                    router.present(.account, session: session)
+                } label: {
+                    AdminProfileSummaryCard(session: session)
+                }
+                .buttonStyle(V6CardButtonStyle())
+
+                AdminFeaturedSettingsCard(session: session) {
+                    router.present(.settings, session: session)
+                }
 
                 if !routes.isEmpty {
                     AdminRouteGroup(
@@ -606,6 +616,9 @@ private struct AdminMoreView: View {
 
                 AdminUtilityActionGroup(
                     isSigningOut: isSigningOut,
+                    onSettings: {
+                        router.present(.settings, session: session)
+                    },
                     onLanguage: {
                         let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
                         Language.userSelectedLanguage(next)
@@ -616,6 +629,70 @@ private struct AdminMoreView: View {
             .padding(.horizontal, AdminShellMetric.pageMargin)
             .padding(.bottom, 104)
         }
+    }
+}
+
+private struct AdminFeaturedSettingsCard: View {
+    let session: AdminSession
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        Button(action: onOpenSettings) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary,
+                                    AdminSurface.primary.opacity(0.85)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "gearshape.2.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 48, height: 48)
+                .shadow(color: AdminSurface.primary.opacity(0.28), radius: 8, x: 0, y: 4)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(Language.get("Settings_CommandCenter_Title", alter: "إعدادات النظام والتطبيق"))
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text("v6.2")
+                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    }
+
+                    Text(Language.get("Settings_CommandCenter_Subtitle", alter: "التحكم السيادي، التفضيلات، الذاكرة، والتراخيص"))
+                        .font(AdminType.footnote)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                    .padding(8)
+                    .background(AdminSurface.control.opacity(0.6), in: Circle())
+            }
+            .padding(16)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
+                    .stroke(AdminSurface.primary.opacity(0.22), lineWidth: 1)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
     }
 }
 
@@ -646,6 +723,10 @@ private struct AdminProfileSummaryCard: View {
                     .textSelection(.enabled)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
         }
         .padding(16)
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
@@ -665,11 +746,24 @@ private struct AdminProfileSummaryCard: View {
 
 private struct AdminUtilityActionGroup: View {
     let isSigningOut: Bool
+    let onSettings: () -> Void
     let onLanguage: () -> Void
     let onLogout: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
+            Button(action: onSettings) {
+                AdminUtilityRow(
+                    title: Language.get("Settings_CommandCenter_Title", alter: "إعدادات النظام والتطبيق"),
+                    symbol: "gearshape.fill",
+                    tint: AdminSurface.primary,
+                    showsProgress: false
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider().padding(.leading, 58)
+
             Button(action: onLanguage) {
                 AdminUtilityRow(
                     title: Language.get("Confirm_LanguageChange_Title", alter: nil),
@@ -700,6 +794,7 @@ private struct AdminUtilityActionGroup: View {
         )
     }
 }
+
 
 private struct AdminUtilityRow: View {
     let title: String

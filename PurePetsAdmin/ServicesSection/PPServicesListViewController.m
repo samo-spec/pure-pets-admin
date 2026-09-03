@@ -162,27 +162,10 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 
 - (void)setupStatsHeader {
     // 1. Navigation Top Bar (Back Button + Add Button)
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
-    [backBtn setImage:chevronImg forState:UIControlStateNormal];
-    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    [backBtn setTitleColor:AppPrimaryClr forState:UIControlStateNormal];
-    backBtn.tintColor = AppPrimaryClr;
-    backBtn.titleLabel.font = [Styling fontBold:15];
-    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_onBackTapped)];
     [self.view addSubview:backBtn];
 
-    UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    addBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *addConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
-    [addBtn setImage:[UIImage systemImageNamed:@"plus" withConfiguration:addConfig] forState:UIControlStateNormal];
-    addBtn.tintColor = AppPrimaryClr;
-    addBtn.backgroundColor = [AppPrimaryClr colorWithAlphaComponent:0.10];
-    addBtn.layer.cornerRadius = 18.0;
-    addBtn.layer.masksToBounds = YES;
-    [addBtn addTarget:self action:@selector(addServiceTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *addBtn = [self pp_ButtonWithSystemName:@"plus" action:@selector(addServiceTapped)];
     [self.view addSubview:addBtn];
 
     // 2. Eyebrow Category Breadcrumb
@@ -206,12 +189,13 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
     [NSLayoutConstraint activateConstraints:@[
         [backBtn.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4],
         [backBtn.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44],
 
         [addBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
         [addBtn.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-16],
-        [addBtn.widthAnchor constraintEqualToConstant:36],
-        [addBtn.heightAnchor constraintEqualToConstant:36],
+        [addBtn.widthAnchor constraintEqualToConstant:44],
+        [addBtn.heightAnchor constraintEqualToConstant:44],
 
         [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
         [eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:16],

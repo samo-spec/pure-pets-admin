@@ -116,17 +116,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
-    UIImage *chevron = [UIImage systemImageNamed:chevronName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
-    NSString *backText = [Language isRTL] ? @" رجوع" : @" Back";
-    [backBtn setImage:chevron forState:UIControlStateNormal];
-    [backBtn setTitle:backText forState:UIControlStateNormal];
-    backBtn.tintColor = [UIColor ppPrimary];
-    backBtn.titleLabel.font = [Styling fontBold:16];
-    [backBtn setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
-    [backBtn addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(didTapBack)];
     [header addSubview:backBtn];
 
     UILabel *eyebrow = [[UILabel alloc] init];
@@ -152,7 +142,8 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
     [NSLayoutConstraint activateConstraints:@[
         [backBtn.topAnchor constraintEqualToAnchor:header.topAnchor constant:10],
         [backBtn.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44],
 
         [eyebrow.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:10],
         [eyebrow.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:20],

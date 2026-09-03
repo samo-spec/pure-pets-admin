@@ -86,62 +86,29 @@ public struct AdminProvidersView: View {
     // MARK: - Sovereign Header
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center) {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
-                            .font(.system(size: 15, weight: .bold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primaryText)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(AdminSurface.control, in: Capsule(style: .continuous))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                    )
+        AdminSovereignNavigationBar(
+            title: Language.get("Providers_Management_Title", alter: "إدارة منظومة المزودين"),
+            subtitle: Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"),
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
                 }
-                .buttonStyle(ProviderPressStyle())
-
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Image(systemName: "person.2.badge.gearshape.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Providers_Hub", alter: "مركز المزودين"))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات") + " / " + Language.get("Providers_Title", alter: "المزودين"))
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminCommandInk.secondary)
-
-                Text(Language.get("Providers_Management_Title", alter: "إدارة منظومة المزودين"))
-                    .font(AdminType.title2)
-                    .foregroundColor(AdminSurface.primaryText)
+        ) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.2.badge.gearshape.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Providers_Hub", alter: "مركز المزودين"))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
             }
-            .padding(.top, 2)
+            .padding(.horizontal, 10)
+            .frame(height: 38)
+            .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
     }
 
     private var providerTabPicker: some View {
@@ -924,19 +891,26 @@ public struct AdminProviderApplicationDetailView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
             
-            ScrollView {
-                LazyVStack(spacing: 16) {
-                    dossierHeaderNav
-                    heroDossierCard
-                    identifiersMatrix
-                    applicantAndBusinessSection
-                    commercialSection
-                    planSection
-                    reviewHistorySection
+            VStack(spacing: 0) {
+                dossierHeaderNav
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+                    .background(AdminSurface.background)
+
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        heroDossierCard
+                        identifiersMatrix
+                        applicantAndBusinessSection
+                        commercialSection
+                        planSection
+                        reviewHistorySection
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, 10)
+                    .padding(.bottom, 90)
                 }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, 10)
-                .padding(.bottom, 90)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -950,35 +924,14 @@ public struct AdminProviderApplicationDetailView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
     
-    // MARK: - Dossier Navigation Header
+    // MARK: - Sovereign Dossier Navigation Header
     
     private var dossierHeaderNav: some View {
-        HStack {
-            Button(action: { dismiss() }) {
-                HStack(spacing: 6) {
-                    Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
-                        .font(.system(size: 14, weight: .bold))
-                    Text(Language.get("BackToApplications", alter: "العودة للطلبات"))
-                        .font(AdminType.calloutBold)
-                }
-                .foregroundColor(AdminSurface.primaryText)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(AdminSurface.control, in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                )
-            }
-            .buttonStyle(ProviderPressStyle())
-            
-            Spacer()
-            
-            Text(Language.get("Providers_Dossier_Breadcrumb", alter: "ملف طلب المزود"))
-                .font(AdminType.captionBold)
-                .foregroundStyle(AdminCommandInk.secondary)
-        }
-        .padding(.top, 4)
+        AdminSovereignNavigationBar(
+            title: resolvedName,
+            subtitle: Language.get("Providers_Dossier_Breadcrumb", alter: "ملف طلب المزود"),
+            onBack: { dismiss() }
+        )
     }
     
     // MARK: - Hero Dossier Card

@@ -94,61 +94,47 @@ struct AdminPOSHistoryView: View {
         .onAppear { viewModel.load() }
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
+            AdminSovereignNavigationBar(
+                title: Language.get("POS_History_Title", alter: "سجل مبيعات نقطة البيع"),
+                subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات"),
+                onBack: {
                     if let onDismiss {
                         onDismiss()
                     } else {
                         dismiss()
                     }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
                 }
-
-                Spacer()
-
+            ) {
                 if viewModel.isLoading {
                     ProgressView().tint(AdminSurface.primary)
                 } else {
                     Button(action: { viewModel.load() }) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                            .frame(width: 36, height: 36)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
                 }
             }
 
-            Text(Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات") + " / " + Language.get("POS_History_Title", alter: "سجل المبيعات"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("POS_History_Title", alter: "سجل مبيعات نقطة البيع"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-
             if let error = viewModel.errorMessage {
-                AdminErrorBanner(message: error) { viewModel.load() }
+                AdminErrorBanner(message: error, retry: { viewModel.load() })
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
     }
 
     private var summaryHeader: some View {
@@ -244,8 +230,8 @@ private struct ReceiptCard: View {
         VStack(spacing: AdminSpacing.sm) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(receipt.receiptID.hasPrefix("PPPOS-") ? receipt.receiptID : "#\(receipt.receiptID.prefix(8))")
-                        .font(AdminType.headline)
+                    Text(POSReceiptFormat.receiptID(receipt.receiptID))
+                        .font(AdminType.headline.monospaced())
                         .foregroundColor(AdminSurface.primaryText)
                     if let date = receipt.createdAt {
                         Text(formattedDate(date))

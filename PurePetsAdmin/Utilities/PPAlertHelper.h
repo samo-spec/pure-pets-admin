@@ -38,18 +38,18 @@ typedef void (^PPAlertSimpleActionBlock)(void);
 
 @interface PPAlertHelper : NSObject
 
-+ (void)showSuccessIn:(UIViewController *)vc
++ (void)showSuccessIn:(UIViewController * _Nullable)vc
                 title:(NSString *)title
              subtitle:(NSString *)subtitle
              OKAction:(AlertCompletionBlock _Nullable)okAction;
 
 
-+ (void)showFailIn:(UIViewController *)vc
++ (void)showFailIn:(UIViewController * _Nullable)vc
              title:(NSString *)title
           subtitle:(NSString * _Nullable)subtitle
         completion:(void (^ _Nullable)(void))completion;
 
-+ (void)showConfirmationIn:(UIViewController *)vc
++ (void)showConfirmationIn:(UIViewController * _Nullable)vc
                      title:(NSString *)title
                   subtitle:(NSString *)subtitle
              confirmButton:(NSString *)confirmTitle
@@ -59,7 +59,7 @@ typedef void (^PPAlertSimpleActionBlock)(void);
                 cancelBlock:(void(^ _Nullable)(void))cancelBlock
     NS_SWIFT_NAME(showConfirmation(in:title:subtitle:confirmButton:cancelButton:icon:confirmBlock:cancelBlock:));
 
-+ (void)showThreeActionConfirmationIn:(UIViewController *)vc
++ (void)showThreeActionConfirmationIn:(UIViewController * _Nullable)vc
                                 title:(NSString *)title
                              subtitle:(NSString * _Nullable)subtitle
                         primaryButton:(NSString *)primaryTitle
@@ -72,7 +72,7 @@ typedef void (^PPAlertSimpleActionBlock)(void);
                        secondaryBlock:(PPAlertSimpleActionBlock _Nullable)secondaryBlock
                         tertiaryBlock:(PPAlertSimpleActionBlock _Nullable)tertiaryBlock;
 
-+ (void)showTextFieldAlertIn:(UIViewController *)vc
++ (void)showTextFieldAlertIn:(UIViewController * _Nullable)vc
                    title:(NSString *)title
                 subtitle:(NSString * _Nullable)subtitle
              placeholder:(NSString * _Nullable)placeholder
@@ -82,7 +82,7 @@ typedef void (^PPAlertSimpleActionBlock)(void);
              completion:(AlertCompletionBlock)completion
     NS_SWIFT_NAME(showTextField(in:title:subtitle:placeholder:initialText:confirmText:cancelText:completion:));
 
-+ (void)showDestructiveTextFieldAlertIn:(UIViewController *)vc
++ (void)showDestructiveTextFieldAlertIn:(UIViewController * _Nullable)vc
                                   title:(NSString *)title
                                subtitle:(NSString * _Nullable)subtitle
                             placeholder:(NSString * _Nullable)placeholder
@@ -94,25 +94,25 @@ typedef void (^PPAlertSimpleActionBlock)(void);
     NS_SWIFT_NAME(showDestructiveTextField(in:title:subtitle:placeholder:initialText:confirmText:cancelText:icon:completion:));
 
 
-+ (void)showSuccessIn:(UIViewController *)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
-+ (void)showErrorIn:(UIViewController *)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
-+ (void)showErrorIn:(UIViewController *)vc
++ (void)showSuccessIn:(UIViewController * _Nullable)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
++ (void)showErrorIn:(UIViewController * _Nullable)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
++ (void)showErrorIn:(UIViewController * _Nullable)vc
               title:(NSString *)title
            subtitle:(NSString * _Nullable)subtitle
          completion:(void (^ _Nullable)(void))completion;
-+ (void)showWarningIn:(UIViewController *)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
-+ (void)showInfoIn:(UIViewController *)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle
++ (void)showWarningIn:(UIViewController * _Nullable)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle;
++ (void)showInfoIn:(UIViewController * _Nullable)vc title:(NSString *)title subtitle:(NSString * _Nullable)subtitle
     NS_SWIFT_NAME(showInfo(in:title:subtitle:));
-+ (void)showSuccessIn:(UIViewController *)vc
++ (void)showSuccessIn:(UIViewController * _Nullable)vc
                 title:(NSString *)title
              subtitle:(NSString *)subtitle
         confirmAction:(AlertCompletionBlock _Nullable)confirmAction
          cancelAction:(void (^)(void))cancelAction;
-+ (void)showWarningIn:(UIViewController *)vc
++ (void)showWarningIn:(UIViewController * _Nullable)vc
                 title:(NSString *)title
              subtitle:(NSString * _Nullable)subtitle
            completion:(void (^ _Nullable)(void))completion;
-+ (void)showInfoIn:(UIViewController *)vc
++ (void)showInfoIn:(UIViewController * _Nullable)vc
              title:(NSString *)title
           subtitle:(NSString * _Nullable)subtitle
         completion:(void (^ _Nullable)(void))completion;

@@ -50,22 +50,7 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
     navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:navRow];
 
-    UIButton *backButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    backButton.translatesAutoresizingMaskIntoConstraints = NO;
-    backButton.tintColor = [UIColor ppPrimary];
-    backButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-    
-    UIImageSymbolConfiguration *chevronConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    NSString *chevronName = [Language isRTL] ? @"chevron.right" : @"chevron.left";
-    UIImage *chevronImg = [UIImage systemImageNamed:chevronName withConfiguration:chevronConfig];
-    [backButton setImage:chevronImg forState:UIControlStateNormal];
-    [backButton setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    [backButton setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
-    backButton.titleLabel.font = [Styling fontBold:15.0];
-    backButton.titleLabel.adjustsFontForContentSizeCategory = YES;
-    backButton.contentHorizontalAlignment = [Language isRTL] ? UIControlContentHorizontalAlignmentRight : UIControlContentHorizontalAlignmentLeft;
-    [backButton addTarget:self action:@selector(didTapBack) forControlEvents:UIControlEventTouchUpInside];
-    backButton.accessibilityLabel = kLang(@"Back");
+    UIButton *backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(didTapBack)];
     [navRow addSubview:backButton];
 
     UILabel *eyebrowLabel = [UILabel new];
@@ -106,6 +91,7 @@ typedef void(^PPUserPickedBlock)(NSString *displayName, NSString *uid, UIImage *
 
         [backButton.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor],
         [backButton.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
+        [backButton.widthAnchor constraintEqualToConstant:44.0],
         [backButton.heightAnchor constraintEqualToConstant:44.0],
 
         [eyebrowLabel.topAnchor constraintEqualToAnchor:navRow.bottomAnchor constant:2.0],

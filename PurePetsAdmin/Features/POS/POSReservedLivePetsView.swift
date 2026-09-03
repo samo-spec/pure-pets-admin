@@ -1365,7 +1365,7 @@ struct POSReservedPetDossierSheet: View {
                     // Dossier Matrix
                     VStack(spacing: AdminSpacing.xs) {
                         dossierSection(title: Language.get("POS_Section_Reservation", alter: "بيانات الحجز")) {
-                            dossierRow(icon: "number.circle", title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"), value: "#\(item.reservationID)", mono: true)
+                            dossierRow(icon: "number.circle", title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"), value: POSReceiptFormat.receiptID(item.reservationID), mono: true)
                             if let valid = item.validUntil {
                                 dossierRow(icon: "clock.fill", title: Language.get("POS_ValidUntil", alter: "صالح حتى"), value: {
                                     let fmt = DateFormatter()

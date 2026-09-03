@@ -39,6 +39,7 @@
 		86200C95A3CA4EA2AD869767 /* PPVetDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = CEFE7BC8BF5E4D1DA7960E4A /* PPVetDetailViewController.m */; };
 		8B3EC4893F31BD779D1C4373 /* QBImagePickerController.m in Sources */ = {isa = PBXBuildFile; fileRef = 86ED84CAB52487E1E5197671 /* QBImagePickerController.m */; };
 		8D84A87ABF284DC5B78DA5AD /* Features/More/ListingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AA9664DE0C4A44841DF0E5 /* Features/More/ListingsView.swift */; };
+		8D84A87ABF284DC5B78DA5AE /* Features/More/PPListingsCommandCenterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39AA9664DE0C4A44841DF0E6 /* Features/More/PPListingsCommandCenterView.swift */; };
 		90B98C02801D4AA8B7F1FE94 /* Features/Payments/PaymentSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 037779E2FB6A43D1886C40F6 /* Features/Payments/PaymentSettingsView.swift */; };
 		91EFB51D1B5E49E5A19CBD3D /* QBCheckmarkView.m in Sources */ = {isa = PBXBuildFile; fileRef = 29016B70109625BAC85478C3 /* QBCheckmarkView.m */; };
 		93E4C4B825184049A053BDDE /* PPFunc+Haptics.m in Sources */ = {isa = PBXBuildFile; fileRef = 3523049A7A294AF29967D4A0 /* PPFunc+Haptics.m */; };
@@ -173,6 +174,9 @@
 		F28B84022E70A52300697671 /* MainBannerModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B83F22E70A52300697671 /* MainBannerModel.m */; };
 		F28B84052E70AAC700697671 /* PPColorUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B84042E70AAC700697671 /* PPColorUtils.m */; };
 		F28B84082E70BA1B00697671 /* PPAddBannerViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B84072E70BA0A00697671 /* PPAddBannerViewController.m */; settings = {COMPILER_FLAGS = "-w"; }; };
+		F28B84182E70D00100697671 /* PPAddBannerEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F28B84172E70D00100697671 /* PPAddBannerEditorView.swift */; };
+		F28B84122E70C00100697671 /* PPFlagshipBannerCardCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B84112E70C00100697671 /* PPFlagshipBannerCardCell.m */; };
+		F28B84152E70C00100697671 /* PPBannerLivePreviewVC.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B84142E70C00100697671 /* PPBannerLivePreviewVC.m */; };
 		F29C7B042E57E57D00E427DA /* XLFormSubtitleSwitchCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F29C7B032E57E57D00E427DA /* XLFormSubtitleSwitchCell.m */; };
 		F29C7B072E57EB0200E427DA /* XLFormRowDescriptor+Extras.m in Sources */ = {isa = PBXBuildFile; fileRef = F29C7B062E57EB0200E427DA /* XLFormRowDescriptor+Extras.m */; };
 		F29D11652E72DCC8001A3F2E /* PPImageEditor.m in Sources */ = {isa = PBXBuildFile; fileRef = F29D11642E72DCAD001A3F2E /* PPImageEditor.m */; };
@@ -355,6 +359,7 @@
 		38AB14AA34F486C60429D7F7 /* QBSlomoIconView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QBSlomoIconView.m; sourceTree = "<group>"; };
 		38FBF58EF5983E375E028134 /* ImageViewerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ImageViewerController.h; sourceTree = "<group>"; };
 		39AA9664DE0C4A44841DF0E5 /* Features/More/ListingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/ListingsView.swift; sourceTree = "<group>"; };
+		39AA9664DE0C4A44841DF0E6 /* Features/More/PPListingsCommandCenterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/PPListingsCommandCenterView.swift; sourceTree = "<group>"; };
 		3B1FB3466EFD4302802B480D /* Features/Payments/PaymentDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Payments/PaymentDetailView.swift; sourceTree = "<group>"; };
 		3DA39278C2834B63BDD94871 /* App/AdminRouteDestinationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App/AdminRouteDestinationView.swift; sourceTree = "<group>"; };
 		3F173B5D57994D969B7CF647 /* Features/Operations/AgentsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/AgentsView.swift; sourceTree = "<group>"; };
@@ -604,6 +609,11 @@
 		F28B84042E70AAC700697671 /* PPColorUtils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPColorUtils.m; sourceTree = "<group>"; };
 		F28B84062E70B62B00697671 /* PPAddBannerViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPAddBannerViewController.h; sourceTree = "<group>"; };
 		F28B84072E70BA0A00697671 /* PPAddBannerViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPAddBannerViewController.m; sourceTree = "<group>"; };
+		F28B84172E70D00100697671 /* PPAddBannerEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAddBannerEditorView.swift; sourceTree = "<group>"; };
+		F28B84102E70C00100697671 /* PPFlagshipBannerCardCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFlagshipBannerCardCell.h; sourceTree = "<group>"; };
+		F28B84112E70C00100697671 /* PPFlagshipBannerCardCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPFlagshipBannerCardCell.m; sourceTree = "<group>"; };
+		F28B84132E70C00100697671 /* PPBannerLivePreviewVC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBannerLivePreviewVC.h; sourceTree = "<group>"; };
+		F28B84142E70C00100697671 /* PPBannerLivePreviewVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBannerLivePreviewVC.m; sourceTree = "<group>"; };
 		F29C7B022E57E57700E427DA /* XLFormSubtitleSwitchCell.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = XLFormSubtitleSwitchCell.h; sourceTree = "<group>"; };
 		F29C7B032E57E57D00E427DA /* XLFormSubtitleSwitchCell.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = XLFormSubtitleSwitchCell.m; sourceTree = "<group>"; };
 		F29C7B052E57EAFB00E427DA /* XLFormRowDescriptor+Extras.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "XLFormRowDescriptor+Extras.h"; sourceTree = "<group>"; };
@@ -1240,6 +1250,7 @@
 				C189C4ACC16F404B80F3C3E4 /* Features/More/BannersView.swift */,
 				9E7F8CC8A13C484C95016649 /* Features/More/NotificationSettingsView.swift */,
 				39AA9664DE0C4A44841DF0E5 /* Features/More/ListingsView.swift */,
+				39AA9664DE0C4A44841DF0E6 /* Features/More/PPListingsCommandCenterView.swift */,
 				7871FA36A67146949629E864 /* Features/More/AccountView.swift */,
 				A4625C65E1CE495C9DE824C0 /* Features/More/NotificationsView.swift */,
 				DF6A30E2669147BEB8C4CBC6 /* Shared/Components/AdminSharedComponents.swift */,
@@ -1368,6 +1379,7 @@
 				F29D11572E70F793001A3F2E /* BannersHelpers */,
 				F28B84062E70B62B00697671 /* PPAddBannerViewController.h */,
 				F28B84072E70BA0A00697671 /* PPAddBannerViewController.m */,
+				F28B84172E70D00100697671 /* PPAddBannerEditorView.swift */,
 				F28B83F12E70A52300697671 /* MainBannerModel.h */,
 				F28B83F22E70A52300697671 /* MainBannerModel.m */,
 				F28B83F32E70A52300697671 /* PPBannerCell.h */,
@@ -1382,6 +1394,10 @@
 				F28B83FC2E70A52300697671 /* PPBannerViewModel.m */,
 				F28B83EE2E70A49100697671 /* PPBannersListVC.h */,
 				F28B83EF2E70A49100697671 /* PPBannersListVC.m */,
+				F28B84102E70C00100697671 /* PPFlagshipBannerCardCell.h */,
+				F28B84112E70C00100697671 /* PPFlagshipBannerCardCell.m */,
+				F28B84132E70C00100697671 /* PPBannerLivePreviewVC.h */,
+				F28B84142E70C00100697671 /* PPBannerLivePreviewVC.m */,
 			);
 			path = Banners;
 			sourceTree = "<group>";
@@ -2228,6 +2244,7 @@
 				F2A346342E58084300C6713D /* XLFormOptionsObject+Extras.m in Sources */,
 				F2D542F62E5AA257004F6B9F /* PPEmailFieldCell.m in Sources */,
 				F28B84082E70BA1B00697671 /* PPAddBannerViewController.m in Sources */,
+				F28B84182E70D00100697671 /* PPAddBannerEditorView.swift in Sources */,
 				F27434DC2E5C8C610054C091 /* PPToast.m in Sources */,
 				F2E33F4A3005E8D6005E31C6 /* PPAuditLogEntryModel.m in Sources */,
 				F2E33F4B3005E8D6005E31C6 /* PPCategoryEditorViewController.m in Sources */,
@@ -2351,6 +2368,8 @@
 				F2D543022E5AD22A004F6B9F /* PPButtonHelper.m in Sources */,
 				F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */,
 				F28B83F02E70A49100697671 /* PPBannersListVC.m in Sources */,
+				F28B84122E70C00100697671 /* PPFlagshipBannerCardCell.m in Sources */,
+				F28B84152E70C00100697671 /* PPBannerLivePreviewVC.m in Sources */,
 				F2A3463A2E580F3200C6713D /* RoleOptionsViewController.m in Sources */,
 				F2C23F3330055AD6005E31C6 /* PPChatsViewController.m in Sources */,
 				F2C23F3630055AD6005E31C6 /* PPSettingsViewController.m in Sources */,
@@ -2423,6 +2442,7 @@
 				55EFB874297048C0B9150FC2 /* Features/More/BannersView.swift in Sources */,
 				4A10BD8B38924554A193EEA1 /* Features/More/NotificationSettingsView.swift in Sources */,
 				8D84A87ABF284DC5B78DA5AD /* Features/More/ListingsView.swift in Sources */,
+				8D84A87ABF284DC5B78DA5AE /* Features/More/PPListingsCommandCenterView.swift in Sources */,
 				ABBBFA1F9BDC48678C2EAFA9 /* Features/More/AccountView.swift in Sources */,
 				1A501138C31C4AB198EC2143 /* Features/More/NotificationsView.swift in Sources */,
 				48ACE98451E14BD29F239486 /* Shared/Components/AdminSharedComponents.swift in Sources */,

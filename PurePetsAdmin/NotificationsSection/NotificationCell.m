@@ -25,8 +25,6 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
 @property (nonatomic, strong) UIImageView *iconImageView;
 @property (nonatomic, strong) UIView *unreadDot;
 
-@property (nonatomic, strong) UILabel *categoryLabel;
-@property (nonatomic, strong) UIView *categoryPill;
 @property (nonatomic, strong) UILabel *orderPillLabel;
 @property (nonatomic, strong) UIView *orderPill;
 
@@ -34,9 +32,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *bodyLabel;
 
-@property (nonatomic, strong) UIButton *actionButton;
 @property (nonatomic, strong, nullable) NotificationModel *currentModel;
-@property (nonatomic, strong) NSLayoutConstraint *actionButtonHeightConstraint;
 @end
 
 @implementation NotificationCell
@@ -89,20 +85,6 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
     _unreadDot.layer.masksToBounds = YES;
     [_cardSurface addSubview:_unreadDot];
 
-    // Category Pill
-    _categoryPill = [[UIView alloc] init];
-    _categoryPill.translatesAutoresizingMaskIntoConstraints = NO;
-    _categoryPill.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.08];
-    PPApplyContinuousCorners(_categoryPill, PPCornerPill);
-    [_cardSurface addSubview:_categoryPill];
-
-    _categoryLabel = [[UILabel alloc] init];
-    _categoryLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _categoryLabel.font = [Styling fontBold:11.0];
-    _categoryLabel.textColor = [UIColor ppPrimary];
-    _categoryLabel.textAlignment = NSTextAlignmentCenter;
-    [_categoryPill addSubview:_categoryLabel];
-
     // Order ID Pill
     _orderPill = [[UIView alloc] init];
     _orderPill.translatesAutoresizingMaskIntoConstraints = NO;
@@ -144,17 +126,6 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
     _bodyLabel.textAlignment = Language.alignmentForCurrentLanguage;
     [_cardSurface addSubview:_bodyLabel];
 
-    // Direct Action Button
-    _actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _actionButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _actionButton.titleLabel.font = [Styling fontBold:12.5];
-    _actionButton.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
-    PPApplyContinuousCorners(_actionButton, PPCornerSmall);
-    [_actionButton addTarget:self action:@selector(actionButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-    [_cardSurface addSubview:_actionButton];
-
-    _actionButtonHeightConstraint = [_actionButton.heightAnchor constraintEqualToConstant:32.0];
-
     [NSLayoutConstraint activateConstraints:@[
         [_cardSurface.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:6],
         [_cardSurface.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:16],
@@ -178,17 +149,9 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
         [_unreadDot.topAnchor constraintEqualToAnchor:_iconSurface.topAnchor constant:-2],
         [_unreadDot.trailingAnchor constraintEqualToAnchor:_iconSurface.trailingAnchor constant:2],
 
-        // Top Metadata Row: Category Pill + Order Pill + Time Label
-        [_categoryPill.centerYAnchor constraintEqualToAnchor:_timeLabel.centerYAnchor],
-        [_categoryPill.leadingAnchor constraintEqualToAnchor:_iconSurface.trailingAnchor constant:12],
-        [_categoryPill.heightAnchor constraintEqualToConstant:22],
-
-        [_categoryLabel.leadingAnchor constraintEqualToAnchor:_categoryPill.leadingAnchor constant:8],
-        [_categoryLabel.trailingAnchor constraintEqualToAnchor:_categoryPill.trailingAnchor constant:-8],
-        [_categoryLabel.centerYAnchor constraintEqualToAnchor:_categoryPill.centerYAnchor],
-
-        [_orderPill.centerYAnchor constraintEqualToAnchor:_categoryPill.centerYAnchor],
-        [_orderPill.leadingAnchor constraintEqualToAnchor:_categoryPill.trailingAnchor constant:6],
+        // Top Metadata Row: Order Pill + Time Label
+        [_orderPill.centerYAnchor constraintEqualToAnchor:_timeLabel.centerYAnchor],
+        [_orderPill.leadingAnchor constraintEqualToAnchor:_iconSurface.trailingAnchor constant:12],
         [_orderPill.heightAnchor constraintEqualToConstant:22],
 
         [_orderPillLabel.leadingAnchor constraintEqualToAnchor:_orderPill.leadingAnchor constant:8],
@@ -200,7 +163,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
         [_timeLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:_orderPill.trailingAnchor constant:8],
 
         // Title
-        [_titleLabel.topAnchor constraintEqualToAnchor:_categoryPill.bottomAnchor constant:8],
+        [_titleLabel.topAnchor constraintEqualToAnchor:_timeLabel.bottomAnchor constant:8],
         [_titleLabel.leadingAnchor constraintEqualToAnchor:_iconSurface.trailingAnchor constant:12],
         [_titleLabel.trailingAnchor constraintEqualToAnchor:_cardSurface.trailingAnchor constant:-14],
 
@@ -208,20 +171,8 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
         [_bodyLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:4],
         [_bodyLabel.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
         [_bodyLabel.trailingAnchor constraintEqualToAnchor:_titleLabel.trailingAnchor],
-
-        // Action Button
-        [_actionButton.topAnchor constraintEqualToAnchor:_bodyLabel.bottomAnchor constant:10],
-        [_actionButton.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-        _actionButtonHeightConstraint,
-        [_actionButton.bottomAnchor constraintEqualToAnchor:_cardSurface.bottomAnchor constant:-14]
+        [_bodyLabel.bottomAnchor constraintEqualToAnchor:_cardSurface.bottomAnchor constant:-14]
     ]];
-}
-
-- (void)actionButtonTapped {
-    [PPFunc pp_playTapEffect];
-    if (self.onDirectActionTapped && self.currentModel) {
-        self.onDirectActionTapped(self.currentModel);
-    }
 }
 
 - (PPAdminNotificationCategory)categoryForModel:(NotificationModel *)m {
@@ -296,14 +247,9 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
             categoryText = [Language isRTL] ? @"إشعار نظام" : @"System";
             break;
     }
-    
     _iconSurface.backgroundColor = [accent colorWithAlphaComponent:0.12];
     _iconImageView.tintColor = accent;
     _iconImageView.image = [UIImage systemImageNamed:symbolName];
-    
-    _categoryPill.backgroundColor = [accent colorWithAlphaComponent:0.10];
-    _categoryLabel.textColor = accent;
-    _categoryLabel.text = categoryText;
     
     // Order ID Pill
     NSDictionary *meta = [m.meta isKindOfClass:NSDictionary.class] ? m.meta : @{};
@@ -334,26 +280,6 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationCategory) {
     
     // Relative Timestamp
     _timeLabel.text = [self relativeDateStringForDate:m.createdAt];
-    
-    // Direct Action Button
-    if (cat == PPAdminNotificationCategoryOrder && orderID.length > 0) {
-        _actionButton.hidden = NO;
-        _actionButtonHeightConstraint.constant = 32.0;
-        _actionButton.backgroundColor = [accent colorWithAlphaComponent:0.12];
-        [_actionButton setTitleColor:accent forState:UIControlStateNormal];
-        NSString *btnTitle = [Language isRTL] ? @"عرض الطلب ➔" : @"View Order ➔";
-        [_actionButton setTitle:btnTitle forState:UIControlStateNormal];
-    } else if (cat == PPAdminNotificationCategorySupport) {
-        _actionButton.hidden = NO;
-        _actionButtonHeightConstraint.constant = 32.0;
-        _actionButton.backgroundColor = [accent colorWithAlphaComponent:0.12];
-        [_actionButton setTitleColor:accent forState:UIControlStateNormal];
-        NSString *btnTitle = [Language isRTL] ? @"فتح المحادثة ➔" : @"Open Chat ➔";
-        [_actionButton setTitle:btnTitle forState:UIControlStateNormal];
-    } else {
-        _actionButton.hidden = YES;
-        _actionButtonHeightConstraint.constant = 0.0;
-    }
 }
 
 - (NSString *)relativeDateStringForDate:(NSDate *)date {

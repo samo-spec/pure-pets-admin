@@ -103,20 +103,17 @@ static NSString *PPAdminNotificationOrderIDFromUserInfo(NSDictionary *userInfo)
      if (![scene isKindOfClass:[UIWindowScene class]]) return;
 
      
-    /*
-     // Always start with splash
-     //[self setRoot:AppRootSplash animated:NO];
-     UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
-     [appearance configureWithTransparentBackground];
-     appearance.shadowColor = UIColor.clearColor;
-     appearance.backgroundColor = UIColor.clearColor;
-     
-     [UINavigationBar appearance].standardAppearance = appearance;
-     [UINavigationBar appearance].scrollEdgeAppearance = appearance;
-     [UINavigationBar appearance].compactAppearance = appearance;
-     [UINavigationBar appearance].tintColor = UIColor.clearColor;
-
-     */
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [UINavigationBarAppearance new];
+        [appearance configureWithTransparentBackground];
+        appearance.shadowColor = UIColor.clearColor;
+        appearance.backgroundColor = UIColor.clearColor;
+        appearance.shadowImage = [UIImage new];
+        
+        [UINavigationBar appearance].standardAppearance = appearance;
+        [UINavigationBar appearance].scrollEdgeAppearance = appearance;
+        [UINavigationBar appearance].compactAppearance = appearance;
+    }
      
      UIWindowScene *windowScene = (UIWindowScene *)scene;
      if (!self.window) {

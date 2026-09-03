@@ -905,18 +905,8 @@ static NSDictionary *PPChatsMessageReadV2Fields(NSString *staffUID) {
     UIButton *backButton = nil;
     UILabel *name = nil;
     if (!usesGlobalNavigation) {
-        backButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        backButton.translatesAutoresizingMaskIntoConstraints = NO;
-        UIImageSymbolConfiguration *backSymbol = [UIImageSymbolConfiguration configurationWithPointSize:17.0 weight:UIImageSymbolWeightSemibold];
-        NSString *backSymbolName = Language.isRTL ? @"chevron.right" : @"chevron.left";
-        [backButton setImage:[UIImage systemImageNamed:backSymbolName withConfiguration:backSymbol] forState:UIControlStateNormal];
-        backButton.tintColor = [UIColor ppPrimary];
-        backButton.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.12];
-        PPChatsApplyContinuousCorners(backButton, 22.0);
-        backButton.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
-        backButton.layer.borderColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.30].CGColor;
+        backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(backTapped)];
         backButton.accessibilityLabel = PPChatsL(@"Back");
-        [backButton addTarget:self action:@selector(backTapped) forControlEvents:UIControlEventTouchUpInside];
         [card addSubview:backButton];
 
         name = [UILabel new];

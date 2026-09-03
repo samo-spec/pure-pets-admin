@@ -22,6 +22,7 @@
 #import "PPHUD.h"
 #import "PPToast.h"
 #import "SceneDelegate.h"
+#import "PurePetsAdmin-Swift.h"
 @import FirebaseAuth;
 
 typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
@@ -47,11 +48,21 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 @property (nonatomic, strong) UIRefreshControl *refreshControl;
 @property (nonatomic, strong) UIView *cockpitHeaderView;
 
+// Custom Dossier Navigation Bar
+@property (nonatomic, strong) UIView *dossierNavBarView;
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *navEyebrowLabel;
+@property (nonatomic, strong) UILabel *navTitleLabel;
+@property (nonatomic, strong) UIButton *markAllNavButton;
+@property (nonatomic, strong) UIButton *composeNavButton;
+@property (nonatomic, strong) UIButton *settingsNavButton;
+
 // Cockpit Metric Badges
 @property (nonatomic, strong) UILabel *kpiTotalLabel;
 @property (nonatomic, strong) UILabel *kpiUnreadLabel;
 @property (nonatomic, strong) UILabel *kpiOrdersLabel;
 @property (nonatomic, strong) UILabel *kpiChatLabel;
+@property (nonatomic, strong) NSMutableArray<UIView *> *kpiTiles;
 
 // Search & Lens
 @property (nonatomic, strong) UITextField *searchField;
@@ -93,7 +104,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     self.activeLens = PPAdminNotificationLensInbox;
     self.searchQuery = @"";
 
-    [self setupNavigation];
+    [self setupDossierNavBar];
     [self setupTableView];
     [self setupCockpitHeader];
     [self setupEmptyStateView];
@@ -102,6 +113,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
     [self updateNavigationButtons];
     
     NSString *currentUID = [FIRAuth auth].currentUser.uid ?: @"";
@@ -118,39 +130,162 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     self.inboxListener = nil;
 }
 
-#pragma mark - Navigation
+#pragma mark - Custom Dossier Navigation Bar
+
+- (void)setupDossierNavBar {
+    if (self.dossierNavBarView) return;
+
+    self.dossierNavBarView = [[UIView alloc] init];
+    self.dossierNavBarView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dossierNavBarView.backgroundColor = [UIColor ppBackground];
+    self.dossierNavBarView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.view addSubview:self.dossierNavBarView];
+
+    UIView *hairline = [[UIView alloc] init];
+    hairline.translatesAutoresizingMaskIntoConstraints = NO;
+    hairline.backgroundColor = [UIColor ppSurfaceBorder];
+    [self.dossierNavBarView addSubview:hairline];
+
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    container.backgroundColor = UIColor.clearColor;
+    container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.dossierNavBarView addSubview:container];
+
+    // 1. Back Squircle Button
+    self.backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(handleBackAction)];
+    [container addSubview:self.backButton];
+
+    // 2. Title Stack
+    UIStackView *titleStack = [[UIStackView alloc] init];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.axis = UILayoutConstraintAxisVertical;
+    titleStack.alignment = UIStackViewAlignmentCenter;
+    titleStack.spacing = 1;
+    titleStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:titleStack];
+
+    self.navEyebrowLabel = [[UILabel alloc] init];
+    self.navEyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.navEyebrowLabel.text = [Language isRTL] ? @"مركز العمليات" : @"Operations Center";
+    self.navEyebrowLabel.font = [Styling fontBold:10.5];
+    self.navEyebrowLabel.textColor = [UIColor ppTextTertiary];
+    self.navEyebrowLabel.textAlignment = NSTextAlignmentCenter;
+    [titleStack addArrangedSubview:self.navEyebrowLabel];
+
+    self.navTitleLabel = [[UILabel alloc] init];
+    self.navTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.navTitleLabel.text = [Language isRTL] ? @"الإشعارات والتنبيهات" : @"Notifications & Alerts";
+    self.navTitleLabel.font = [Styling fontBold:16.5];
+    self.navTitleLabel.textColor = [UIColor ppTextPrimary];
+    self.navTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [titleStack addArrangedSubview:self.navTitleLabel];
+
+    // 3. Trailing Action Buttons Stack
+    UIStackView *actionsStack = [[UIStackView alloc] init];
+    actionsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    actionsStack.axis = UILayoutConstraintAxisHorizontal;
+    actionsStack.alignment = UIStackViewAlignmentCenter;
+    actionsStack.spacing = 6;
+    actionsStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:actionsStack];
+
+    self.markAllNavButton = [self makeNavCircleButtonWithIcon:@"checklist.checked"
+                                                        color:[UIColor ppPrimary]
+                                                       action:@selector(markAllAsReadTapped)];
+    self.markAllNavButton.accessibilityLabel = [Language isRTL] ? @"تحديد الكل كمقروء" : @"Mark all read";
+    [actionsStack addArrangedSubview:self.markAllNavButton];
+
+    self.composeNavButton = [self makeNavCircleButtonWithIcon:@"paperplane.fill"
+                                                        color:[UIColor ppPrimary]
+                                                       action:@selector(openComposerTapped)];
+    self.composeNavButton.accessibilityLabel = [Language isRTL] ? @"إرسال إشعار" : @"Compose notification";
+    [actionsStack addArrangedSubview:self.composeNavButton];
+
+    self.settingsNavButton = [self makeNavCircleButtonWithIcon:@"slider.horizontal.3"
+                                                         color:[UIColor ppTextSecondary]
+                                                        action:@selector(openSettingsTapped)];
+    self.settingsNavButton.accessibilityLabel = [Language isRTL] ? @"إعدادات الإشعارات" : @"Notification settings";
+    [actionsStack addArrangedSubview:self.settingsNavButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.dossierNavBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.dossierNavBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.dossierNavBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.dossierNavBarView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:56],
+
+        [hairline.leadingAnchor constraintEqualToAnchor:self.dossierNavBarView.leadingAnchor],
+        [hairline.trailingAnchor constraintEqualToAnchor:self.dossierNavBarView.trailingAnchor],
+        [hairline.bottomAnchor constraintEqualToAnchor:self.dossierNavBarView.bottomAnchor],
+        [hairline.heightAnchor constraintEqualToConstant:0.5],
+
+        [container.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [container.bottomAnchor constraintEqualToAnchor:self.dossierNavBarView.bottomAnchor constant:-4],
+        [container.leadingAnchor constraintEqualToAnchor:self.dossierNavBarView.leadingAnchor constant:14],
+        [container.trailingAnchor constraintEqualToAnchor:self.dossierNavBarView.trailingAnchor constant:-14],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44],
+        [self.backButton.heightAnchor constraintEqualToConstant:44],
+
+        [titleStack.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [titleStack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [titleStack.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.backButton.trailingAnchor constant:8],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:actionsStack.leadingAnchor constant:-8],
+
+        [actionsStack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [actionsStack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor]
+    ]];
+}
+
+- (UIButton *)makeNavCircleButtonWithIcon:(NSString *)iconName color:(UIColor *)color action:(SEL)action {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImage *img = [UIImage systemImageNamed:iconName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    [btn setImage:img forState:UIControlStateNormal];
+    btn.tintColor = color;
+    btn.backgroundColor = [color colorWithAlphaComponent:0.08];
+    btn.layer.borderWidth = 0.5;
+    btn.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    PPApplyContinuousCorners(btn, 18.0);
+    [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.widthAnchor constraintEqualToConstant:36],
+        [btn.heightAnchor constraintEqualToConstant:36]
+    ]];
+    return btn;
+}
+
+- (void)handleBackAction {
+    [PPFunc pp_playTapEffect];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+        return;
+    }
+    if ([self pp_dismissWorkflowRouteIfPossible]) {
+        return;
+    }
+    if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+    if (self.tabBarController && self.tabBarController.selectedIndex != 0) {
+        self.tabBarController.selectedIndex = 0;
+        return;
+    }
+    [PPAdminNavigationFallback popOrDismissFrom:self];
+}
+
+#pragma mark - Legacy Navigation Compatibility
 
 - (void)setupNavigation {
-    NSString *navTitle = kLang(@"NotificationsTitle") ?: ([Language isRTL] ? @"الإشعارات" : @"Notifications");
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:navTitle showBack:YES];
-
-    [self updateNavigationButtons];
+    [self setupDossierNavBar];
 }
 
 - (void)updateNavigationButtons {
-    // 1. Settings button
-    UIButton *settingsBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    settingsBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [settingsBtn setImage:[UIImage systemImageNamed:@"slider.horizontal.3"] forState:UIControlStateNormal];
-    settingsBtn.tintColor = [UIColor ppPrimary];
-    [settingsBtn addTarget:self action:@selector(openSettingsTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self pp_navBarAddActionButton:settingsBtn key:@"notif_settings"];
-
-    // 2. Compose broadcast button
-    UIButton *composeBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    composeBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [composeBtn setImage:[UIImage systemImageNamed:@"paperplane.fill"] forState:UIControlStateNormal];
-    composeBtn.tintColor = [UIColor ppPrimary];
-    [composeBtn addTarget:self action:@selector(openComposerTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self pp_navBarAddActionButton:composeBtn key:@"notif_compose"];
-
-    // 3. Mark all as read button
-    UIButton *markAllBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    markAllBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [markAllBtn setImage:[UIImage systemImageNamed:@"checklist.checked"] forState:UIControlStateNormal];
-    markAllBtn.tintColor = [UIColor ppPrimary];
-    [markAllBtn addTarget:self action:@selector(markAllAsReadTapped) forControlEvents:UIControlEventTouchUpInside];
-    [self pp_navBarAddActionButton:markAllBtn key:@"notif_mark_all"];
+    // Buttons are hosted inside dossierNavBarView
 }
 
 - (void)openSettingsTapped {
@@ -203,7 +338,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     _tableView.rowHeight = UITableViewAutomaticDimension;
     _tableView.estimatedRowHeight = 130.0;
     _tableView.sectionHeaderTopPadding = 8.0;
-    _tableView.contentInset = UIEdgeInsetsMake(0, 0, 90, 0);
+    _tableView.contentInset = UIEdgeInsetsMake(8, 0, 90, 0);
     [_tableView registerClass:[NotificationCell class] forCellReuseIdentifier:[NotificationCell reuseId]];
 
     _refreshControl = [[UIRefreshControl alloc] init];
@@ -214,7 +349,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     [self.view addSubview:_tableView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_tableView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [_tableView.topAnchor constraintEqualToAnchor:self.dossierNavBarView.bottomAnchor],
         [_tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
@@ -223,57 +358,73 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 
 - (void)setupCockpitHeader {
     CGFloat screenW = UIScreen.mainScreen.bounds.size.width;
-    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screenW, 310)];
+    CGFloat headerH = 328.0;
+    UIView *header = [[UIView alloc] initWithFrame:CGRectMake(0, 0, screenW, headerH)];
     header.backgroundColor = UIColor.clearColor;
     header.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    // 1. Cockpit Metric Card
-    UIView *metricsCard = [[UIView alloc] init];
-    metricsCard.translatesAutoresizingMaskIntoConstraints = NO;
-    metricsCard.backgroundColor = [UIColor ppSurfaceElevated];
-    metricsCard.layer.borderWidth = 1.0;
-    metricsCard.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
-    PPApplyContinuousCorners(metricsCard, PPCornerCard);
-    PPApplyCardShadow(metricsCard);
-    [header addSubview:metricsCard];
+    self.kpiTiles = [NSMutableArray array];
 
-    UIStackView *metricsGrid = [[UIStackView alloc] init];
-    metricsGrid.translatesAutoresizingMaskIntoConstraints = NO;
-    metricsGrid.axis = UILayoutConstraintAxisHorizontal;
-    metricsGrid.distribution = UIStackViewDistributionFillEqually;
-    metricsGrid.spacing = 8;
-    [metricsCard addSubview:metricsGrid];
+    // 1. Bento Grid (2x2)
+    UIStackView *gridStack = [[UIStackView alloc] init];
+    gridStack.translatesAutoresizingMaskIntoConstraints = NO;
+    gridStack.axis = UILayoutConstraintAxisVertical;
+    gridStack.spacing = 10;
+    gridStack.distribution = UIStackViewDistributionFillEqually;
+    gridStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [header addSubview:gridStack];
 
     _kpiTotalLabel = [self makeKPILabelWithColor:[UIColor ppTextPrimary]];
     _kpiUnreadLabel = [self makeKPILabelWithColor:[UIColor ppPrimary]];
-    _kpiOrdersLabel = [self makeKPILabelWithColor:[UIColor ppQuickActionShopping] ?: [UIColor systemOrangeColor]];
-    _kpiChatLabel = [self makeKPILabelWithColor:[UIColor ppQuickActionServices] ?: [UIColor systemGreenColor]];
+    _kpiOrdersLabel = [self makeKPILabelWithColor:[UIColor systemOrangeColor]];
+    _kpiChatLabel = [self makeKPILabelWithColor:[UIColor systemGreenColor]];
 
-    UIView *tileTotal = [self makeKPITileWithTitle:[Language isRTL] ? @"الإجمالي" : @"Total"
-                                             icon:@"bell.fill"
-                                            color:[UIColor ppTextPrimary]
-                                       valueLabel:_kpiTotalLabel
-                                              tag:PPAdminNotificationLensInbox];
+    UIView *tileTotal = [self makeKPITileWithTitle:[Language isRTL] ? @"كافة التنبيهات" : @"All Alerts"
+                                          subtitle:[Language isRTL] ? @"السجل العام" : @"Full Stream"
+                                              icon:@"bell.fill"
+                                             color:[UIColor ppTextSecondary]
+                                        valueLabel:_kpiTotalLabel
+                                               tag:PPAdminNotificationLensInbox];
+
     UIView *tileUnread = [self makeKPITileWithTitle:[Language isRTL] ? @"غير مقروء" : @"Unread"
-                                              icon:@"envelope.badge.fill"
-                                             color:[UIColor ppPrimary]
-                                        valueLabel:_kpiUnreadLabel
-                                               tag:PPAdminNotificationLensUnread];
-    UIView *tileOrders = [self makeKPITileWithTitle:[Language isRTL] ? @"الطلبات" : @"Orders"
-                                              icon:@"bag.fill"
-                                             color:[UIColor ppQuickActionShopping] ?: [UIColor systemOrangeColor]
-                                        valueLabel:_kpiOrdersLabel
-                                               tag:PPAdminNotificationLensOrders];
-    UIView *tileChat = [self makeKPITileWithTitle:[Language isRTL] ? @"الدعم" : @"Support"
-                                            icon:@"bubble.left.and.bubble.right.fill"
-                                           color:[UIColor ppQuickActionServices] ?: [UIColor systemGreenColor]
-                                      valueLabel:_kpiChatLabel
-                                             tag:PPAdminNotificationLensChat];
+                                           subtitle:[Language isRTL] ? @"بحاجة لمتابعة" : @"Action Required"
+                                               icon:@"envelope.badge.fill"
+                                              color:[UIColor ppPrimary]
+                                         valueLabel:_kpiUnreadLabel
+                                                tag:PPAdminNotificationLensUnread];
 
-    [metricsGrid addArrangedSubview:tileTotal];
-    [metricsGrid addArrangedSubview:tileUnread];
-    [metricsGrid addArrangedSubview:tileOrders];
-    [metricsGrid addArrangedSubview:tileChat];
+    UIView *tileOrders = [self makeKPITileWithTitle:[Language isRTL] ? @"الطلبات" : @"Orders"
+                                           subtitle:[Language isRTL] ? @"فواتير ودفع" : @"Orders & QIB"
+                                               icon:@"bag.fill"
+                                              color:[UIColor systemOrangeColor]
+                                         valueLabel:_kpiOrdersLabel
+                                                tag:PPAdminNotificationLensOrders];
+
+    UIView *tileChat = [self makeKPITileWithTitle:[Language isRTL] ? @"الدعم الفني" : @"Support"
+                                         subtitle:[Language isRTL] ? @"محادثات فورية" : @"Live Chats"
+                                             icon:@"bubble.left.and.bubble.right.fill"
+                                            color:[UIColor systemGreenColor]
+                                       valueLabel:_kpiChatLabel
+                                              tag:PPAdminNotificationLensChat];
+
+    UIStackView *row1 = [[UIStackView alloc] init];
+    row1.axis = UILayoutConstraintAxisHorizontal;
+    row1.spacing = 10;
+    row1.distribution = UIStackViewDistributionFillEqually;
+    row1.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [row1 addArrangedSubview:tileTotal];
+    [row1 addArrangedSubview:tileUnread];
+
+    UIStackView *row2 = [[UIStackView alloc] init];
+    row2.axis = UILayoutConstraintAxisHorizontal;
+    row2.spacing = 10;
+    row2.distribution = UIStackViewDistributionFillEqually;
+    row2.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [row2 addArrangedSubview:tileOrders];
+    [row2 addArrangedSubview:tileChat];
+
+    [gridStack addArrangedSubview:row1];
+    [gridStack addArrangedSubview:row2];
 
     // 2. Omni-Search Field
     UIView *searchContainer = [[UIView alloc] init];
@@ -281,20 +432,21 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     searchContainer.backgroundColor = [UIColor ppSurfaceElevated];
     searchContainer.layer.borderWidth = 1.0;
     searchContainer.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
-    PPApplyContinuousCorners(searchContainer, PPCornerMedium);
+    PPApplyContinuousCorners(searchContainer, 16.0);
     PPApplyCardShadow(searchContainer);
+    searchContainer.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:searchContainer];
 
-    UIImageView *searchIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass"]];
+    UIImageView *searchIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"magnifyingglass" withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightMedium]]];
     searchIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    searchIcon.tintColor = [UIColor ppTextTertiary];
+    searchIcon.tintColor = [UIColor ppPrimary];
     searchIcon.contentMode = UIViewContentModeScaleAspectFit;
     [searchContainer addSubview:searchIcon];
 
     _searchField = [[UITextField alloc] init];
     _searchField.translatesAutoresizingMaskIntoConstraints = NO;
     _searchField.placeholder = [Language isRTL] ? @"ابحث في التنبيهات، رقم الطلب، أو المحادثات..." : @"Search alerts, order #, or chat...";
-    _searchField.font = [Styling fontMedium:14.5];
+    _searchField.font = [Styling fontMedium:14.0];
     _searchField.textColor = [UIColor ppTextPrimary];
     _searchField.textAlignment = Language.alignmentForCurrentLanguage;
     _searchField.returnKeyType = UIReturnKeySearch;
@@ -326,6 +478,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     _lensScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     _lensScrollView.showsHorizontalScrollIndicator = NO;
     _lensScrollView.alwaysBounceHorizontal = YES;
+    _lensScrollView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [header addSubview:_lensScrollView];
 
     _lensStackView = [[UIStackView alloc] init];
@@ -333,6 +486,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     _lensStackView.axis = UILayoutConstraintAxisHorizontal;
     _lensStackView.spacing = 8;
     _lensStackView.alignment = UIStackViewAlignmentCenter;
+    _lensStackView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [_lensScrollView addSubview:_lensStackView];
 
     _lensButtons = [NSMutableArray array];
@@ -341,7 +495,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
         @{@"title": [Language isRTL] ? @"غير مقروء" : @"Unread", @"lens": @(PPAdminNotificationLensUnread)},
         @{@"title": [Language isRTL] ? @"🛍️ الطلبات" : @"🛍️ Orders", @"lens": @(PPAdminNotificationLensOrders)},
         @{@"title": [Language isRTL] ? @"🚚 التوصيل" : @"🚚 Delivery", @"lens": @(PPAdminNotificationLensDelivery)},
-        @{@"title": [Language isRTL] ? @"💬 المحادثات" : @"💬 Support", @"lens": @(PPAdminNotificationLensChat)},
+        @{@"title": [Language isRTL] ? @"💬 الدعم" : @"💬 Support", @"lens": @(PPAdminNotificationLensChat)},
         @{@"title": [Language isRTL] ? @"⚠️ تنبيهات" : @"⚠️ Alerts", @"lens": @(PPAdminNotificationLensAlerts)}
     ];
 
@@ -360,22 +514,17 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     [self updateLensButtonsSelection];
 
     [NSLayoutConstraint activateConstraints:@[
-        // Metrics Card
-        [metricsCard.topAnchor constraintEqualToAnchor:header.topAnchor constant:12],
-        [metricsCard.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
-        [metricsCard.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
-        [metricsCard.heightAnchor constraintEqualToConstant:86],
-
-        [metricsGrid.topAnchor constraintEqualToAnchor:metricsCard.topAnchor constant:10],
-        [metricsGrid.leadingAnchor constraintEqualToAnchor:metricsCard.leadingAnchor constant:10],
-        [metricsGrid.trailingAnchor constraintEqualToAnchor:metricsCard.trailingAnchor constant:-10],
-        [metricsGrid.bottomAnchor constraintEqualToAnchor:metricsCard.bottomAnchor constant:-10],
+        // Bento Grid
+        [gridStack.topAnchor constraintEqualToAnchor:header.topAnchor constant:12],
+        [gridStack.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
+        [gridStack.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
+        [gridStack.heightAnchor constraintEqualToConstant:162],
 
         // Search Container
-        [searchContainer.topAnchor constraintEqualToAnchor:metricsCard.bottomAnchor constant:12],
+        [searchContainer.topAnchor constraintEqualToAnchor:gridStack.bottomAnchor constant:12],
         [searchContainer.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
         [searchContainer.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
-        [searchContainer.heightAnchor constraintEqualToConstant:50],
+        [searchContainer.heightAnchor constraintEqualToConstant:48],
 
         [searchIcon.leadingAnchor constraintEqualToAnchor:searchContainer.leadingAnchor constant:14],
         [searchIcon.centerYAnchor constraintEqualToAnchor:searchContainer.centerYAnchor],
@@ -399,7 +548,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
         [_lensScrollView.topAnchor constraintEqualToAnchor:searchContainer.bottomAnchor constant:12],
         [_lensScrollView.leadingAnchor constraintEqualToAnchor:header.leadingAnchor constant:16],
         [_lensScrollView.trailingAnchor constraintEqualToAnchor:header.trailingAnchor constant:-16],
-        [_lensScrollView.heightAnchor constraintEqualToConstant:40],
+        [_lensScrollView.heightAnchor constraintEqualToConstant:38],
 
         [_lensStackView.topAnchor constraintEqualToAnchor:_lensScrollView.topAnchor],
         [_lensStackView.leadingAnchor constraintEqualToAnchor:_lensScrollView.leadingAnchor],
@@ -410,12 +559,13 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 
     _cockpitHeaderView = header;
     _tableView.tableHeaderView = _cockpitHeaderView;
+    [self updateKPITilesSelection];
 }
 
 - (UILabel *)makeKPILabelWithColor:(UIColor *)color {
     UILabel *lbl = [[UILabel alloc] init];
     lbl.translatesAutoresizingMaskIntoConstraints = NO;
-    lbl.font = [Styling fontBold:18.0];
+    lbl.font = [Styling fontBold:20.0];
     lbl.textColor = color;
     lbl.text = @"0";
     lbl.textAlignment = NSTextAlignmentCenter;
@@ -423,57 +573,117 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 }
 
 - (UIView *)makeKPITileWithTitle:(NSString *)title
+                        subtitle:(NSString *)subtitle
                             icon:(NSString *)iconName
                            color:(UIColor *)color
                       valueLabel:(UILabel *)valLabel
                              tag:(NSInteger)tag {
     UIView *tile = [[UIView alloc] init];
-    tile.backgroundColor = [color colorWithAlphaComponent:0.06];
-    PPApplyContinuousCorners(tile, PPCornerMedium);
+    tile.backgroundColor = [UIColor ppSurfaceElevated];
+    tile.layer.borderWidth = 1.0;
+    tile.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    PPApplyContinuousCorners(tile, PPCornerCard);
+    PPApplyCardShadow(tile);
     tile.userInteractionEnabled = YES;
     tile.tag = tag;
 
     UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(kpiTileTapped:)];
     [tile addGestureRecognizer:tap];
 
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:iconName]];
+    // Icon Surface
+    UIView *iconSurface = [[UIView alloc] init];
+    iconSurface.translatesAutoresizingMaskIntoConstraints = NO;
+    iconSurface.backgroundColor = [color colorWithAlphaComponent:0.12];
+    PPApplyContinuousCorners(iconSurface, 12.0);
+    [tile addSubview:iconSurface];
+
+    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:iconName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold]]];
     icon.translatesAutoresizingMaskIntoConstraints = NO;
     icon.tintColor = color;
     icon.contentMode = UIViewContentModeScaleAspectFit;
-    [tile addSubview:icon];
+    [iconSurface addSubview:icon];
+
+    // Text Stack (Title + Subtitle)
+    UIStackView *textStack = [[UIStackView alloc] init];
+    textStack.translatesAutoresizingMaskIntoConstraints = NO;
+    textStack.axis = UILayoutConstraintAxisVertical;
+    textStack.alignment = [Language isRTL] ? UIStackViewAlignmentTrailing : UIStackViewAlignmentLeading;
+    textStack.spacing = 2;
+    textStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [tile addSubview:textStack];
 
     UILabel *titleL = [[UILabel alloc] init];
     titleL.translatesAutoresizingMaskIntoConstraints = NO;
     titleL.text = title;
-    titleL.font = [Styling fontMedium:11.0];
-    titleL.textColor = [UIColor ppTextSecondary];
-    titleL.textAlignment = NSTextAlignmentCenter;
-    [tile addSubview:titleL];
+    titleL.font = [Styling fontBold:13.0];
+    titleL.textColor = [UIColor ppTextPrimary];
+    titleL.textAlignment = Language.alignmentForCurrentLanguage;
+    [textStack addArrangedSubview:titleL];
 
+    UILabel *subL = [[UILabel alloc] init];
+    subL.translatesAutoresizingMaskIntoConstraints = NO;
+    subL.text = subtitle;
+    subL.font = [Styling fontRegular:10.5];
+    subL.textColor = [UIColor ppTextSecondary];
+    subL.textAlignment = Language.alignmentForCurrentLanguage;
+    [textStack addArrangedSubview:subL];
+
+    // Value Label
+    valLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [tile addSubview:valLabel];
 
     [NSLayoutConstraint activateConstraints:@[
-        [icon.topAnchor constraintEqualToAnchor:tile.topAnchor constant:8],
-        [icon.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
-        [icon.widthAnchor constraintEqualToConstant:18],
-        [icon.heightAnchor constraintEqualToConstant:18],
+        [iconSurface.leadingAnchor constraintEqualToAnchor:tile.leadingAnchor constant:12],
+        [iconSurface.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor],
+        [iconSurface.widthAnchor constraintEqualToConstant:38],
+        [iconSurface.heightAnchor constraintEqualToConstant:38],
 
-        [valLabel.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:2],
-        [valLabel.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
+        [icon.centerXAnchor constraintEqualToAnchor:iconSurface.centerXAnchor],
+        [icon.centerYAnchor constraintEqualToAnchor:iconSurface.centerYAnchor],
 
-        [titleL.topAnchor constraintEqualToAnchor:valLabel.bottomAnchor constant:2],
-        [titleL.centerXAnchor constraintEqualToAnchor:tile.centerXAnchor],
-        [titleL.bottomAnchor constraintLessThanOrEqualToAnchor:tile.bottomAnchor constant:-6]
+        [textStack.leadingAnchor constraintEqualToAnchor:iconSurface.trailingAnchor constant:10],
+        [textStack.trailingAnchor constraintLessThanOrEqualToAnchor:valLabel.leadingAnchor constant:-8],
+        [textStack.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor],
+
+        [valLabel.trailingAnchor constraintEqualToAnchor:tile.trailingAnchor constant:-14],
+        [valLabel.centerYAnchor constraintEqualToAnchor:tile.centerYAnchor]
     ]];
+
+    [self.kpiTiles addObject:tile];
     return tile;
 }
 
 - (void)kpiTileTapped:(UITapGestureRecognizer *)gesture {
     [PPFunc pp_playTapEffect];
     self.activeLens = (PPAdminNotificationLens)gesture.view.tag;
+    [self updateKPITilesSelection];
     [self updateLensButtonsSelection];
     [self applyFilterAndRecomputeSections];
     [self.tableView reloadData];
+}
+
+- (void)lensTapped:(UIButton *)sender {
+    [PPFunc pp_playTapEffect];
+    self.activeLens = (PPAdminNotificationLens)sender.tag;
+    [self updateKPITilesSelection];
+    [self updateLensButtonsSelection];
+    [self applyFilterAndRecomputeSections];
+    [self.tableView reloadData];
+}
+
+- (void)updateKPITilesSelection {
+    for (UIView *tile in self.kpiTiles) {
+        BOOL isSelected = (tile.tag == self.activeLens);
+        if (isSelected) {
+            tile.layer.borderColor = [UIColor ppPrimary].CGColor;
+            tile.layer.borderWidth = 1.5;
+            tile.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.06];
+        } else {
+            tile.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+            tile.layer.borderWidth = 1.0;
+            tile.backgroundColor = [UIColor ppSurfaceElevated];
+        }
+    }
 }
 
 - (void)updateLensButtonsSelection {
@@ -492,14 +702,6 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
             btn.layer.shadowOpacity = 0.0;
         }
     }
-}
-
-- (void)lensTapped:(UIButton *)sender {
-    [PPFunc pp_playTapEffect];
-    self.activeLens = (PPAdminNotificationLens)sender.tag;
-    [self updateLensButtonsSelection];
-    [self applyFilterAndRecomputeSections];
-    [self.tableView reloadData];
 }
 
 - (void)setupEmptyStateView {
@@ -628,6 +830,7 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     self.kpiUnreadLabel.text = [NSString stringWithFormat:@"%ld", (long)unread];
     self.kpiOrdersLabel.text = [NSString stringWithFormat:@"%ld", (long)orders];
     self.kpiChatLabel.text = [NSString stringWithFormat:@"%ld", (long)chat];
+    [self updateKPITilesSelection];
 }
 
 - (void)applyFilterAndRecomputeSections {

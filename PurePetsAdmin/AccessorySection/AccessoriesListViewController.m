@@ -99,7 +99,19 @@
 
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
-        self.accessories = [items mutableCopy] ?: [NSMutableArray array];
+        NSMutableArray *mapped = [items mutableCopy] ?: [NSMutableArray array];
+        [mapped sortUsingComparator:^NSComparisonResult(PetAccessory *a, PetAccessory *b) {
+            if (a.createdAt && b.createdAt) {
+                NSComparisonResult res = [b.createdAt compare:a.createdAt];
+                if (res != NSOrderedSame) return res;
+            } else if (b.createdAt) {
+                return NSOrderedDescending;
+            } else if (a.createdAt) {
+                return NSOrderedAscending;
+            }
+            return [b.accessoryID compare:a.accessoryID];
+        }];
+        self.accessories = mapped;
         NSLog(@"[AccessoriesList] listener received %lu items", (unsigned long)self.accessories.count);
         [self _applyFilterAndReload];
     }];

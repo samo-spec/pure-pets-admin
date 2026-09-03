@@ -782,7 +782,7 @@ struct AdminUsersListView: View {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundColor(Color(uiColor: .ppWarning))
-                            Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "تحتاج إلى مراجعة: %d حساب"), viewModel.attentionCount) + " • اضغط للتصفية")
+                            Text(String(format: Language.get("MissionControl_Customers_Signal_Attention_Format", alter: "تحتاج إلى مراجعة: %@ حساب"), "\(viewModel.attentionCount)") + " • اضغط للتصفية")
                                 .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
                                 .foregroundColor(Color(uiColor: .ppWarning))
                             Spacer()
@@ -2182,39 +2182,17 @@ struct AdminSupportThreadView: View {
     }
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
+        AdminSovereignNavigationBar(
+            title: Language.get("Support_Thread", alter: "محادثة الدعم"),
+            subtitle: Language.get("Chats", alter: "المحادثات"),
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
                 }
-
-                Spacer()
             }
-
-            Text(Language.get("Chats", alter: "المحادثات") + " / " + Language.get("Support", alter: "الدعم"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("Support_Thread", alter: "محادثة الدعم"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
+        )
     }
 }
 

@@ -5,6 +5,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface NotificationsListViewController : UIViewController
 
+- (void)handleBackAction;
+
 @end
 
 NS_ASSUME_NONNULL_END

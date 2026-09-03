@@ -45,11 +45,12 @@ static NSString * const PPProviderAccountingLastProviderKey = @"PPProviderAccoun
     
     if (@available(iOS 13.0, *)) {
         UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = PPProviderCanvasColor();
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = UIColor.clearColor;
         appearance.titleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
         appearance.largeTitleTextAttributes = @{NSForegroundColorAttributeName: PPProviderPrimaryTextColor()};
-        appearance.shadowColor = PPProviderSeparatorColor();
+        appearance.shadowColor = UIColor.clearColor;
+        appearance.shadowImage = [[UIImage alloc] init];
         self.navigationItem.standardAppearance = appearance;
         self.navigationItem.scrollEdgeAppearance = appearance;
         self.navigationItem.compactAppearance = appearance;

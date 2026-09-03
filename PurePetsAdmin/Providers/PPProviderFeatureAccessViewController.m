@@ -85,13 +85,14 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     [self.navigationController setNavigationBarHidden:NO animated:animated];
     if (@available(iOS 13.0, *)) {
         UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = PPProviderCanvasColor();
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = UIColor.clearColor;
         appearance.titleTextAttributes = @{
             NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
             NSFontAttributeName: PPAppFontBold(18.0)
         };
-        appearance.shadowColor = PPProviderSeparatorColor();
+        appearance.shadowColor = UIColor.clearColor;
+        appearance.shadowImage = [[UIImage alloc] init];
         self.navigationItem.standardAppearance = appearance;
         self.navigationItem.scrollEdgeAppearance = appearance;
         self.navigationItem.compactAppearance = appearance;
@@ -666,8 +667,8 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
 
     if (@available(iOS 13.0, *)) {
         UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = PPProviderCanvasColor();
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = UIColor.clearColor;
         appearance.titleTextAttributes = @{
             NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
             NSFontAttributeName: PPAppFontBold(18.0)
@@ -676,7 +677,8 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
             NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
             NSFontAttributeName: PPAppFontBold(28.0)
         };
-        appearance.shadowColor = PPProviderSeparatorColor();
+        appearance.shadowColor = UIColor.clearColor;
+        appearance.shadowImage = [[UIImage alloc] init];
         self.navigationItem.standardAppearance = appearance;
         self.navigationItem.scrollEdgeAppearance = appearance;
         self.navigationItem.compactAppearance = appearance;

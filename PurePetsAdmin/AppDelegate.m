@@ -916,9 +916,16 @@ didReceiveNotificationResponse:(UNNotificationResponse *)response
         }
     }
     
-    NSLog(@"[AppDelegate] [Language languageVal] %ld",[Language languageVal]);
-    //if(!Language.languageVal)
-    //    [Language userSelectedLanguage:LanguageCode[1]];
+    if (@available(iOS 13.0, *)) {
+        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = UIColor.clearColor;
+        appearance.shadowColor = UIColor.clearColor;
+        appearance.shadowImage = [[UIImage alloc] init];
+        [UINavigationBar appearance].standardAppearance = appearance;
+        [UINavigationBar appearance].scrollEdgeAppearance = appearance;
+        [UINavigationBar appearance].compactAppearance = appearance;
+    }
 
 }
 

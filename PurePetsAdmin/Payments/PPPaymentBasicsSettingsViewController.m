@@ -122,28 +122,10 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
     headerContainer.backgroundColor = UIColor.clearColor;
 
     // 1. Navigation Top Bar (Back Button + Save Button / Indicator)
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
-    [backBtn setImage:chevronImg forState:UIControlStateNormal];
-    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
-    backBtn.tintColor = [UIColor ppPrimary];
-    backBtn.titleLabel.font = [Styling fontBold:15];
-    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_onBackTapped)];
     [headerContainer addSubview:backBtn];
 
-    UIButton *saveActionBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    saveActionBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [saveActionBtn setTitle:kLang(@"Save") forState:UIControlStateNormal];
-    [saveActionBtn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-    saveActionBtn.titleLabel.font = [Styling fontBold:13];
-    saveActionBtn.backgroundColor = [UIColor ppPrimary];
-    saveActionBtn.layer.cornerRadius = 18.0;
-    saveActionBtn.layer.masksToBounds = YES;
-    saveActionBtn.contentEdgeInsets = UIEdgeInsetsMake(0, 14, 0, 14);
-    [saveActionBtn addTarget:self action:@selector(pp_saveButtonTapped:) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *saveActionBtn = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(pp_saveButtonTapped:)];
     [headerContainer addSubview:saveActionBtn];
 
     // 2. Eyebrow Category Breadcrumb
@@ -168,11 +150,12 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
         // Back Button & Save Button
         [backBtn.topAnchor constraintEqualToAnchor:headerContainer.topAnchor constant:4],
         [backBtn.leadingAnchor constraintEqualToAnchor:headerContainer.leadingAnchor constant:horizontal],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44],
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44],
 
         [saveActionBtn.centerYAnchor constraintEqualToAnchor:backBtn.centerYAnchor],
         [saveActionBtn.trailingAnchor constraintEqualToAnchor:headerContainer.trailingAnchor constant:-horizontal],
-        [saveActionBtn.heightAnchor constraintEqualToConstant:36],
+        [saveActionBtn.heightAnchor constraintEqualToConstant:38],
 
         // Eyebrow
         [eyebrowLabel.topAnchor constraintEqualToAnchor:backBtn.bottomAnchor constant:2],
@@ -279,9 +262,10 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
 
     if (@available(iOS 13.0, *)) {
         UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithOpaqueBackground];
-        appearance.backgroundColor = AppBackgroundClr;
+        [appearance configureWithTransparentBackground];
+        appearance.backgroundColor = UIColor.clearColor;
         appearance.shadowColor = UIColor.clearColor;
+        appearance.shadowImage = [[UIImage alloc] init];
         appearance.titleTextAttributes = @{
             NSFontAttributeName: PPPaymentBasicsScaledFont([Styling fontBold:20], UIFontTextStyleHeadline),
             NSForegroundColorAttributeName: [UIColor ppTextPrimary]
@@ -290,9 +274,10 @@ static UIFont *PPPaymentBasicsScaledFont(UIFont *baseFont, UIFontTextStyle textS
         navBar.scrollEdgeAppearance = appearance;
         navBar.compactAppearance = appearance;
     } else {
-        navBar.translucent = NO;
-        navBar.barTintColor = AppBackgroundClr;
+        navBar.translucent = YES;
+        navBar.barTintColor = UIColor.clearColor;
         navBar.shadowImage = [UIImage new];
+        [navBar setBackgroundImage:[UIImage new] forBarMetrics:UIBarMetricsDefault];
     }
 }
 

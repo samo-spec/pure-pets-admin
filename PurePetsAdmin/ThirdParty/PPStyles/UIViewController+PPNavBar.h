@@ -31,6 +31,7 @@ FOUNDATION_EXPORT BOOL PPCommandCenterNavigationIsManaged(UINavigationController
 FOUNDATION_EXPORT NSNotificationName const PPCommandCenterNavigationItemsDidChangeNotification;
 FOUNDATION_EXPORT void PPCommandCenterNavigationItemsDidChange(UIViewController * _Nullable viewController);
 FOUNDATION_EXPORT BOOL PPCommandCenterNavigationHasCustomBackAction(UIViewController * _Nullable viewController);
+FOUNDATION_EXPORT NSString *PPNavBackSymbolName(void);
 
 // ===== Associated keys =====
 static const void *kPPNavBarViewKey  = &kPPNavBarViewKey;

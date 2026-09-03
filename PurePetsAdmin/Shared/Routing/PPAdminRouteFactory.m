@@ -59,13 +59,13 @@
     if ([identifier isEqualToString:@"livePets"]) return [PPInventoryListHostingController makeForLivePets];
     if ([identifier isEqualToString:@"branches"]) return [AdminBranchesHostingController new];
     if ([identifier isEqualToString:@"agents"]) return [PPAgentsViewController new];
-    if ([identifier isEqualToString:@"accounting"]) return [PPAccountingViewController new];
+    if ([identifier isEqualToString:@"accounting"]) return [AdminAccountingHostingController new];
     if ([identifier isEqualToString:@"audit"]) return [PPAuditLogViewController new];
     if ([identifier isEqualToString:@"moderation"]) return [PPContentModerationViewController new];
     if ([identifier isEqualToString:@"homeControl"]) return [AdminHomeControlHostingController new];
     if ([identifier isEqualToString:@"services"]) return [PPServicesListViewController new];
     if ([identifier isEqualToString:@"vets"]) return [PPAdminRouteFactory makeSwiftUIHostingControllerForVets];
-    if ([identifier isEqualToString:@"categories"]) return [PPCategoriesViewController new];
+    if ([identifier isEqualToString:@"categories"]) return [AdminCategoriesHostingController new];
     if ([identifier isEqualToString:@"banners"]) return [PPBannersListVC new];
     if ([identifier isEqualToString:@"listings"]) return [PPListingsAdminViewController new];
     return nil;

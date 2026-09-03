@@ -47,13 +47,28 @@ BOOL const isPPDebugMode = NO;
 @end
 
 static NSDate *PPDateFromFirestoreValue(id value) {
+    if (!value || [value isKindOfClass:[NSNull class]]) {
+        return [NSDate distantPast];
+    }
     if ([value isKindOfClass:NSDate.class]) {
         return (NSDate *)value;
     }
     if ([value isKindOfClass:FIRTimestamp.class]) {
         return [(FIRTimestamp *)value dateValue];
     }
-    return [NSDate date];
+    if ([value isKindOfClass:NSNumber.class]) {
+        NSTimeInterval t = [(NSNumber *)value doubleValue];
+        if (t > 10000000000.0) t /= 1000.0;
+        return [NSDate dateWithTimeIntervalSince1970:t];
+    }
+    if ([value isKindOfClass:NSString.class]) {
+        NSTimeInterval t = [(NSString *)value doubleValue];
+        if (t > 0) {
+            if (t > 10000000000.0) t /= 1000.0;
+            return [NSDate dateWithTimeIntervalSince1970:t];
+        }
+    }
+    return [NSDate distantPast];
 }
 
 static NSDate * _Nullable PPNullableDateFromFirestoreValue(id value) {
@@ -497,7 +512,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _AccessoryCategoryID = [dict[@"AccessoryCategoryID"] isKindOfClass:NSString.class] ? dict[@"AccessoryCategoryID"] : nil;
         _cityID = [dict[@"cityID"] ?: @(0) integerValue];
         
-        _createdAt = PPDateFromFirestoreValue(dict[@"createdAt"]);
+        id rawCreated = dict[@"createdAt"] ?: dict[@"created_at"] ?: dict[@"timestamp"] ?: dict[@"date"] ?: dict[@"updatedAt"];
+        _createdAt = PPDateFromFirestoreValue(rawCreated);
         _expiryDate = PPNullableDateFromFirestoreValue(dict[@"expiryDate"]);
 
         _ownerID = PPAccessoryStringValueForKeys(dict, (@[@"ownerID"]));

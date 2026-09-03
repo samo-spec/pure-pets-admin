@@ -591,13 +591,14 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
         [self.navigationController setNavigationBarHidden:NO animated:animated];
         if (@available(iOS 13.0, *)) {
             UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-            [appearance configureWithOpaqueBackground];
-            appearance.backgroundColor = PPProviderCanvasColor();
+            [appearance configureWithTransparentBackground];
+            appearance.backgroundColor = UIColor.clearColor;
             appearance.titleTextAttributes = @{
                 NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
                 NSFontAttributeName: PPAppFontBold(18.0)
             };
-            appearance.shadowColor = PPProviderSeparatorColor();
+            appearance.shadowColor = UIColor.clearColor;
+            appearance.shadowImage = [[UIImage alloc] init];
             self.navigationItem.standardAppearance = appearance;
             self.navigationItem.scrollEdgeAppearance = appearance;
             self.navigationItem.compactAppearance = appearance;
@@ -634,24 +635,11 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     barContent.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [_topNavContainer addSubview:barContent];
 
-    // 1. Back Button Pill
-    _navBackButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _navBackButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _navBackButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-
+    // 1. Back Button Squircle
     BOOL isModal = (self.presentingViewController != nil && (!self.navigationController || self.navigationController.viewControllers.firstObject == self));
-    UIImageSymbolConfiguration *symConfig = [UIImageSymbolConfiguration configurationWithPointSize:13.5 weight:UIImageSymbolWeightBold];
-    UIImage *backIcon = [UIImage systemImageNamed:(isModal ? @"xmark" : ([Language isRTL] ? @"chevron.right" : @"chevron.left")) withConfiguration:symConfig];
-    [_navBackButton setImage:backIcon forState:UIControlStateNormal];
-    [_navBackButton setTitle:(isModal ? (kLang(@"Close") ?: @"إغلاق") : (kLang(@"Back") ?: @"رجوع")) forState:UIControlStateNormal];
-    _navBackButton.titleLabel.font = PPAppFontBold(14.0);
-    [_navBackButton setTitleColor:PPProviderBrandColor() forState:UIControlStateNormal];
-    _navBackButton.tintColor = PPProviderBrandColor();
-    _navBackButton.backgroundColor = [PPProviderBrandColor() colorWithAlphaComponent:0.08];
-    PPApplyContinuousCorners(_navBackButton, 17.0);
-    _navBackButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 12.0, 6.0, 12.0);
-    _navBackButton.imageEdgeInsets = UIEdgeInsetsMake(0.0, [Language isRTL] ? 4.0 : -4.0, 0.0, [Language isRTL] ? -4.0 : 4.0);
-    [_navBackButton addTarget:self action:@selector(pp_handleBackOrClose) forControlEvents:UIControlEventTouchUpInside];
+    NSString *backIconName = isModal ? @"xmark" : PPNavBackSymbolName();
+    _navBackButton = [self pp_BackButtonWithSystemName:backIconName action:@selector(pp_handleBackOrClose)];
+    _navBackButton.accessibilityLabel = isModal ? (kLang(@"Close") ?: @"إغلاق") : (kLang(@"Back") ?: @"رجوع");
     [barContent addSubview:_navBackButton];
 
     // 2. Title & Eyebrow Stack
@@ -733,22 +721,7 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
     ]];
 
     // 3. Fast Save Pill Button
-    _navFastSaveButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _navFastSaveButton.translatesAutoresizingMaskIntoConstraints = NO;
-    _navFastSaveButton.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
-
-    UIImageSymbolConfiguration *checkConfig = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
-    UIImage *checkIcon = [UIImage systemImageNamed:@"checkmark" withConfiguration:checkConfig];
-    [_navFastSaveButton setImage:checkIcon forState:UIControlStateNormal];
-    [_navFastSaveButton setTitle:(kLang(@"Save") ?: @"حفظ") forState:UIControlStateNormal];
-    _navFastSaveButton.titleLabel.font = PPAppFontBold(13.5);
-    [_navFastSaveButton setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-    _navFastSaveButton.tintColor = UIColor.whiteColor;
-    _navFastSaveButton.backgroundColor = PPProviderBrandColor();
-    PPApplyContinuousCorners(_navFastSaveButton, 17.0);
-    _navFastSaveButton.contentEdgeInsets = UIEdgeInsetsMake(6.0, 14.0, 6.0, 14.0);
-    _navFastSaveButton.imageEdgeInsets = UIEdgeInsetsMake(0.0, [Language isRTL] ? 4.0 : -4.0, 0.0, [Language isRTL] ? -4.0 : 4.0);
-    [_navFastSaveButton addTarget:self action:@selector(onSave) forControlEvents:UIControlEventTouchUpInside];
+    _navFastSaveButton = [self pp_ButtonWithSystemName:@"checkmark" action:@selector(onSave)];
     [barContent addSubview:_navFastSaveButton];
 
     // Constraints
@@ -770,7 +743,8 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 
         [_navBackButton.leadingAnchor constraintEqualToAnchor:barContent.leadingAnchor],
         [_navBackButton.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
-        [_navBackButton.heightAnchor constraintEqualToConstant:34.0],
+        [_navBackButton.widthAnchor constraintEqualToConstant:44.0],
+        [_navBackButton.heightAnchor constraintEqualToConstant:44.0],
 
         [titleStack.leadingAnchor constraintEqualToAnchor:_navBackButton.trailingAnchor constant:10.0],
         [titleStack.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
@@ -778,7 +752,7 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 
         [_navFastSaveButton.trailingAnchor constraintEqualToAnchor:barContent.trailingAnchor],
         [_navFastSaveButton.centerYAnchor constraintEqualToAnchor:barContent.centerYAnchor],
-        [_navFastSaveButton.heightAnchor constraintEqualToConstant:34.0]
+        [_navFastSaveButton.heightAnchor constraintEqualToConstant:38.0]
     ]];
 }
 
@@ -814,7 +788,7 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
                                                                                 target:self
                                                                                 action:@selector(pp_handleBackOrClose)];
     } else {
-        UIImage *backImg = [UIImage systemImageNamed:([Language isRTL] ? @"chevron.right" : @"chevron.left")];
+        UIImage *backImg = [UIImage systemImageNamed:PPNavBackSymbolName()];
         self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithImage:backImg
                                                                                  style:UIBarButtonItemStylePlain
                                                                                 target:self

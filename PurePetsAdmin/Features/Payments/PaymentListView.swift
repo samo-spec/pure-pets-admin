@@ -241,66 +241,43 @@ struct AdminPaymentListView: View {
         }
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(minHeight: 44)
-                }
-
-                Spacer()
-
+            AdminSovereignNavigationBar(
+                title: Language.get("PaymentMgmt_Dashboard_Title", alter: "إدارة المدفوعات"),
+                subtitle: Language.get("CommandCenter_Payments_Workspace", alter: "مساحة المدفوعات"),
+                onBack: handleBackAction
+            ) {
                 if viewModel.isLoading || viewModel.isRefreshing {
-                    ProgressView()
-                        .tint(AdminSurface.primary)
+                    ProgressView().tint(AdminSurface.primary)
                 } else {
-                    Button(action: {
-                        viewModel.refresh()
-                    }) {
+                    Button(action: { viewModel.refresh() }) {
                         Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                            .frame(width: 36, height: 36)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(width: 44, height: 44)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
                 }
             }
 
-            Text(Language.get("CommandCenter_Payments_Workspace", alter: "مساحة المدفوعات") + " / " + Language.get("PaymentMgmt_Dashboard_Title", alter: "إدارة المدفوعات"))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.top, 2)
-
-            Text(Language.get("PaymentMgmt_Dashboard_Title", alter: "إدارة المدفوعات"))
-                .font(AdminType.title2)
-                .foregroundColor(AdminSurface.primaryText)
-
             if let error = viewModel.errorMessage {
                 AdminErrorBanner(message: error) {
                     viewModel.refresh()
                 }
+                .padding(.horizontal, AdminSpacing.screenMargin)
                 .padding(.top, 4)
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
     }
 
     // MARK: - Stats Header
@@ -412,6 +389,16 @@ struct AdminPaymentListView: View {
     }
 
     // MARK: - Helpers
+
+    private func handleBackAction() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if let onDismiss = onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+            PPAdminNavigationFallback.popOrDismiss()
+        }
+    }
 
     private var dateRangeOptions: [PPPaymentAdminDateRange] {
         [.all, .today, .last7Days, .last30Days, .last90Days]
@@ -636,46 +623,8 @@ private struct PaymentOrderCard: View {
 
 // MARK: - ObjC Hosting Bridge
 
-@objc public final class PaymentListHostingController: UIViewController {
-    private var hostingController: UIHostingController<AdminPaymentListView>?
-    private let session: AdminSession
-
-    init(session: AdminSession) {
-        self.session = session
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    public required init?(coder: NSCoder) {
-        fatalError("init(coder:) is unavailable")
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = UIColor.ppBackground
-        let root = AdminPaymentListView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
-            }
-        }
-        let host = UIHostingController(rootView: root)
-        host.view.backgroundColor = .clear
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
-        host.didMove(toParent: self)
-        hostingController = host
-    }
-
-    public override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        navigationController?.setNavigationBarHidden(true, animated: animated)
+@objc public final class PaymentListHostingController: AdminPaymentListHostingController {
+    convenience init(session: AdminSession) {
+        self.init(nibName: nil, bundle: nil)
     }
 }

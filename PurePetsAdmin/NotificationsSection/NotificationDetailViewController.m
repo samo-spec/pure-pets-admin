@@ -15,24 +15,36 @@
 #import "PPHUD.h"
 #import "PPToast.h"
 #import "SceneDelegate.h"
+#import "PurePetsAdmin-Swift.h"
 
-@interface NotificationDetailViewController ()
+@interface NotificationDetailViewController () <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) NotificationModel *model;
 @property (nonatomic, copy) NSString *uid;
+@property (nonatomic, strong) UIView *dossierNavBarView;
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *navEyebrowLabel;
+@property (nonatomic, strong) UILabel *navTitleLabel;
+@property (nonatomic, strong) UIButton *readStatusNavButton;
+@property (nonatomic, strong) UIButton *shareNavButton;
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *contentStack;
-@property (nonatomic, strong) UIButton *readStatusNavButton;
 @end
 
 @implementation NotificationDetailViewController
 
-- (instancetype)initWithModel:(NotificationModel *)model userID:(NSString *)uid {
+- (instancetype)initWithModel:(NotificationModel *)model userID:(NSString *)uid onDismiss:(nullable void (^)(void))onDismiss {
     self = [super init];
     if (self) {
         _model = model;
         _uid = [uid copy];
+        _onDismiss = [onDismiss copy];
+        self.hidesBottomBarWhenPushed = YES;
     }
     return self;
+}
+
+- (instancetype)initWithModel:(NotificationModel *)model userID:(NSString *)uid {
+    return [self initWithModel:model userID:uid onDismiss:nil];
 }
 
 - (void)viewDidLoad {
@@ -54,28 +66,159 @@
     }
 }
 
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
+    self.navigationController.interactivePopGestureRecognizer.enabled = YES;
+    self.navigationController.interactivePopGestureRecognizer.delegate = self;
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    return (self.navigationController.viewControllers.count > 1);
+}
+
 - (void)setupNavigation {
-    NSString *title = [Language isRTL] ? @"تفاصيل التنبيه" : @"Notification Details";
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:title showBack:YES];
-    
-    _readStatusNavButton = [UIButton buttonWithType:UIButtonTypeSystem];
-    _readStatusNavButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self updateReadButtonIcon];
-    [_readStatusNavButton addTarget:self action:@selector(toggleReadStatus) forControlEvents:UIControlEventTouchUpInside];
-    [self pp_navBarAddActionButton:_readStatusNavButton key:@"read_toggle"];
-    
-    UIButton *shareBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    shareBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    [shareBtn setImage:[UIImage systemImageNamed:@"square.and.arrow.up"] forState:UIControlStateNormal];
-    shareBtn.tintColor = [UIColor ppPrimary];
-    [shareBtn addTarget:self action:@selector(shareNotification) forControlEvents:UIControlEventTouchUpInside];
-    [self pp_navBarAddActionButton:shareBtn key:@"share"];
+    _dossierNavBarView = [[UIView alloc] init];
+    _dossierNavBarView.translatesAutoresizingMaskIntoConstraints = NO;
+    _dossierNavBarView.backgroundColor = [UIColor ppElevatedSurface];
+    _dossierNavBarView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.view addSubview:_dossierNavBarView];
+
+    UIView *hairline = [[UIView alloc] init];
+    hairline.translatesAutoresizingMaskIntoConstraints = NO;
+    hairline.backgroundColor = [UIColor ppBorder];
+    [_dossierNavBarView addSubview:hairline];
+
+    UIView *container = [[UIView alloc] init];
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    container.backgroundColor = UIColor.clearColor;
+    container.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [_dossierNavBarView addSubview:container];
+
+    // 1. Back Squircle Button
+    _backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(handleBackAction)];
+    [container addSubview:_backButton];
+
+    // 2. Title Stack
+    UIStackView *titleStack = [[UIStackView alloc] init];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.axis = UILayoutConstraintAxisVertical;
+    titleStack.alignment = UIStackViewAlignmentCenter;
+    titleStack.spacing = 1;
+    titleStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:titleStack];
+
+    _navEyebrowLabel = [[UILabel alloc] init];
+    _navEyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navEyebrowLabel.text = [Language isRTL] ? @"مركز الإشعارات" : @"Notification Center";
+    _navEyebrowLabel.font = [Styling fontBold:10.5];
+    _navEyebrowLabel.textColor = [UIColor ppTextTertiary];
+    _navEyebrowLabel.textAlignment = NSTextAlignmentCenter;
+    [titleStack addArrangedSubview:_navEyebrowLabel];
+
+    _navTitleLabel = [[UILabel alloc] init];
+    _navTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navTitleLabel.text = [Language isRTL] ? @"تفاصيل التنبيه" : @"Notification Details";
+    _navTitleLabel.font = [Styling fontBold:16.5];
+    _navTitleLabel.textColor = [UIColor ppTextPrimary];
+    _navTitleLabel.textAlignment = NSTextAlignmentCenter;
+    [titleStack addArrangedSubview:_navTitleLabel];
+
+    // 3. Trailing Action Buttons Stack
+    UIStackView *actionsStack = [[UIStackView alloc] init];
+    actionsStack.translatesAutoresizingMaskIntoConstraints = NO;
+    actionsStack.axis = UILayoutConstraintAxisHorizontal;
+    actionsStack.alignment = UIStackViewAlignmentCenter;
+    actionsStack.spacing = 8;
+    actionsStack.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [container addSubview:actionsStack];
+
+    _readStatusNavButton = [self makeNavCircleButtonWithIcon:(self.model.isRead ? @"envelope.fill" : @"envelope.open.fill")
+                                                       color:[UIColor ppPrimary]
+                                                      action:@selector(toggleReadStatus)];
+    _readStatusNavButton.accessibilityLabel = [Language isRTL] ? @"تبديل حالة القراءة" : @"Toggle read status";
+    [actionsStack addArrangedSubview:_readStatusNavButton];
+
+    _shareNavButton = [self makeNavCircleButtonWithIcon:@"square.and.arrow.up"
+                                                  color:[UIColor ppPrimary]
+                                                 action:@selector(shareNotification)];
+    _shareNavButton.accessibilityLabel = [Language isRTL] ? @"مشاركة التنبيه" : @"Share notification";
+    [actionsStack addArrangedSubview:_shareNavButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_dossierNavBarView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_dossierNavBarView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_dossierNavBarView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_dossierNavBarView.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:56],
+
+        [hairline.leadingAnchor constraintEqualToAnchor:_dossierNavBarView.leadingAnchor],
+        [hairline.trailingAnchor constraintEqualToAnchor:_dossierNavBarView.trailingAnchor],
+        [hairline.bottomAnchor constraintEqualToAnchor:_dossierNavBarView.bottomAnchor],
+        [hairline.heightAnchor constraintEqualToConstant:0.5],
+
+        [container.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [container.bottomAnchor constraintEqualToAnchor:_dossierNavBarView.bottomAnchor constant:-4],
+        [container.leadingAnchor constraintEqualToAnchor:_dossierNavBarView.leadingAnchor constant:14],
+        [container.trailingAnchor constraintEqualToAnchor:_dossierNavBarView.trailingAnchor constant:-14],
+
+        [_backButton.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [_backButton.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [_backButton.widthAnchor constraintEqualToConstant:44],
+        [_backButton.heightAnchor constraintEqualToConstant:44],
+
+        [titleStack.centerXAnchor constraintEqualToAnchor:container.centerXAnchor],
+        [titleStack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor],
+        [titleStack.leadingAnchor constraintGreaterThanOrEqualToAnchor:_backButton.trailingAnchor constant:8],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:actionsStack.leadingAnchor constant:-8],
+
+        [actionsStack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [actionsStack.centerYAnchor constraintEqualToAnchor:container.centerYAnchor]
+    ]];
+}
+
+- (UIButton *)makeNavCircleButtonWithIcon:(NSString *)iconName color:(UIColor *)color action:(SEL)action {
+    UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+    btn.translatesAutoresizingMaskIntoConstraints = NO;
+    UIImage *img = [UIImage systemImageNamed:iconName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    [btn setImage:img forState:UIControlStateNormal];
+    btn.tintColor = color;
+    btn.backgroundColor = [color colorWithAlphaComponent:0.08];
+    btn.layer.borderWidth = 0.5;
+    btn.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+    PPApplyContinuousCorners(btn, 18.0);
+    [btn addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [btn.widthAnchor constraintEqualToConstant:36],
+        [btn.heightAnchor constraintEqualToConstant:36]
+    ]];
+    return btn;
+}
+
+- (void)handleBackAction {
+    [PPFunc pp_playTapEffect];
+    if (self.onDismiss) {
+        self.onDismiss();
+        return;
+    }
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+        return;
+    }
+    if ([self pp_dismissWorkflowRouteIfPossible]) {
+        return;
+    }
+    if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+    [PPAdminNavigationFallback popOrDismissFrom:self];
 }
 
 - (void)updateReadButtonIcon {
     NSString *iconName = self.model.isRead ? @"envelope.fill" : @"envelope.open.fill";
-    [_readStatusNavButton setImage:[UIImage systemImageNamed:iconName] forState:UIControlStateNormal];
-    _readStatusNavButton.tintColor = [UIColor ppPrimary];
+    UIImage *img = [UIImage systemImageNamed:iconName withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:14 weight:UIImageSymbolWeightSemibold]];
+    [_readStatusNavButton setImage:img forState:UIControlStateNormal];
 }
 
 - (void)toggleReadStatus {
@@ -100,10 +243,11 @@
 }
 
 - (void)setupScrollView {
-    _scrollView = [[UIScrollView alloc] initWithFrame:self.view.bounds];
-    _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    _scrollView = [[UIScrollView alloc] init];
+    _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     _scrollView.contentInset = UIEdgeInsetsMake(16, 0, 40, 0);
     _scrollView.alwaysBounceVertical = YES;
+    _scrollView.showsVerticalScrollIndicator = NO;
     [self.view addSubview:_scrollView];
 
     _contentStack = [[UIStackView alloc] init];
@@ -114,6 +258,11 @@
     [_scrollView addSubview:_contentStack];
 
     [NSLayoutConstraint activateConstraints:@[
+        [_scrollView.topAnchor constraintEqualToAnchor:self.dossierNavBarView.bottomAnchor],
+        [_scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+
         [_contentStack.topAnchor constraintEqualToAnchor:_scrollView.topAnchor],
         [_contentStack.leadingAnchor constraintEqualToAnchor:_scrollView.leadingAnchor constant:16],
         [_contentStack.trailingAnchor constraintEqualToAnchor:_scrollView.trailingAnchor constant:-16],

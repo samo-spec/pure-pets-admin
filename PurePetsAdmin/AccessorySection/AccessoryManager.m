@@ -82,6 +82,17 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     for (FIRDocumentSnapshot *doc in docs) {
         [arr addObject:[self _mapDoc:doc]];
     }
+    [arr sortUsingComparator:^NSComparisonResult(PetAccessory *a, PetAccessory *b) {
+        if (a.createdAt && b.createdAt) {
+            NSComparisonResult res = [b.createdAt compare:a.createdAt];
+            if (res != NSOrderedSame) return res;
+        } else if (b.createdAt) {
+            return NSOrderedDescending;
+        } else if (a.createdAt) {
+            return NSOrderedAscending;
+        }
+        return [b.accessoryID compare:a.accessoryID];
+    }];
     return arr;
 }
 

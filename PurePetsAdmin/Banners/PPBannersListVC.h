@@ -2,12 +2,17 @@
 //  PPBannersListVC.h
 //  PurePetsAdmin
 //
-//  Created by Mohammed Ahmed on 09/09/2025.
+//  Flagship Beyond-FAANG Apple-grade Banners Command Center
 //
 
 #import <UIKit/UIKit.h>
 
-@interface PPBannersListVC : UITableViewController
+NS_ASSUME_NONNULL_BEGIN
 
+@interface PPBannersListVC : UIViewController
+
+- (void)reloadBannersData;
 
 @end
+
+NS_ASSUME_NONNULL_END

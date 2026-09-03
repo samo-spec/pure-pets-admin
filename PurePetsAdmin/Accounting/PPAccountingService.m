@@ -226,18 +226,39 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
            PPAccountingStaffSessionIsCurrent(staff);
 }
 
-- (FIRTimestamp *)monthStartTimestamp {
+- (FIRTimestamp *)timestampForFilter:(NSString *)filter {
+    if (!filter.length || [filter isEqualToString:@"all"]) return nil;
     NSCalendar *cal = [NSCalendar currentCalendar];
-    NSDateComponents *comp = [cal components:NSCalendarUnitYear|NSCalendarUnitMonth fromDate:[NSDate date]];
+    NSDate *now = [NSDate date];
+    if ([filter isEqualToString:@"today"]) {
+        NSDateComponents *comp = [cal components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:now];
+        comp.hour = 0; comp.minute = 0; comp.second = 0;
+        return [FIRTimestamp timestampWithDate:[cal dateFromComponents:comp]];
+    } else if ([filter isEqualToString:@"week"]) {
+        NSDateComponents *comp = [cal components:NSCalendarUnitYearForWeekOfYear|NSCalendarUnitWeekOfYear fromDate:now];
+        return [FIRTimestamp timestampWithDate:[cal dateFromComponents:comp]];
+    } else if ([filter isEqualToString:@"quarter"]) {
+        NSDateComponents *comp = [cal components:NSCalendarUnitYear|NSCalendarUnitMonth fromDate:now];
+        NSInteger quarterMonth = ((comp.month - 1) / 3) * 3 + 1;
+        comp.month = quarterMonth; comp.day = 1; comp.hour = 0; comp.minute = 0; comp.second = 0;
+        return [FIRTimestamp timestampWithDate:[cal dateFromComponents:comp]];
+    }
+    // Default to month
+    NSDateComponents *comp = [cal components:NSCalendarUnitYear|NSCalendarUnitMonth fromDate:now];
     comp.day = 1; comp.hour = 0; comp.minute = 0; comp.second = 0;
     return [FIRTimestamp timestampWithDate:[cal dateFromComponents:comp]];
+}
+
+- (FIRTimestamp *)monthStartTimestamp {
+    return [self timestampForFilter:@"month"];
 }
 
 - (id<FIRListenerRegistration>)subscribeTransactionsWithFilter:(NSString *)filter callback:(void(^)(void))callback {
     FIRFirestore *db = [FIRFirestore firestore];
     FIRQuery *query = [[db collectionWithPath:@"transactions"] queryOrderedByField:@"createdAt" descending:YES];
-    if ([filter isEqualToString:@"month"]) {
-        query = [[[db collectionWithPath:@"transactions"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:[self monthStartTimestamp]] queryOrderedByField:@"createdAt" descending:YES];
+    FIRTimestamp *ts = [self timestampForFilter:filter];
+    if (ts) {
+        query = [[[db collectionWithPath:@"transactions"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts] queryOrderedByField:@"createdAt" descending:YES];
     }
     return [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
         if (error) return;
@@ -252,8 +273,9 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 - (id<FIRListenerRegistration>)subscribeExpensesWithFilter:(NSString *)filter callback:(void(^)(void))callback {
     FIRFirestore *db = [FIRFirestore firestore];
     FIRQuery *query = [[db collectionWithPath:@"expenses"] queryOrderedByField:@"createdAt" descending:YES];
-    if ([filter isEqualToString:@"month"]) {
-        query = [[[db collectionWithPath:@"expenses"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:[self monthStartTimestamp]] queryOrderedByField:@"createdAt" descending:YES];
+    FIRTimestamp *ts = [self timestampForFilter:filter];
+    if (ts) {
+        query = [[[db collectionWithPath:@"expenses"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts] queryOrderedByField:@"createdAt" descending:YES];
     }
     return [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
         if (error) return;
@@ -285,8 +307,8 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 
     NSArray<FIRQuery *> *queries = PPAccountingScopedOrderQueries(db, staff);
     composite.queryCount = queries.count;
-    BOOL monthOnly = [filter isEqualToString:@"month"];
-    NSDate *monthStart = self.monthStartTimestamp.dateValue;
+    FIRTimestamp *filterTs = [self timestampForFilter:filter];
+    NSDate *startDate = filterTs ? filterTs.dateValue : nil;
     __weak typeof(self) weakSelf = self;
     [queries enumerateObjectsUsingBlock:^(FIRQuery *query, NSUInteger index, BOOL *stop) {
         id<FIRListenerRegistration> registration = [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
@@ -339,7 +361,7 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
                 NSDate *createdAt = [data[@"createdAt"] isKindOfClass:FIRTimestamp.class]
                     ? [(FIRTimestamp *)data[@"createdAt"] dateValue]
                     : nil;
-                if (monthOnly && (!createdAt || [createdAt compare:monthStart] == NSOrderedAscending)) continue;
+                if (startDate && (!createdAt || [createdAt compare:startDate] == NSOrderedAscending)) continue;
                 revenue += PPSafeDouble(data[@"totalAmount"]);
                 orderCount += 1;
             }
@@ -357,23 +379,22 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
     return composite;
 }
 
-- (void)addExpense:(double)amount category:(NSString *)category description:(NSString *)desc completion:(void(^)(NSError *))completion {
+- (void)addExpense:(double)amount category:(NSString *)category description:(NSString *)desc completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     NSString *uid = [FIRAuth auth].currentUser.uid ?: @"unknown";
+    // Strictly adheres to firestore.rules: keys().hasOnly(['amount','category','description','createdAt','createdBy'])
     [[db collectionWithPath:@"expenses"] addDocumentWithData:@{
         @"amount": @(amount),
         @"category": category ?: @"other",
         @"description": desc ?: @"",
         @"createdBy": uid,
-        @"date": [FIRTimestamp timestampWithDate:[NSDate date]],
-        @"status": @"active",
         @"createdAt": [FIRTimestamp timestampWithDate:[NSDate date]]
     } completion:^(NSError *error) {
         if (completion) completion(error);
     }];
 }
 
-- (void)deleteExpense:(NSString *)expenseID completion:(void(^)(NSError *))completion {
+- (void)deleteExpense:(NSString *)expenseID completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
     FIRFirestore *db = [FIRFirestore firestore];
     [[[db collectionWithPath:@"expenses"] documentWithPath:expenseID] deleteDocumentWithCompletion:^(NSError *error) {
         if (completion) completion(error);

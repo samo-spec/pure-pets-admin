@@ -415,19 +415,38 @@ final class POSFastSellViewModel: ObservableObject {
     private var receiptRequestID: UUID?
 
     var searchResults: [PetAccessory] {
-        guard !searchText.isEmpty else { return allAccessories }
-        let q = searchText.lowercased()
-        return allAccessories.filter {
-            $0.name.lowercased().contains(q)
+        var list = allAccessories
+        if !searchText.isEmpty {
+            let q = searchText.lowercased()
+            list = list.filter {
+                $0.name.lowercased().contains(q)
+            }
         }
+        list.sort { a, b in
+            let dateA = a.createdAt
+            let dateB = b.createdAt
+            if dateA != dateB {
+                return dateA > dateB
+            }
+            return a.accessoryID > b.accessoryID
+        }
+        return list
     }
 
-    /// Sellable, type-filtered catalog for the footer quick-add grid.
+    /// Sellable, type-filtered catalog for the footer quick-add grid (ordered newest first).
     var catalogResults: [PetAccessory] {
         var list = allAccessories.filter { $0.pos_isSellable && catalogFilter.matches($0) }
         let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !q.isEmpty {
             list = list.filter { $0.name.lowercased().contains(q) || $0.accessoryID.lowercased().contains(q) }
+        }
+        list.sort { a, b in
+            let dateA = a.createdAt
+            let dateB = b.createdAt
+            if dateA != dateB {
+                return dateA > dateB
+            }
+            return a.accessoryID > b.accessoryID
         }
         return list
     }
@@ -474,7 +493,14 @@ final class POSFastSellViewModel: ObservableObject {
                     return
                 }
                 self.catalogErrorMessage = nil
-                self.allAccessories = projectedItems
+                self.allAccessories = projectedItems.sorted { a, b in
+                    let dateA = a.createdAt
+                    let dateB = b.createdAt
+                    if dateA != dateB {
+                        return dateA > dateB
+                    }
+                    return a.accessoryID > b.accessoryID
+                }
             }
         }
     }
@@ -1653,6 +1679,8 @@ private struct POSApexFlightDeck: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var tenderedAmount: Double? = nil
+    @State private var isCustomTender: Bool = false
+    @State private var showsCustomCashSheet: Bool = false
 
     private var hasItems: Bool { !viewModel.cartItems.isEmpty }
     private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
@@ -1730,8 +1758,34 @@ private struct POSApexFlightDeck: View {
                 )
             }
         )
+        .sheet(isPresented: $showsCustomCashSheet) {
+            POSCustomCashSheet(
+                cartTotal: viewModel.cartTotal,
+                initialAmount: isCustomTender ? tenderedAmount : nil,
+                currency: currency,
+                onConfirm: { amount in
+                    withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                        tenderedAmount = amount
+                        isCustomTender = true
+                    }
+                    showsCustomCashSheet = false
+                },
+                onDismiss: {
+                    showsCustomCashSheet = false
+                }
+            )
+        }
         .onChange(of: hasItems) { hasItems in
-            if !hasItems { tenderedAmount = nil }
+            if !hasItems {
+                tenderedAmount = nil
+                isCustomTender = false
+            }
+        }
+        .onChange(of: viewModel.cartTotal) { newTotal in
+            if let tendered = tenderedAmount, isCustomTender, tendered < newTotal {
+                tenderedAmount = nil
+                isCustomTender = false
+            }
         }
     }
 
@@ -1860,6 +1914,7 @@ private struct POSApexFlightDeck: View {
                     withAnimation(.spring(response: 0.26, dampingFraction: 0.75)) {
                         viewModel.selectPaymentMethod(method.key)
                         tenderedAmount = nil
+                        isCustomTender = false
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -1904,19 +1959,20 @@ private struct POSApexFlightDeck: View {
 
     private var cashTenderAssistantStrip: some View {
         VStack(spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 ForEach(tenderSuggestions, id: \.self) { tender in
                     let isExact = tender == viewModel.cartTotal
-                    let isSelected = tenderedAmount == tender || (tenderedAmount == nil && isExact)
+                    let isSelected = !isCustomTender && (tenderedAmount == tender || (tenderedAmount == nil && isExact))
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
                             tenderedAmount = tender
+                            isCustomTender = false
                         }
                     } label: {
                         Text(isExact ? Language.get("POS_Exact", alter: "مضبوط") : "\(Int(tender))")
                             .font(AdminType.caption2Bold)
-                            .padding(.horizontal, 10)
+                            .padding(.horizontal, 9)
                             .padding(.vertical, 5)
                             .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
                             .background(
@@ -1930,7 +1986,33 @@ private struct POSApexFlightDeck: View {
                     }
                 }
 
-                Spacer(minLength: 0)
+                // Custom Cash Received Pill
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showsCustomCashSheet = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(isCustomTender && tenderedAmount != nil
+                            ? "\(Language.get("POS_Custom", alter: "مخصص")): \(formatCustomPillAmount(tenderedAmount!))"
+                            : Language.get("POS_Custom", alter: "مخصص"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .foregroundColor(isCustomTender ? .white : AdminSurface.primaryText)
+                    .background(
+                        isCustomTender ? emeraldColor : AdminSurface.control,
+                        in: Capsule(style: .continuous)
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(isCustomTender ? Color.clear : emeraldColor.opacity(0.30), lineWidth: 0.5)
+                    )
+                }
+
+                Spacer(minLength: 2)
 
                 if let tendered = tenderedAmount, tendered > viewModel.cartTotal {
                     let change = tendered - viewModel.cartTotal
@@ -1952,6 +2034,14 @@ private struct POSApexFlightDeck: View {
         .padding(.horizontal, 2)
     }
 
+    private func formatCustomPillAmount(_ value: Double) -> String {
+        if value.truncatingRemainder(dividingBy: 1) == 0 {
+            return "\(Int(value))"
+        } else {
+            return String(format: "%.2f", value)
+        }
+    }
+
     // MARK: - Card Terminal Status Strip
 
     private var cardTerminalStatusStrip: some View {
@@ -1969,91 +2059,506 @@ private struct POSApexFlightDeck: View {
         .padding(.vertical, 3)
     }
 
-    // MARK: - Apex Charge Kinetic Button
+    // MARK: - Apex Charge Kinetic Button (Slide to Sale)
 
     private var apexChargeButton: some View {
-        Button {
-            guard hasItems else { return }
-            viewModel.submitOrder(cashReceived: tenderedAmount)
-        } label: {
-            HStack(spacing: 8) {
-                if viewModel.isCheckoutBusy {
-                    ProgressView()
-                        .tint(.white)
-                        .scaleEffect(0.9)
-                    Text(Language.get("POS_Submitting", alter: "جارٍ إتمام العملية..."))
-                        .font(AdminType.headline)
-                        .foregroundColor(.white)
-                } else if hasItems {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 13, weight: .bold))
-                        Text(Language.get("POS_Submit", alter: "تقديم الطلب"))
-                            .font(AdminType.headline)
-                    }
-                    .foregroundColor(.white)
-
-                    Spacer()
-
-                    HStack(spacing: 4) {
-                        Text(currency(viewModel.cartTotal))
-                            .font(AdminType.headline)
-                            .monospacedDigit()
-                        Image(systemName: "arrow.forward.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.18), in: Capsule(style: .continuous))
-                } else {
-                    HStack(spacing: 7) {
-                        Image(systemName: "cart.badge.plus")
-                            .font(.system(size: 14, weight: .medium))
-                        Text(Language.get("POS_SelectItemsPrompt", alter: "اختر منتجات من الكتالوج للبدء"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                }
+        POSSlideToSaleButton(
+            hasItems: hasItems,
+            isCheckoutBusy: viewModel.isCheckoutBusy,
+            totalAmountText: currency(viewModel.cartTotal),
+            accentColor: viewModel.selectedPaymentMethod == "cash" ? emeraldColor : AdminSurface.primary,
+            onSlideComplete: {
+                viewModel.submitOrder(cashReceived: tenderedAmount)
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 48)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+    }
+}
+
+// MARK: - Slide to Sale Kinetic Slider
+
+private struct POSSlideToSaleButton: View {
+    let hasItems: Bool
+    let isCheckoutBusy: Bool
+    let totalAmountText: String
+    let accentColor: Color
+    let onSlideComplete: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
+    @State private var isCompleted: Bool = false
+    @State private var shimmerPhase: CGFloat = -0.5
+
+    private let knobDiameter: CGFloat = 46.0
+    private let trackHeight: CGFloat = 54.0
+    private let horizontalPadding: CGFloat = 4.0
+
+    var body: some View {
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+            let maxSlide = max(1, totalWidth - knobDiameter - (horizontalPadding * 2))
+            let isRTL = Language.isRTL()
+            let progress = min(1.0, max(0.0, dragOffset / maxSlide))
+
+            ZStack(alignment: .leading) {
+                // 1. Inactive / Base Track Surface
+                Capsule(style: .continuous)
                     .fill(
                         hasItems
-                            ? LinearGradient(
-                                colors: [
-                                    AdminSurface.primary,
-                                    AdminSurface.primary.opacity(0.85)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(
-                                colors: [
-                                    colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04),
-                                    colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
+                            ? (colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.05))
+                            : (colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.03))
+                    )
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                hasItems
+                                    ? accentColor.opacity(0.28)
+                                    : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.6 : 0.3),
+                                lineWidth: 1.0
                             )
                     )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        hasItems
-                            ? Color.white.opacity(0.25)
-                            : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.7 : 0.4),
-                        lineWidth: 0.75
-                    )
-            )
+
+                // 2. Active Illuminated Progress Fill (Follows Knob)
+                if hasItems && (dragOffset > 0 || isCompleted || isCheckoutBusy) {
+                    Capsule(style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    accentColor.opacity(0.30),
+                                    accentColor.opacity(0.65)
+                                ],
+                                startPoint: isRTL ? .trailing : .leading,
+                                endPoint: isRTL ? .leading : .trailing
+                            )
+                        )
+                        .frame(width: isCheckoutBusy ? totalWidth : max(knobDiameter + (horizontalPadding * 2), dragOffset + knobDiameter + (horizontalPadding * 2)))
+                }
+
+                // 3. Center Guidance Text & Shimmering Animation
+                HStack {
+                    Spacer(minLength: knobDiameter + 8)
+
+                    if isCheckoutBusy {
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .tint(accentColor)
+                                .scaleEffect(0.9)
+                            Text(Language.get("POS_Submitting", alter: "جارٍ إتمام العملية..."))
+                                .font(AdminType.calloutBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+                    } else if hasItems {
+                        HStack(spacing: 6) {
+                            if isRTL {
+                                Image(systemName: "chevron.left.2")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(accentColor.opacity(0.8))
+                                Text(Language.get("POS_SlideToSale", alter: "اسحب لإتمام عملية البيع"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                            } else {
+                                Text(Language.get("POS_SlideToSale", alter: "Slide to complete sale"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Image(systemName: "chevron.right.2")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(accentColor.opacity(0.8))
+                            }
+                        }
+                        .opacity(max(0.0, 1.0 - (progress * 2.2)))
+                        .mask(
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            Color.black.opacity(0.35),
+                                            Color.black,
+                                            Color.black.opacity(0.35)
+                                        ],
+                                        startPoint: UnitPoint(x: shimmerPhase, y: 0.5),
+                                        endPoint: UnitPoint(x: shimmerPhase + 0.5, y: 0.5)
+                                    )
+                                )
+                        )
+                    } else {
+                        HStack(spacing: 6) {
+                            Image(systemName: "cart.badge.plus")
+                                .font(.system(size: 13, weight: .medium))
+                            Text(Language.get("POS_SelectItemsPrompt", alter: "اختر منتجات من الكتالوج للبدء"))
+                                .font(AdminType.caption1Bold)
+                        }
+                        .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    // Trailing Price Tag Pill
+                    if hasItems && !isCheckoutBusy {
+                        HStack(spacing: 4) {
+                            Text(totalAmountText)
+                                .font(AdminType.caption1Bold)
+                                .monospacedDigit()
+                            Image(systemName: isRTL ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(accentColor.opacity(0.9), in: Capsule(style: .continuous))
+                        .opacity(max(0.0, 1.0 - (progress * 2.0)))
+                        .padding(.trailing, horizontalPadding + 4)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // 4. The Interactive Sliding Kinetic Knob
+                ZStack {
+                    // Knob Glow Ring when dragging
+                    if isDragging {
+                        Circle()
+                            .fill(accentColor.opacity(0.25))
+                            .frame(width: knobDiameter + 12, height: knobDiameter + 12)
+                    }
+
+                    // Knob Base Capsule
+                    Circle()
+                        .fill(
+                            hasItems
+                                ? LinearGradient(
+                                    colors: [
+                                        accentColor,
+                                        accentColor.opacity(0.88)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [
+                                        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.08),
+                                        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                        )
+                        .overlay(
+                            Circle()
+                                .strokeBorder(
+                                    hasItems ? Color.white.opacity(0.4) : Color.clear,
+                                    lineWidth: 1.0
+                                )
+                        )
+                        .shadow(
+                            color: hasItems ? accentColor.opacity(isDragging ? 0.5 : 0.28) : Color.clear,
+                            radius: isDragging ? 10 : 5,
+                            x: 0,
+                            y: isDragging ? 3 : 1
+                        )
+                        .frame(width: knobDiameter, height: knobDiameter)
+
+                    // Knob Icon / Status Indicator
+                    if isCheckoutBusy {
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.85)
+                    } else if isCompleted {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 17, weight: .heavy))
+                            .foregroundColor(.white)
+                    } else {
+                        Image(systemName: isRTL ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(hasItems ? .white : AdminSurface.secondaryText)
+                    }
+                }
+                .padding(.leading, horizontalPadding)
+                .offset(x: isRTL ? -dragOffset : dragOffset)
+                .scaleEffect(isDragging ? 1.06 : 1.0)
+                .animation(.spring(response: 0.24, dampingFraction: 0.75), value: isDragging)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            guard hasItems && !isCheckoutBusy && !isCompleted else { return }
+                            if !isDragging {
+                                isDragging = true
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                            let rawDelta = isRTL ? -value.translation.width : value.translation.width
+                            dragOffset = min(maxSlide, max(0, rawDelta))
+                        }
+                        .onEnded { value in
+                            guard hasItems && !isCheckoutBusy && !isCompleted else { return }
+                            isDragging = false
+
+                            if dragOffset >= (maxSlide * 0.82) {
+                                // Threshold reached -> Complete!
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                withAnimation(.spring(response: 0.24, dampingFraction: 0.8)) {
+                                    dragOffset = maxSlide
+                                    isCompleted = true
+                                }
+                                onSlideComplete()
+                            } else {
+                                // Threshold not reached -> Spring back
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.68)) {
+                                    dragOffset = 0
+                                }
+                            }
+                        }
+                )
+            }
+            .frame(height: trackHeight)
+            .clipShape(Capsule(style: .continuous))
+            .onAppear {
+                withAnimation(.linear(duration: 2.2).repeatForever(autoreverses: false)) {
+                    shimmerPhase = 1.5
+                }
+            }
+            .onChange(of: hasItems) { newValue in
+                if !newValue {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        dragOffset = 0
+                        isCompleted = false
+                    }
+                }
+            }
+            .onChange(of: isCheckoutBusy) { busy in
+                if !busy && isCompleted {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        dragOffset = 0
+                        isCompleted = false
+                    }
+                }
+            }
         }
-        .buttonStyle(POSTilePressStyle())
-        .disabled(!hasItems || viewModel.isCheckoutBusy)
+        .frame(height: trackHeight)
+    }
+}
+
+// MARK: - POS Custom Cash Received Sheet
+
+private struct POSCustomCashSheet: View {
+    let cartTotal: Double
+    let initialAmount: Double?
+    let currency: (Double) -> String
+    let onConfirm: (Double) -> Void
+    let onDismiss: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var inputText: String = ""
+    @FocusState private var isFieldFocused: Bool
+
+    private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
+
+    private var parsedAmount: Double {
+        let clean = inputText
+            .replacingOccurrences(of: "٫", with: ".")
+            .replacingOccurrences(of: ",", with: ".")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        return formatter.number(from: clean)?.doubleValue ?? (Double(clean) ?? 0.0)
+    }
+
+    private var changeAmount: Double {
+        max(0, parsedAmount - cartTotal)
+    }
+
+    var body: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Cart Total Summary Banner
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(AdminSurface.primary.opacity(0.12))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "banknote.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("POS_CartTotalRequired", alter: "إجمالي السلة المطلوب"))
+                                .font(AdminType.caption1)
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(currency(cartTotal))
+                                .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title3))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .monospacedDigit()
+                        }
+
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
+
+                    // Custom Amount Input Card
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(Language.get("POS_CustomCashReceivedTitle", alter: "المبلغ المستلم من العميل"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        HStack(spacing: 10) {
+                            Image(systemName: "hand.raised.square.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(emeraldColor)
+
+                            TextField(String(format: "%.2f", cartTotal), text: $inputText)
+                                .font(Font.custom("Beiruti-Bold", size: 28, relativeTo: .title2))
+                                .keyboardType(.decimalPad)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                                .focused($isFieldFocused)
+
+                            Text(Language.get("QAR", alter: "ر.ق"))
+                                .font(AdminType.calloutBold)
+                                .foregroundColor(AdminSurface.secondaryText)
+
+                            if !inputText.isEmpty {
+                                Button {
+                                    inputText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(parsedAmount > 0 ? emeraldColor.opacity(0.60) : AdminSurface.hairline, lineWidth: parsedAmount > 0 ? 1.5 : 1.0)
+                        )
+                    }
+
+                    // Quick Increment Buttons (+10, +20, +50, +100)
+                    HStack(spacing: 8) {
+                        ForEach([10, 20, 50, 100], id: \.self) { increment in
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                let current = parsedAmount > 0 ? parsedAmount : cartTotal
+                                let newAmount = current + Double(increment)
+                                inputText = String(format: "%.0f", newAmount)
+                            } label: {
+                                Text("+\(increment)")
+                                    .font(AdminType.captionBold)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(AdminSurface.hairline, lineWidth: 0.5)
+                                    )
+                            }
+                        }
+                    }
+
+                    // Live Change Due or Shortfall Status
+                    if parsedAmount > 0 {
+                        if parsedAmount >= cartTotal {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.counterclockwise.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(emeraldColor)
+
+                                Text(Language.get("POS_CustomerChangeDue", alter: "الباقي للعميل:"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Spacer()
+
+                                Text(currency(changeAmount))
+                                    .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title3))
+                                    .foregroundColor(emeraldColor)
+                                    .monospacedDigit()
+                            }
+                            .padding(12)
+                            .background(emeraldColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(emeraldColor.opacity(0.35), lineWidth: 0.8)
+                            )
+                        } else {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(Color.orange)
+
+                                Text(Language.get("POS_CashShortfall", alter: "المبلغ أقل من المطلوب:"))
+                                    .font(AdminType.caption1)
+                                    .foregroundColor(AdminSurface.secondaryText)
+
+                                Spacer()
+
+                                Text(currency(cartTotal - parsedAmount))
+                                    .font(AdminType.captionBold)
+                                    .foregroundColor(Color.orange)
+                                    .monospacedDigit()
+                            }
+                            .padding(10)
+                            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                    }
+
+                    // Confirm Button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        let finalAmount = parsedAmount > 0 ? parsedAmount : cartTotal
+                        onConfirm(finalAmount)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                            Text(Language.get("Confirm", alter: "تأكيد"))
+                                .font(AdminType.calloutBold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .foregroundColor(.white)
+                        .background(
+                            (parsedAmount >= cartTotal || parsedAmount == 0) ? emeraldColor : Color.gray.opacity(0.6),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                    }
+                    .disabled(parsedAmount > 0 && parsedAmount < cartTotal)
+                }
+                .padding(AdminSpacing.screenMargin)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(Language.get("POS_CustomCashTitle", alter: "مبلغ نقدي مخصص"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Text(Language.get("Close", alter: "إغلاق"))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                }
+            }
+            .onAppear {
+                if let initial = initialAmount, initial > 0 {
+                    if initial.truncatingRemainder(dividingBy: 1) == 0 {
+                        inputText = String(format: "%.0f", initial)
+                    } else {
+                        inputText = String(format: "%.2f", initial)
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    isFieldFocused = true
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 

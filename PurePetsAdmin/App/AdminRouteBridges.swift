@@ -5,16 +5,16 @@
 
 import SwiftUI
 
-@objc public final class AdminPaymentListHostingController: UIViewController {
+@objc public class AdminPaymentListHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminPaymentListView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
@@ -28,11 +28,11 @@ import SwiftUI
         super.viewDidLoad(); view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminPaymentSettingsView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
@@ -49,11 +49,11 @@ import SwiftUI
         super.viewDidLoad(); view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminPaymentDetailView(orderID: orderID, session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
@@ -66,11 +66,11 @@ import SwiftUI
         super.viewDidLoad(); view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminFulfillmentListView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
@@ -83,11 +83,11 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad(); view.backgroundColor = .ppBackground
         let host = UIHostingController(rootView: AdminDeliveryListView { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
@@ -115,11 +115,11 @@ import SwiftUI
 
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminPOSFastSellView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host)
         view.addSubview(host.view)
@@ -158,11 +158,11 @@ import SwiftUI
 
         let session = AdminSession(source: PPAdminSessionSnapshot())
         let host = UIHostingController(rootView: AdminPOSHistoryView(session: session) { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host)
         view.addSubview(host.view)
@@ -187,11 +187,11 @@ import SwiftUI
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
         let host = UIHostingController(rootView: AdminBranchesView { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host)
         view.addSubview(host.view)
@@ -215,11 +215,11 @@ import SwiftUI
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
         let host = UIHostingController(rootView: AdminHomeControlView { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host)
         view.addSubview(host.view)
@@ -243,11 +243,11 @@ import SwiftUI
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
         let host = UIHostingController(rootView: AdminStaffManagementView { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         addChild(host)
         view.addSubview(host.view)
@@ -265,3 +265,64 @@ import SwiftUI
         navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 }
+
+@objc public final class AdminAccountingHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let session = AdminSession(source: PPAdminSessionSnapshot())
+        let host = UIHostingController(rootView: AdminAccountingView(session: session) { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+@objc public final class AdminCategoriesHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let host = UIHostingController(rootView: AdminCategoriesView { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+

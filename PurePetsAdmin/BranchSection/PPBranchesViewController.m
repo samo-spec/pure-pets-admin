@@ -453,42 +453,26 @@ static NSString *const kBranchCellID = @"PPBranchCell";
     UIView *navRow = [[UIView alloc] initWithFrame:CGRectMake(0, 4, width, 44.0)];
     navRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
 
-    UIButton *backBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-    backBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    UIImageSymbolConfiguration *backConfig = [UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightSemibold];
-    UIImage *chevronImg = [UIImage systemImageNamed:[Language isRTL] ? @"chevron.right" : @"chevron.left" withConfiguration:backConfig];
-    [backBtn setImage:chevronImg forState:UIControlStateNormal];
-    [backBtn setTitle:[NSString stringWithFormat:@" %@", kLang(@"Back")] forState:UIControlStateNormal];
-    [backBtn setTitleColor:[UIColor ppPrimary] forState:UIControlStateNormal];
-    backBtn.tintColor = [UIColor ppPrimary];
-    backBtn.titleLabel.font = [Styling fontBold:15];
-    [backBtn addTarget:self action:@selector(pp_onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    UIButton *backBtn = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_onBackTapped)];
     [navRow addSubview:backBtn];
 
     if (self.canManage) {
-        UIButton *addBtn = [UIButton buttonWithType:UIButtonTypeCustom];
-        addBtn.translatesAutoresizingMaskIntoConstraints = NO;
-        UIImageSymbolConfiguration *addConfig = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightSemibold];
-        [addBtn setImage:[UIImage systemImageNamed:@"plus" withConfiguration:addConfig] forState:UIControlStateNormal];
-        addBtn.tintColor = [UIColor ppPrimary];
-        addBtn.backgroundColor = [[UIColor ppPrimary] colorWithAlphaComponent:0.10];
-        addBtn.layer.cornerRadius = 18.0;
-        addBtn.layer.masksToBounds = YES;
-        [addBtn addTarget:self action:@selector(didTapAdd) forControlEvents:UIControlEventTouchUpInside];
+        UIButton *addBtn = [self pp_ButtonWithSystemName:@"plus" action:@selector(didTapAdd)];
         [navRow addSubview:addBtn];
 
         [NSLayoutConstraint activateConstraints:@[
             [addBtn.trailingAnchor constraintEqualToAnchor:navRow.trailingAnchor constant:-16],
             [addBtn.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
-            [addBtn.widthAnchor constraintEqualToConstant:36],
-            [addBtn.heightAnchor constraintEqualToConstant:36]
+            [addBtn.widthAnchor constraintEqualToConstant:44],
+            [addBtn.heightAnchor constraintEqualToConstant:44]
         ]];
     }
 
     [NSLayoutConstraint activateConstraints:@[
         [backBtn.leadingAnchor constraintEqualToAnchor:navRow.leadingAnchor constant:16],
         [backBtn.centerYAnchor constraintEqualToAnchor:navRow.centerYAnchor],
-        [backBtn.heightAnchor constraintGreaterThanOrEqualToConstant:44]
+        [backBtn.widthAnchor constraintEqualToConstant:44],
+        [backBtn.heightAnchor constraintEqualToConstant:44]
     ]];
 
     [self.headerContainer addSubview:navRow];

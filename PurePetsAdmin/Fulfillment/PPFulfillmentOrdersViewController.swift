@@ -805,24 +805,26 @@ private struct PPFulfillmentOrdersScreen: View {
     var body: some View {
         ZStack {
             PPFulfillmentTokens.canvas.ignoresSafeArea()
+            VStack(spacing: 0) {
+                dossierHeaderView
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceBase) {
-                    dossierHeaderView
-                    operationalPulse
-                    workflowBoard
-                    queueControls
-                    if let error = viewModel.errorMessage, !viewModel.records.isEmpty {
-                        retainedConnectionNotice(error)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceBase) {
+                        operationalPulse
+                        workflowBoard
+                        queueControls
+                        if let error = viewModel.errorMessage, !viewModel.records.isEmpty {
+                            retainedConnectionNotice(error)
+                        }
+                        resultsHeader
+                        content
                     }
-                    resultsHeader
-                    content
+                    .padding(.horizontal, PPFulfillmentTokens.screenMargin)
+                    .padding(.top, PPFulfillmentTokens.spaceXS)
+                    .padding(.bottom, PPFulfillmentTokens.spaceXL)
                 }
-                .padding(.horizontal, PPFulfillmentTokens.screenMargin)
-                .padding(.top, PPFulfillmentTokens.spaceXS)
-                .padding(.bottom, PPFulfillmentTokens.spaceXL)
+                .refreshable { await viewModel.refresh() }
             }
-            .refreshable { await viewModel.refresh() }
         }
         .environment(\.layoutDirection, PPFulfillmentL10n.layoutDirection)
         .sheet(isPresented: $showsFilters) {
@@ -833,59 +835,40 @@ private struct PPFulfillmentOrdersScreen: View {
         .onDisappear(perform: viewModel.stopListening)
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            HStack {
-                Button(action: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
-                    }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(PPFulfillmentTokens.primary)
-                    .frame(minHeight: 44)
-                }
-
-                Spacer()
-
-                if viewModel.isRefreshing {
-                    ProgressView()
-                        .tint(PPFulfillmentTokens.primary)
+        AdminSovereignNavigationBar(
+            title: PPFulfillmentL10n.text("Fulfillment_Title"),
+            subtitle: Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ"),
+            onBack: {
+                if let onDismiss {
+                    onDismiss()
                 } else {
-                    Button(action: { viewModel.retry() }) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(PPFulfillmentTokens.primary)
-                            .frame(width: 36, height: 36)
-                            .background(PPFulfillmentTokens.primarySoft, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+                    dismiss()
                 }
             }
-
-            Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ") + " / " + PPFulfillmentL10n.text("Fulfillment_Title"))
-                .font(AdminType.caption1)
-                .foregroundColor(PPFulfillmentTokens.secondaryInk)
-                .padding(.top, 2)
-
-            Text(PPFulfillmentL10n.text("Fulfillment_Title"))
-                .font(AdminType.title2)
-                .foregroundColor(PPFulfillmentTokens.ink)
-
-            operationalStatusBar
-                .padding(.top, 2)
+        ) {
+            if viewModel.isRefreshing {
+                ProgressView()
+                    .tint(PPFulfillmentTokens.primary)
+            } else {
+                Button(action: { viewModel.retry() }) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var operationalStatusBar: some View {
@@ -2407,32 +2390,35 @@ private struct PPFulfillmentDetailScreen: View {
     var body: some View {
         ZStack {
             PPFulfillmentTokens.canvas.ignoresSafeArea()
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXL) {
-                    dossierHeaderView
-                    detailCommandHeader
-                    if viewModel.isLoading {
-                        HStack(spacing: PPFulfillmentTokens.spaceSM) {
-                            ProgressView().tint(PPFulfillmentTokens.primary)
-                            Text(PPFulfillmentL10n.text("Fulfillment_Detail_Syncing"))
-                                .font(PPFulfillmentTokens.beiruti(.medium, size: 14, relativeTo: .subheadline))
-                                .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+            VStack(spacing: 0) {
+                dossierHeaderView
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: PPFulfillmentTokens.spaceXL) {
+                        detailCommandHeader
+                        if viewModel.isLoading {
+                            HStack(spacing: PPFulfillmentTokens.spaceSM) {
+                                ProgressView().tint(PPFulfillmentTokens.primary)
+                                Text(PPFulfillmentL10n.text("Fulfillment_Detail_Syncing"))
+                                    .font(PPFulfillmentTokens.beiruti(.medium, size: 14, relativeTo: .subheadline))
+                                    .foregroundStyle(PPFulfillmentTokens.secondaryInk)
+                            }
+                            .accessibilityElement(children: .combine)
                         }
-                        .accessibilityElement(children: .combine)
+                        if let error = viewModel.loadError {
+                            detailLoadNotice(error)
+                        }
+                        lifecycleSection
+                        overviewSection
+                        compositionSection
+                        settlementSection
+                        if viewModel.record.adminOverrideAt != nil { auditSection }
+                        timelineSection
                     }
-                    if let error = viewModel.loadError {
-                        detailLoadNotice(error)
-                    }
-                    lifecycleSection
-                    overviewSection
-                    compositionSection
-                    settlementSection
-                    if viewModel.record.adminOverrideAt != nil { auditSection }
-                    timelineSection
+                    .padding(.horizontal, PPFulfillmentTokens.screenMargin)
+                    .padding(.top, PPFulfillmentTokens.spaceBase)
+                    .padding(.bottom, viewModel.canAdminOverride && !viewModel.allowedOverrideTargets.isEmpty ? 12 : 40)
                 }
-                .padding(.horizontal, PPFulfillmentTokens.screenMargin)
-                .padding(.top, PPFulfillmentTokens.spaceBase)
-                .padding(.bottom, viewModel.canAdminOverride && !viewModel.allowedOverrideTargets.isEmpty ? 12 : 40)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -2452,76 +2438,42 @@ private struct PPFulfillmentDetailScreen: View {
         .onDisappear(perform: viewModel.stop)
     }
 
-    // MARK: - Dossier Header (PPAccessoryEditorView Pattern)
+    // MARK: - Sovereign Navigation Bar
 
     private var dossierHeaderView: some View {
-        HStack(alignment: .center) {
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        AdminSovereignNavigationBar(
+            title: viewModel.record.displayOrder,
+            subtitle: Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ"),
+            onBack: {
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                        .font(.system(size: 15, weight: .bold))
-                    Text(Language.get("Back", alter: "رجوع"))
-                        .font(AdminType.calloutBold)
-                }
-                .foregroundStyle(PPFulfillmentTokens.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(AdminSurface.control, in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
-                )
             }
-            .buttonStyle(CommandPressStyle())
-
-            Spacer()
-
-            VStack(spacing: 1) {
-                Text(Language.get("CommandCenter_Fulfillment_Workspace", alter: "مساحة التنفيذ"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                Text(viewModel.record.displayOrder)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
+        ) {
             if viewModel.isLoading {
                 ProgressView().tint(PPFulfillmentTokens.primary)
-                    .frame(width: 38, height: 38)
             } else {
                 Button(action: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     viewModel.load()
                 }) {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.control)
-                            .frame(width: 38, height: 38)
-                            .overlay(
-                                Circle()
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
-                            )
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(PPFulfillmentTokens.primary)
-                    }
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 44, height: 44)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-                .buttonStyle(CommandPressStyle())
+                .buttonStyle(.plain)
                 .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_Retry"))
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.bottom, 4)
     }
 
     private var detailCommandHeader: some View {

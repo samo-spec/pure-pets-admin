@@ -79,3 +79,162 @@ struct AdminErrorBanner: View {
         }.padding(12).background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
+
+// MARK: - Sovereign Navigation Bar & Back Button Components
+
+/// Flagship 44x44 continuous squircle back button matching the Sovereign Design System.
+public struct AdminSquircleBackButton: View {
+    public var action: () -> Void
+
+    public init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    public var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                    )
+                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+    }
+}
+
+/// Signature pill action button (e.g. "✓ حفظ" Save pill) with brand glow shadow.
+public struct AdminPrimaryPillButton: View {
+    public let title: String
+    public let systemImage: String
+    public var isLoading: Bool
+    public var action: () -> Void
+
+    public init(
+        title: String = Language.get("Save", alter: "حفظ"),
+        systemImage: String = "checkmark",
+        isLoading: Bool = false,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isLoading = isLoading
+        self.action = action
+    }
+
+    public var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                if isLoading {
+                    ProgressView().tint(.white).scaleEffect(0.8)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .heavy))
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 14)
+            .frame(height: 38)
+            .background(AdminSurface.primary, in: Capsule())
+            .shadow(color: AdminSurface.primary.opacity(0.35), radius: 6, x: 0, y: 3)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+    }
+}
+
+/// Sovereign Glassmorphic Navigation Bar pinned to safe area with squircle back button, title stack, and trailing action.
+public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
+    public let title: String
+    public var subtitle: String?
+    public var statusDotColor: Color?
+    public var onBack: () -> Void
+    public let trailingContent: TrailingContent
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        statusDotColor: Color? = Color(uiColor: .ppSuccess),
+        onBack: @escaping () -> Void,
+        @ViewBuilder trailingContent: () -> TrailingContent
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.statusDotColor = statusDotColor
+        self.onBack = onBack
+        self.trailingContent = trailingContent()
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                AdminSquircleBackButton(action: onBack)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.title3)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    if let sub = subtitle, !sub.isEmpty {
+                        HStack(spacing: 6) {
+                            if let dotColor = statusDotColor {
+                                Circle()
+                                    .fill(dotColor)
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(sub)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(statusDotColor ?? AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                trailingContent
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .background(
+                Color.clear
+                    .ignoresSafeArea(edges: .top)
+            )
+        }
+    }
+}
+
+extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        statusDotColor: Color? = Color(uiColor: .ppSuccess),
+        onBack: @escaping () -> Void
+    ) {
+        self.init(
+            title: title,
+            subtitle: subtitle,
+            statusDotColor: statusDotColor,
+            onBack: onBack,
+            trailingContent: { EmptyView() }
+        )
+    }
+}

@@ -824,7 +824,6 @@ private struct PPNavTitleCluster: View {
                let eyebrow = configuration.resolvedEyebrow {
                 Text(eyebrow.uppercased())
                     .font(PPNavTypography.eyebrow)
-                    .tracking(0.9)
                     .foregroundStyle(PPNavPalette.brand)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
