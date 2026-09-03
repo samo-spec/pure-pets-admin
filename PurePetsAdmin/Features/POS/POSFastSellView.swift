@@ -1079,17 +1079,7 @@ struct AdminPOSFastSellView: View {
         .padding(.horizontal, AdminSpacing.base)
         .padding(.top, AdminSpacing.xs)
         .padding(.bottom, AdminSpacing.md)
-        .background(
-            ZStack(alignment: .topTrailing) {
-                AdminSurface.background
-                RadialGradient(
-                    colors: [AdminSurface.primary.opacity(colorScheme == .dark ? 0.12 : 0.07), .clear],
-                    center: .topTrailing,
-                    startRadius: 4,
-                    endRadius: 210
-                )
-            }
-        )
+        .background(AdminSurface.background)
         .overlay(
             Rectangle()
                 .fill(AdminSurface.hairline)

@@ -10,6 +10,8 @@
 
 import SwiftUI
 import PhotosUI
+import AVFoundation
+import CryptoKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
@@ -99,6 +101,19 @@ private struct PPLivePetMutationRecovery: Codable {
     let oldImageURLs: [String]
 }
 
+/// Prepared, command-bound media for exactly one draft animal.
+///
+/// Bytes are normalized before hashing so retries keep one immutable Storage
+/// object path. The remote URL is retained only after Storage confirms it; it is
+/// then serialized into the existing live-unit `mediaURLs` contract.
+private struct PPLivePetUnitPhotoDraft {
+    let image: UIImage
+    let encodedData: Data
+    let contentSHA256: String
+    var objectWasUploaded: Bool
+    var uploadedURL: String?
+}
+
 // MARK: - View Model
 
 @MainActor
@@ -182,6 +197,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     // Images
     @Published var existingImageURLs: [String] = [] { didSet { updateUnsavedChanges() } }
     @Published var pickedImages: [UIImage] = [] { didSet { updateUnsavedChanges() } }
+    @Published fileprivate var livePetUnitPhotos: [String: PPLivePetUnitPhotoDraft] = [:] {
+        didSet { updateUnsavedChanges() }
+    }
     private var existingImageMetadata: [[AnyHashable: Any]] = []
     private var pickedImageUploadIDs: [UUID] = []
     private var pendingUnsavedUploads: [String: UUID] = [:]
@@ -461,6 +479,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     var blocksDismissal: Bool {
         preventsExplicitDismissal || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
     }
+    var canManageStock: Bool {
+        PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.manage") ?? false
+    }
     var canViewStockCosts: Bool {
         PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false
     }
@@ -551,6 +572,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     func removeLivePetUnit(id: String) {
         guard !isEditingLivePet, livePetUnits.count > 1 else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        livePetUnitPhotos.removeValue(forKey: id)
         livePetUnits.removeAll { $0.id == id }
         quantity = livePetUnits.count
     }
@@ -837,6 +859,223 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 .delete { _ in }
         }
         pickedImages.remove(at: index)
+    }
+
+    func livePetUnitPhoto(for unitID: String) -> UIImage? {
+        livePetUnitPhotos[unitID]?.image
+    }
+
+    /// Replaces only this draft animal's local identity photo. Upload is deferred
+    /// until the complete intake validates, so browsing or discarding a draft
+    /// never creates Storage objects.
+    func setLivePetUnitPhoto(_ image: UIImage, unitID: String) -> String? {
+        guard !isEditingLivePet,
+              livePetUnits.contains(where: { $0.id == unitID }) else { return nil }
+        guard canManageStock else {
+            return Language.get(
+                "LivePetIntake_UnitPhotoPermissionRequired",
+                alter: "تحتاج إلى صلاحية إدارة المخزون لإرفاق صورة الحيوان."
+            )
+        }
+        guard var prepared = Self.prepareLivePetUnitPhoto(image) else {
+            return Language.get(
+                "LivePetIntake_UnitPhotoPrepareFailed",
+                alter: "تعذر تجهيز هذه الصورة. اختر صورة أخرى وحاول مجدداً."
+            )
+        }
+
+        // Selecting the same image again must retain the immutable staged object
+        // instead of attempting a forbidden Storage overwrite.
+        if let current = livePetUnitPhotos[unitID],
+           current.contentSHA256 == prepared.contentSHA256 {
+            prepared.objectWasUploaded = current.objectWasUploaded
+            prepared.uploadedURL = current.uploadedURL
+        }
+        livePetUnitPhotos[unitID] = prepared
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        return nil
+    }
+
+    func removeLivePetUnitPhoto(unitID: String) {
+        guard livePetUnitPhotos.removeValue(forKey: unitID) != nil else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private static func prepareLivePetUnitPhoto(_ source: UIImage) -> PPLivePetUnitPhotoDraft? {
+        guard source.size.width > 0, source.size.height > 0 else { return nil }
+
+        let longestEdge = max(source.size.width, source.size.height)
+        let scale = min(1, 1_800 / longestEdge)
+        let targetSize = CGSize(
+            width: max(1, (source.size.width * scale).rounded()),
+            height: max(1, (source.size.height * scale).rounded())
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let normalized = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            source.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        let maximumBytes = 10 * 1_024 * 1_024
+        let encoded = [0.82, 0.72, 0.62, 0.52]
+            .compactMap { normalized.jpegData(compressionQuality: $0) }
+            .first { !$0.isEmpty && $0.count < maximumBytes }
+        guard let encoded else { return nil }
+
+        let digest = SHA256.hash(data: encoded)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return PPLivePetUnitPhotoDraft(
+            image: normalized,
+            encodedData: encoded,
+            contentSHA256: digest,
+            objectWasUploaded: false,
+            uploadedURL: nil
+        )
+    }
+
+    private func uploadLivePetUnitPhotosIfNeeded() async throws -> [String: [String]] {
+        guard editingAccessory == nil, liveInventoryMode == .individual else { return [:] }
+        let currentUnits = livePetUnits.filter { livePetUnitPhotos[$0.id] != nil }
+        guard !currentUnits.isEmpty else { return [:] }
+        guard canManageStock else {
+            throw livePetUnitPhotoError(
+                code: 1,
+                key: "LivePetIntake_UnitPhotoPermissionRequired",
+                fallback: "تحتاج إلى صلاحية إدارة المخزون لإرفاق صورة الحيوان."
+            )
+        }
+        guard let actorUID = Auth.auth().currentUser?.uid, !actorUID.isEmpty else {
+            throw livePetUnitPhotoError(
+                code: 2,
+                key: "LivePetIntake_UnitPhotoSessionExpired",
+                fallback: "انتهت جلسة الموظف. سجّل الدخول مجدداً قبل رفع صورة الحيوان."
+            )
+        }
+
+        var mediaByUnitID: [String: [String]] = [:]
+        for (position, unit) in currentUnits.enumerated() {
+            guard var photo = livePetUnitPhotos[unit.id] else { continue }
+            if let uploadedURL = photo.uploadedURL, !uploadedURL.isEmpty {
+                mediaByUnitID[unit.id] = [uploadedURL]
+                continue
+            }
+
+            let objectName = "\(photo.contentSHA256)_identity.jpg"
+            let reference = Storage.storage().reference()
+                .child("live-pet-units")
+                .child(actorUID)
+                .child(liveCreateCommandID)
+                .child(unit.id)
+                .child(objectName)
+            let expectedMetadata: [String: String] = [
+                "uploaded_by": actorUID,
+                "media_type": "image",
+                "media_scope": "live_pet_unit_internal",
+                "command_id": liveCreateCommandID,
+                "draft_unit_id": unit.id,
+                "content_sha256": photo.contentSHA256,
+            ]
+
+            if let existingMetadata = try await livePetUnitPhotoMetadata(for: reference) {
+                guard existingMetadata.contentType == "image/jpeg",
+                      existingMetadata.size == Int64(photo.encodedData.count),
+                      expectedMetadata.allSatisfy({ existingMetadata.customMetadata?[$0.key] == $0.value }) else {
+                    throw livePetUnitPhotoError(
+                        code: 3,
+                        key: "LivePetIntake_UnitPhotoStagedConflict",
+                        fallback: "تعارضت الصورة المجهزة مع ملف موجود. اختر الصورة مجدداً وحاول مرة أخرى."
+                    )
+                }
+                photo.objectWasUploaded = true
+            } else {
+                let metadata = StorageMetadata()
+                metadata.contentType = "image/jpeg"
+                metadata.customMetadata = expectedMetadata
+                try await putLivePetUnitPhoto(photo.encodedData, metadata: metadata, at: reference)
+                photo.objectWasUploaded = true
+            }
+
+            let downloadURL = try await livePetUnitPhotoDownloadURL(for: reference)
+            photo.uploadedURL = downloadURL.absoluteString
+            livePetUnitPhotos[unit.id] = photo
+            mediaByUnitID[unit.id] = [downloadURL.absoluteString]
+            submitProgress = Double(position + 1) / Double(currentUnits.count)
+        }
+        return mediaByUnitID
+    }
+
+    private func livePetUnitPhotoMetadata(for reference: StorageReference) async throws -> StorageMetadata? {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                reference.getMetadata { metadata, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let metadata {
+                        continuation.resume(returning: metadata)
+                    } else {
+                        continuation.resume(throwing: self.livePetUnitPhotoError(
+                            code: 4,
+                            key: "LivePetIntake_UnitPhotoUploadFailed",
+                            fallback: "تعذر التحقق من صورة الحيوان المرفوعة. حاول مرة أخرى."
+                        ))
+                    }
+                }
+            }
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == StorageErrorDomain,
+               nsError.code == StorageErrorCode.objectNotFound.rawValue {
+                return nil
+            }
+            throw error
+        }
+    }
+
+    private func putLivePetUnitPhoto(
+        _ data: Data,
+        metadata: StorageMetadata,
+        at reference: StorageReference
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            reference.putData(data, metadata: metadata) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    private func livePetUnitPhotoDownloadURL(for reference: StorageReference) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            reference.downloadURL { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let url {
+                    continuation.resume(returning: url)
+                } else {
+                    continuation.resume(throwing: self.livePetUnitPhotoError(
+                        code: 5,
+                        key: "LivePetIntake_UnitPhotoUploadFailed",
+                        fallback: "تعذر إكمال رفع صورة الحيوان. حاول مرة أخرى."
+                    ))
+                }
+            }
+        }
+    }
+
+    private func livePetUnitPhotoError(code: Int, key: String, fallback: String) -> NSError {
+        NSError(
+            domain: "PPAdmin.LivePetUnitPhoto",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: Language.get(key, alter: fallback)]
+        )
     }
 
     private func updateUnsavedChanges() {
@@ -1186,7 +1425,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func finalizeAccessorySave(accessory: PetAccessory, oldImageURLs: [String]) {
         if isLivePet {
-            finalizeLivePetSave(accessory: accessory, oldImageURLs: oldImageURLs)
+            Task { @MainActor [weak self] in
+                await self?.finalizeLivePetSave(accessory: accessory, oldImageURLs: oldImageURLs)
+            }
             return
         }
         AccessoryManager.shared().createOrUpdate(accessory) { [weak self] error in
@@ -1300,7 +1541,30 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
 
-    private func finalizeLivePetSave(accessory: PetAccessory, oldImageURLs: [String]) {
+    private func finalizeLivePetSave(accessory: PetAccessory, oldImageURLs: [String]) async {
+        let unitMediaURLsByID: [String: [String]]
+        do {
+            unitMediaURLsByID = try await uploadLivePetUnitPhotosIfNeeded()
+        } catch {
+            isSubmitting = false
+            submitProgress = 0
+            let nsError = error as NSError
+            let permissionFailure = (nsError.domain == StorageErrorDomain
+                && [StorageErrorCode.unauthenticated.rawValue, StorageErrorCode.unauthorized.rawValue].contains(nsError.code))
+                || (nsError.domain == "PPAdmin.LivePetUnitPhoto" && [1, 2].contains(nsError.code))
+            submissionFailureKind = permissionFailure ? .denied : .retryable
+            errorMessage = String(
+                format: Language.get(
+                    "LivePetIntake_UnitPhotoUploadFailureFormat",
+                    alter: "تعذر إكمال صورة الحيوان. لم يتم إنشاء المخزون. التفاصيل: %@"
+                ),
+                error.localizedDescription
+            )
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
+        }
+        submitProgress = 0
+
         let productID = editingAccessory?.accessoryID ?? ""
         let actorUID = Auth.auth().currentUser?.uid ?? ""
         var catalogValues: [String: Any] = [
@@ -1338,7 +1602,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "sellingPrice": sellingPrice,
                 "supplier": unit.supplier.trimmingCharacters(in: .whitespacesAndNewlines),
                 "notes": unit.notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                "mediaURLs": [],
+                "mediaURLs": unitMediaURLsByID[unit.id] ?? [],
             ]
         }
 

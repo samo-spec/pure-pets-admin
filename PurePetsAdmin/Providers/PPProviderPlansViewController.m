@@ -5,6 +5,7 @@
 #import "Language.h"
 #import "PPAlertHelper.h"
 #import "PPFunc+Haptics.h"
+#import "PurePetsAdmin-Swift.h"
 
 // MARK: - Helper Functions & Sector Utilities
 
@@ -452,6 +453,7 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     self.customNavBar = [UIView new];
     self.customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
     self.customNavBar.backgroundColor = [UIColor ppSurface];
+    self.customNavBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.customNavBar.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.04].CGColor;
     self.customNavBar.layer.shadowOffset = CGSizeMake(0, 3);
     self.customNavBar.layer.shadowRadius = 8.0;
@@ -464,9 +466,15 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     navBorder.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.6];
     [self.customNavBar addSubview:navBorder];
 
+    // Content container row strictly positioned inside safe area
+    UIView *navContentRow = [UIView new];
+    navContentRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navContentRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.customNavBar addSubview:navContentRow];
+
     // Back Button
     self.backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_handleBackAction)];
-    [self.customNavBar addSubview:self.backButton];
+    [navContentRow addSubview:self.backButton];
 
     // Titles Container
     UIStackView *titleStack = [UIStackView new];
@@ -474,18 +482,22 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     titleStack.axis = UILayoutConstraintAxisVertical;
     titleStack.alignment = [Language isRTL] ? UIStackViewAlignmentTrailing : UIStackViewAlignmentLeading;
     titleStack.spacing = 1.0;
-    [self.customNavBar addSubview:titleStack];
+    [navContentRow addSubview:titleStack];
 
     self.navTitleLabel = [UILabel new];
     self.navTitleLabel.font = [UIFont fontWithName:@"Beiruti-Bold" size:17.5] ?: [UIFont systemFontOfSize:17.5 weight:UIFontWeightBold];
     self.navTitleLabel.textColor = [UIColor ppTextPrimary];
     self.navTitleLabel.text = kLang(@"Providers_Plans_Nav_Title");
+    self.navTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.navTitleLabel.adjustsFontForContentSizeCategory = YES;
     [titleStack addArrangedSubview:self.navTitleLabel];
 
     self.navSubtitleLabel = [UILabel new];
     self.navSubtitleLabel.font = [UIFont fontWithName:@"Beiruti-Regular" size:11.5] ?: [UIFont systemFontOfSize:11.5 weight:UIFontWeightRegular];
     self.navSubtitleLabel.textColor = [UIColor ppTextSecondary];
     self.navSubtitleLabel.text = kLang(@"Providers_Plans_Nav_Subtitle");
+    self.navSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.navSubtitleLabel.adjustsFontForContentSizeCategory = YES;
     [titleStack addArrangedSubview:self.navSubtitleLabel];
 
     // Add Plan Action Pill Button
@@ -502,37 +514,47 @@ static NSString *PPSectorSymbolName(NSString * _Nullable providerType) {
     self.addPlanButton.titleLabel.font = [UIFont fontWithName:@"Beiruti-Bold" size:13.5] ?: [UIFont systemFontOfSize:13.5 weight:UIFontWeightBold];
     self.addPlanButton.contentEdgeInsets = UIEdgeInsetsMake(6, 12, 6, 12);
     [self.addPlanButton addTarget:self action:@selector(pp_presentNewPlanForm) forControlEvents:UIControlEventTouchUpInside];
-    [self.customNavBar addSubview:self.addPlanButton];
+    [navContentRow addSubview:self.addPlanButton];
 
     [NSLayoutConstraint activateConstraints:@[
         [self.customNavBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.customNavBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.customNavBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.customNavBar.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:54.0],
+        [self.customNavBar.bottomAnchor constraintEqualToAnchor:navContentRow.bottomAnchor constant:10.0],
+
+        [navContentRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4.0],
+        [navContentRow.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor constant:16.0],
+        [navContentRow.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor constant:-16.0],
+        [navContentRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:navContentRow.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [titleStack.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:12.0],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.addPlanButton.leadingAnchor constant:-12.0],
+        [titleStack.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+
+        [self.addPlanButton.trailingAnchor constraintEqualToAnchor:navContentRow.trailingAnchor],
+        [self.addPlanButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [self.addPlanButton.heightAnchor constraintEqualToConstant:32.0],
 
         [navBorder.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor],
         [navBorder.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor],
         [navBorder.bottomAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
-        [navBorder.heightAnchor constraintEqualToConstant:1.0],
-
-        [self.backButton.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor constant:12.0],
-        [self.backButton.centerYAnchor constraintEqualToAnchor:self.addPlanButton.centerYAnchor],
-        [self.backButton.widthAnchor constraintEqualToConstant:44.0],
-        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
-
-        [titleStack.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:10.0],
-        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.addPlanButton.leadingAnchor constant:-10.0],
-        [titleStack.centerYAnchor constraintEqualToAnchor:self.backButton.centerYAnchor],
-
-        [self.addPlanButton.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor constant:-14.0],
-        [self.addPlanButton.centerYAnchor constraintEqualToAnchor:self.backButton.centerYAnchor],
-        [self.addPlanButton.heightAnchor constraintEqualToConstant:32.0],
+        [navBorder.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
     ]];
 }
 
 - (void)pp_handleBackAction {
     [PPFunc pp_playSelectionEffect];
-    if (self.navigationController && self.navigationController.viewControllers.firstObject != self) {
+    if ([self respondsToSelector:@selector(pp_dismissWorkflowRouteIfPossible)]) {
+        if ([self pp_dismissWorkflowRouteIfPossible]) {
+            return;
+        }
+    }
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
         [self.navigationController popViewControllerAnimated:YES];
     } else {
         [self dismissViewControllerAnimated:YES completion:nil];

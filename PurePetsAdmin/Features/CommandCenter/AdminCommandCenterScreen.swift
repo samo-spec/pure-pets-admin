@@ -387,37 +387,26 @@ struct AdminCommandCenterScreenView: View {
             let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 44)
             let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
 
-            ScrollView(.vertical, showsIndicators: false) {
-                LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
-                    CommandCenterChrome(
-                        roleName: roleDisplayName,
-                        capabilityText: capabilityText,
-                        readinessText: compactReadinessText,
-                        readinessTone: readinessTone,
-                        onReadinessTap: store.readiness.failedAreas.isEmpty ? nil : {
-                            isShowingSourceIssueDetails = true
-                        },
-                        languageTitle: languageToggleTitle,
-                        onAccount: { route("editMyAccount") },
-                        onRefresh: { refresh() },
-                        onLanguage: { store.onToggleLanguage?() },
-                        onLogout: { store.onRequestLogout?() }
-                    )
+            VStack(spacing: 0) {
+                fixedNavBar(safeTop: safeTop, isRegular: isRegular)
 
-                    CommandEscalationHero(
-                        model: heroModel,
-                        isRegular: isRegular,
-                        onPrimary: { signal in route(signal.id) }
-                    )
-                    .transition(reduceMotion ? .identity : .opacity)
+                ScrollView(.vertical, showsIndicators: false) {
+                    LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                        CommandEscalationHero(
+                            model: heroModel,
+                            isRegular: isRegular,
+                            onPrimary: { signal in route(signal.id) }
+                        )
+                        .transition(reduceMotion ? .identity : .opacity)
 
-                    phaseContent
+                        phaseContent
+                    }
+                    .padding(.horizontal, AdminCommandMetric.pageMargin)
+                    .padding(.top, 12)
+                    .padding(.bottom, 112)
+                    .frame(maxWidth: isRegular ? 980 : .infinity)
+                    .frame(maxWidth: .infinity)
                 }
-                .padding(.horizontal, AdminCommandMetric.pageMargin)
-                .padding(.top, safeTop + 8)
-                .padding(.bottom, 112)
-                .frame(maxWidth: isRegular ? 980 : .infinity)
-                .frame(maxWidth: .infinity)
             }
             .background(AdminSurface.background.ignoresSafeArea())
         }
@@ -435,6 +424,35 @@ struct AdminCommandCenterScreenView: View {
                 .receive(on: RunLoop.main)
         ) { _ in
             store.localeCode = Language.currentLanguageCode()
+        }
+    }
+
+    private func fixedNavBar(safeTop: CGFloat, isRegular: Bool) -> some View {
+        CommandCenterChrome(
+            roleName: roleDisplayName,
+            capabilityText: capabilityText,
+            readinessText: compactReadinessText,
+            readinessTone: readinessTone,
+            onReadinessTap: store.readiness.failedAreas.isEmpty ? nil : {
+                isShowingSourceIssueDetails = true
+            },
+            languageTitle: languageToggleTitle,
+            onAccount: { route("editMyAccount") },
+            onRefresh: { refresh() },
+            onLanguage: { store.onToggleLanguage?() },
+            onLogout: { store.onRequestLogout?() }
+        )
+        .padding(.horizontal, AdminCommandMetric.pageMargin)
+        .padding(.top, safeTop + 4)
+        .padding(.bottom, 10)
+        .frame(maxWidth: isRegular ? 980 : .infinity)
+        .frame(maxWidth: .infinity)
+        .background(
+            AdminSurface.background
+                .ignoresSafeArea(edges: .top)
+        )
+        .overlay(alignment: .bottom) {
+            Divider().background(AdminSurface.hairline.opacity(0.5))
         }
     }
 
@@ -2079,13 +2097,13 @@ private struct CommandQuickActionCard: View {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
 
-                    // Rich full-card accent gradient wash
+                    // Subtle refined accent gradient wash
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    item.accent.opacity(colorScheme == .dark ? 0.28 : 0.18),
-                                    item.accent.opacity(colorScheme == .dark ? 0.14 : 0.08)
+                                    item.accent.opacity(colorScheme == .dark ? 0.10 : 0.05),
+                                    item.accent.opacity(colorScheme == .dark ? 0.05 : 0.02)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -2095,7 +2113,7 @@ private struct CommandQuickActionCard: View {
                     // Optical radial glow from the leading corner
                     RadialGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.20 : 0.12),
+                            item.accent.opacity(colorScheme == .dark ? 0.08 : 0.035),
                             .clear
                         ],
                         center: .topLeading,
