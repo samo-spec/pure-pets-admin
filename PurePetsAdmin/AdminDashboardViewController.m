@@ -1928,7 +1928,13 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
     [statsStack addArrangedSubview:[self pp_makeHeroStatItemWithTitle:kLang(@"pp_stats_ads") valueLabel:self.statAdsValueLbl]];
     [statsStack addArrangedSubview:[self pp_makeHeroStatItemWithTitle:kLang(@"pp_stats_accessories") valueLabel:self.statAccValueLbl]];
-    [statsStack addArrangedSubview:[self pp_makeHeroStatItemWithTitle:kLang(@"pp_stats_users") valueLabel:self.statUsersValueLbl]];
+    UIView *usersStatItem = [self pp_makeHeroStatItemWithTitle:kLang(@"pp_stats_users") valueLabel:self.statUsersValueLbl];
+    usersStatItem.userInteractionEnabled = YES;
+    usersStatItem.accessibilityTraits = UIAccessibilityTraitButton;
+    usersStatItem.accessibilityHint = kLang(@"AdminCommand_Accessibility_OpenHint");
+    UITapGestureRecognizer *usersTap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(pp_didTapUsersHeroStat)];
+    [usersStatItem addGestureRecognizer:usersTap];
+    [statsStack addArrangedSubview:usersStatItem];
 
     for (NSInteger index = 1; index < statsStack.arrangedSubviews.count; index++) {
         UIView *separator = [UIView new];
@@ -2214,6 +2220,12 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     ]];
 
     return container;
+}
+
+- (void)pp_didTapUsersHeroStat {
+    if (![self pp_commandAllowsTag:@"usersList"]) return;
+    [PPFunc pp_playTapEffect];
+    [self pp_handleDashboardActionForTag:@"usersList"];
 }
 
 - (void)updateHeaderWithUser:(UserModel *)user {
@@ -2961,8 +2973,8 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         kStaffPermUsersRestrictionsManage
     ]]) {
         [userItems addObject:[self pp_itemWithTag:@"usersList"
-                                         titleKey:@"SetPermissions"
-                                      subtitleKey:@"SetPermissionsSubtitle"
+                                         titleKey:@"MissionControl_Customers_Title"
+                                      subtitleKey:@"AdminDashboard_Section_Users_Description"
                                          iconName:@"person.2.fill"]];
     }
     if (userItems.count > 0) {
@@ -3405,17 +3417,14 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 }
 
 - (UIViewController *)pp_viewControllerForDashboardTag:(NSString *)tag {
-    if ([tag isEqualToString:@"usersList"]) {
-        return [[UsersListVC alloc] initWithViewFor:ViewForEditAccount];
+    if ([tag isEqualToString:@"usersList"] || [tag isEqualToString:@"usersRolePermissions"]) {
+        return [PPAdminUsersListHostingController new];
     }
     if ([tag isEqualToString:@"staffManagement"]) {
         return [PPStaffManagementViewController new];
     }
     if ([tag isEqualToString:@"blockUser"]) {
         return [BlockUserViewController new];
-    }
-    if ([tag isEqualToString:@"usersRolePermissions"]) {
-        return [[UsersListVC alloc] initWithViewFor:ViewForEditRoleAndPermissions];
     }
     if ([tag isEqualToString:@"accessories"]) {
         return [PPInventoryListHostingController makeForAccessories];

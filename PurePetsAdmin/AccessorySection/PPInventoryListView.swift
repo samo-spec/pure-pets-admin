@@ -49,9 +49,69 @@ enum PPLivePetInventoryMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Biological sex recorded for one individually tracked live animal.
+///
+/// Raw values mirror the Infra `LIVE_PET_UNIT_GENDER` allowlist exactly; the
+/// server rejects anything outside it, so this type is the client-side guard
+/// that a malformed value can never be assembled in the first place.
+enum PPLivePetUnitGender: String, CaseIterable, Identifiable, Equatable {
+    case male = "MALE"
+    case female = "FEMALE"
+    case pair = "PAIR"
+    case unspecified = "UNSPECIFIED"
+
+    var id: String { rawValue }
+
+    /// Compatible resolution for stored or transported values, including units
+    /// created before the field existed.
+    static func resolved(_ raw: Any?) -> PPLivePetUnitGender {
+        let candidate = PPLivePetInventoryService.string(raw).uppercased()
+        return PPLivePetUnitGender(rawValue: candidate) ?? .unspecified
+    }
+
+    var localizedTitle: String {
+        switch self {
+        case .male: return Language.get("LivePetUnit_Gender_Male", alter: "ذكر")
+        case .female: return Language.get("LivePetUnit_Gender_Female", alter: "أنثى")
+        case .pair: return Language.get("LivePetUnit_Gender_Pair", alter: "زوج")
+        case .unspecified: return Language.get("LivePetUnit_Gender_Unspecified", alter: "غير محدد")
+        }
+    }
+
+    /// Short form used inside dense identity rows where the full label would
+    /// truncate before the ring/tag.
+    var localizedShortTitle: String {
+        switch self {
+        case .male: return Language.get("LivePetUnit_Gender_Male_Short", alter: "ذكر")
+        case .female: return Language.get("LivePetUnit_Gender_Female_Short", alter: "أنثى")
+        case .pair: return Language.get("LivePetUnit_Gender_Pair_Short", alter: "زوج")
+        case .unspecified: return Language.get("LivePetUnit_Gender_Unspecified_Short", alter: "بلا جنس")
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .male: return "arrow.up.right.circle.fill"
+        case .female: return "arrow.down.circle.fill"
+        case .pair: return "circle.grid.2x1.fill"
+        case .unspecified: return "questionmark.circle.fill"
+        }
+    }
+
+    var tint: UIColor {
+        switch self {
+        case .male: return .ppInfo
+        case .female: return .ppPrimary
+        case .pair: return .ppSuccess
+        case .unspecified: return .ppTextTertiary
+        }
+    }
+}
+
 struct PPLivePetUnitDraft: Identifiable, Equatable {
     let id: String
     var ringTag: String
+    var gender: PPLivePetUnitGender
     var acquisitionDate: Date
     var purchaseCostText: String
     var sellingPriceText: String
@@ -61,6 +121,7 @@ struct PPLivePetUnitDraft: Identifiable, Equatable {
     init(
         id: String = "unit_draft_\(UUID().uuidString.lowercased())",
         ringTag: String = "",
+        gender: PPLivePetUnitGender = .unspecified,
         acquisitionDate: Date = Date(),
         purchaseCostText: String = "",
         sellingPriceText: String = "",
@@ -69,6 +130,7 @@ struct PPLivePetUnitDraft: Identifiable, Equatable {
     ) {
         self.id = id
         self.ringTag = ringTag
+        self.gender = gender
         self.acquisitionDate = acquisitionDate
         self.purchaseCostText = purchaseCostText
         self.sellingPriceText = sellingPriceText
@@ -783,6 +845,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             return [
                 "draftUnitId": draft.id,
                 "ringTag": draft.ringTag.trimmingCharacters(in: .whitespacesAndNewlines),
+                "gender": draft.gender.rawValue,
                 "acquisitionDate": ISO8601DateFormatter().string(from: draft.acquisitionDate),
                 "purchaseCost": purchaseCost ?? NSNull(),
                 "sellingPrice": price,
@@ -1208,6 +1271,7 @@ final class PPInventoryListViewModel: ObservableObject {
 
 // MARK: - Reimagined Flagship Inventory Screen
 
+@available(iOS 16.0, *)
 @MainActor
 public struct PPInventoryListView: View {
     @StateObject private var viewModel: PPInventoryListViewModel
@@ -2198,12 +2262,16 @@ private struct FlagshipInventoryCard: View {
 
 // MARK: - Flagship Item Quick Dossier Sheet
 
+@available(iOS 16.0, *)
 private struct PPInventoryItemDossierSheet: View {
     let item: PetAccessory
     @ObservedObject var viewModel: PPInventoryListViewModel
     let onOpenFullEditor: () -> Void
     let onOpenPOS: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var hasEntered = false
     @StateObject private var liveModel: PPLivePetOperationsViewModel
 
     init(
@@ -2224,103 +2292,70 @@ private struct PPInventoryItemDossierSheet: View {
             ZStack {
                 AdminSurface.background.ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Hero Image & Title
-                        VStack(spacing: 12) {
-                            if let firstURL = PetAccessory.firstImageURL(for: item) {
-                                AsyncImage(url: firstURL) { phase in
-                                    if let image = phase.image {
-                                        image
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(height: 200)
-                                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                                    } else {
-                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                            .fill(AdminSurface.control)
-                                            .frame(height: 180)
-                                    }
-                                }
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.name)
-                                    .font(AdminType.title2)
-                                    .foregroundStyle(AdminSurface.primaryText)
-
-                                if !item.desc.isEmpty {
-                                    Text(item.desc)
-                                        .font(AdminType.caption1)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(16)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-
-                        // Stock & Price Quick Readout
-                        HStack(spacing: 12) {
-                            dossierMetricCard(
-                                title: Language.get("Price", alter: "السعر الحالي"),
-                                value: item.inventoryDisplayPrice,
-                                color: item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning)
-                            )
-                            dossierMetricCard(
-                                title: Language.get("Quantity", alter: "الكمية المتاحة"),
-                                value: "\(item.quantity)",
-                                color: item.quantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
-                            )
-                        }
-
-                        // Identifiers Matrix
-                        VStack(spacing: 10) {
-                            dossierRow(title: Language.get("ID", alter: "معرّف الصنف"), value: item.accessoryID)
-                            if let store = item.storeName {
-                                dossierRow(title: Language.get("Store", alter: "المتجر / الفرع"), value: store)
-                            }
-                            dossierRow(title: Language.get("Condition", alter: "الحالة"), value: PetAccessory.conditionText(for: item))
-                        }
-                        .padding(16)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: AdminSpacing.base) {
+                        dossierHero
+                        dossierSignalDeck
+                        dossierIdentityRail
 
                         if item.isLivePet {
                             livePetOperationsSection
                         }
-
-                        // CTAs
-                        Button {
-                            dismiss()
-                            onOpenFullEditor()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 15, weight: .bold))
-                                Text(Language.get("EditFullDetails", alter: "فتح محرر البيانات الكامل"))
-                                    .font(AdminType.headline)
-                            }
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                            .background(AdminSurface.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        }
-                        .buttonStyle(CatalogPressStyle())
                     }
-                    .padding(16)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.md)
+                    .padding(.bottom, AdminSpacing.xl)
+                    .opacity(hasEntered ? 1 : 0)
+                    .offset(y: accessibilityReduceMotion || hasEntered ? 0 : 10)
                 }
             }
             .navigationTitle(Language.get("ItemDetails", alter: "تفاصيل الصنف"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .background(AdminSurface.surface, in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                     }
+                    .buttonStyle(CatalogPressStyle())
+                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+                    .accessibilityHint(Language.get("LivePetDossier_CloseHint", alter: "يغلق التفاصيل ويعيدك إلى قائمة المخزون"))
+                }
+
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        dismiss()
+                        onOpenFullEditor()
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
+                    }
+                    .buttonStyle(CatalogPressStyle())
+                    .accessibilityLabel(Language.get("EditFullDetails", alter: "فتح محرر البيانات الكامل"))
+                    .accessibilityHint(Language.get("LivePetDossier_EditHint", alter: "يفتح محرر بيانات الكتالوج الكامل"))
                 }
             }
         }
         .navigationViewStyle(.stack)
+        .onAppear {
+            if accessibilityReduceMotion {
+                hasEntered = true
+            } else {
+                withAnimation(.easeOut(duration: 0.24)) {
+                    hasEntered = true
+                }
+            }
+        }
         .task {
             if item.isLivePet { await liveModel.load() }
         }
@@ -2330,235 +2365,518 @@ private struct PPInventoryItemDossierSheet: View {
     }
 
     private var livePetOperationsSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(Language.get("LivePet_Operations_Title", alter: "عمليات دورة حياة الحيوان"))
-                        .font(AdminType.headline)
-                        .foregroundStyle(AdminSurface.primaryText)
-                    Text(Language.get("LivePet_Operations_Hint", alter: "كل تغيير يُنفذ من الخادم ويُسجل في حركة المخزون والتدقيق."))
-                        .font(AdminType.caption2)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-                Spacer()
-                Button {
-                    Task { await liveModel.load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 14, weight: .bold))
-                        .frame(width: 38, height: 38)
-                        .background(AdminSurface.control, in: Circle())
-                }
-                .disabled(liveModel.isLoading || liveModel.isMutating)
-                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
-            }
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            livePetCommandHeader
 
             if let success = liveModel.successMessage {
-                Label(success, systemImage: "checkmark.circle.fill")
-                    .font(AdminType.caption1)
-                    .foregroundStyle(Color(uiColor: .ppSuccess))
-                    .fixedSize(horizontal: false, vertical: true)
+                dossierStateNotice(
+                    success,
+                    symbol: "checkmark.circle.fill",
+                    tone: Color(uiColor: .ppSuccess)
+                )
             }
             if let error = liveModel.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(AdminType.caption1)
-                    .foregroundStyle(Color(uiColor: .ppError))
-                    .fixedSize(horizontal: false, vertical: true)
+                dossierStateNotice(
+                    error,
+                    symbol: "exclamationmark.triangle.fill",
+                    tone: Color(uiColor: .ppError)
+                )
             }
 
             if liveModel.mode == nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label(
-                        Language.get("LivePet_Legacy_Mode_Title", alter: "يلزم اعتماد نمط التتبع"),
-                        systemImage: "exclamationmark.shield.fill"
-                    )
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(Color(uiColor: .ppWarning))
-                    Text(Language.get("LivePet_Legacy_Mode_Hint", alter: "هذا سجل قديم. اختر تتبعاً فردياً أو إدارة بالكمية قبل تنفيذ أي حركة جديدة."))
-                        .font(AdminType.caption2)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button {
-                        liveModel.operation = .migrate
-                    } label: {
-                        Label(Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون"), systemImage: "arrow.triangle.branch")
-                            .font(AdminType.captionBold)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AdminSurface.primary)
-                    .disabled(!liveModel.canManageStock)
-                }
-                .padding(12)
-                .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                legacyTrackingDecision
             } else {
-                HStack(spacing: 8) {
-                    Button {
-                        liveModel.operation = .intake
-                    } label: {
-                        Label(Language.get("LivePet_Intake_Action", alter: "إضافة مخزون"), systemImage: "plus.circle.fill")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!liveModel.canManageStock)
+                livePetPrimaryCommands
+                archiveCatalogCommand
 
-                    Button {
-                        dismiss()
-                        onOpenPOS()
-                    } label: {
-                        Label(Language.get("LivePet_Open_POS", alter: "فتح نقطة البيع"), systemImage: "cart.fill")
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(AdminSurface.primary)
-                    .disabled(!liveModel.canSell)
-                }
-
-                Button {
-                    liveModel.operation = .archive(!liveModel.item.isArchived)
-                } label: {
-                    Label(
-                        liveModel.item.isArchived
-                            ? Language.get("LivePet_Restore_Action", alter: "استعادة سجل الكتالوج")
-                            : Language.get("LivePet_Archive_Action", alter: "أرشفة سجل الكتالوج"),
-                        systemImage: liveModel.item.isArchived ? "arrow.uturn.backward.circle" : "archivebox"
-                    )
-                    .font(AdminType.captionBold)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!liveModel.canManageStock)
-            }
-
-            if liveModel.mode == .quantity {
-                Button {
-                    liveModel.operation = .groupAdjustment
-                } label: {
-                    Label(Language.get("LivePet_Group_Adjust_Action", alter: "مطابقة كمية المجموعة"), systemImage: "slider.horizontal.3")
-                        .font(AdminType.captionBold)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .disabled(!liveModel.canManageStock)
-
-                Text(Language.get("LivePet_Group_Exact_Action_Hint", alter: "الحجز الفردي والنقل والوفاة لكل حيوان تتطلب نمط التتبع الفردي."))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if liveModel.mode == .individual {
-                if liveModel.isLoading && liveModel.units.isEmpty {
-                    ProgressView(Language.get("LivePet_Units_Loading", alter: "جارٍ تحميل سجلات الحيوانات..."))
-                        .frame(maxWidth: .infinity, minHeight: 90)
-                } else if liveModel.units.isEmpty {
-                    Text(Language.get("LivePet_Units_Empty", alter: "لا توجد سجلات فردية لهذا الصنف بعد."))
-                        .font(AdminType.caption1)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 72)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(liveModel.units) { unit in
-                            livePetUnitRow(unit)
-                        }
-                    }
+                if liveModel.mode == .quantity {
+                    groupReconciliationCommand
+                } else if liveModel.mode == .individual {
+                    individualAnimalLedger
                 }
             }
 
             if liveModel.canViewReservations && !liveModel.reservations.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(Language.get("LivePet_Reservations_Title", alter: "الحجوزات النشطة"))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminSurface.primaryText)
+                activeReservationsLedger
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
 
-                    ForEach(liveModel.reservations) { reservation in
-                        Button {
-                            liveModel.operation = .reservation(reservation)
-                        } label: {
-                            HStack(alignment: .top, spacing: 10) {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(reservation.customerName.isEmpty ? reservation.customerPhone : reservation.customerName)
-                                        .font(AdminType.captionBold)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                    Text(String(format: Language.get("LivePet_Reservation_Branch_Format", alter: "الفرع: %@"), reservation.branchID))
-                                        .font(AdminType.caption2)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    if let validUntil = reservation.validUntil {
-                                        Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
-                                            .font(AdminType.caption2)
-                                            .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                VStack(alignment: .trailing, spacing: 4) {
-                                    Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
-                                        .font(AdminType.captionBold)
-                                        .foregroundStyle(AdminSurface.primary)
-                                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(AdminCommandInk.tertiary)
-                                }
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(liveModel.isMutating)
+    private var livePetCommandHeader: some View {
+        HStack(alignment: .top, spacing: AdminSpacing.md) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.12))
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Language.get("LivePet_Operations_Title", alter: "عمليات دورة حياة الحيوان"))
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(Language.get("LivePet_Operations_Hint", alter: "كل تغيير يُنفذ من الخادم ويُسجل في حركة المخزون والتدقيق."))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            Button {
+                Task { await liveModel.load() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.primary.opacity(0.09), in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 0.75))
+            }
+            .buttonStyle(CatalogPressStyle())
+            .disabled(liveModel.isLoading || liveModel.isMutating)
+            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            .accessibilityHint(Language.get("LivePetDossier_RefreshHint", alter: "يعيد تحميل حالة الحيوانات والحجوزات من الخادم"))
+        }
+    }
+
+    private var legacyTrackingDecision: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .ppWarning))
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("LivePet_Legacy_Mode_Title", alter: "يلزم اعتماد نمط التتبع"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(Language.get("LivePet_Legacy_Mode_Hint", alter: "هذا سجل قديم. اختر تتبعاً فردياً أو إدارة بالكمية قبل تنفيذ أي حركة جديدة."))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Button {
+                liveModel.operation = .migrate
+            } label: {
+                Label(Language.get("LivePet_Migrate_Action", alter: "اعتماد نمط المخزون"), systemImage: "arrow.triangle.branch")
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                    .background(Color(uiColor: .ppWarning), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            }
+            .buttonStyle(CatalogPressStyle())
+            .disabled(!liveModel.canManageStock || liveModel.isMutating)
+            .accessibilityHint(Language.get("LivePetDossier_MigrateHint", alter: "يفتح اختيار نمط تتبع المخزون لهذا السجل القديم"))
+        }
+        .padding(AdminSpacing.md)
+        .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.26), lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private var livePetPrimaryCommands: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: AdminSpacing.sm) {
+                intakeCommand
+                posCommand
+            }
+        } else {
+            HStack(spacing: AdminSpacing.sm) {
+                intakeCommand
+                posCommand
+            }
+        }
+    }
+
+    private var intakeCommand: some View {
+        dossierOperationCommand(
+            title: Language.get("LivePet_Intake_Action", alter: "إضافة مخزون"),
+            detail: Language.get("LivePetDossier_IntakeDetail", alter: "تسجيل وصول حيوان أو كمية جديدة"),
+            symbol: "arrow.down.to.line.compact",
+            tint: Color(uiColor: .ppSuccess),
+            prominent: false,
+            enabled: liveModel.canManageStock
+        ) {
+            liveModel.operation = .intake
+        }
+    }
+
+    private var posCommand: some View {
+        dossierOperationCommand(
+            title: Language.get("LivePet_Open_POS", alter: "فتح نقطة البيع"),
+            detail: Language.get("LivePetDossier_POSDetail", alter: "بيع أو حجز حيوان لعميل"),
+            symbol: "cart.fill",
+            tint: AdminSurface.primary,
+            prominent: true,
+            enabled: liveModel.canSell
+        ) {
+            dismiss()
+            onOpenPOS()
+        }
+    }
+
+    private var archiveCatalogCommand: some View {
+        let archived = liveModel.item.isArchived
+        let enabled = liveModel.canManageStock
+        let title = archived
+            ? Language.get("LivePet_Restore_Action", alter: "استعادة سجل الكتالوج")
+            : Language.get("LivePet_Archive_Action", alter: "أرشفة سجل الكتالوج")
+        let detail = archived
+            ? Language.get("LivePetDossier_RestoreDetail", alter: "إعادة السجل إلى مساحة العمل" )
+            : Language.get("LivePetDossier_ArchiveDetail", alter: "إيقاف السجل دون حذف تاريخه" )
+
+        return Button {
+            liveModel.operation = .archive(!archived)
+        } label: {
+            HStack(spacing: AdminSpacing.md) {
+                Image(systemName: archived ? "arrow.uturn.backward.circle.fill" : "archivebox.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(enabled ? AdminCommandInk.secondary : Color(uiColor: .ppTextTertiary))
+                    .frame(width: 28, height: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(enabled ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                    Text(detail)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: AdminSpacing.xs)
+                if !enabled {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(!enabled || liveModel.isMutating)
+        .accessibilityLabel(title)
+        .accessibilityValue(enabled ? "" : Language.get("LivePetDossier_AccessLimited", alter: "غير متاح بصلاحيتك"))
+        .accessibilityHint(detail)
+    }
+
+    private var groupReconciliationCommand: some View {
+        dossierOperationCommand(
+            title: Language.get("LivePet_Group_Adjust_Action", alter: "مطابقة كمية المجموعة"),
+            detail: Language.get("LivePet_Group_Exact_Action_Hint", alter: "الحجز الفردي والنقل والوفاة لكل حيوان تتطلب نمط التتبع الفردي."),
+            symbol: "slider.horizontal.3",
+            tint: Color(uiColor: .ppInfo),
+            prominent: false,
+            enabled: liveModel.canManageStock
+        ) {
+            liveModel.operation = .groupAdjustment
+        }
+    }
+
+    private var individualAnimalLedger: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.sm) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(String(
+                        format: Language.get("LivePetDossier_UnitLedgerCount", alter: "%ld سجلات هوية مستقلة"),
+                        liveModel.units.count
+                    ))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                }
+                Spacer(minLength: AdminSpacing.xs)
+                dossierStatusPill(
+                    title: inventoryTrackingTitle,
+                    symbol: inventoryTrackingSymbol,
+                    tint: inventoryTrackingTint
+                )
+            }
+
+            if liveModel.isLoading && liveModel.units.isEmpty {
+                dossierLoadingState
+            } else if liveModel.units.isEmpty {
+                dossierUnitEmptyState
+            } else {
+                VStack(spacing: AdminSpacing.sm) {
+                    ForEach(liveModel.units) { unit in
+                        livePetUnitRow(unit)
                     }
                 }
             }
         }
-        .padding(16)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.top, AdminSpacing.xs)
     }
 
-    private func livePetUnitRow(_ unit: PPLivePetInventoryUnit) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(unit.ringTag.isEmpty ? unit.id : unit.ringTag)
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+    private var dossierLoadingState: some View {
+        HStack(spacing: AdminSpacing.md) {
+            ProgressView()
+                .tint(AdminSurface.primary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("LivePet_Units_Loading", alter: "جارٍ تحميل سجلات الحيوانات..."))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(Language.get("LivePetDossier_LoadingHint", alter: "يتم جلب الحالة الحالية قبل إتاحة الإجراءات."))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, minHeight: 78, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var dossierUnitEmptyState: some View {
+        let canReadVisibleUnits = liveModel.canManageStock || liveModel.canSell
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            Label(
+                canReadVisibleUnits
+                    ? Language.get("LivePet_Units_Empty", alter: "لا توجد سجلات فردية لهذا الصنف بعد.")
+                    : Language.get("LivePetDossier_UnitsRestricted", alter: "سجلات الحيوانات الفردية غير متاحة لصلاحيتك."),
+                systemImage: canReadVisibleUnits ? "tray" : "lock.shield"
+            )
+            .font(AdminType.captionBold)
+            .foregroundStyle(canReadVisibleUnits ? AdminSurface.secondaryText : Color(uiColor: .ppWarning))
+
+            Text(
+                canReadVisibleUnits
+                    ? Language.get("LivePetDossier_EmptyUnitsHint", alter: "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.")
+                    : Language.get("LivePetDossier_RestrictedUnitsHint", alter: "اطلب صلاحية المخزون أو المبيعات لرؤية السجلات التي يسمح لك بها الدور." )
+            )
+            .font(AdminType.caption2)
+            .foregroundStyle(AdminCommandInk.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, minHeight: 82, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private var activeReservationsLedger: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack(spacing: AdminSpacing.sm) {
+                Image(systemName: "calendar.badge.clock")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .ppWarning))
+                    .frame(width: 28, height: 28)
+                    .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("LivePet_Reservations_Title", alter: "الحجوزات النشطة"))
+                        .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
-                    Text(liveUnitStatus(unit.status))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(liveUnitStatusColor(unit.status))
-                    if !unit.currentBranchID.isEmpty {
-                        Text(String(format: Language.get("LivePet_Branch_Format", alter: "الفرع: %@"), unit.currentBranchID))
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                    }
-                }
-                Spacer()
-                if let price = unit.sellingPrice {
-                    Text(PetAccessory.formatCurrency(NSNumber(value: price)))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(AdminSurface.primary)
+                    Text(String(
+                        format: Language.get("LivePetDossier_ReservationCount", alter: "%ld حجوزات بحاجة إلى متابعة"),
+                        liveModel.reservations.count
+                    ))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
                 }
             }
 
-            if unit.status == "RESERVED" {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(unit.reservationCustomerName.isEmpty ? unit.reservationCustomerPhone : unit.reservationCustomerName)
+            VStack(spacing: AdminSpacing.xs) {
+                ForEach(liveModel.reservations) { reservation in
+                    reservationDossierRow(reservation)
+                }
+            }
+        }
+        .padding(.top, AdminSpacing.sm)
+    }
+
+    private func reservationDossierRow(_ reservation: PPLivePetReservation) -> some View {
+        Button {
+            liveModel.operation = .reservation(reservation)
+        } label: {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 36, height: 36)
+                    .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(reservation.customerName.isEmpty ? reservation.customerPhone : reservation.customerName)
                         .font(AdminType.captionBold)
-                    if let validUntil = unit.reservationValidUntil {
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(String(format: Language.get("LivePet_Reservation_Branch_Format", alter: "الفرع: %@"), reservation.branchID))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    if let validUntil = reservation.validUntil {
                         Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
                             .font(AdminType.caption2)
                             .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
                     }
                 }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primary)
+                        .environment(\.layoutDirection, .leftToRight)
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.tertiary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(liveModel.isMutating)
+        .accessibilityHint(Language.get("LivePetDossier_ReservationHint", alter: "يفتح إجراءات هذا الحجز"))
+    }
+
+    private func livePetUnitRow(_ unit: PPLivePetInventoryUnit) -> some View {
+        let identity = unit.ringTag.isEmpty ? unit.id : unit.ringTag
+        let status = liveUnitStatus(unit.status)
+        let statusColor = liveUnitStatusColor(unit.status)
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                        .fill(statusColor.opacity(0.12))
+                    Image(systemName: liveUnitStatusSymbol(unit.status))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(statusColor)
+                }
+                .frame(width: 40, height: 40)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(identity)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: AdminSpacing.xs) {
+                        dossierStatusPill(
+                            title: status,
+                            symbol: liveUnitStatusSymbol(unit.status),
+                            tint: statusColor
+                        )
+
+                        if !unit.currentBranchID.isEmpty {
+                            Label(unit.currentBranchID, systemImage: "building.2")
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .environment(\.layoutDirection, .leftToRight)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                VStack(alignment: .trailing, spacing: AdminSpacing.xs) {
+                    if let price = unit.sellingPrice {
+                        Text(PetAccessory.formatCurrency(NSNumber(value: price)))
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primary)
+                            .environment(\.layoutDirection, .leftToRight)
+                    } else {
+                        Text(Language.get("LivePetDossier_PriceUnspecified", alter: "السعر غير محدد"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    Menu {
+                        livePetUnitActions(unit)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.75))
+                    }
+                    .disabled(liveModel.isMutating)
+                    .accessibilityLabel(String(
+                        format: Language.get("LivePetDossier_UnitActionsAccessibility", alter: "إجراءات الحيوان %@"),
+                        identity
+                    ))
+                    .accessibilityHint(Language.get("LivePetDossier_UnitActionsHint", alter: "يفتح الإجراءات المسموح بها حسب حالة الحيوان وصلاحيتك"))
+                }
             }
 
-            Menu {
-                livePetUnitActions(unit)
-            } label: {
-                Label(Language.get("LivePet_Unit_Actions", alter: "إجراءات الحيوان"), systemImage: "ellipsis.circle")
-                    .font(AdminType.captionBold)
-                    .frame(maxWidth: .infinity, minHeight: 38)
+            if unit.status == "RESERVED" {
+                HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                    Image(systemName: "person.text.rectangle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                        .frame(width: 24, height: 24)
+                        .background(Color(uiColor: .ppWarning).opacity(0.10), in: Circle())
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(unit.reservationCustomerName.isEmpty ? unit.reservationCustomerPhone : unit.reservationCustomerName)
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        if let validUntil = unit.reservationValidUntil {
+                            Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
+                                .font(AdminType.caption2)
+                                .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(AdminSpacing.sm)
+                .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
             }
-            .buttonStyle(.bordered)
-            .disabled(liveModel.isMutating)
         }
-        .padding(12)
-        .background(AdminSurface.control.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(statusColor.opacity(0.22), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -2641,29 +2959,394 @@ private struct PPInventoryItemDossierSheet: View {
         }
     }
 
-    private func dossierMetricCard(title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminCommandInk.secondary)
-            Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
+    // MARK: - Dossier visual system
+
+    /// The single visual anchor: the catalog item is immediately identifiable,
+    /// its operational condition is legible, and the tracking mode is visible
+    /// before any mutation controls compete for attention.
+    private var dossierHero: some View {
+        HStack(alignment: .top, spacing: AdminSpacing.md) {
+            dossierThumbnail
+
+            VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                Text(item.name)
+                    .font(AdminType.title3)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                dossierStatusPill(
+                    title: PetAccessory.conditionText(for: item),
+                    symbol: "checkmark.seal.fill",
+                    tint: AdminSurface.primary
+                )
+
+                if !item.desc.isEmpty {
+                    Text(item.desc)
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if item.isLivePet {
+                    Label(inventoryTrackingTitle, systemImage: inventoryTrackingSymbol)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(inventoryTrackingTint)
+                        .padding(.top, AdminSpacing.xxs)
+                }
+            }
         }
-        .padding(14)
+        .padding(AdminSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .contain)
     }
 
-    private func dossierRow(title: String, value: String) -> some View {
-        HStack {
+    @ViewBuilder
+    private var dossierThumbnail: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .fill(AdminSurface.primary.opacity(0.09))
+
+            if let firstURL = PetAccessory.firstImageURL(for: item) {
+                AsyncImage(url: firstURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    case .empty:
+                        ProgressView()
+                            .tint(AdminSurface.primary)
+                    case .failure:
+                        dossierThumbnailFallback
+                    @unknown default:
+                        dossierThumbnailFallback
+                    }
+                }
+            } else {
+                dossierThumbnailFallback
+            }
+        }
+        .frame(width: 74, height: 74)
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    private var dossierThumbnailFallback: some View {
+        Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
+            .font(.system(size: 25, weight: .semibold))
+            .foregroundStyle(AdminSurface.primary)
+    }
+
+    @ViewBuilder
+    private var dossierSignalDeck: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: AdminSpacing.sm) {
+                dossierSignalCard(
+                    title: Language.get("Price", alter: "السعر الحالي"),
+                    detail: Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"),
+                    value: item.inventoryDisplayPrice,
+                    symbol: "tag.fill",
+                    tint: item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning)
+                )
+                dossierSignalCard(
+                    title: Language.get("Quantity", alter: "الكمية المتاحة"),
+                    detail: Language.get("LivePetDossier_QuantityDetail", alter: "المتاح حالياً في المخزون"),
+                    value: "\(item.quantity)",
+                    symbol: "shippingbox.fill",
+                    tint: item.quantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
+                )
+            }
+        } else {
+            HStack(spacing: AdminSpacing.sm) {
+                dossierSignalCard(
+                    title: Language.get("Price", alter: "السعر الحالي"),
+                    detail: Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"),
+                    value: item.inventoryDisplayPrice,
+                    symbol: "tag.fill",
+                    tint: item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning)
+                )
+                dossierSignalCard(
+                    title: Language.get("Quantity", alter: "الكمية المتاحة"),
+                    detail: Language.get("LivePetDossier_QuantityDetail", alter: "المتاح حالياً في المخزون"),
+                    value: "\(item.quantity)",
+                    symbol: "shippingbox.fill",
+                    tint: item.quantity > 0 ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppError)
+                )
+            }
+        }
+    }
+
+    private func dossierSignalCard(
+        title: String,
+        detail: String,
+        value: String,
+        symbol: String,
+        tint: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+            Image(systemName: symbol)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 30, height: 30)
+                .background(tint.opacity(0.11), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(value)
+                    .font(.system(size: 23, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(tint)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(detail)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(tint.opacity(0.20), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title)، \(value)، \(detail)")
+    }
+
+    private var dossierIdentityRail: some View {
+        VStack(spacing: AdminSpacing.sm) {
+            dossierTechnicalFact(
+                title: Language.get("ID", alter: "معرّف الصنف"),
+                value: item.accessoryID,
+                symbol: "number"
+            )
+
+            Divider().background(AdminSurface.hairline)
+
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: AdminSpacing.sm) {
+                    if let store = item.storeName, !store.isEmpty {
+                        dossierFact(
+                            title: Language.get("Store", alter: "المتجر / الفرع"),
+                            value: store,
+                            symbol: "building.2"
+                        )
+                    }
+                    dossierFact(
+                        title: Language.get("Condition", alter: "الحالة"),
+                        value: PetAccessory.conditionText(for: item),
+                        symbol: "checkmark.seal"
+                    )
+                }
+            } else {
+                HStack(alignment: .top, spacing: AdminSpacing.md) {
+                    if let store = item.storeName, !store.isEmpty {
+                        dossierFact(
+                            title: Language.get("Store", alter: "المتجر / الفرع"),
+                            value: store,
+                            symbol: "building.2"
+                        )
+                    }
+                    dossierFact(
+                        title: Language.get("Condition", alter: "الحالة"),
+                        value: PetAccessory.conditionText(for: item),
+                        symbol: "checkmark.seal"
+                    )
+                }
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private func dossierTechnicalFact(title: String, value: String, symbol: String) -> some View {
+        HStack(alignment: .center, spacing: AdminSpacing.sm) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(AdminSurface.secondaryText)
+                .frame(width: 28, height: 28)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                .accessibilityHidden(true)
+
             Text(title)
                 .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminCommandInk.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                .foregroundStyle(AdminSurface.primaryText)
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(value)
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: 235, alignment: .trailing)
+            .accessibilityHidden(true)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title): \(value)")
+    }
+
+    private func dossierFact(title: String, value: String, symbol: String) -> some View {
+        HStack(alignment: .top, spacing: AdminSpacing.xs) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(AdminSurface.primary)
+                .frame(width: 20, height: 20)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(value)
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func dossierStateNotice(_ text: String, symbol: String, tone: Color) -> some View {
+        Label {
+            Text(text)
+                .font(AdminType.caption1)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .bold))
+        }
+        .foregroundStyle(tone)
+        .padding(AdminSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tone.opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                .strokeBorder(tone.opacity(0.22), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func dossierOperationCommand(
+        title: String,
+        detail: String,
+        symbol: String,
+        tint: Color,
+        prominent: Bool,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                HStack {
+                    Image(systemName: symbol)
+                        .font(.system(size: 17, weight: .semibold))
+                    Spacer(minLength: 0)
+                    if !enabled {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 11, weight: .bold))
+                            .accessibilityHidden(true)
+                    }
+                }
+                Text(title)
+                    .font(AdminType.calloutBold)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(detail)
+                    .font(AdminType.caption2)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(prominent ? 0.82 : 1)
+            }
+            .foregroundStyle(prominent ? Color.white : (enabled ? tint : AdminSurface.secondaryText))
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
+            .background(
+                prominent ? tint : tint.opacity(enabled ? 0.11 : 0.06),
+                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(prominent ? tint : tint.opacity(enabled ? 0.28 : 0.14), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(!enabled || liveModel.isMutating)
+        .opacity(enabled ? 1 : 0.64)
+        .accessibilityLabel(title)
+        .accessibilityValue(enabled ? "" : Language.get("LivePetDossier_AccessLimited", alter: "غير متاح بصلاحيتك"))
+        .accessibilityHint(detail)
+    }
+
+    private func dossierStatusPill(title: String, symbol: String, tint: Color) -> some View {
+        Label(title, systemImage: symbol)
+            .font(AdminType.caption2Bold)
+            .foregroundStyle(tint)
+            .lineLimit(1)
+            .padding(.horizontal, AdminSpacing.xs)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.11), in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).strokeBorder(tint.opacity(0.22), lineWidth: 0.5))
+    }
+
+    private var inventoryTrackingTitle: String {
+        switch liveModel.mode {
+        case .some(.individual):
+            return Language.get("LivePetDossier_IndividualTracking", alter: "تتبع فردي" )
+        case .some(.quantity):
+            return Language.get("LivePetDossier_QuantityTracking", alter: "تتبع بالكمية" )
+        case .none:
+            return Language.get("LivePetDossier_TrackingPending", alter: "يتطلب اعتماد نمط التتبع" )
+        }
+    }
+
+    private var inventoryTrackingSymbol: String {
+        switch liveModel.mode {
+        case .some(.individual): return "number.square.fill"
+        case .some(.quantity): return "square.stack.3d.up.fill"
+        case .none: return "exclamationmark.triangle.fill"
+        }
+    }
+
+    private var inventoryTrackingTint: Color {
+        switch liveModel.mode {
+        case .some(.individual): return Color(uiColor: .ppSuccess)
+        case .some(.quantity): return Color(uiColor: .ppInfo)
+        case .none: return Color(uiColor: .ppWarning)
+        }
+    }
+
+    private func liveUnitStatusSymbol(_ status: String) -> String {
+        switch status {
+        case "AVAILABLE": return "checkmark.circle.fill"
+        case "RESERVED": return "calendar.badge.clock"
+        case "SOLD": return "checkmark.seal.fill"
+        case "QUARANTINED": return "cross.case.fill"
+        case "DECEASED": return "heart.slash.fill"
+        case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
+        default: return "minus.circle.fill"
         }
     }
 }
@@ -3379,6 +4062,7 @@ private struct CatalogPressStyle: ButtonStyle {
 
 // MARK: - UIViewController Hosting Bridge for ObjC Routing
 
+@available(iOS 16.0, *)
 @objc public final class PPInventoryListHostingController: UIViewController {
     private let kind: AccessKindType
     private var hostingController: UIHostingController<PPInventoryListView>?

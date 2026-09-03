@@ -54,39 +54,28 @@ typedef void(^PPInboxObserverStateHandler)(NSArray<NotificationModel *> *items, 
 /// Send to one user (by UID or token)
 + (void)sendToUserWithUID:(NSString *)uid
                     title:(NSString *)title
-                     body:(NSString *)body
-                     data:(NSDictionary *)data
+                    body:(NSString *)body
                completion:(void (^)(NSDictionary *response, NSError *error))completion;
-
-+ (void)sendToUserWithToken:(NSString *)token
-                      title:(NSString *)title
-                       body:(NSString *)body
-                       data:(NSDictionary *)data
-                 completion:(void (^)(NSDictionary *response, NSError *error))completion;
 
 /// Send to multiple users (UIDs)
 + (void)sendToUsersWithUIDs:(NSArray<NSString *> *)uids
                       title:(NSString *)title
-                       body:(NSString *)body
-                       data:(NSDictionary *)data
-                 completion:(void (^)(NSDictionary *response, NSError *error))completion;
+                      body:(NSString *)body
+                completion:(void (^)(NSDictionary *response, NSError *error))completion;
 
 /// Send to all users
 + (void)sendToAllUsersWithTitle:(NSString *)title
                            body:(NSString *)body
-                           data:(NSDictionary *)data
                      completion:(void (^)(NSDictionary *response, NSError *error))completion;
 
 /// Send to all admins
 + (void)sendToAdminsWithTitle:(NSString *)title
                          body:(NSString *)body
-                         data:(NSDictionary *)data
                    completion:(void (^)(NSDictionary *response, NSError *error))completion;
 
 /// Send to everyone (users + admins)
 + (void)sendToAllWithTitle:(NSString *)title
                       body:(NSString *)body
-                      data:(NSDictionary *)data
                 completion:(void (^)(NSDictionary *response, NSError *error))completion;
 
 

@@ -703,7 +703,8 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     dict[kUserKeyIsAdmin] = @(self.isAdmin);
     dict[kUserKeyIsSuperAdmin] = @(self.isSuperAdmin);
     dict[kUserKeyIsBlocked] = @(self.isBlocked);
-    dict[kUserKeyPPAdminTokenID] = self.PPAdminTokenID ?: @"";
+    // Raw device tokens are owned by Notifications V2 installation bindings;
+    // never mirror the legacy PPAdminTokenID field into UsersCol.
     dict[kUserKeyOnlineStatus] = @(self.onlineStatus);
     dict[kUserKeyOnline] = @(self.onlineStatus == OnlineStatusOnline);
     dict[kUserKeyIsOnline] = @(self.onlineStatus == OnlineStatusOnline);
@@ -727,7 +728,11 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     FIRFirestore *db = [FIRFirestore firestore];
     FIRDocumentReference *docRef = [[db collectionWithPath:kPPUsersCol] documentWithPath:documentID];
 
-    [docRef setData:[self toDictionary] merge:YES completion:^(NSError * _Nullable error) {
+    NSMutableDictionary *syncPayload = [[self toDictionary] mutableCopy];
+    // Remove the retired raw device-token field from documents touched by the
+    // Admin model while preserving merge semantics for every other attribute.
+    syncPayload[kUserKeyPPAdminTokenID] = [FIRFieldValue fieldValueForDelete];
+    [docRef setData:syncPayload merge:YES completion:^(NSError * _Nullable error) {
         if (error) {
             NSLog(@"❌ [UserModel] SYNC failed: %@", error.localizedDescription);
         } else {
@@ -1107,7 +1112,6 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     [coder encodeObject:self.loginDate forKey:kUserKeyLoginDate];
     [coder encodeObject:self.updatedAt forKey:kUserKeyUpdatedAt];
     [coder encodeInteger:self.CountryID forKey:kUserKeyCountryID];
-    [coder encodeObject:self.PPAdminTokenID forKey:kUserKeyPPAdminTokenID];
     [coder encodeBool:self.isAdmin forKey:kUserKeyIsAdmin];
     [coder encodeBool:self.isSuperAdmin forKey:kUserKeyIsSuperAdmin];
     [coder encodeBool:self.isBlocked forKey:kUserKeyIsBlocked];
@@ -1118,7 +1122,6 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     [coder encodeBool:self.verified forKey:kUserKeyVerified];
     [coder encodeObject:self.plan forKey:kUserKeyPlan];
     [coder encodeInteger:self.loginSource forKey:kUserKeyLoginSource];
-    [coder encodeObject:self.PPAdminTokenID forKey:kUserKeyPPAdminTokenID];
     [coder encodeInteger:self.onlineStatus forKey:kUserKeyOnlineStatus];
     [coder encodeBool:self.isOnline forKey:kUserKeyIsOnline];
     [coder encodeObject:self.lastSeen forKey:kUserKeyLastSeen];
@@ -1158,7 +1161,7 @@ static NSString *PPUserSanitizedCacheID(NSString *identifier) {
     self.updatedAt = [coder decodeObjectOfClass:NSDate.class forKey:kUserKeyUpdatedAt];
     self.CountryID = [coder decodeIntegerForKey:kUserKeyCountryID];
     self.PPUserTokenID = PPSafeString([coder decodeObjectOfClass:NSString.class forKey:kUserKeyPPUserTokenID]);
-    self.PPAdminTokenID = PPSafeString([coder decodeObjectOfClass:NSString.class forKey:kUserKeyPPAdminTokenID]);
+    self.PPAdminTokenID = @"";
     self.PPProTokenID = PPSafeString([coder decodeObjectOfClass:NSString.class forKey:kUserKeyPPProTokenID]);
     self.isAdmin = [coder decodeBoolForKey:kUserKeyIsAdmin];
     self.isSuperAdmin = [coder decodeBoolForKey:kUserKeyIsSuperAdmin];

@@ -17,29 +17,20 @@ struct AdminSettingsView: View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                dossierHeaderView
-
-                AdminLegacyViewControllerWrapper { PPSettingsViewController() }
+            AdminLegacyViewControllerWrapper {
+                let vc = PPSettingsViewController()
+                vc.onDismissBlock = {
+                    if let onDismiss {
+                        onDismiss()
+                    } else {
+                        dismiss()
+                    }
+                }
+                return vc
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-    }
-
-    // MARK: - Sovereign Navigation Bar
-
-    private var dossierHeaderView: some View {
-        AdminSovereignNavigationBar(
-            title: Language.get("Settings_Title", alter: "إعدادات التطبيق والنظام"),
-            subtitle: Language.get("CommandCenter_Tab_More", alter: "المزيد"),
-            onBack: {
-                if let onDismiss {
-                    onDismiss()
-                } else {
-                    dismiss()
-                }
-            }
-        )
     }
 }
 

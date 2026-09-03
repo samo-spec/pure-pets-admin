@@ -44,14 +44,9 @@ typedef NS_ENUM(NSInteger, PPNotificationAudience) {
                     title:(NSString *)title
                      body:(NSString *)body;
 
-// Functions URL configuration (override is optional)
-+ (NSString *)functionsBaseURL;
-+ (void)setFunctionsBaseURLOverride:(nullable NSString *)baseURL;
-
 // Unified audience-based send API
 + (void)sendNotificationWithTitle:(NSString *)title
                              body:(NSString *)body
-                             data:(nullable NSDictionary *)data
                          audience:(PPNotificationAudience)audience
                           userIDs:(nullable NSArray<NSString *> *)userIDs
                         completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
@@ -70,35 +65,24 @@ typedef NS_ENUM(NSInteger, PPNotificationAudience) {
 
 + (void)sendToUser:(NSString *)uid
              title:(NSString *)title
-              body:(NSString *)body
-              data:(NSDictionary *)data
+             body:(NSString *)body
         completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
-
-+ (void)sendToToken:(NSString *)token
-              title:(NSString *)title
-               body:(NSString *)body
-               data:(NSDictionary *)data
-         completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 + (void)sendToUsers:(NSArray<NSString *> *)uids
               title:(NSString *)title
-               body:(NSString *)body
-               data:(NSDictionary *)data
+              body:(NSString *)body
          completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 + (void)sendToAllUsersWithTitle:(NSString *)title
                            body:(NSString *)body
-                           data:(NSDictionary *)data
                      completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 + (void)sendToAdminsWithTitle:(NSString *)title
                          body:(NSString *)body
-                         data:(NSDictionary *)data
                    completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 + (void)sendToAllWithTitle:(NSString *)title
                       body:(NSString *)body
-                      data:(NSDictionary *)data
                 completion:(void (^)(NSDictionary * _Nullable response, NSError * _Nullable error))completion;
 
 @end

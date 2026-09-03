@@ -88,6 +88,10 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 
 @property (nonatomic, strong, nullable) id<FIRListenerRegistration> inboxListener;
 @property (nonatomic, assign) BOOL isLoading;
+- (void)pp_markUnreadItems:(NSArray<NotificationModel *> *)items
+                     offset:(NSUInteger)offset
+                   succeeded:(NSUInteger)succeeded
+                    failed:(NSUInteger)failed;
 @end
 
 @implementation NotificationsListViewController
@@ -305,23 +309,53 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
     
     NSArray<NotificationModel *> *unreadItems = [self.allNotifications filteredArrayUsingPredicate:[NSPredicate predicateWithFormat:@"isRead == NO"]];
     if (unreadItems.count == 0) {
-        [PPHUD showSuccess:[Language isRTL] ? @"جميع الإشعارات مقروءة بالفعل" : @"All notifications already read"];
+        [PPHUD showSuccess:kLang(@"Notifications_AllRead")];
+        return;
+    }
+    self.markAllNavButton.enabled = NO;
+    [self pp_markUnreadItems:unreadItems offset:0 succeeded:0 failed:0];
+}
+
+- (void)pp_markUnreadItems:(NSArray<NotificationModel *> *)items
+                     offset:(NSUInteger)offset
+                   succeeded:(NSUInteger)succeeded
+                    failed:(NSUInteger)failed {
+    if (offset >= items.count) {
+        self.markAllNavButton.enabled = YES;
+        [self applyFilterAndRecomputeSections];
+        [self updateCockpitKPIs];
+        [self.tableView reloadData];
+        if (failed == 0) {
+            [PPHUD showSuccess:[NSString localizedStringWithFormat:kLang(@"Notifications_MarkAllSuccess"), (long)succeeded]];
+        } else {
+            [PPHUD showInfo:[NSString localizedStringWithFormat:kLang(@"Notifications_MarkAllPartial"), (long)succeeded, (long)failed]];
+        }
         return;
     }
 
-    for (NotificationModel *m in unreadItems) {
-        m.isRead = YES;
-        [[NotificationManager shared] markRead:m forUser:self.uid completion:nil];
+    NSUInteger end = MIN(offset + 20, items.count);
+    dispatch_group_t group = dispatch_group_create();
+    __block NSUInteger batchSucceeded = 0;
+    __block NSUInteger batchFailed = 0;
+    for (NSUInteger index = offset; index < end; index++) {
+        NotificationModel *model = items[index];
+        dispatch_group_enter(group);
+        [[NotificationManager shared] markRead:model forUser:self.uid completion:^(NSError * _Nullable error) {
+            if (error) {
+                batchFailed += 1;
+            } else {
+                model.isRead = YES;
+                batchSucceeded += 1;
+            }
+            dispatch_group_leave(group);
+        }];
     }
-    
-    [self applyFilterAndRecomputeSections];
-    [self updateCockpitKPIs];
-    [self.tableView reloadData];
-    
-    NSString *msg = [Language isRTL]
-        ? [NSString stringWithFormat:@"تم تحديد %ld تنبيه كمقروء", (long)unreadItems.count]
-        : [NSString stringWithFormat:@"Marked %ld notifications as read", (long)unreadItems.count];
-    [PPHUD showSuccess:msg];
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        [self pp_markUnreadItems:items
+                          offset:end
+                        succeeded:succeeded + batchSucceeded
+                           failed:failed + batchFailed];
+    });
 }
 
 #pragma mark - UI Setup

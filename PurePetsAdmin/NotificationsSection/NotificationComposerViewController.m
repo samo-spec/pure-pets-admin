@@ -806,14 +806,14 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
             sheet.prefersScrollingExpandsWhenScrolledToEdge = NO;
         }
     }
-    if (self.navigationController) {
-        [self.navigationController pushViewController:vc animated:YES];
-    } else {
-        [self presentViewController:nav animated:YES completion:^{
-            nav.presentationController.delegate = self;
-            PPCommandCenterNavigationItemsDidChange(self);
-        }];
-    }
+    // The picker owns its own navigation chrome and sheet dismissal. Pushing
+    // the bare controller from a composer already inside a navigation stack
+    // drops that chrome and can strand the user on a duplicate route.
+    if (self.presentedViewController) return;
+    [self presentViewController:nav animated:YES completion:^{
+        nav.presentationController.delegate = self;
+        PPCommandCenterNavigationItemsDidChange(self);
+    }];
 }
 
 - (void)updateSpecificUsersSummary {
@@ -1011,17 +1011,13 @@ static UIFont *PPNotificationComposerScaledFont(UIFont *baseFont, UIFontTextStyl
         NSInteger requestFailureCount = [response[@"requestFailureCount"] integerValue];
         NSString *errorMessage = PPNotifTrimmedString(error.localizedDescription);
 
-        if (error || (requestFailureCount > 0 && recipientCount == 0)) {
+        if (error || recipientCount == 0) {
             NSString *message = errorMessage.length > 0 ? errorMessage : kLang(@"NotificationComposer_Failed_Message");
             self.dispatchOutcomeMessage = message;
             self.dispatchOutcomeState = PPNotificationComposerDispatchStateError;
             [self pp_refreshDispatchStatus];
             [PPAlertHelper showErrorIn:self title:kLang(@"Failed") subtitle:message];
             return;
-        }
-
-        if (recipientCount <= 0 && target == PPNotificationTargetKindSpecificUsers) {
-            recipientCount = userIDs.count;
         }
 
         if (requestFailureCount > 0 || deliveryFailureCount > 0) {

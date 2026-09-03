@@ -76,7 +76,7 @@ struct AdminAppShell: View {
                 case .more:
                     AdminMoreView(
                         session: session,
-                        routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings, .settings]),
+                        routes: available([.account, .notifications, .notificationComposer, .notificationSettings, .accounting, .audit, .categories, .banners, .listings]),
                         router: router,
                         commandState: commandState,
                         isSigningOut: sessionStore.isSigningOut,
@@ -603,8 +603,10 @@ private struct AdminMoreView: View {
                 }
                 .buttonStyle(V6CardButtonStyle())
 
-                AdminFeaturedSettingsCard(session: session) {
-                    router.present(.settings, session: session)
+                if AdminRoute.settings.isAuthorized(for: session) {
+                    AdminFeaturedSettingsCard(session: session) {
+                        router.present(.settings, session: session)
+                    }
                 }
 
                 if !routes.isEmpty {
@@ -616,9 +618,6 @@ private struct AdminMoreView: View {
 
                 AdminUtilityActionGroup(
                     isSigningOut: isSigningOut,
-                    onSettings: {
-                        router.present(.settings, session: session)
-                    },
                     onLanguage: {
                         let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
                         Language.userSelectedLanguage(next)
@@ -746,24 +745,11 @@ private struct AdminProfileSummaryCard: View {
 
 private struct AdminUtilityActionGroup: View {
     let isSigningOut: Bool
-    let onSettings: () -> Void
     let onLanguage: () -> Void
     let onLogout: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onSettings) {
-                AdminUtilityRow(
-                    title: Language.get("Settings_CommandCenter_Title", alter: "إعدادات النظام والتطبيق"),
-                    symbol: "gearshape.fill",
-                    tint: AdminSurface.primary,
-                    showsProgress: false
-                )
-            }
-            .buttonStyle(.plain)
-
-            Divider().padding(.leading, 58)
-
             Button(action: onLanguage) {
                 AdminUtilityRow(
                     title: Language.get("Confirm_LanguageChange_Title", alter: nil),

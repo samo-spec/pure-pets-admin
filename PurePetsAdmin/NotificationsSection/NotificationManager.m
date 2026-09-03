@@ -7,12 +7,23 @@
 
 #import "NotificationManager.h"
 #import "PPNotificationsManager.h"
+#import "Language.h"
 
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
 @import FirebaseAuth;
 @import FirebaseFunctions;
+
+static NSString *PPNotificationStableIdempotencyKey(NSString *scope, NSString *uid, NotificationModel *model)
+{
+    NSString *safeScope = scope.length > 0 ? scope : @"notification";
+    NSString *safeUID = uid.length > 0 ? uid : @"broadcast";
+    NSString *stableModelID = model.nid.length > 0
+        ? model.nid
+        : [NSString stringWithFormat:@"%lu-%lu", (unsigned long)model.title.hash, (unsigned long)model.body.hash];
+    return [NSString stringWithFormat:@"%@:%@:%@", safeScope, safeUID, stableModelID];
+}
 
 @implementation NotificationManager
 
@@ -171,66 +182,72 @@
 - (void)sendToUser:(NSString *)uid
              model:(NotificationModel *)model
         completion:(void (^)(NSError * _Nullable))completion {
-    FIRCollectionReference *ref = [self inboxForUser:uid];
-    if (!ref) {
-        if (completion) completion([self.class pp_notificationErrorWithMessage:@"Unable to resolve inbox for user."]);
+    NSString *safeUID = [uid isKindOfClass:NSString.class]
+        ? [uid stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : @"";
+    if (safeUID.length == 0 || ![model isKindOfClass:NotificationModel.class]) {
+        if (completion) completion([self.class pp_notificationErrorWithMessage:kLang(@"NotificationComposer_Status_SelectRecipients")]);
         return;
     }
-
-    NSMutableDictionary *payload = model.toDict.mutableCopy;
-    payload[@"isRead"] = @NO;
-    [[ref documentWithAutoID] setData:payload completion:completion];
+    [PPNotificationsManager sendConsoleNotificationWithTitle:model.title
+                                                         body:model.body
+                                                         type:model.type
+                                                     audience:PPNotificationAudienceSpecificUsers
+                                                      userIDs:@[safeUID]
+                                               idempotencyKey:PPNotificationStableIdempotencyKey(@"admin_user", safeUID, model)
+                                                   completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+        if (completion) completion(error);
+    }];
 }
 
 - (void)sendBroadcast:(NotificationModel *)model completion:(void (^)(NSError * _Nullable))completion {
-    [[[self adminCollection] documentWithAutoID] setData:model.toDict completion:completion];
+    if (![model isKindOfClass:NotificationModel.class]) {
+        if (completion) completion([self.class pp_notificationErrorWithMessage:kLang(@"SomethingWentWrong")]);
+        return;
+    }
+    [PPNotificationsManager sendConsoleNotificationWithTitle:model.title
+                                                         body:model.body
+                                                         type:model.type
+                                                     audience:PPNotificationAudienceAllUsers
+                                                      userIDs:nil
+                                               idempotencyKey:PPNotificationStableIdempotencyKey(@"admin_broadcast", @"broadcast", model)
+                                                   completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+        if (completion) completion(error);
+    }];
 }
 
 #pragma mark - Cloud function wrappers
 
 + (void)sendToUserWithUID:(NSString *)uid
                     title:(NSString *)title
-                     body:(NSString *)body
-                     data:(NSDictionary *)data
+                    body:(NSString *)body
                completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToUser:uid title:title body:body data:data completion:completion];
-}
-
-+ (void)sendToUserWithToken:(NSString *)token
-                      title:(NSString *)title
-                       body:(NSString *)body
-                       data:(NSDictionary *)data
-                 completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToToken:token title:title body:body data:data completion:completion];
+    [PPNotificationsManager sendToUser:uid title:title body:body completion:completion];
 }
 
 + (void)sendToUsersWithUIDs:(NSArray<NSString *> *)uids
                       title:(NSString *)title
-                       body:(NSString *)body
-                       data:(NSDictionary *)data
-                 completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToUsers:uids title:title body:body data:data completion:completion];
+                      body:(NSString *)body
+                completion:(void (^)(NSDictionary *, NSError *))completion {
+    [PPNotificationsManager sendToUsers:uids title:title body:body completion:completion];
 }
 
 + (void)sendToAllUsersWithTitle:(NSString *)title
                            body:(NSString *)body
-                           data:(NSDictionary *)data
                      completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToAllUsersWithTitle:title body:body data:data completion:completion];
+    [PPNotificationsManager sendToAllUsersWithTitle:title body:body completion:completion];
 }
 
 + (void)sendToAdminsWithTitle:(NSString *)title
                          body:(NSString *)body
-                         data:(NSDictionary *)data
                    completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToAdminsWithTitle:title body:body data:data completion:completion];
+    [PPNotificationsManager sendToAdminsWithTitle:title body:body completion:completion];
 }
 
 + (void)sendToAllWithTitle:(NSString *)title
                       body:(NSString *)body
-                      data:(NSDictionary *)data
                 completion:(void (^)(NSDictionary *, NSError *))completion {
-    [PPNotificationsManager sendToAllWithTitle:title body:body data:data completion:completion];
+    [PPNotificationsManager sendToAllWithTitle:title body:body completion:completion];
 }
 
 + (NSError *)pp_notificationErrorWithMessage:(NSString *)message {

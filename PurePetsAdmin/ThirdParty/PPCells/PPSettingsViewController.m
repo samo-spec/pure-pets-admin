@@ -209,6 +209,12 @@
 
 @interface PPSettingsViewController ()
 
+@property (nonatomic, strong) UIView *customNavBar;
+@property (nonatomic, strong) UIView *navBorder;
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *navTitleLabel;
+@property (nonatomic, strong) UILabel *navSubtitleLabel;
+
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *contentStack;
 
@@ -256,6 +262,9 @@
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
+    if (self.navigationController) {
+        [self.navigationController setNavigationBarHidden:YES animated:animated];
+    }
     [self setupNavigation];
     [self updateProfileData];
     [self updateStorageData];
@@ -263,11 +272,176 @@
 }
 
 - (void)setupNavigation {
+    if (self.navigationController) {
+        [self.navigationController setNavigationBarHidden:YES animated:NO];
+    }
     NSString *title = kLang(@"Settings_CommandCenter_Title") ?: ([Language isRTL] ? @"إعدادات النظام والتطبيق" : @"App & System Settings");
-    [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:nil title:title showBack:YES];
+    NSString *subtitle = kLang(@"CommandCenter_Tab_More") ?: ([Language isRTL] ? @"المزيد" : @"More");
+    self.title = title;
+    self.navigationItem.title = title;
+
+    if (self.navTitleLabel) {
+        self.navTitleLabel.text = title;
+        self.navTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    }
+    if (self.navSubtitleLabel) {
+        self.navSubtitleLabel.text = subtitle;
+        self.navSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    }
+    if (self.backButton) {
+        NSString *backIconName = [Language isRTL] ? @"arrow.right" : @"arrow.left";
+        UIImage *backImg = [UIImage systemImageNamed:backIconName
+                                   withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold]];
+        [self.backButton setImage:backImg forState:UIControlStateNormal];
+        self.backButton.accessibilityLabel = kLang(@"Back") ?: @"رجوع";
+    }
+}
+
+- (void)setupCustomNavigationBar {
+    if (_customNavBar) return;
+
+    _customNavBar = [[UIView alloc] init];
+    _customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
+    _customNavBar.backgroundColor = [UIColor ppSurface];
+    _customNavBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+    // Subtle drop shadow matching Sovereign Design System
+    _customNavBar.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.04].CGColor;
+    _customNavBar.layer.shadowOffset = CGSizeMake(0, 3);
+    _customNavBar.layer.shadowRadius = 8.0;
+    _customNavBar.layer.shadowOpacity = 1.0;
+    [self.view addSubview:_customNavBar];
+
+    // Hairline border separator at bottom
+    _navBorder = [[UIView alloc] init];
+    _navBorder.translatesAutoresizingMaskIntoConstraints = NO;
+    _navBorder.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.7];
+    [_customNavBar addSubview:_navBorder];
+
+    // Active row inside safe area
+    UIView *navContentRow = [[UIView alloc] init];
+    navContentRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navContentRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [_customNavBar addSubview:navContentRow];
+
+    // Luxury Squircle Back Button matching AdminSquircleBackButton
+    _backButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    _backButton.translatesAutoresizingMaskIntoConstraints = NO;
+    _backButton.backgroundColor = [UIColor ppSurfaceElevated];
+    _backButton.layer.cornerRadius = 14.0;
+    _backButton.layer.borderWidth = 0.8;
+    _backButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+    if (@available(iOS 13.0, *)) {
+        _backButton.layer.cornerCurve = kCACornerCurveContinuous;
+    }
+    _backButton.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.04].CGColor;
+    _backButton.layer.shadowOffset = CGSizeMake(0, 2);
+    _backButton.layer.shadowRadius = 6.0;
+    _backButton.layer.shadowOpacity = 1.0;
+
+    NSString *backIconName = [Language isRTL] ? @"arrow.right" : @"arrow.left";
+    UIImage *backImg = [UIImage systemImageNamed:backIconName
+                               withConfiguration:[UIImageSymbolConfiguration configurationWithPointSize:16 weight:UIImageSymbolWeightBold]];
+    [_backButton setImage:backImg forState:UIControlStateNormal];
+    _backButton.tintColor = [UIColor ppTextPrimary];
+    [_backButton addTarget:self action:@selector(onBackTapped) forControlEvents:UIControlEventTouchUpInside];
+    _backButton.accessibilityLabel = kLang(@"Back") ?: @"رجوع";
+    [navContentRow addSubview:_backButton];
+
+    // Title Stack (Title + Live Sovereign Subtitle)
+    UIStackView *titleStack = [[UIStackView alloc] init];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.axis = UILayoutConstraintAxisVertical;
+    titleStack.alignment = [Language isRTL] ? UIStackViewAlignmentTrailing : UIStackViewAlignmentLeading;
+    titleStack.spacing = 2.0;
+    [navContentRow addSubview:titleStack];
+
+    _navTitleLabel = [[UILabel alloc] init];
+    _navTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navTitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontBold:18.0]];
+    _navTitleLabel.textColor = [UIColor ppTextPrimary];
+    _navTitleLabel.text = kLang(@"Settings_CommandCenter_Title") ?: ([Language isRTL] ? @"إعدادات النظام والتطبيق" : @"App & System Settings");
+    _navTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    _navTitleLabel.adjustsFontForContentSizeCategory = YES;
+    [titleStack addArrangedSubview:_navTitleLabel];
+
+    UIStackView *subtitleRow = [[UIStackView alloc] init];
+    subtitleRow.translatesAutoresizingMaskIntoConstraints = NO;
+    subtitleRow.axis = UILayoutConstraintAxisHorizontal;
+    subtitleRow.alignment = UIStackViewAlignmentCenter;
+    subtitleRow.spacing = 6.0;
+
+    UIView *statusDot = [[UIView alloc] init];
+    statusDot.translatesAutoresizingMaskIntoConstraints = NO;
+    statusDot.backgroundColor = [UIColor ppSuccess];
+    PPApplyContinuousCorners(statusDot, 3.0);
+    [statusDot.widthAnchor constraintEqualToConstant:6.0].active = YES;
+    [statusDot.heightAnchor constraintEqualToConstant:6.0].active = YES;
+    [subtitleRow addArrangedSubview:statusDot];
+
+    _navSubtitleLabel = [[UILabel alloc] init];
+    _navSubtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _navSubtitleLabel.font = [UIFontMetrics.defaultMetrics scaledFontForFont:[Styling fontMedium:12.0]];
+    _navSubtitleLabel.textColor = [UIColor ppTextSecondary];
+    _navSubtitleLabel.text = kLang(@"CommandCenter_Tab_More") ?: ([Language isRTL] ? @"المزيد" : @"More");
+    _navSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    _navSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    [subtitleRow addArrangedSubview:_navSubtitleLabel];
+
+    [titleStack addArrangedSubview:subtitleRow];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_customNavBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [_customNavBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_customNavBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_customNavBar.bottomAnchor constraintEqualToAnchor:navContentRow.bottomAnchor constant:10.0],
+
+        [navContentRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4.0],
+        [navContentRow.leadingAnchor constraintEqualToAnchor:_customNavBar.leadingAnchor constant:16.0],
+        [navContentRow.trailingAnchor constraintEqualToAnchor:_customNavBar.trailingAnchor constant:-16.0],
+        [navContentRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [_backButton.leadingAnchor constraintEqualToAnchor:navContentRow.leadingAnchor],
+        [_backButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [_backButton.widthAnchor constraintEqualToConstant:44.0],
+        [_backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [titleStack.leadingAnchor constraintEqualToAnchor:_backButton.trailingAnchor constant:12.0],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:navContentRow.trailingAnchor constant:-12.0],
+        [titleStack.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+
+        [_navBorder.leadingAnchor constraintEqualToAnchor:_customNavBar.leadingAnchor],
+        [_navBorder.trailingAnchor constraintEqualToAnchor:_customNavBar.trailingAnchor],
+        [_navBorder.bottomAnchor constraintEqualToAnchor:_customNavBar.bottomAnchor],
+        [_navBorder.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale]
+    ]];
+}
+
+- (void)onBackTapped {
+    UIImpactFeedbackGenerator *feedback = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+    [feedback impactOccurred];
+
+    if (self.onDismissBlock) {
+        self.onDismissBlock();
+        return;
+    }
+    if ([self pp_dismissWorkflowRouteIfPossible]) {
+        return;
+    }
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+        return;
+    }
+    if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+        return;
+    }
+    [PPAdminNavigationFallback popOrDismissFrom:self];
 }
 
 - (void)setupLayout {
+    [self setupCustomNavigationBar];
+
     _scrollView = [[UIScrollView alloc] init];
     _scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     _scrollView.showsVerticalScrollIndicator = NO;
@@ -285,7 +459,7 @@
     [_scrollView addSubview:_contentStack];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [_scrollView.topAnchor constraintEqualToAnchor:_customNavBar.bottomAnchor],
         [_scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -1015,6 +1189,26 @@
 
     _themeSystemCard.layer.borderColor = (current == UIUserInterfaceStyleUnspecified) ? [UIColor ppPrimary].CGColor : [UIColor ppSurfaceBorder].CGColor;
     _themeSystemCard.layer.borderWidth = (current == UIUserInterfaceStyleUnspecified) ? 2.0 : 1.0;
+
+    if (_customNavBar) {
+        _customNavBar.backgroundColor = [UIColor ppSurface];
+    }
+    if (_navBorder) {
+        _navBorder.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.7];
+    }
+    if (_backButton) {
+        _backButton.backgroundColor = [UIColor ppSurfaceElevated];
+        _backButton.layer.borderColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.8].CGColor;
+    }
+}
+
+- (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
+    [super traitCollectionDidChange:previousTraitCollection];
+    if (@available(iOS 13.0, *)) {
+        if ([self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
+            [self updateThemeSelectionVisuals];
+        }
+    }
 }
 
 #pragma mark - Card 4: Operational Modules & Privileged Portals

@@ -261,10 +261,19 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     dict[@"discountAmount"] = self.discountAmount ?: [NSNull null];
     if (self.weightText.length > 0) {
         dict[@"weightText"] = self.weightText;
-        dict[@"weight"] = self.weightText;
+    } else {
+        dict[@"weightText"] = [NSNull null];
     }
-    if (self.weight) dict[@"weight"] = self.weight;
-    if (self.weightUnit.length > 0) dict[@"weightUnit"] = self.weightUnit;
+    if (self.weight) {
+        dict[@"weight"] = self.weight;
+    } else {
+        dict[@"weight"] = [NSNull null];
+    }
+    if (self.weightUnit.length > 0) {
+        dict[@"weightUnit"] = self.weightUnit;
+    } else {
+        dict[@"weightUnit"] = [NSNull null];
+    }
 
     // Images
     if (self.imageURLsArray) dict[@"imageURLsArray"] = self.imageURLsArray;
@@ -457,7 +466,6 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _discountPercent = PPAccessoryNumberValueForKeys(dict, (@[@"discountPercent"]));
         _discountAmount = PPAccessoryNumberValueForKeys(dict, (@[@"discountAmount"]));
         _weightText = PPAccessoryStringValueForKeys(dict, (@[
-            @"weight",
             @"weightText",
             @"weightLabel",
             @"packageWeightText",

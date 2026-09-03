@@ -13,11 +13,9 @@
 @import FirebaseMessaging;
 
 static NSString * const kPPNotificationTokenDefaultsKey = @"SavedDeviceToken";
-static NSString * const kPPNotificationFunctionsBaseURLDefault = @"https://us-central1-pure-pets-49199.cloudfunctions.net";
 // Keep the explicit-recipient path aligned with the callable's server limit.
 static const NSUInteger kPPConsoleNotificationRecipientLimit = 500;
 
-static NSString * _Nullable sFunctionsBaseURLOverride = nil;
 static NSString * const kPPNotificationV2AdminAppID = @"admin_ios";
 static NSString * const kPPNotificationV2AdminBindingDefaultsKey = @"PPNotificationV2AdminBindingV1";
 
@@ -66,24 +64,6 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
-
-#pragma mark - Public config
-
-+ (NSString *)functionsBaseURL {
-    if (sFunctionsBaseURLOverride.length) {
-        return [self pp_trimmedString:sFunctionsBaseURLOverride];
-    }
-
-    NSString *plistURL = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"PPCloudFunctionsBaseURL"];
-    if (plistURL.length) {
-        return [self pp_trimmedString:plistURL];
-    }
-    return kPPNotificationFunctionsBaseURLDefault;
-}
-
-+ (void)setFunctionsBaseURLOverride:(NSString *)baseURL {
-    sFunctionsBaseURLOverride = [self pp_trimmedString:baseURL];
 }
 
 #pragma mark - Token lifecycle
@@ -348,7 +328,6 @@ static NSString *PPNotificationV2AdminEnvironment(void)
                                       type:(NSInteger)type
                             idempotencyKey:(NSString *)idempotencyKey
                                 completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
-    dispatch_group_t group = dispatch_group_create();
     NSObject *resultLock = [NSObject new];
     __block NSInteger recipientCount = 0;
     __block NSInteger pushRecipientCount = 0;
@@ -357,45 +336,67 @@ static NSString *PPNotificationV2AdminEnvironment(void)
     __block NSInteger requestFailureCount = 0;
     __block NSError *lastError = nil;
 
-    for (NSString *userID in userIDs) {
-        dispatch_group_enter(group);
-        NSDictionary *payload = @{
-            @"title": title,
-            @"body": body,
-            @"type": @(type),
-            @"targetMode": @"user",
-            @"audience": @"users",
-            @"targetUserID": userID,
-            @"idempotencyKey": [NSString stringWithFormat:@"%@:%@", idempotencyKey, userID]
-        };
-        [self pp_callConsoleNotificationWithPayload:payload completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+    // Keep explicit-recipient fan-out bounded. A single dispatch group over
+    // hundreds of HTTPS callables can saturate the Admin process and APNs
+    // quota; advancing one small batch at a time preserves ordering and
+    // keeps retry pressure predictable.
+    const NSUInteger batchSize = 20;
+    __block void (^sendBatch)(NSUInteger);
+    sendBatch = ^(NSUInteger offset) {
+        if (offset >= userIDs.count) {
+            NSDictionary *response = nil;
+            NSError *error = nil;
             @synchronized (resultLock) {
-                if (error) {
-                    requestFailureCount += 1;
-                    lastError = error;
-                } else {
-                    recipientCount += MAX(1, [response[@"recipientCount"] integerValue]);
-                    pushRecipientCount += MAX(0, [response[@"pushRecipientCount"] integerValue]);
-                    successCount += MAX(0, [response[@"successCount"] integerValue]);
-                    failureCount += MAX(0, [response[@"failureCount"] integerValue]);
-                }
+                response = @{
+                    @"ok": @(requestFailureCount == 0),
+                    @"recipientCount": @(recipientCount),
+                    @"pushRecipientCount": @(pushRecipientCount),
+                    @"successCount": @(successCount),
+                    @"failureCount": @(failureCount),
+                    @"requestFailureCount": @(requestFailureCount)
+                };
+                error = requestFailureCount == userIDs.count ? lastError : nil;
             }
-            dispatch_group_leave(group);
-        }];
-    }
+            sendBatch = nil;
+            if (completion) completion(response, error);
+            return;
+        }
 
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        NSDictionary *response = @{
-            @"ok": @(requestFailureCount == 0),
-            @"recipientCount": @(recipientCount),
-            @"pushRecipientCount": @(pushRecipientCount),
-            @"successCount": @(successCount),
-            @"failureCount": @(failureCount),
-            @"requestFailureCount": @(requestFailureCount)
-        };
-        NSError *error = requestFailureCount == userIDs.count ? lastError : nil;
-        if (completion) completion(response, error);
-    });
+        NSUInteger end = MIN(offset + batchSize, userIDs.count);
+        dispatch_group_t group = dispatch_group_create();
+        for (NSUInteger index = offset; index < end; index++) {
+            NSString *userID = userIDs[index];
+            dispatch_group_enter(group);
+            NSDictionary *payload = @{
+                @"title": title,
+                @"body": body,
+                @"type": @(type),
+                @"targetMode": @"user",
+                @"audience": @"users",
+                @"targetUserID": userID,
+                @"idempotencyKey": [NSString stringWithFormat:@"%@:%@", idempotencyKey, userID]
+            };
+            [self pp_callConsoleNotificationWithPayload:payload completion:^(NSDictionary * _Nullable response, NSError * _Nullable error) {
+                @synchronized (resultLock) {
+                    if (error) {
+                        requestFailureCount += 1;
+                        lastError = error;
+                    } else {
+                        // Preserve the server's exact zero-recipient response.
+                        recipientCount += MAX(0, [response[@"recipientCount"] integerValue]);
+                        pushRecipientCount += MAX(0, [response[@"pushRecipientCount"] integerValue]);
+                        successCount += MAX(0, [response[@"successCount"] integerValue]);
+                        failureCount += MAX(0, [response[@"failureCount"] integerValue]);
+                    }
+                }
+                dispatch_group_leave(group);
+            }];
+        }
+        dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+            sendBatch(end);
+        });
+    };
+    sendBatch(0);
 }
 
 + (void)pp_callConsoleNotificationWithPayload:(NSDictionary *)payload
@@ -410,60 +411,26 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 + (void)sendNotificationWithTitle:(NSString *)title
                              body:(NSString *)body
-                             data:(NSDictionary *)data
                          audience:(PPNotificationAudience)audience
                           userIDs:(NSArray<NSString *> *)userIDs
                        completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     NSString *safeTitle = [self pp_trimmedString:title];
     NSString *safeBody = [self pp_trimmedString:body];
-    NSDictionary *safeData = [self pp_stringDataDictionary:data];
-
     if (safeTitle.length == 0 || safeBody.length == 0) {
         NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
                                            code:400
-                                       userInfo:@{NSLocalizedDescriptionKey: @"Title and body are required."}];
+                                       userInfo:@{NSLocalizedDescriptionKey: kLang(@"FillRequiredFields")}];
         [self pp_completeOnMain:completion response:nil error:err];
         return;
     }
 
-    NSMutableDictionary *params = [@{
-        @"title": safeTitle,
-        @"body": safeBody,
-        @"data": safeData
-    } mutableCopy];
-
-    NSString *endpoint = @"";
-    switch (audience) {
-        case PPNotificationAudienceSpecificUsers: {
-            NSArray<NSString *> *safeUIDs = [self pp_uniqueNonEmptyStrings:userIDs];
-            if (safeUIDs.count == 0) {
-                NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
-                                                   code:400
-                                               userInfo:@{NSLocalizedDescriptionKey: @"Please select at least one user."}];
-                [self pp_completeOnMain:completion response:nil error:err];
-                return;
-            }
-            if (safeUIDs.count == 1) {
-                params[@"uid"] = safeUIDs.firstObject;
-                endpoint = @"sendToUser";
-            } else {
-                params[@"uids"] = safeUIDs;
-                endpoint = @"sendToUsers";
-            }
-            break;
-        }
-        case PPNotificationAudienceAllUsers:
-            endpoint = @"sendToAllUsers";
-            break;
-        case PPNotificationAudienceAdmins:
-            endpoint = @"sendToAdmins";
-            break;
-        case PPNotificationAudienceEveryone:
-            endpoint = @"sendToAll";
-            break;
-    }
-
-    [self callFunction:endpoint params:params completion:completion];
+    [self sendConsoleNotificationWithTitle:safeTitle
+                                      body:safeBody
+                                      type:PPNotificationTypeGeneral
+                                  audience:audience
+                                   userIDs:userIDs
+                            idempotencyKey:NSUUID.UUID.UUIDString
+                                completion:completion];
 }
 
 #pragma mark - Backward compatible wrappers
@@ -474,18 +441,15 @@ static NSString *PPNotificationV2AdminEnvironment(void)
     [PPNotificationsManager sendToUser:receiverId
                                  title:title
                                   body:body
-                                  data:@{}
                             completion:nil];
 }
 
 + (void)sendToUser:(NSString *)uid
              title:(NSString *)title
-              body:(NSString *)body
-              data:(NSDictionary *)data
-        completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
+             body:(NSString *)body
+         completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     [self sendNotificationWithTitle:title
                                body:body
-                               data:data
                            audience:PPNotificationAudienceSpecificUsers
                             userIDs:uid.length ? @[uid] : @[]
                          completion:completion];
@@ -493,57 +457,20 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 + (void)sendToUsers:(NSArray<NSString *> *)uids
               title:(NSString *)title
-               body:(NSString *)body
-               data:(NSDictionary *)data
+              body:(NSString *)body
          completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     [self sendNotificationWithTitle:title
                                body:body
-                               data:data
                            audience:PPNotificationAudienceSpecificUsers
                             userIDs:uids
                          completion:completion];
 }
 
-+ (void)sendToToken:(NSString *)token
-              title:(NSString *)title
-               body:(NSString *)body
-               data:(NSDictionary *)data
-         completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
-    NSString *safeToken = [self pp_trimmedString:token];
-    NSString *safeTitle = [self pp_trimmedString:title];
-    NSString *safeBody = [self pp_trimmedString:body];
-    if (safeToken.length == 0) {
-        NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
-                                           code:400
-                                       userInfo:@{NSLocalizedDescriptionKey: @"Token is required."}];
-        [self pp_completeOnMain:completion response:nil error:err];
-        return;
-    }
-    if (safeTitle.length == 0 || safeBody.length == 0) {
-        NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
-                                           code:400
-                                       userInfo:@{NSLocalizedDescriptionKey: @"Title and body are required."}];
-        [self pp_completeOnMain:completion response:nil error:err];
-        return;
-    }
-
-    NSMutableDictionary *params = [@{
-        @"token": safeToken,
-        @"title": safeTitle,
-        @"body": safeBody,
-        @"data": [self pp_stringDataDictionary:data]
-    } mutableCopy];
-
-    [self callFunction:@"sendToUser" params:params completion:completion];
-}
-
 + (void)sendToAllUsersWithTitle:(NSString *)title
                            body:(NSString *)body
-                           data:(NSDictionary *)data
                      completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     [self sendNotificationWithTitle:title
                                body:body
-                               data:data
                            audience:PPNotificationAudienceAllUsers
                             userIDs:nil
                          completion:completion];
@@ -551,11 +478,9 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 + (void)sendToAdminsWithTitle:(NSString *)title
                          body:(NSString *)body
-                         data:(NSDictionary *)data
                    completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     [self sendNotificationWithTitle:title
                                body:body
-                               data:data
                            audience:PPNotificationAudienceAdmins
                             userIDs:nil
                          completion:completion];
@@ -563,114 +488,12 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 + (void)sendToAllWithTitle:(NSString *)title
                       body:(NSString *)body
-                      data:(NSDictionary *)data
                 completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
     [self sendNotificationWithTitle:title
                                body:body
-                               data:data
                            audience:PPNotificationAudienceEveryone
                             userIDs:nil
                          completion:completion];
-}
-
-#pragma mark - HTTP transport
-
-+ (void)callFunction:(NSString *)functionName
-              params:(NSDictionary *)params
-          completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
-    NSString *safeFunction = [self pp_trimmedString:functionName];
-    if (safeFunction.length == 0) {
-        NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
-                                           code:400
-                                       userInfo:@{NSLocalizedDescriptionKey: @"Function name is required."}];
-        [self pp_completeOnMain:completion response:nil error:err];
-        return;
-    }
-
-    NSString *baseURL = [self functionsBaseURL];
-    NSString *urlString = [NSString stringWithFormat:@"%@/%@", baseURL, safeFunction];
-    NSURL *url = [NSURL URLWithString:urlString];
-    if (!url) {
-        NSError *err = [NSError errorWithDomain:@"PPNotificationsManager"
-                                           code:400
-                                       userInfo:@{NSLocalizedDescriptionKey: @"Invalid Cloud Functions URL."}];
-        [self pp_completeOnMain:completion response:nil error:err];
-        return;
-    }
-
-    NSError *jsonError = nil;
-    NSData *bodyData = [NSJSONSerialization dataWithJSONObject:[self pp_safeDictionary:params] options:0 error:&jsonError];
-    if (jsonError) {
-        [self pp_completeOnMain:completion response:nil error:jsonError];
-        return;
-    }
-
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    request.HTTPMethod = @"POST";
-    request.timeoutInterval = 30.0;
-    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    request.HTTPBody = bodyData;
-
-    FIRUser *user = [FIRAuth auth].currentUser;
-    if (user) {
-        [user getIDTokenWithCompletion:^(NSString * _Nullable idToken, NSError * _Nullable error) {
-            if (error) {
-                [self pp_completeOnMain:completion response:nil error:error];
-                return;
-            }
-            if (idToken.length) {
-                [request setValue:[NSString stringWithFormat:@"Bearer %@", idToken]
-               forHTTPHeaderField:@"Authorization"];
-            }
-            [self executeRequest:request completion:completion];
-        }];
-        return;
-    }
-
-    [self executeRequest:request completion:completion];
-}
-
-+ (void)executeRequest:(NSURLRequest *)request
-            completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
-    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
-                                                                 completionHandler:^(NSData * _Nullable data,
-                                                                                     NSURLResponse * _Nullable response,
-                                                                                     NSError * _Nullable error) {
-        if (error) {
-            [self pp_completeOnMain:completion response:nil error:error];
-            return;
-        }
-
-        NSHTTPURLResponse *httpResp = (NSHTTPURLResponse *)response;
-        NSInteger statusCode = httpResp.statusCode;
-
-        NSDictionary *json = nil;
-        NSString *responseString = @"";
-        if (data.length) {
-            NSError *parseError = nil;
-            id parsed = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-            if ([parsed isKindOfClass:[NSDictionary class]]) {
-                json = parsed;
-            }
-            if (parseError || !json) {
-                responseString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] ?: @"";
-            }
-        }
-
-        if (statusCode >= 200 && statusCode < 300) {
-            NSDictionary *payload = json ?: @{@"ok": @YES, @"raw": responseString ?: @""};
-            [self pp_completeOnMain:completion response:payload error:nil];
-            return;
-        }
-
-        NSString *serverMessage = [self pp_serverMessageFromJSON:json raw:responseString];
-        NSError *statusError = [NSError errorWithDomain:@"PPNotificationsManager"
-                                                   code:statusCode
-                                               userInfo:@{NSLocalizedDescriptionKey: serverMessage}];
-        [self pp_completeOnMain:completion response:json error:statusError];
-    }];
-    [task resume];
 }
 
 #pragma mark - Helpers

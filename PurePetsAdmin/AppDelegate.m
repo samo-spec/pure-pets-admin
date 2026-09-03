@@ -65,8 +65,30 @@ static NSString *PPAdminCurrentDeviceModel(void)
 static BOOL PPAdminPayloadTargetsOtherApp(NSDictionary *payload)
 {
     NSDictionary *safePayload = [payload isKindOfClass:NSDictionary.class] ? payload : @{};
-    NSString *targetApp = [PPAdminRouteTrimmedString(safePayload[@"targetApp"] ?: safePayload[@"targetAppId"] ?: safePayload[@"appId"]) lowercaseString];
-    return targetApp.length > 0 && ![targetApp isEqualToString:@"admin_ios"];
+    NSDictionary *meta = [safePayload[@"meta"] isKindOfClass:NSDictionary.class] ? safePayload[@"meta"] : @{};
+    id rawTargetApp = safePayload[@"targetApp"] ?: safePayload[@"targetAppId"] ?: safePayload[@"appId"];
+    if (!rawTargetApp) rawTargetApp = meta[@"targetApp"] ?: meta[@"targetAppId"] ?: meta[@"appId"];
+    NSString *targetApp = [PPAdminRouteTrimmedString(rawTargetApp) lowercaseString];
+    if (targetApp.length > 0) return ![targetApp isEqualToString:PPAdminNotificationV2AppID];
+
+    id rawTargets = safePayload[@"targetApps"] ?: meta[@"targetApps"];
+    if ([rawTargets isKindOfClass:NSString.class]) {
+        NSData *jsonData = [(NSString *)rawTargets dataUsingEncoding:NSUTF8StringEncoding];
+        id parsed = jsonData ? [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:nil] : nil;
+        rawTargets = parsed ?: rawTargets;
+    }
+    if ([rawTargets isKindOfClass:NSArray.class]) {
+        BOOL includesAdmin = NO;
+        BOOL hasAnyTarget = NO;
+        for (id rawTarget in (NSArray *)rawTargets) {
+            NSString *target = [PPAdminRouteTrimmedString(rawTarget) lowercaseString];
+            if (target.length == 0) continue;
+            hasAnyTarget = YES;
+            if ([target isEqualToString:[PPAdminNotificationV2AppID lowercaseString]]) includesAdmin = YES;
+        }
+        return hasAnyTarget && !includesAdmin;
+    }
+    return NO;
 }
 
 static BOOL PPAdminPayloadHasSupportedSchema(NSDictionary *payload)
@@ -95,9 +117,10 @@ static BOOL PPAdminPayloadHasSupportedSchema(NSDictionary *payload)
 static NSString *PPAdminPaymentOrderIDFromRemoteNotification(NSDictionary *userInfo)
 {
     NSDictionary *safeUserInfo = [userInfo isKindOfClass:NSDictionary.class] ? userInfo : @{};
-    NSString *route = PPAdminRouteTrimmedString(safeUserInfo[@"route"]);
-    NSString *orderID = PPAdminRouteTrimmedString(safeUserInfo[@"orderId"]);
-    if (orderID.length == 0) orderID = PPAdminRouteTrimmedString(safeUserInfo[@"orderID"]);
+    NSDictionary *meta = [safeUserInfo[@"meta"] isKindOfClass:NSDictionary.class] ? safeUserInfo[@"meta"] : @{};
+    NSString *route = PPAdminRouteTrimmedString(safeUserInfo[@"route"] ?: meta[@"route"]);
+    NSString *orderID = PPAdminRouteTrimmedString(safeUserInfo[@"orderId"] ?: meta[@"orderId"]);
+    if (orderID.length == 0) orderID = PPAdminRouteTrimmedString(safeUserInfo[@"orderID"] ?: meta[@"orderID"]);
     if (orderID.length == 0) return @"";
     if (route.length == 0 || [route isEqualToString:PPAdminRemotePaymentOrderRouteKey]) {
         return orderID;
@@ -315,7 +338,8 @@ extern BOOL PP_TouchDotsEnabled;
     }
     [self pp_storeFCMToken:safeToken];
     
-    // Send token to your server if needed
+    // Registration is server-authoritative through Notifications V2. Keep the
+    // FCM token in process only; never mirror raw device tokens into UsersCol.
     [self sendTokenToServer:safeToken];
     [self pp_attemptAdminNotificationV2RegistrationForReason:@"fcm_refresh"];
     
@@ -331,7 +355,6 @@ extern BOOL PP_TouchDotsEnabled;
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf || token.length == 0) return;
         NSString *currentUID = PPAdminRouteTrimmedString([FIRAuth auth].currentUser.uid);
-        [strongSelf pp_syncAdminPushToken:token preferredUID:currentUID];
         [strongSelf pp_attemptAdminNotificationV2RegistrationForReason:@"launch_sync"];
     }];
 
@@ -346,7 +369,6 @@ extern BOOL PP_TouchDotsEnabled;
                 NSLog(@"[FIRMessaging] Admin token still unavailable after auth for %@", PPAdminRouteTrimmedString(user.uid));
                 return;
             }
-            [strongSelf pp_syncAdminPushToken:token preferredUID:user.uid];
             [strongSelf pp_attemptAdminNotificationV2RegistrationForReason:@"auth_change"];
         }];
     }];
@@ -415,46 +437,10 @@ extern BOOL PP_TouchDotsEnabled;
     [self pp_attemptAdminNotificationV2RegistrationForReason:@"foreground_retry"];
 }
 
-- (void)pp_syncAdminPushToken:(NSString *)token preferredUID:(NSString *)preferredUID {
-    NSString *safeToken = PPAdminRouteTrimmedString(token);
-    NSString *uid = PPAdminRouteTrimmedString(preferredUID);
-    NSString *authUID = PPAdminRouteTrimmedString([FIRAuth auth].currentUser.uid);
-    NSString *modelUID = PPAdminRouteTrimmedString(UsrMgr.currentUser.uid.length > 0 ? UsrMgr.currentUser.uid : UsrMgr.currentUser.ID);
-    if (safeToken.length == 0 || uid.length == 0 ||
-        ![authUID isEqualToString:uid] || ![modelUID isEqualToString:uid]) {
-        NSLog(@"PPLAB NotificationsV2 admin legacy sync skipped | canonical_session=no");
-        return;
-    }
-
-    if (UsrMgr.currentUser && [UsrMgr.currentUser.uid isEqualToString:uid]) {
-        UsrMgr.currentUser.PPAdminTokenID = safeToken;
-        [UsrMgr.currentUser SYNC:^(NSError * _Nullable error) {
-            if (error) {
-                NSLog(@"[FIRMessaging] Failed syncing cached admin token through UserModel: %@", error.localizedDescription);
-            } else {
-                NSLog(@"[FIRMessaging] Admin token synced through UserModel for %@", UsrMgr.currentUser.displayName ?: PPAdminRouteTrimmedString(preferredUID));
-            }
-        }];
-        return;
-    }
-
-    NSLog(@"[FIRMessaging] Deferring admin token sync until UsrMgr.currentUser is available for %@", PPAdminRouteTrimmedString(preferredUID));
-}
-
 - (void)sendTokenToServer:(NSString *)token {
-    // Implement your server communication here
-    NSLog(@"PPLAB NotificationsV2 admin legacy sync start | hasToken=%@", token.length > 0 ? @"yes" : @"no");
+    // Kept as a compatibility seam for the existing Firebase delegate call.
+    // The token is consumed only by the V2 registration callable below.
     [self pp_storeFCMToken:token];
-    [self pp_syncAdminPushToken:token preferredUID:[FIRAuth auth].currentUser.uid];
-    
-    // Example: Send to your backend
-    // [YourAPIManager updateDeviceToken:token completion:^(BOOL success, NSError *error) {
-    //     if (success) {
-    //         NSLog(@"Token successfully sent to server");
-    //     } else {
-    //         NSLog(@"Failed to send token to server: %@", error);
-    //     }
-    // }];
 }
 
 - (void)pp_beginNotificationV2LogoutBarrierWithCompletion:(dispatch_block_t)completion

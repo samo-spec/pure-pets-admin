@@ -15,6 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 @class UserModel;
 
 @interface PPSettingsViewController : UIViewController
+@property (nonatomic, copy, nullable) void (^onDismissBlock)(void);
 @end
 
 @interface PPAdminProfileViewController : UIViewController

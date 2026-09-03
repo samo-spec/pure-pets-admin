@@ -117,6 +117,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         didSet {
             if selectedKind == .typeFood {
                 condition = .new
+            } else {
+                hasExpiryDate = false
             }
             updateUnsavedChanges()
         }
@@ -180,6 +182,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     // Images
     @Published var existingImageURLs: [String] = [] { didSet { updateUnsavedChanges() } }
     @Published var pickedImages: [UIImage] = [] { didSet { updateUnsavedChanges() } }
+    private var existingImageMetadata: [[AnyHashable: Any]] = []
+    private var pickedImageUploadIDs: [UUID] = []
+    private var pendingUnsavedUploads: [String: UUID] = [:]
     
     // UI Lifecycle & Async States
     @Published var availableMainKinds: [MainKindsModel] = []
@@ -191,6 +196,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var saveSuccessMessage: String? = nil
     @Published var errorMessage: String? = nil
     @Published var hasUnsavedChanges: Bool = false
+    @Published private(set) var hasCompletedSave: Bool = false
     @Published private(set) var pendingCatalogSyncProductID: String? = nil
     @Published private(set) var hasPendingLivePetRecovery: Bool = false
     @Published fileprivate(set) var submissionFailureKind: PPLivePetSubmissionFailureKind? = nil
@@ -205,9 +211,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var showDiscardConfirmation: Bool = false
 
     private var initialSetupComplete: Bool = false
+    private var isPopulatingInitialValues: Bool = true
+    private var isApplyingCategoryHydration: Bool = false
+    private var didScheduleSuccessfulDismissal: Bool = false
     private var liveCreateCommandID = PPLivePetInventoryService.commandID("catalog-create")
     private var pendingCatalogSyncSuccessMessage: String? = nil
     private var livePetRecovery: PPLivePetMutationRecovery? = nil
+    private var pendingSavedAccessoryDraft: PetAccessory? = nil
 
     // MARK: - Initializer
 
@@ -242,6 +252,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             selectedStoreID = "main_store"
             selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
             initialSetupComplete = true
+            isPopulatingInitialValues = false
             return
         }
 
@@ -268,23 +279,99 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         condition = (acc.condition == .used) ? .used : .new
         
-        if let exp = acc.expiryDate {
+        if isFood, let exp = acc.expiryDate {
             hasExpiryDate = true
             expiryDate = exp
+        } else {
+            hasExpiryDate = false
         }
 
-        weightText = acc.weightText ?? ""
+        hydrateWeight(from: acc)
 
         selectedStoreID = (acc.storeID ?? "").isEmpty == false ? acc.storeID! : "main_store"
         selectedStoreName = (acc.storeName ?? "").isEmpty == false ? acc.storeName! : Language.get("Main Store", alter: "المتجر الرئيسي")
         
         isDraft = !acc.active
         existingImageURLs = acc.imageURLsArray ?? []
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            self?.initialSetupComplete = true
-            self?.hasUnsavedChanges = false
+        existingImageMetadata = alignedImageMetadata(
+            urls: existingImageURLs,
+            metadata: acc.imageMeta ?? []
+        )
+        isPopulatingInitialValues = false
+    }
+
+    private func hydrateWeight(from accessory: PetAccessory) {
+        let supportedUnits = ["kg", "g", "L", "ml"]
+        let storedUnit = supportedUnits.first {
+            $0.caseInsensitiveCompare(accessory.weightUnit ?? "") == .orderedSame
         }
+        let storedText = (accessory.weightText ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsedText = parsedWeightComponents(from: storedText)
+
+        if let numericWeight = accessory.weight?.doubleValue,
+           numericWeight.isFinite,
+           numericWeight >= 0 {
+            if !storedText.isEmpty, parsedText == nil, storedUnit == nil {
+                // Surface malformed legacy text instead of silently inventing a unit.
+                weightText = storedText
+                weightUnit = "kg"
+                return
+            }
+            weightText = canonicalDecimalText(numericWeight, maximumFractionDigits: 3)
+            weightUnit = storedUnit ?? parsedText?.unit ?? "kg"
+            return
+        }
+
+        guard !storedText.isEmpty else {
+            weightText = ""
+            weightUnit = storedUnit ?? "kg"
+            return
+        }
+
+        if let parsedText {
+            weightText = parsedText.amount
+            weightUnit = storedUnit ?? parsedText.unit ?? "kg"
+            return
+        }
+
+        // Preserve an unrecognized legacy value so validation can surface it;
+        // never append another unit to malformed persisted text silently.
+        weightText = storedText
+        weightUnit = storedUnit ?? "kg"
+    }
+
+    private func parsedWeightComponents(from text: String) -> (amount: String, unit: String?)? {
+        guard !text.isEmpty else { return nil }
+        let supportedUnits = ["kg", "g", "L", "ml"]
+        let pattern = #"^\s*([0-9]+(?:[\.,][0-9]+)?)\s*(kg|g|l|ml)?\s*$"#
+        guard let expression = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = expression.firstMatch(
+                  in: text,
+                  range: NSRange(text.startIndex..., in: text)
+              ),
+              let amountRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+
+        let amount = String(text[amountRange]).replacingOccurrences(of: ",", with: ".")
+        guard match.range(at: 2).location != NSNotFound,
+              let unitRange = Range(match.range(at: 2), in: text) else {
+            return (amount, nil)
+        }
+        let rawUnit = String(text[unitRange])
+        if rawUnit.caseInsensitiveCompare("l") == .orderedSame {
+            return (amount, "L")
+        }
+        let unit = supportedUnits.first {
+            $0.caseInsensitiveCompare(rawUnit) == .orderedSame
+        }
+        return (amount, unit)
+    }
+
+    private func finishInitialHydration() {
+        guard !initialSetupComplete else { return }
+        initialSetupComplete = true
     }
 
     private func setupStoreOptions() {
@@ -314,6 +401,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if let cached = AppManager.shared().mainKindsArray as? [MainKindsModel], !cached.isEmpty {
             self.availableMainKinds = cached
             self.matchSelectedCategories()
+            self.finishInitialHydration()
             return
         }
 
@@ -332,11 +420,23 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 } else {
                     self.kindsErrorMessage = Language.get("Something went wrong.", alter: "تعذر تحميل قائمة الأنواع")
                 }
+                self.finishInitialHydration()
             }
         }
     }
 
     private func matchSelectedCategories() {
+        let wasTrackingChanges = initialSetupComplete
+        let wasDirty = hasUnsavedChanges
+        let wasApplyingHydration = isApplyingCategoryHydration
+        initialSetupComplete = false
+        isApplyingCategoryHydration = true
+        defer {
+            initialSetupComplete = wasTrackingChanges
+            isApplyingCategoryHydration = wasApplyingHydration
+            hasUnsavedChanges = wasDirty
+        }
+
         guard let acc = editingAccessory else { return }
         if acc.petMainCategoryID > 0 {
             if let matchedMain = availableMainKinds.first(where: { $0.id == acc.petMainCategoryID }) {
@@ -355,7 +455,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     var isEditingLivePet: Bool { isLivePet && editingAccessory != nil }
     var isIndividualLivePet: Bool { isLivePet && liveInventoryMode == .individual }
     var isAwaitingCatalogSync: Bool { pendingCatalogSyncProductID != nil }
-    var blocksDismissal: Bool { isSubmitting || hasPendingLivePetRecovery }
+    private var preventsExplicitDismissal: Bool {
+        isSubmitting || hasPendingLivePetRecovery || hasCompletedSave
+    }
+    var blocksDismissal: Bool {
+        preventsExplicitDismissal || !pickedImageUploadIDs.isEmpty || !pendingUnsavedUploads.isEmpty
+    }
     var canViewStockCosts: Bool {
         PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false
     }
@@ -370,8 +475,48 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     func addLivePetUnit() {
         guard !isEditingLivePet, livePetUnits.count < 100 else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        livePetUnits.append(PPLivePetUnitDraft(sellingPriceText: priceText, supplier: liveSupplier))
+        // A batch is usually same-sex, so the previous animal's gender is a far
+        // better starting point than a blank one. It stays fully editable.
+        livePetUnits.append(PPLivePetUnitDraft(
+            gender: livePetUnits.last?.gender ?? .unspecified,
+            sellingPriceText: priceText,
+            supplier: liveSupplier
+        ))
         quantity = livePetUnits.count
+    }
+
+    /// Rewrites one animal's gender in place. Kept on the view model so the
+    /// selector stays a pure projection of state and the unsaved-changes signal
+    /// fires through the same `livePetUnits` `didSet` as every other field.
+    func setLivePetUnitGender(_ gender: PPLivePetUnitGender, unitID: String) {
+        guard !isEditingLivePet,
+              let index = livePetUnits.firstIndex(where: { $0.id == unitID }),
+              livePetUnits[index].gender != gender else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        livePetUnits[index].gender = gender
+    }
+
+    /// Ring/tag keys that appear more than once in the current draft set.
+    ///
+    /// Mirrors the server's `ringTagKey` normalization so a collision surfaces
+    /// while the operator is still typing instead of as an `already-exists`
+    /// rejection after submission. This never replaces the server check.
+    var duplicateRingTagKeys: Set<String> {
+        var seen: Set<String> = []
+        var duplicates: Set<String> = []
+        for unit in livePetUnits {
+            let key = PPAccessoryEditorViewModel.ringTagKey(unit.ringTag)
+            guard !key.isEmpty else { continue }
+            if seen.contains(key) { duplicates.insert(key) } else { seen.insert(key) }
+        }
+        return duplicates
+    }
+
+    static func ringTagKey(_ raw: String) -> String {
+        raw.precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
     }
 
     func clonePreviousUnit(from unit: PPLivePetUnitDraft) {
@@ -392,6 +537,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         let cloned = PPLivePetUnitDraft(
             ringTag: nextRing,
+            gender: unit.gender,
             acquisitionDate: unit.acquisitionDate,
             purchaseCostText: unit.purchaseCostText,
             sellingPriceText: unit.sellingPriceText.isEmpty ? priceText : unit.sellingPriceText,
@@ -431,7 +577,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if !isLivePet { return true }
             if liveInventoryMode == .individual {
                 if isEditingLivePet { return true }
-                return !livePetUnits.isEmpty && livePetUnits.allSatisfy { !$0.ringTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                guard !livePetUnits.isEmpty,
+                      livePetUnits.allSatisfy({ !$0.ringTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
+                    return false
+                }
+                // A duplicate ring/tag is a guaranteed `already-exists` rejection
+                // server-side, so the stage is not complete while one exists.
+                return duplicateRingTagKeys.isEmpty
             }
             return quantity >= 1
         case .pricing:
@@ -456,6 +608,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             let emptyRings = livePetUnits.filter { $0.ringTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             if !emptyRings.isEmpty {
                 return Language.get("RingRequiredHint", alter: "استكمل أرقام الحلقات/الشرائح للحيوانات")
+            }
+            if !duplicateRingTagKeys.isEmpty {
+                return Language.get("RingDuplicateHint", alter: "رقم حلقة أو شريحة مكرر بين الحيوانات")
             }
         }
         return nil
@@ -529,12 +684,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var discountPercent: Double {
-        let val = decimalValue(discountPercentText) ?? 0.0
-        return min(100.0, max(0.0, val))
+        decimalValue(discountPercentText) ?? 0.0
     }
 
     var discountAmount: Double {
-        max(0.0, decimalValue(discountAmountText) ?? 0.0)
+        decimalValue(discountAmountText) ?? 0.0
     }
 
     func isValidDiscountPercentInput() -> Bool {
@@ -543,6 +697,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func isValidDiscountAmountInput() -> Bool {
         isValidOptionalDecimal(discountAmountText, maximum: 999_999_999.99)
+    }
+
+    func isValidWeightInput() -> Bool {
+        isValidOptionalDecimal(weightText, maximum: 999_999_999.999, maximumFractionDigits: 3)
     }
 
     var calculatedFinalPrice: Double {
@@ -595,15 +753,30 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func decimalValue(_ text: String) -> Double? {
         let clean = text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !clean.isEmpty else { return nil }
-        return Double(clean)
+        guard !clean.isEmpty, let value = Double(clean), value.isFinite else { return nil }
+        return value
     }
 
-    private func isValidOptionalDecimal(_ text: String, maximum: Double) -> Bool {
+    private func isValidOptionalDecimal(
+        _ text: String,
+        maximum: Double,
+        maximumFractionDigits: Int = 2
+    ) -> Bool {
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if clean.isEmpty { return true }
         guard let value = decimalValue(clean), value >= 0, value <= maximum else { return false }
-        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+        let scale = pow(10.0, Double(maximumFractionDigits))
+        return abs(value * scale - (value * scale).rounded()) < 0.000_001
+    }
+
+    private func canonicalDecimalText(_ value: Double, maximumFractionDigits: Int) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = maximumFractionDigits
+        return formatter.string(from: NSNumber(value: value)) ?? String(value)
     }
 
     private func formattedCurrency(_ value: Double) -> String {
@@ -616,9 +789,23 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     // MARK: - Image Operations
 
+    private func alignedImageMetadata(
+        urls: [String],
+        metadata: [[AnyHashable: Any]]
+    ) -> [[AnyHashable: Any]] {
+        urls.enumerated().map { index, url in
+            var item = index < metadata.count ? metadata[index] : [:]
+            item["url"] = url
+            if item["width"] == nil { item["width"] = 0 }
+            if item["height"] == nil { item["height"] = 0 }
+            return item
+        }
+    }
+
     func addPickedImages(_ images: [UIImage]) {
         for image in images {
             guard canAddImages else { break }
+            pickedImageUploadIDs.append(UUID())
             pickedImages.append(image)
         }
     }
@@ -626,17 +813,40 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     func removeExistingImage(at index: Int) {
         guard index >= 0 && index < existingImageURLs.count else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let removedURL = existingImageURLs[index]
+        if let uploadID = pendingUnsavedUploads.removeValue(forKey: removedURL) {
+            Storage.storage().reference()
+                .child("petAccessories")
+                .child("\(uploadID.uuidString).png")
+                .delete { _ in }
+        }
+        if index < existingImageMetadata.count {
+            existingImageMetadata.remove(at: index)
+        }
         existingImageURLs.remove(at: index)
     }
 
     func removePickedImage(at index: Int) {
         guard index >= 0 && index < pickedImages.count else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if index < pickedImageUploadIDs.count {
+            let uploadID = pickedImageUploadIDs.remove(at: index)
+            Storage.storage().reference()
+                .child("petAccessories")
+                .child("\(uploadID.uuidString).png")
+                .delete { _ in }
+        }
         pickedImages.remove(at: index)
     }
 
     private func updateUnsavedChanges() {
-        guard initialSetupComplete else { return }
+        guard initialSetupComplete else {
+            guard !isPopulatingInitialValues, !isApplyingCategoryHydration else { return }
+            hasUnsavedChanges = true
+            errorMessage = nil
+            submissionFailureKind = nil
+            return
+        }
         hasUnsavedChanges = true
         errorMessage = nil
         submissionFailureKind = nil
@@ -652,6 +862,20 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if selectedMainKind == nil {
             return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
         }
+        if !isValidWeightInput() {
+            return (false, Language.get(
+                "CatalogIntake_ValidationWeight",
+                alter: "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية."
+            ))
+        }
+        if (!isLivePet || liveInventoryMode == .quantity) && !isValidDiscountPercentInput() {
+            let key = isLivePet ? "LivePetIntake_ValidationDiscountPercent" : "CatalogIntake_ValidationDiscountPercent"
+            return (false, Language.get(key, alter: "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين."))
+        }
+        if (!isLivePet || liveInventoryMode == .quantity) && !isValidDiscountAmountInput() {
+            let key = isLivePet ? "LivePetIntake_ValidationDiscountAmount" : "CatalogIntake_ValidationDiscountAmount"
+            return (false, Language.get(key, alter: "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين."))
+        }
         if isLivePet {
             if trimmedName.utf16.count > 90 {
                 return (false, Language.get("LivePetIntake_ValidationNameLength", alter: "يجب ألا يتجاوز الاسم 90 حرفاً."))
@@ -666,12 +890,6 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 if liveIntakeNotes.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 500 {
                     return (false, Language.get("LivePetIntake_ValidationNotesLength", alter: "يجب ألا تتجاوز ملاحظات الاستلام 500 حرف."))
                 }
-            }
-            if liveInventoryMode == .quantity && !isValidDiscountPercentInput() {
-                return (false, Language.get("LivePetIntake_ValidationDiscountPercent", alter: "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين."))
-            }
-            if liveInventoryMode == .quantity && !isValidDiscountAmountInput() {
-                return (false, Language.get("LivePetIntake_ValidationDiscountAmount", alter: "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين."))
             }
             if liveInventoryMode == .quantity, quantity < 1 {
                 return (false, Language.get("LivePet_Validation_GroupQuantity", alter: "أدخل كمية صحيحة لا تقل عن حيوان واحد للمجموعة."))
@@ -735,7 +953,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     // MARK: - Save Mutation Flow
 
     func saveAccessory() {
-        guard !isSubmitting else { return }
+        guard !isSubmitting, !hasCompletedSave else { return }
 
         if isLivePet, let recovery = livePetRecovery {
             isSubmitting = true
@@ -762,7 +980,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         submissionFailureKind = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        let accessory = editingAccessory ?? PetAccessory()
+        let accessory = editingAccessory.map { PetAccessory.deepCopy(from: $0) } ?? PetAccessory()
         accessory.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.desc = desc.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.price = NSNumber(value: basePrice)
@@ -782,11 +1000,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.storeID = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
         accessory.storeName = selectedStoreName.isEmpty ? Language.get("Main Store", alter: "المتجر الرئيسي") : selectedStoreName
 
-        if !weightText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            accessory.weightText = "\(weightText.trimmingCharacters(in: .whitespacesAndNewlines)) \(weightUnit)"
+        let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedWeight.isEmpty {
+            accessory.weight = nil
+            accessory.weightUnit = nil
+            accessory.weightText = nil
+        } else if let weightValue = decimalValue(normalizedWeight) {
+            let canonicalWeight = canonicalDecimalText(weightValue, maximumFractionDigits: 3)
+            accessory.weight = NSNumber(value: weightValue)
+            accessory.weightUnit = weightUnit
+            accessory.weightText = "\(canonicalWeight) \(weightUnit)"
         }
         
-        accessory.expiryDate = hasExpiryDate ? expiryDate : nil
+        accessory.expiryDate = (isFood && hasExpiryDate) ? expiryDate : nil
         accessory.active = !isDraft
         
         if accessory.createdAt == nil {
@@ -800,13 +1026,20 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         let oldImageURLs = editingAccessory?.imageURLsArray ?? []
         let currentExistingURLs = existingImageURLs
+        let currentExistingMetadata = alignedImageMetadata(
+            urls: currentExistingURLs,
+            metadata: existingImageMetadata
+        )
 
         // Upload newly picked images
         if pickedImages.isEmpty {
             accessory.imageURLsArray = currentExistingURLs
+            accessory.imageMeta = currentExistingMetadata
+            pendingSavedAccessoryDraft = accessory
             finalizeAccessorySave(accessory: accessory, oldImageURLs: oldImageURLs)
         } else {
-            uploadNewImages(images: pickedImages) { [weak self] uploadedURLs, metaArray, uploadError in
+            let uploadIDs = pickedImageUploadIDs
+            uploadNewImages(images: pickedImages, uploadIDs: uploadIDs) { [weak self] uploadedURLs, metaArray, uploadError in
                 guard let self = self else { return }
                 if let err = uploadError {
                     self.isSubmitting = false
@@ -815,14 +1048,23 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return
                 }
 
-                let finalURLs = currentExistingURLs + (uploadedURLs ?? [])
-                // Promote uploaded media into retained state before the callable.
-                // If the server commits but the presentation patch fails, retrying
-                // reuses the exact same URLs and stable create-command fingerprint.
+                let uploadedURLs = uploadedURLs ?? []
+                let uploadedMetadata = metaArray ?? []
+                let finalURLs = currentExistingURLs + uploadedURLs
+                let finalMetadata = currentExistingMetadata + uploadedMetadata
+                for (url, uploadID) in zip(uploadedURLs, uploadIDs) {
+                    self.pendingUnsavedUploads[url] = uploadID
+                }
+                // Promote uploaded media into retained state before the mutation.
+                // A failed catalog save can retry the same uploads without leaks
+                // or reordering the primary image and its metadata.
                 self.existingImageURLs = finalURLs
+                self.existingImageMetadata = finalMetadata
                 self.pickedImages.removeAll()
+                self.pickedImageUploadIDs.removeAll()
                 accessory.imageURLsArray = finalURLs
-                accessory.imageMeta = metaArray
+                accessory.imageMeta = finalMetadata
+                self.pendingSavedAccessoryDraft = accessory
                 self.finalizeAccessorySave(accessory: accessory, oldImageURLs: oldImageURLs)
             }
         }
@@ -830,20 +1072,57 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func uploadNewImages(
         images: [UIImage],
+        uploadIDs: [UUID],
         completion: @escaping ([String]?, [[AnyHashable: Any]]?, Error?) -> Void
     ) {
+        guard uploadIDs.count == images.count else {
+            completion(
+                nil,
+                nil,
+                NSError(
+                    domain: "PPAccessoryEditorImageUpload",
+                    code: 0,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get(
+                        "CatalogIntake_PhotoUploadFailed",
+                        alter: "تعذر إكمال رفع الصور. حاول مرة أخرى."
+                    )]
+                )
+            )
+            return
+        }
+        let encodedImages: [(image: UIImage, data: Data)] = images.compactMap { image in
+            guard let data = image.pngData() else { return nil }
+            return (image, data)
+        }
+        guard encodedImages.count == images.count else {
+            completion(
+                nil,
+                nil,
+                NSError(
+                    domain: "PPAccessoryEditorImageUpload",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: Language.get(
+                            "CatalogIntake_PhotoEncodingFailed",
+                            alter: "تعذر تجهيز إحدى الصور للرفع. أعد اختيار الصورة وحاول مرة أخرى."
+                        )
+                    ]
+                )
+            )
+            return
+        }
+
         let storageRef = Storage.storage().reference()
         let group = DispatchGroup()
-        var uploadedURLs = Array<String?>(repeating: nil, count: images.count)
-        var metaArray = Array<[AnyHashable: Any]?>(repeating: nil, count: images.count)
+        var uploadedURLs = Array<String?>(repeating: nil, count: encodedImages.count)
+        var metaArray = Array<[AnyHashable: Any]?>(repeating: nil, count: encodedImages.count)
         var firstError: Error?
         let lock = NSLock()
 
-        for (index, image) in images.enumerated() {
-            guard let data = image.pngData() else { continue }
+        for (index, encodedImage) in encodedImages.enumerated() {
             group.enter()
-            let uuid = UUID().uuidString
-            let imgRef = storageRef.child("petAccessories").child("\(uuid).png")
+            let image = encodedImage.image
+            let imgRef = storageRef.child("petAccessories").child("\(uploadIDs[index].uuidString).png")
             
             let metadata = StorageMetadata()
             metadata.contentType = "image/png"
@@ -853,7 +1132,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "media_type": "image"
             ]
 
-            imgRef.putData(data, metadata: metadata) { _, error in
+            imgRef.putData(encodedImage.data, metadata: metadata) { _, error in
                 if let err = error {
                     lock.lock()
                     if firstError == nil { firstError = err }
@@ -862,18 +1141,24 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return
                 }
 
-                imgRef.downloadURL { url, error2 in
+                imgRef.downloadURL { url, downloadError in
                     lock.lock()
-                    if let u = url?.absoluteString {
-                        uploadedURLs[index] = u
+                    if let urlString = url?.absoluteString {
+                        uploadedURLs[index] = urlString
                         metaArray[index] = [
-                            "url": u,
+                            "url": urlString,
                             "width": Double(image.size.width),
                             "height": Double(image.size.height)
                         ]
-                    }
-                    if let err2 = error2, firstError == nil {
-                        firstError = err2
+                    } else if firstError == nil {
+                        firstError = downloadError ?? NSError(
+                            domain: "PPAccessoryEditorImageUpload",
+                            code: 2,
+                            userInfo: [NSLocalizedDescriptionKey: Language.get(
+                                "CatalogIntake_PhotoUploadFailed",
+                                alter: "تعذر إكمال رفع الصور. حاول مرة أخرى."
+                            )]
+                        )
                     }
                     lock.unlock()
                     group.leave()
@@ -882,10 +1167,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
 
         group.notify(queue: .main) {
-            if let err = firstError {
-                completion(nil, nil, err)
+            lock.lock()
+            let uploadError = firstError
+            let completedURLs = uploadedURLs
+            let completedMetadata = metaArray
+            lock.unlock()
+
+            if let uploadError {
+                // Keep stable per-selection object paths and the selected images.
+                // A retry overwrites/reuses these paths, so partial uploads never
+                // accumulate UUID-addressed orphan blobs across attempts.
+                completion(nil, nil, uploadError)
             } else {
-                completion(uploadedURLs.compactMap { $0 }, metaArray.compactMap { $0 }, nil)
+                completion(completedURLs.compactMap { $0 }, completedMetadata.compactMap { $0 }, nil)
             }
         }
     }
@@ -898,13 +1192,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         AccessoryManager.shared().createOrUpdate(accessory) { [weak self] error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                self.isSubmitting = false
                 
                 if let err = error {
+                    self.isSubmitting = false
                     self.errorMessage = err.localizedDescription
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     return
                 }
+
+                self.commitSavedAccessory(accessory)
 
                 // Clean up removed old images from Storage (best-effort)
                 let newSet = Set(accessory.imageURLsArray ?? [])
@@ -916,17 +1212,91 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     }
                 }
 
-                self.hasUnsavedChanges = false
-                self.saveSuccessMessage = (self.editingAccessory != nil)
+                let message = (self.editingAccessory != nil)
                     ? Language.get("Your changes were saved successfully.", alter: "تم حفظ التعديلات بنجاح")
                     : Language.get("Accessory has been created.", alter: "تمت إضافة الصنف بنجاح")
-                
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-                    self.onDismiss()
-                }
+                self.completeSuccessfulSave(message: message)
             }
+        }
+    }
+
+    private func commitSavedAccessory(_ saved: PetAccessory) {
+        guard let original = editingAccessory else { return }
+        original.accessoryID = saved.accessoryID
+        original.name = saved.name
+        original.desc = saved.desc
+        original.price = saved.price
+        original.discountPercent = saved.discountPercent
+        original.discountAmount = saved.discountAmount
+        original.weightText = saved.weightText
+        original.weight = saved.weight
+        original.weightUnit = saved.weightUnit
+        original.imageURLsArray = saved.imageURLsArray
+        original.imageMeta = saved.imageMeta
+        original.petMainCategoryID = saved.petMainCategoryID
+        original.petSubCategoryID = saved.petSubCategoryID
+        original.condition = saved.condition
+        original.accessKindType = saved.accessKindType
+        original.expiryDate = saved.expiryDate
+        original.ownerID = saved.ownerID
+        original.createdAt = saved.createdAt
+        original.storeID = saved.storeID
+        original.storeName = saved.storeName
+        original.quantity = saved.quantity
+        original.noStock = saved.noStock
+        original.active = saved.active
+        original.isNew = saved.isNew
+        original.hasOffer = saved.hasOffer
+    }
+
+    private func commitConfirmedLivePetForm(retainedURLs: [String]) {
+        guard let original = editingAccessory else { return }
+        original.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        original.desc = desc.trimmingCharacters(in: .whitespacesAndNewlines)
+        original.price = NSNumber(value: basePrice)
+        original.discountPercent = liveInventoryMode == .quantity && discountPercent > 0
+            ? NSNumber(value: discountPercent)
+            : nil
+        original.discountAmount = liveInventoryMode == .quantity && discountAmount > 0
+            ? NSNumber(value: discountAmount)
+            : nil
+        original.hasOffer = original.discountPercent != nil || original.discountAmount != nil
+        original.quantity = liveInventoryMode == .individual ? livePetUnits.count : max(0, quantity)
+        original.noStock = original.quantity <= 0
+        original.condition = .new
+        original.isNew = true
+        original.accessKindType = .typeLivePets
+        original.petMainCategoryID = selectedMainKind?.id ?? 0
+        original.petSubCategoryID = selectedSubKind?.id ?? 0
+        original.storeID = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
+        original.storeName = selectedStoreName
+        original.inventoryMode = liveInventoryMode.rawValue
+        if liveInventoryMode == .individual {
+            original.standardSellingPrice = NSNumber(value: basePrice)
+        }
+        original.imageURLsArray = retainedURLs
+        original.active = !isDraft
+        original.normalizeInventoryState()
+    }
+
+    private func completeSuccessfulSave(message: String) {
+        guard !hasCompletedSave else { return }
+        isSubmitting = false
+        hasUnsavedChanges = false
+        submissionFailureKind = nil
+        pendingUnsavedUploads.removeAll()
+        pickedImageUploadIDs.removeAll()
+        pendingSavedAccessoryDraft = nil
+        saveSuccessMessage = message
+        hasCompletedSave = true
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+        guard !didScheduleSuccessfulDismissal else { return }
+        didScheduleSuccessfulDismissal = true
+        let dismissalDelay = UIAccessibility.isVoiceOverRunning ? 3.5 : 1.1
+        DispatchQueue.main.asyncAfter(deadline: .now() + dismissalDelay) { [weak self] in
+            guard let self, self.hasCompletedSave else { return }
+            self.onDismiss()
         }
     }
 
@@ -962,6 +1332,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return [
                 "draftUnitId": unit.id,
                 "ringTag": unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines),
+                "gender": unit.gender.rawValue,
                 "acquisitionDate": ISO8601DateFormatter().string(from: unit.acquisitionDate),
                 "purchaseCost": purchaseCost ?? NSNull(),
                 "sellingPrice": sellingPrice,
@@ -1136,9 +1507,21 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func discardChangesAndDismiss() {
-        guard !blocksDismissal else { return }
+        guard !preventsExplicitDismissal else { return }
+        cleanupPendingPickedUploads()
         clearLivePetRecovery()
         onDismiss()
+    }
+
+    private func cleanupPendingPickedUploads() {
+        let storageRoot = Storage.storage().reference().child("petAccessories")
+        let uploadIDs = Set(pickedImageUploadIDs).union(pendingUnsavedUploads.values)
+        for uploadID in uploadIDs {
+            storageRoot.child("\(uploadID.uuidString).png").delete { _ in }
+        }
+        pickedImageUploadIDs.removeAll()
+        pendingUnsavedUploads.removeAll()
+        pendingSavedAccessoryDraft = nil
     }
 
     func dismissSubmissionFeedback() {
@@ -1164,6 +1547,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         guard let submissionFailureKind else { return }
         switch submissionFailureKind {
         case .denied, .conflict, .stale:
+            cleanupPendingPickedUploads()
             clearLivePetRecovery()
             errorMessage = nil
             self.submissionFailureKind = nil
@@ -1224,15 +1608,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             let confirmedSuccessMessage = recovery.successMessage
             clearLivePetRecovery()
             cleanupRemovedImages(oldImageURLs: recovery.oldImageURLs, retainedURLs: retainedURLs)
-            isSubmitting = false
-            hasUnsavedChanges = false
-            submissionFailureKind = nil
-            saveSuccessMessage = confirmedSuccessMessage
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            let dismissalDelay = UIAccessibility.isVoiceOverRunning ? 3.5 : 1.1
-            DispatchQueue.main.asyncAfter(deadline: .now() + dismissalDelay) { [weak self] in
-                self?.onDismiss()
+            if let confirmedDraft = pendingSavedAccessoryDraft {
+                commitSavedAccessory(confirmedDraft)
+            } else {
+                commitConfirmedLivePetForm(retainedURLs: retainedURLs)
             }
+            completeSuccessfulSave(message: confirmedSuccessMessage)
         } catch {
             isSubmitting = false
             if recovery.acceptedProductID != nil {
@@ -1468,7 +1849,7 @@ struct PPAccessoryEditorScreen: View {
             icon: UIImage(systemName: "exclamationmark.triangle.fill"),
             confirmBlock: { _, didConfirm in
             guard didConfirm else { return }
-            viewModel.onDismiss()
+            viewModel.discardChangesAndDismiss()
             },
             cancelBlock: nil
         )
@@ -1486,7 +1867,7 @@ struct PPAccessoryEditorScreen: View {
                     if viewModel.hasUnsavedChanges {
                         showDiscardAlert()
                     } else {
-                        viewModel.onDismiss()
+                        viewModel.discardChangesAndDismiss()
                     }
                 }
             ) {
@@ -3353,7 +3734,8 @@ private struct PPAccessoryEditorExperienceRouter: View {
         Group {
             if viewModel.isLivePet && !viewModel.showTypeRow {
                 PPLivePetIntakeJourney(viewModel: viewModel)
-            } else if !viewModel.isLivePet && !viewModel.showTypeRow {
+            } else if !viewModel.showTypeRow
+                        && (viewModel.selectedKind == .typeAccessory || viewModel.selectedKind == .typeFood) {
                 PPAccessoryFoodIntakeJourney(viewModel: viewModel)
             } else {
                 PPAccessoryEditorScreen(viewModel: viewModel)
@@ -3438,6 +3820,7 @@ private struct PPLivePetIntakeJourney: View {
     @State private var previewNotesExpanded = false
     @State private var stageMessage: String?
     @State private var previewMedia: PPLivePetPreviewMedia?
+    @Namespace private var genderSelectionNamespace
 
     private enum FocusedField: Hashable {
         case name
@@ -3448,6 +3831,13 @@ private struct PPLivePetIntakeJourney: View {
         case groupCost
         case supplier
         case notes
+        // Per-animal fields are addressed by draft id so focus survives
+        // reordering, cloning and removal inside the roster.
+        case unitRing(String)
+        case unitSellingPrice(String)
+        case unitPurchaseCost(String)
+        case unitSupplier(String)
+        case unitNotes(String)
     }
 
     var body: some View {
@@ -3615,20 +4005,9 @@ private struct PPLivePetIntakeJourney: View {
     // MARK: Frame
 
     private var intakeBackground: some View {
-        ZStack {
-            AdminSurface.background
-            LinearGradient(
-                colors: [
-                    AdminSurface.primary.opacity(0.075),
-                    Color.clear,
-                    Color(uiColor: .ppSuccess).opacity(0.035)
-                ],
-                startPoint: .topTrailing,
-                endPoint: .bottomLeading
-            )
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
+        AdminSurface.background
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
     }
 
     private func showDiscardAlert() {
@@ -3727,10 +4106,7 @@ private struct PPLivePetIntakeJourney: View {
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.vertical, AdminSpacing.sm)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().background(AdminSurface.hairline.opacity(0.65))
-        }
+        .background(Color.clear)
     }
 
     private var journeyCompass: some View {
@@ -3997,7 +4373,7 @@ private struct PPLivePetIntakeJourney: View {
                             .font(AdminType.captionBold)
                             .foregroundStyle(AdminSurface.primary)
                             .padding(.horizontal, AdminSpacing.md)
-                            .frame(minHeight: AdminTouchTarget.minimum)
+                            .frame(height: 34)
                             .background(AdminSurface.primary.opacity(0.10), in: Capsule())
                     }
                     .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
@@ -4402,6 +4778,22 @@ private struct PPLivePetIntakeJourney: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    // MARK: Intake Roster
+    //
+    // The individual-intake surface is a *roster*, not a form list. Receiving a
+    // batch of live animals is a repetitive reconciliation task, so the section
+    // is built around three questions the operator asks continuously:
+    //
+    //   1. How many animals are still not ready to submit, and which ones?
+    //   2. For the animal I am on, exactly what is missing?
+    //   3. How do I get to the next animal without losing my place?
+    //
+    // `rosterCommandBar` answers (1) at a glance, the readiness dial on each
+    // passport answers (2) without expanding it, and `advanceToNextUnit`
+    // answers (3). Every animal keeps its own identity, gender, price, cost,
+    // date, supplier and notes; nothing here invents state the Infra unit
+    // contract does not own.
+
     @ViewBuilder
     private var individualIntake: some View {
         if viewModel.isEditingLivePet {
@@ -4412,56 +4804,283 @@ private struct PPLivePetIntakeJourney: View {
                 color: Color(uiColor: .ppInfo)
             )
         } else {
-            VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                        Text(tr("LivePetIntake_AnimalPassports", "جوازات الإدخال"))
-                            .font(AdminType.headline)
-                            .foregroundStyle(AdminSurface.primaryText)
-                        Text(tr("LivePetIntake_AnimalPassportsSub", "افتح كل جواز لإكمال الهوية والسعر ومصدر الاستلام."))
-                            .font(AdminType.caption)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                    Spacer()
-                    Text(String(
-                        format: tr("LivePetIntake_AnimalCount", "%ld حيوان"),
-                        viewModel.livePetUnits.count
-                    ))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminSurface.primary)
-                    .padding(.horizontal, AdminSpacing.sm)
-                    .frame(minHeight: 28)
-                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                }
+            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                rosterCommandBar
 
-                ForEach(Array(viewModel.livePetUnits.enumerated()), id: \.element.id) { index, unit in
-                    unitPassport(
-                        index: index,
-                        unit: unit,
-                        binding: $viewModel.livePetUnits[index]
-                    )
-                }
-
-                Button {
-                    viewModel.addLivePetUnit()
-                    expandedUnitID = viewModel.livePetUnits.last?.id
-                } label: {
-                    Label(tr("LivePetIntake_AddAnimal", "إضافة حيوان آخر"), systemImage: "plus.circle.fill")
-                        .font(AdminType.calloutBold)
-                        .foregroundStyle(AdminSurface.primary)
-                        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
-                        .background(AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(0.24), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                VStack(spacing: AdminSpacing.sm) {
+                    ForEach(Array(viewModel.livePetUnits.enumerated()), id: \.element.id) { index, unit in
+                        unitPassport(
+                            index: index,
+                            unit: unit,
+                            binding: $viewModel.livePetUnits[index]
                         )
+                    }
                 }
-                .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
-                .disabled(viewModel.livePetUnits.count >= 100)
-                .accessibilityHint(tr("LivePetIntake_AddAnimalHint", "ينشئ جواز إدخال فارغاً جديداً"))
+
+                addAnimalControl
             }
         }
     }
+
+    // MARK: Roster command bar
+
+    /// Header, readiness ledger and the jump strip.
+    ///
+    /// The readiness numbers are derived, never stored: a second source of truth
+    /// for "is this animal ready" would drift from `validate()` immediately.
+    private var rosterCommandBar: some View {
+        let total = viewModel.livePetUnits.count
+        let readyCount = viewModel.livePetUnits.filter { unitReadiness(for: $0).isSubmittable }.count
+        let blocked = total - readyCount
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            HStack(alignment: .top, spacing: AdminSpacing.md) {
+                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                    Text(tr("LivePetIntake_AnimalPassports", "جوازات الإدخال"))
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(tr("LivePetIntake_RosterSub", "كل حيوان سجل مستقل بهويته وجنسه وسعره. أكمل الناقص ثم انتقل للحيوان التالي."))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                // Ready / total, with the numerals forced LTR so "3/12" never
+                // reverses inside an Arabic layout.
+                VStack(alignment: .trailing, spacing: 0) {
+                    HStack(spacing: 1) {
+                        Text("\(readyCount)")
+                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                            .foregroundStyle(blocked == 0 ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                        Text("/\(total)")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .padding(.top, 5)
+                    }
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
+
+                    Text(tr("LivePetIntake_ReadyLabel", "جاهز للإرسال"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(String(
+                    format: tr("LivePetIntake_ReadyAccessibility", "%1$ld من %2$ld حيوانات جاهزة للإرسال"),
+                    readyCount,
+                    total
+                ))
+            }
+
+            rosterProgressRail(readyCount: readyCount, total: total)
+
+            if total > 1 {
+                rosterJumpStrip
+            }
+
+            if blocked > 0 {
+                Label(
+                    String(format: tr("LivePetIntake_BlockedCount", "%ld حيوانات تنتظر بيانات ناقصة"), blocked),
+                    systemImage: "exclamationmark.circle.fill"
+                )
+                .font(AdminType.caption)
+                .foregroundStyle(Color(uiColor: .ppWarning))
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(AdminSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    /// One decorative segment per animal, so progress is spatial rather than a
+    /// single averaged bar. Hidden from VoiceOver because the numeric ledger
+    /// above already carries the same fact.
+    private func rosterProgressRail(readyCount: Int, total: Int) -> some View {
+        HStack(spacing: 3) {
+            ForEach(Array(viewModel.livePetUnits.enumerated()), id: \.element.id) { _, unit in
+                let readiness = unitReadiness(for: unit)
+                Capsule(style: .continuous)
+                    .fill(readiness.isSubmittable ? readiness.tint : readiness.tint.opacity(0.34))
+                    .frame(height: 6)
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder(readiness.tint.opacity(0.55), lineWidth: 0.5)
+                    )
+            }
+        }
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2), value: readyCount)
+        .accessibilityHidden(true)
+    }
+
+    /// Horizontal jump strip. Each chip is a real 44pt control that both reports
+    /// one animal's readiness and moves the roster to it.
+    private var rosterJumpStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AdminSpacing.xs) {
+                ForEach(Array(viewModel.livePetUnits.enumerated()), id: \.element.id) { index, unit in
+                    let readiness = unitReadiness(for: unit)
+                    let active = expandedUnitID == unit.id
+                    Button {
+                        setExpandedUnit(active ? nil : unit.id)
+                    } label: {
+                        Text("\(index + 1)")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .monospacedDigit()
+                            .foregroundStyle(active ? .white : readiness.tint)
+                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            .background(
+                                Circle().fill(active ? readiness.tint : readiness.tint.opacity(0.12))
+                            )
+                            .overlay(
+                                Circle().strokeBorder(readiness.tint.opacity(active ? 0 : 0.42), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                    .accessibilityLabel(String(
+                        format: tr("LivePetIntake_JumpAccessibility", "الحيوان %ld، %@"),
+                        index + 1,
+                        readiness.statusSummary
+                    ))
+                    .accessibilityAddTraits(active ? .isSelected : [])
+                    .accessibilityHint(tr("LivePetIntake_JumpHint", "ينتقل إلى جواز هذا الحيوان"))
+                }
+            }
+            .padding(.horizontal, 1)
+            .padding(.vertical, 1)
+        }
+        .frame(height: AdminTouchTarget.minimum + 2)
+    }
+
+    private var addAnimalControl: some View {
+        let count = viewModel.livePetUnits.count
+        let atCapacity = count >= 100
+
+        return Button {
+            viewModel.addLivePetUnit()
+            setExpandedUnit(viewModel.livePetUnits.last?.id)
+        } label: {
+            HStack(spacing: AdminSpacing.sm) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                Text(tr("LivePetIntake_AddAnimal", "إضافة حيوان آخر"))
+                    .font(AdminType.calloutBold)
+                Spacer(minLength: AdminSpacing.xs)
+                Text("\(count)/100")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+            .foregroundStyle(atCapacity ? AdminSurface.secondaryText : AdminSurface.primary)
+            .padding(.horizontal, AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
+            .background(
+                (atCapacity ? AdminSurface.control : AdminSurface.primary.opacity(0.09)),
+                in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                    .strokeBorder(
+                        (atCapacity ? AdminSurface.hairline : AdminSurface.primary.opacity(0.30)),
+                        style: StrokeStyle(lineWidth: 1, dash: atCapacity ? [] : [5, 4])
+                    )
+            )
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+        .disabled(atCapacity)
+        .accessibilityHint(atCapacity
+            ? tr("LivePetIntake_AddAnimalCapacity", "بلغت الحد الأقصى 100 حيوان في الإدخال الواحد")
+            : tr("LivePetIntake_AddAnimalHint", "ينشئ جواز إدخال فارغاً جديداً"))
+    }
+
+    // MARK: Readiness model
+
+    /// Derived, per-animal completeness. Mirrors the required-field set that
+    /// `validate()` and the Infra unit validator already enforce; it does not
+    /// add or relax a rule. Gender is deliberately *not* required, because the
+    /// server contract defaults an unsent gender to `UNSPECIFIED`.
+    private struct PPUnitReadiness {
+        let satisfied: Int
+        let required: Int
+        let missingLabels: [String]
+        let isDuplicateIdentity: Bool
+        let isUntouched: Bool
+        let genderRecorded: Bool
+        let statusSummary: String
+        let tint: Color
+
+        var isSubmittable: Bool { satisfied == required && !isDuplicateIdentity }
+        var progress: Double { required == 0 ? 1 : Double(satisfied) / Double(required) }
+    }
+
+    private func unitReadiness(for unit: PPLivePetUnitDraft) -> PPUnitReadiness {
+        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasRing = !ring.isEmpty
+        let hasPrice = isPositiveMoney(unit.sellingPriceText)
+        let costRequired = viewModel.canViewStockCosts
+        let hasCost = !costRequired || isNonNegativeMoney(unit.purchaseCostText)
+
+        var missing: [String] = []
+        if !hasRing { missing.append(tr("LivePetIntake_MissingIdentity", "الهوية")) }
+        if !hasPrice { missing.append(tr("LivePetIntake_MissingPrice", "سعر البيع")) }
+        if costRequired && !hasCost { missing.append(tr("LivePetIntake_MissingCost", "تكلفة الاستلام")) }
+
+        let required = costRequired ? 3 : 2
+        let satisfied = [hasRing, hasPrice, hasCost].filter { $0 }.count - (costRequired ? 0 : 1)
+        let duplicate = hasRing && viewModel.duplicateRingTagKeys.contains(
+            PPAccessoryEditorViewModel.ringTagKey(unit.ringTag)
+        )
+        let untouched = !hasRing && !hasPrice && unit.purchaseCostText.isEmpty
+            && unit.supplier.isEmpty && unit.notes.isEmpty && unit.gender == .unspecified
+
+        let tint: Color
+        let summary: String
+        if duplicate {
+            tint = Color(uiColor: .ppError)
+            summary = tr("LivePetIntake_StatusDuplicate", "هوية مكررة")
+        } else if satisfied == required {
+            tint = Color(uiColor: .ppSuccess)
+            summary = tr("LivePetIntake_StatusReady", "مكتمل")
+        } else if untouched {
+            tint = Color(uiColor: .ppTextTertiary)
+            summary = tr("LivePetIntake_StatusEmpty", "فارغ")
+        } else {
+            tint = Color(uiColor: .ppWarning)
+            summary = tr("LivePetIntake_StatusPartial", "غير مكتمل")
+        }
+
+        return PPUnitReadiness(
+            satisfied: max(0, satisfied),
+            required: required,
+            missingLabels: missing,
+            isDuplicateIdentity: duplicate,
+            isUntouched: untouched,
+            genderRecorded: unit.gender != .unspecified,
+            statusSummary: summary,
+            tint: tint
+        )
+    }
+
+    private func isPositiveMoney(_ raw: String) -> Bool {
+        let clean = raw.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Double(clean), value > 0, value <= 999_999_999.99 else { return false }
+        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+    }
+
+    private func isNonNegativeMoney(_ raw: String) -> Bool {
+        let clean = raw.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let value = Double(clean), value >= 0, value <= 999_999_999.99 else { return false }
+        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+    }
+
+    // MARK: Passport
 
     private func unitPassport(
         index: Int,
@@ -4469,200 +5088,696 @@ private struct PPLivePetIntakeJourney: View {
         binding: Binding<PPLivePetUnitDraft>
     ) -> some View {
         let expanded = expandedUnitID == unit.id
-        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let readiness = unitReadiness(for: unit)
 
         return VStack(spacing: 0) {
-            Button {
-                setExpandedUnit(expanded ? nil : unit.id)
-            } label: {
-                HStack(spacing: AdminSpacing.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                            .fill(ring.isEmpty ? Color(uiColor: .ppWarning).opacity(0.12) : Color(uiColor: .ppSuccess).opacity(0.12))
-                            .frame(width: 46, height: 46)
-                        Text(String(format: "%02d", index + 1))
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .foregroundStyle(ring.isEmpty ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
-                    }
-
-                    VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                        Text(ring.isEmpty
-                            ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة")
-                            : ring)
-                            .font(ring.isEmpty ? AdminType.calloutBold : .system(size: 15, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .environment(\.layoutDirection, ring.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
-                            .lineLimit(1)
-                        Text(unit.sellingPriceText.isEmpty
-                            ? tr("LivePetIntake_PriceMissing", "سعر البيع غير محدد")
-                            : String(format: tr("LivePetIntake_UnitPriceFormat", "%@ ر.ق"), unit.sellingPriceText))
-                            .font(AdminType.caption)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .environment(\.layoutDirection, unit.sellingPriceText.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
-                    }
-
-                    Spacer(minLength: AdminSpacing.xs)
-
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                }
-                .padding(AdminSpacing.md)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(
-                format: tr("LivePetIntake_AnimalPassportAccessibility", "جواز الحيوان %ld، %@"),
-                index + 1,
-                ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring
-            ))
-            .accessibilityValue(expanded ? tr("LivePetIntake_Expanded", "مفتوح") : tr("LivePetIntake_Collapsed", "مطوي"))
-            .accessibilityHint(expanded
-                ? tr("LivePetIntake_CollapseHint", "يطوي تفاصيل الجواز")
-                : tr("LivePetIntake_ExpandHint", "يفتح تفاصيل الجواز"))
+            passportSpine(index: index, unit: unit, readiness: readiness, expanded: expanded)
 
             if expanded {
-                Divider().background(AdminSurface.hairline)
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(height: 0.75)
 
-                VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                        fieldLabel(tr("LivePetIntake_RingLabel", "رقم الحلقة أو الشريحة"), required: true)
-                        TextField("QA-RING-000", text: binding.ringTag)
-                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled(true)
-                            .environment(\.layoutDirection, .leftToRight)
-                            .multilineTextAlignment(.leading)
-                            .padding(.horizontal, AdminSpacing.md)
-                            .frame(minHeight: AdminTouchTarget.expanded)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                            .accessibilityLabel(tr("LivePetIntake_RingLabel", "رقم الحلقة أو الشريحة"))
-                    }
-
-                    Group {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            VStack(spacing: AdminSpacing.md) {
-                                unitMoneyField(
-                                    title: tr("LivePetIntake_UnitSellingPrice", "سعر البيع (ر.ق)"),
-                                    text: binding.sellingPriceText,
-                                    required: true
-                                )
-                                if viewModel.canViewStockCosts {
-                                    unitMoneyField(
-                                        title: tr("LivePetIntake_UnitCost", "تكلفة الاستلام (ر.ق)"),
-                                        text: binding.purchaseCostText,
-                                        required: true
-                                    )
-                                }
-                            }
-                        } else {
-                            HStack(spacing: AdminSpacing.sm) {
-                                unitMoneyField(
-                                    title: tr("LivePetIntake_UnitSellingPrice", "سعر البيع (ر.ق)"),
-                                    text: binding.sellingPriceText,
-                                    required: true
-                                )
-                                if viewModel.canViewStockCosts {
-                                    unitMoneyField(
-                                        title: tr("LivePetIntake_UnitCost", "تكلفة الاستلام (ر.ق)"),
-                                        text: binding.purchaseCostText,
-                                        required: true
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    DatePicker(
-                        tr("LivePetIntake_ReceivedDate", "تاريخ الاستلام"),
-                        selection: binding.acquisitionDate,
-                        displayedComponents: .date
-                    )
-                    .font(AdminType.callout)
-                    .frame(minHeight: AdminTouchTarget.minimum)
-
-                    TextField(tr("LivePetIntake_SupplierPlaceholder", "المورد أو المصدر (اختياري)"), text: binding.supplier)
-                        .font(AdminType.body)
-                        .padding(.horizontal, AdminSpacing.md)
-                        .frame(minHeight: AdminTouchTarget.expanded)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-
-                    TextField(tr("LivePetIntake_NotesPlaceholder", "ملاحظات داخلية عن الاستلام (اختياري)"), text: binding.notes)
-                        .font(AdminType.body)
-                        .padding(.horizontal, AdminSpacing.md)
-                        .frame(minHeight: AdminTouchTarget.expanded)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-
-                    Group {
-                        if dynamicTypeSize.isAccessibilitySize {
-                            VStack(spacing: AdminSpacing.sm) {
-                                cloneUnitButton(unit)
-                                removeUnitButton(unit.id)
-                            }
-                        } else {
-                            HStack(spacing: AdminSpacing.sm) {
-                                cloneUnitButton(unit)
-                                removeUnitButton(unit.id)
-                            }
-                        }
-                    }
-                }
-                .padding(AdminSpacing.md)
-                .background(AdminSurface.control.opacity(0.55))
-                .transition(.opacity)
+                passportBody(index: index, unit: unit, binding: binding, readiness: readiness)
             }
         }
         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                .strokeBorder(ring.isEmpty ? Color(uiColor: .ppWarning).opacity(0.30) : AdminSurface.hairline, lineWidth: 1)
+                .strokeBorder(
+                    readiness.isSubmittable ? AdminSurface.hairline : readiness.tint.opacity(0.42),
+                    lineWidth: readiness.isSubmittable ? 0.75 : 1.25
+                )
         )
         .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2), value: readiness.isSubmittable)
     }
 
-    private func unitMoneyField(title: String, text: Binding<String>, required: Bool) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            fieldLabel(title, required: required)
-            TextField("0.00", text: text)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .keyboardType(.decimalPad)
+    /// Collapsed row. Carries enough to decide whether the passport needs to be
+    /// opened at all: readiness dial, identity, gender and price.
+    private func passportSpine(
+        index: Int,
+        unit: PPLivePetUnitDraft,
+        readiness: PPUnitReadiness,
+        expanded: Bool
+    ) -> some View {
+        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return Button {
+            setExpandedUnit(expanded ? nil : unit.id)
+        } label: {
+            HStack(spacing: AdminSpacing.md) {
+                readinessDial(index: index, readiness: readiness)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring)
+                        .font(ring.isEmpty
+                            ? AdminType.calloutBold
+                            : .system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(ring.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                        .environment(\.layoutDirection, ring.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: AdminSpacing.xs) {
+                        genderTag(unit.gender)
+
+                        if isPositiveMoney(unit.sellingPriceText) {
+                            Text(String(
+                                format: tr("LivePetIntake_UnitPriceFormat", "%@ ر.ق"),
+                                unit.sellingPriceText
+                            ))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .environment(\.layoutDirection, .leftToRight)
+                        }
+                    }
+
+                    if !readiness.isSubmittable {
+                        Text(readiness.isDuplicateIdentity
+                            ? tr("LivePetIntake_DuplicateIdentity", "هذه الهوية مستخدمة في حيوان آخر")
+                            : String(
+                                format: tr("LivePetIntake_MissingFormat", "ناقص: %@"),
+                                readiness.missingLabels.joined(separator: tr("ListSeparator", "، "))
+                            ))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(readiness.tint)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+            }
+            .padding(AdminSpacing.md)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(String(
+            format: tr("LivePetIntake_PassportAccessibility", "جواز الحيوان %1$ld، %2$@، الجنس %3$@، %4$@"),
+            index + 1,
+            ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring,
+            unit.gender.localizedTitle,
+            readiness.statusSummary
+        ))
+        .accessibilityValue(expanded ? tr("LivePetIntake_Expanded", "مفتوح") : tr("LivePetIntake_Collapsed", "مطوي"))
+        .accessibilityHint(expanded
+            ? tr("LivePetIntake_CollapseHint", "يطوي تفاصيل الجواز")
+            : tr("LivePetIntake_ExpandHint", "يفتح تفاصيل الجواز"))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    /// Index numeral wrapped in an arc that fills as the required fields are
+    /// satisfied. One glyph answers "which animal" and "how far along" at once.
+    private func readinessDial(index: Int, readiness: PPUnitReadiness) -> some View {
+        ZStack {
+            Circle()
+                .strokeBorder(AdminSurface.hairline, lineWidth: 2.5)
+
+            Circle()
+                .trim(from: 0, to: max(0.001, readiness.progress))
+                .stroke(readiness.tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.28), value: readiness.progress)
+
+            if readiness.isDuplicateIdentity {
+                Image(systemName: "exclamationmark")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(readiness.tint)
+            } else if readiness.isSubmittable {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(readiness.tint)
+                    .transition(.opacity)
+            } else {
+                Text(String(format: "%02d", index + 1))
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
+        .frame(width: 42, height: 42)
+        .accessibilityHidden(true)
+    }
+
+    /// Compact gender pill for the collapsed row. Absent gender is stated
+    /// explicitly rather than omitted, so a missing biological record is visible
+    /// without opening the passport.
+    private func genderTag(_ gender: PPLivePetUnitGender) -> some View {
+        let tint = Color(uiColor: gender.tint)
+        return HStack(spacing: 3) {
+            Image(systemName: gender.symbolName)
+                .font(.system(size: 9, weight: .bold))
+            Text(gender.localizedShortTitle)
+                .font(AdminType.caption2Bold)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, AdminSpacing.xs)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(tint.opacity(0.30), lineWidth: 0.5))
+    }
+
+    // MARK: Passport body
+
+    private func passportBody(
+        index: Int,
+        unit: PPLivePetUnitDraft,
+        binding: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            identityField(unit: unit, binding: binding, readiness: readiness)
+
+            unitGenderSelector(unit: unit)
+
+            moneyFields(unit: unit, binding: binding)
+
+            receivedDateField(binding: binding)
+
+            intakeField(
+                caption: tr("LivePetIntake_SupplierField", "المورد أو المصدر"),
+                symbol: "shippingbox.fill",
+                required: false,
+                optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+                focused: focusedField == .unitSupplier(unit.id)
+            ) {
+                TextField(
+                    "",
+                    text: binding.supplier,
+                    prompt: promptText(tr("LivePetIntake_SupplierPrompt", "اسم المورد أو المزرعة"))
+                )
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .focused($focusedField, equals: .unitSupplier(unit.id))
+                .submitLabel(.next)
+                .onSubmit { focusedField = .unitNotes(unit.id) }
+                .accessibilityLabel(tr("LivePetIntake_SupplierField", "المورد أو المصدر"))
+            }
+
+            intakeField(
+                caption: tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"),
+                symbol: "text.alignleft",
+                required: false,
+                optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+                focused: focusedField == .unitNotes(unit.id)
+            ) {
+                TextField(
+                    "",
+                    text: binding.notes,
+                    prompt: promptText(tr("LivePetIntake_NotesPrompt", "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
+                )
+                .font(AdminType.body)
+                .foregroundStyle(AdminSurface.primaryText)
+                .focused($focusedField, equals: .unitNotes(unit.id))
+                .submitLabel(.done)
+                .onSubmit { focusedField = nil }
+                .accessibilityLabel(tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"))
+            }
+
+            passportActions(index: index, unit: unit)
+        }
+        .padding(AdminSpacing.md)
+        // A wash derived from the text colour recesses the body against the card
+        // in both light and dark appearances, which is what makes the inputs
+        // read as raised controls instead of flat blocks.
+        .background(AdminSurface.primaryText.opacity(0.035))
+        .transition(
+            accessibilityReduceMotion
+                ? .opacity
+                : .asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity
+                )
+        )
+    }
+
+    private func identityField(
+        unit: PPLivePetUnitDraft,
+        binding: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return intakeField(
+            caption: tr("LivePetIntake_RingLabel", "رقم الحلقة أو الشريحة"),
+            symbol: "number",
+            required: true,
+            focused: focusedField == .unitRing(unit.id),
+            invalid: readiness.isDuplicateIdentity,
+            footnote: readiness.isDuplicateIdentity
+                ? tr("LivePetIntake_DuplicateIdentity", "هذه الهوية مستخدمة في حيوان آخر")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            HStack(spacing: AdminSpacing.xs) {
+                TextField(
+                    "",
+                    text: binding.ringTag,
+                    prompt: promptText("QA-RING-000")
+                )
+                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                .foregroundStyle(AdminSurface.primaryText)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled(true)
+                .textContentType(.none)
+                .keyboardType(.asciiCapable)
+                // A ring or microchip code is a technical identifier: it stays
+                // LTR even in the Arabic layout so digits never reorder.
                 .environment(\.layoutDirection, .leftToRight)
                 .multilineTextAlignment(.leading)
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                .focused($focusedField, equals: .unitRing(unit.id))
+                .submitLabel(.next)
+                .onSubmit { focusedField = .unitSellingPrice(unit.id) }
+                .accessibilityLabel(tr("LivePetIntake_RingLabel", "رقم الحلقة أو الشريحة"))
+
+                if !ring.isEmpty {
+                    Button {
+                        binding.ringTag.wrappedValue = ""
+                        focusedField = .unitRing(unit.id)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(width: 30, height: AdminTouchTarget.minimum)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("LivePetIntake_ClearIdentity", "مسح رقم الحلقة"))
+                }
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func moneyFields(unit: PPLivePetUnitDraft, binding: Binding<PPLivePetUnitDraft>) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: AdminSpacing.base) {
+                sellingPriceField(unit: unit, binding: binding)
+                if viewModel.canViewStockCosts {
+                    purchaseCostField(unit: unit, binding: binding)
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                sellingPriceField(unit: unit, binding: binding)
+                if viewModel.canViewStockCosts {
+                    purchaseCostField(unit: unit, binding: binding)
+                }
+            }
+        }
+    }
+
+    private func sellingPriceField(unit: PPLivePetUnitDraft, binding: Binding<PPLivePetUnitDraft>) -> some View {
+        let entered = !unit.sellingPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return intakeField(
+            caption: tr("LivePetIntake_UnitSellingPriceShort", "سعر البيع"),
+            symbol: "tag.fill",
+            required: true,
+            focused: focusedField == .unitSellingPrice(unit.id),
+            invalid: entered && !isPositiveMoney(unit.sellingPriceText),
+            trailingAffix: tr("QAR", "ر.ق"),
+            footnote: entered && !isPositiveMoney(unit.sellingPriceText)
+                ? tr("LivePetIntake_MoneyFormat", "مبلغ صالح بمنزلتين عشريتين كحد أقصى")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            moneyTextField(
+                text: binding.sellingPriceText,
+                field: .unitSellingPrice(unit.id),
+                label: tr("LivePetIntake_UnitSellingPrice", "سعر البيع (ر.ق)")
+            )
+        }
+    }
+
+    private func purchaseCostField(unit: PPLivePetUnitDraft, binding: Binding<PPLivePetUnitDraft>) -> some View {
+        let entered = !unit.purchaseCostText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return intakeField(
+            caption: tr("LivePetIntake_UnitCostShort", "تكلفة الاستلام"),
+            symbol: "arrow.down.circle.fill",
+            required: true,
+            focused: focusedField == .unitPurchaseCost(unit.id),
+            invalid: entered && !isNonNegativeMoney(unit.purchaseCostText),
+            trailingAffix: tr("QAR", "ر.ق"),
+            footnote: entered && !isNonNegativeMoney(unit.purchaseCostText)
+                ? tr("LivePetIntake_MoneyFormat", "مبلغ صالح بمنزلتين عشريتين كحد أقصى")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            moneyTextField(
+                text: binding.purchaseCostText,
+                field: .unitPurchaseCost(unit.id),
+                label: tr("LivePetIntake_UnitCost", "تكلفة الاستلام (ر.ق)")
+            )
+        }
+    }
+
+    private func moneyTextField(text: Binding<String>, field: FocusedField, label: String) -> some View {
+        TextField("", text: text, prompt: promptText("0.00"))
+            .font(.system(size: 18, weight: .bold, design: .rounded))
+            .foregroundStyle(AdminSurface.primaryText)
+            .keyboardType(.decimalPad)
+            .monospacedDigit()
+            .environment(\.layoutDirection, .leftToRight)
+            .multilineTextAlignment(.leading)
+            .focused($focusedField, equals: field)
+            .accessibilityLabel(label)
+    }
+
+    private func receivedDateField(binding: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: tr("LivePetIntake_ReceivedDate", "تاريخ الاستلام"),
+            symbol: "calendar",
+            required: false,
+            focused: false
+        ) {
+            DatePicker(
+                tr("LivePetIntake_ReceivedDate", "تاريخ الاستلام"),
+                selection: binding.acquisitionDate,
+                in: ...Date(),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .font(AdminType.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: Per-animal gender
+
+    /// Gender is recorded **per animal**, not once for the catalog item, because
+    /// each individually tracked unit is a distinct animal with its own
+    /// biological record. Values map 1:1 onto the Infra `gender` enum; an
+    /// untouched animal submits `UNSPECIFIED` rather than a guess.
+    private func unitGenderSelector(unit: PPLivePetUnitDraft) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: "allergens.fill")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(tr("LivePetIntake_UnitGender", "جنس هذا الحيوان"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Spacer(minLength: 0)
+                if unit.gender == .unspecified {
+                    Text(tr("LivePetIntake_GenderUnsetNote", "سيُحفظ كغير محدد"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                }
+            }
+
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: AdminSpacing.xs) {
+                        ForEach(PPLivePetUnitGender.allCases) { option in
+                            genderOption(option, unit: unit, stacked: false)
+                        }
+                    }
+                } else {
+                    HStack(spacing: AdminSpacing.xs) {
+                        ForEach(PPLivePetUnitGender.allCases) { option in
+                            genderOption(option, unit: unit, stacked: true)
+                        }
+                    }
+                }
+            }
+            .padding(AdminSpacing.xs)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 1)
+            )
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(tr("LivePetIntake_UnitGender", "جنس هذا الحيوان"))
+    }
+
+    private func genderOption(
+        _ option: PPLivePetUnitGender,
+        unit: PPLivePetUnitDraft,
+        stacked: Bool
+    ) -> some View {
+        let selected = unit.gender == option
+        let tint = Color(uiColor: option.tint)
+
+        return Button {
+            viewModel.setLivePetUnitGender(option, unitID: unit.id)
+        } label: {
+            Group {
+                if stacked {
+                    VStack(spacing: 3) {
+                        Image(systemName: option.symbolName)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(option.localizedShortTitle)
+                            .font(AdminType.caption2Bold)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                } else {
+                    HStack(spacing: AdminSpacing.sm) {
+                        Image(systemName: option.symbolName)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(option.localizedTitle)
+                            .font(AdminType.calloutBold)
+                        Spacer(minLength: 0)
+                        if selected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .heavy))
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                }
+            }
+            .foregroundStyle(selected ? .white : AdminSurface.primaryText)
+            .background(
+                ZStack {
+                    if selected {
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .fill(tint)
+                            .matchedGeometryEffect(id: unit.id, in: genderSelectionNamespace)
+                    }
+                }
+            )
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+        .animation(
+            accessibilityReduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.82),
+            value: unit.gender
+        )
+        .accessibilityLabel(option.localizedTitle)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    // MARK: Passport actions
+
+    private func passportActions(index: Int, unit: PPLivePetUnitDraft) -> some View {
+        let hasNext = index + 1 < viewModel.livePetUnits.count
+
+        return VStack(spacing: AdminSpacing.sm) {
+            if hasNext || viewModel.livePetUnits.count < 100 {
+                Button {
+                    advanceFromUnit(at: index)
+                } label: {
+                    HStack(spacing: AdminSpacing.sm) {
+                        Image(systemName: hasNext ? "arrow.forward.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(hasNext
+                            ? tr("LivePetIntake_NextAnimal", "الحيوان التالي")
+                            : tr("LivePetIntake_AddAnimal", "إضافة حيوان آخر"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                .accessibilityHint(hasNext
+                    ? tr("LivePetIntake_NextAnimalHint", "يطوي هذا الجواز ويفتح الجواز التالي")
+                    : tr("LivePetIntake_AddAnimalHint", "ينشئ جواز إدخال فارغاً جديداً"))
+            }
+
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: AdminSpacing.xs) {
+                        cloneUnitButton(unit)
+                        removeUnitButton(unit.id)
+                    }
+                } else {
+                    HStack(spacing: AdminSpacing.sm) {
+                        cloneUnitButton(unit)
+                        removeUnitButton(unit.id)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Collapses the current passport and opens the next one, creating it only
+    /// when the operator is at the end of the roster and capacity allows.
+    private func advanceFromUnit(at index: Int) {
+        focusedField = nil
+        if index + 1 < viewModel.livePetUnits.count {
+            let nextID = viewModel.livePetUnits[index + 1].id
+            UISelectionFeedbackGenerator().selectionChanged()
+            setExpandedUnit(nextID)
+        } else {
+            viewModel.addLivePetUnit()
+            setExpandedUnit(viewModel.livePetUnits.last?.id)
+        }
     }
 
     private func cloneUnitButton(_ unit: PPLivePetUnitDraft) -> some View {
         Button {
             viewModel.clonePreviousUnit(from: unit)
-            expandedUnitID = viewModel.livePetUnits.last?.id
+            setExpandedUnit(viewModel.livePetUnits.last?.id)
         } label: {
             Label(tr("LivePetIntake_Clone", "نسخ كحيوان جديد"), systemImage: "plus.square.on.square")
                 .font(AdminType.captionBold)
                 .foregroundStyle(Color(uiColor: .ppSuccess))
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
                 .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.24), lineWidth: 0.75)
+                )
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
         .disabled(viewModel.livePetUnits.count >= 100)
+        .accessibilityHint(tr("LivePetIntake_CloneHint", "ينشئ حيواناً جديداً بنفس البيانات مع ترقيم الحلقة تلقائياً"))
     }
 
     private func removeUnitButton(_ id: String) -> some View {
-        Button(role: .destructive) {
+        let isOnlyAnimal = viewModel.livePetUnits.count <= 1
+
+        return Button(role: .destructive) {
             showRemoveAnimalAlert(for: id)
         } label: {
             Label(tr("LivePetIntake_Remove", "إزالة"), systemImage: "trash")
                 .font(AdminType.captionBold)
-                .foregroundStyle(Color(uiColor: .ppError))
+                .foregroundStyle(isOnlyAnimal ? AdminSurface.secondaryText : Color(uiColor: .ppError))
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
-                .background(Color(uiColor: .ppError).opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                .background(
+                    (isOnlyAnimal ? AdminSurface.hairline.opacity(0.25) : Color(uiColor: .ppError).opacity(0.10)),
+                    in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                        .strokeBorder(
+                            isOnlyAnimal ? AdminSurface.hairline : Color(uiColor: .ppError).opacity(0.24),
+                            lineWidth: 0.75
+                        )
+                )
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
-        .disabled(viewModel.livePetUnits.count <= 1)
+        .disabled(isOnlyAnimal)
+        .accessibilityHint(isOnlyAnimal
+            ? tr("LivePetIntake_RemoveBlockedHint", "لا يمكن إزالة الحيوان الوحيد في الإدخال")
+            : tr("LivePetIntake_RemoveHint", "يزيل هذا الحيوان من الإدخال الحالي بعد التأكيد"))
+    }
+
+    // MARK: Field shell
+
+    /// Every editable control in the roster is wrapped in this shell.
+    ///
+    /// The original passport relied on fill-only inputs, which disappeared when
+    /// the field fill and the surrounding card resolved to near-identical
+    /// values. Here the affordance is made unconditional: a caption that never
+    /// disappears on typing, a leading glyph, a permanently drawn border that
+    /// thickens and tints on focus, an explicit error state, and a trailing
+    /// currency affix so the number never has to carry the unit.
+    private func intakeField<Control: View>(
+        caption: String,
+        symbol: String,
+        required: Bool,
+        optionalNote: String? = nil,
+        focused: Bool,
+        invalid: Bool = false,
+        trailingAffix: String? = nil,
+        footnote: String? = nil,
+        footnoteTint: Color = Color(uiColor: .ppError),
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        let borderColor: Color = {
+            if invalid { return Color(uiColor: .ppError) }
+            if focused { return AdminSurface.primary }
+            return AdminSurface.hairline
+        }()
+        let borderWidth: CGFloat = invalid ? 1.4 : (focused ? 1.6 : 1)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(focused ? AdminSurface.primary : AdminSurface.secondaryText)
+                Text(caption)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(focused ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if required {
+                    Circle()
+                        .fill(Color(uiColor: .ppError))
+                        .frame(width: 5, height: 5)
+                        .accessibilityHidden(true)
+                } else if let optionalNote {
+                    Text(optionalNote)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: AdminSpacing.sm) {
+                control()
+
+                if let trailingAffix {
+                    Text(trailingAffix)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, AdminSpacing.xs)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.primaryText.opacity(0.06), in: Capsule(style: .continuous))
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: borderWidth)
+            )
+            .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: focused)
+            .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: invalid)
+
+            if let footnote {
+                Label(footnote, systemImage: "exclamationmark.triangle.fill")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(footnoteTint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Placeholders are rendered at a readable weight instead of the system
+    /// default, which was one of the reasons the original fields looked empty.
+    private func promptText(_ value: String) -> Text {
+        Text(value).foregroundColor(AdminSurface.secondaryText.opacity(0.75))
     }
 
     private var quantityIntake: some View {
@@ -5990,7 +7105,7 @@ private struct PPLivePetChoiceSheet: View {
                                     Text(emptyTitle)
                                         .font(AdminType.headline)
                                         .foregroundStyle(AdminSurface.primaryText)
-                                    Text(Language.get("LivePetIntake_TryAnotherSearch", alter: "جرّب كلمة أخرى أو امسح البحث."))
+                                    Text(Language.get("CatalogIntake_TryAnotherSearch", alter: "جرّب كلمة أخرى أو امسح البحث."))
                                         .font(AdminType.footnote)
                                         .foregroundStyle(AdminSurface.secondaryText)
                                 }
@@ -6103,8 +7218,31 @@ private struct PPLivePetMediaPreview: View {
                         withAnimation(.easeInOut(duration: 0.22)) { settledScale = target }
                     }
                 }
-                .accessibilityLabel(Language.get("LivePetIntake_PhotoPreview", alter: "معاينة صورة الحيوان"))
-                .accessibilityHint(Language.get("LivePetIntake_PhotoZoomHint", alter: "قرّب بإصبعين أو اضغط مرتين للتكبير"))
+                .accessibilityLabel(Language.get("CatalogIntake_PhotoPreview", alter: "معاينة صورة الصنف"))
+                .accessibilityValue(String(
+                    format: Language.get("CatalogIntake_ZoomValueFormat", alter: "التكبير %ld بالمئة"),
+                    Int((settledScale * 100).rounded())
+                ))
+                .accessibilityHint(Language.get(
+                    "CatalogIntake_PhotoZoomHint",
+                    alter: "استخدم إجراءات التكبير أو التصغير لضبط المعاينة"
+                ))
+                .accessibilityAction(named: Text(Language.get("CatalogIntake_ZoomIn", alter: "تكبير"))) {
+                    adjustZoom(by: 0.5)
+                }
+                .accessibilityAction(named: Text(Language.get("CatalogIntake_ZoomOut", alter: "تصغير"))) {
+                    adjustZoom(by: -0.5)
+                }
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment:
+                        adjustZoom(by: 0.5)
+                    case .decrement:
+                        adjustZoom(by: -0.5)
+                    @unknown default:
+                        break
+                    }
+                }
 
             Button {
                 dismiss()
@@ -6121,6 +7259,17 @@ private struct PPLivePetMediaPreview: View {
         .statusBar(hidden: true)
     }
 
+    private func adjustZoom(by delta: CGFloat) {
+        let target = min(4, max(1, settledScale + delta))
+        if accessibilityReduceMotion {
+            settledScale = target
+        } else {
+            withAnimation(.easeInOut(duration: 0.22)) {
+                settledScale = target
+            }
+        }
+    }
+
     @ViewBuilder
     private var mediaContent: some View {
         switch media.source {
@@ -6135,7 +7284,7 @@ private struct PPLivePetMediaPreview: View {
                     VStack(spacing: AdminSpacing.md) {
                         Image(systemName: "exclamationmark.icloud.fill")
                             .font(.system(size: 42))
-                        Text(Language.get("LivePetIntake_PhotoLoadFailed", alter: "تعذر تحميل الصورة"))
+                        Text(Language.get("CatalogIntake_PhotoLoadFailed", alter: "تعذر تحميل الصورة"))
                             .font(AdminType.headline)
                     }
                     .foregroundStyle(.white)
@@ -6156,6 +7305,9 @@ private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
         var configuration = PHPickerConfiguration()
         configuration.selectionLimit = maxSelection
         configuration.filter = .images
+        if #available(iOS 15.0, *) {
+            configuration.selection = .ordered
+        }
         let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = context.coordinator
         return picker
@@ -6165,6 +7317,36 @@ private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
+    }
+
+    private final class LoadAccumulator: @unchecked Sendable {
+        private let lock = NSLock()
+        private var orderedImages: [UIImage?]
+        private var failedCount = 0
+
+        init(count: Int) {
+            orderedImages = Array(repeating: nil, count: count)
+        }
+
+        func record(image: UIImage, at index: Int) {
+            lock.lock()
+            orderedImages[index] = image
+            lock.unlock()
+        }
+
+        func recordFailure() {
+            lock.lock()
+            failedCount += 1
+            lock.unlock()
+        }
+
+        func snapshot() -> ([UIImage], Int) {
+            lock.lock()
+            let images = orderedImages.compactMap { $0 }
+            let failures = failedCount
+            lock.unlock()
+            return (images, failures)
+        }
     }
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
@@ -6178,31 +7360,28 @@ private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
             parent.dismiss()
             guard !results.isEmpty else { return }
 
-            var orderedImages = Array<UIImage?>(repeating: nil, count: results.count)
-            var failedCount = 0
+            let accumulator = LoadAccumulator(count: results.count)
             let group = DispatchGroup()
-            let lock = NSLock()
 
             for (index, result) in results.enumerated() {
                 guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else {
-                    failedCount += 1
+                    accumulator.recordFailure()
                     continue
                 }
                 group.enter()
                 result.itemProvider.loadObject(ofClass: UIImage.self) { object, _ in
-                    lock.lock()
                     if let image = object as? UIImage {
-                        orderedImages[index] = image
+                        accumulator.record(image: image, at: index)
                     } else {
-                        failedCount += 1
+                        accumulator.recordFailure()
                     }
-                    lock.unlock()
                     group.leave()
                 }
             }
 
             group.notify(queue: .main) {
-                self.parent.onPicked(orderedImages.compactMap { $0 }, failedCount)
+                let (images, failedCount) = accumulator.snapshot()
+                self.parent.onPicked(images, failedCount)
             }
         }
     }
@@ -6305,7 +7484,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 catalogActionDock
                     .accessibilitySortPriority(1)
             }
-            .allowsHitTesting(!viewModel.isSubmitting)
+            .allowsHitTesting(!viewModel.isSubmitting && !viewModel.hasCompletedSave)
+            .disabled(viewModel.hasCompletedSave)
             .accessibilityHidden(viewModel.isSubmitting)
 
             if viewModel.isSubmitting {
@@ -6417,20 +7597,9 @@ private struct PPAccessoryFoodIntakeJourney: View {
     }
 
     private var catalogBackground: some View {
-        ZStack {
-            AdminSurface.background
-            LinearGradient(
-                colors: [
-                    AdminSurface.primary.opacity(0.07),
-                    Color.clear,
-                    (viewModel.isFood ? Color.orange : Color.blue).opacity(0.025),
-                ],
-                startPoint: .topTrailing,
-                endPoint: .bottomLeading
-            )
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
+        AdminSurface.background
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
     }
 
     private var catalogHeader: some View {
@@ -6486,10 +7655,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.vertical, AdminSpacing.sm)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .bottom) {
-            Divider().background(AdminSurface.hairline.opacity(0.65))
-        }
+        .background(Color.clear)
     }
 
     private var catalogCompass: some View {
@@ -6525,22 +7691,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         Button {
                             move(to: stage)
                         } label: {
-                            HStack(spacing: AdminSpacing.xs) {
-                                Image(systemName: validationMessage(for: stage) == nil ? "checkmark.circle.fill" : stage.iconName)
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text(shortStageTitle(stage))
-                                    .font(AdminType.caption2Bold)
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(stage == viewModel.activeStage ? .white : progressColor(for: stage))
-                            .padding(.horizontal, AdminSpacing.sm)
-                            .frame(minHeight: 36)
-                            .background(
-                                stage == viewModel.activeStage
-                                    ? AdminSurface.primary
-                                    : progressColor(for: stage).opacity(0.10),
-                                in: Capsule()
-                            )
+                            stagePill(for: stage)
                         }
                         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
                         .accessibilityAddTraits(stage == viewModel.activeStage ? .isSelected : [])
@@ -6562,6 +7713,28 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .strokeBorder(AdminSurface.primary.opacity(0.15), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private func stagePill(for stage: PPEditorStage) -> some View {
+        let isCurrent = stage == viewModel.activeStage
+        let isDone = validationMessage(for: stage) == nil
+        let icon = isDone ? "checkmark.circle.fill" : stage.symbol
+        let tint = progressColor(for: stage)
+        HStack(spacing: AdminSpacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+            Text(shortStageTitle(stage))
+                .font(AdminType.caption2Bold)
+                .lineLimit(1)
+        }
+        .foregroundStyle(isCurrent ? Color.white : tint)
+        .padding(.horizontal, AdminSpacing.sm)
+        .frame(minHeight: 36)
+        .background(
+            isCurrent ? AdminSurface.primary : tint.opacity(0.10),
+            in: Capsule()
+        )
     }
 
     @ViewBuilder
@@ -6706,17 +7879,19 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .foregroundStyle(AdminSurface.secondaryText)
                 }
                 Spacer()
-                Button {
-                    viewModel.showImagePicker = true
-                } label: {
-                    Label(tr("CatalogIntake_AddPhotos", "إضافة صور"), systemImage: "photo.badge.plus")
-                        .font(AdminType.captionBold)
-                        .frame(minHeight: AdminTouchTarget.minimum)
-                        .padding(.horizontal, AdminSpacing.sm)
+                if viewModel.canAddImages {
+                    Button {
+                        viewModel.showImagePicker = true
+                    } label: {
+                        Label(tr("CatalogIntake_AddPhotos", "إضافة صور"), systemImage: "photo.badge.plus")
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, AdminSpacing.md)
+                            .frame(height: 34)
+                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(AdminSurface.primary)
-                .disabled(!viewModel.canAddImages)
             }
 
             if viewModel.totalImageCount == 0 {
@@ -6781,6 +7956,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .overlay(primaryMediaBorder(index: index))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(mediaPreviewLabel(index: index))
+            .accessibilityHint(tr("CatalogIntake_PhotoPreviewButtonHint", "يفتح معاينة الصورة بملء الشاشة"))
 
             mediaRemoveButton(label: mediaRemoveLabel(index: index)) {
                 viewModel.removeExistingImage(at: index)
@@ -6802,6 +7979,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .overlay(primaryMediaBorder(index: displayIndex))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(mediaPreviewLabel(index: displayIndex))
+            .accessibilityHint(tr("CatalogIntake_PhotoPreviewButtonHint", "يفتح معاينة الصورة بملء الشاشة"))
 
             mediaRemoveButton(label: mediaRemoveLabel(index: displayIndex)) {
                 viewModel.removePickedImage(at: index)
@@ -6835,6 +8014,16 @@ private struct PPAccessoryFoodIntakeJourney: View {
         }
         .padding(6)
         .accessibilityLabel(label)
+    }
+
+    private func mediaPreviewLabel(index: Int) -> String {
+        if index == 0 {
+            return tr("CatalogIntake_PrimaryPhotoAccessibility", "الصورة 1، الصورة الرئيسية للكتالوج")
+        }
+        return String(
+            format: tr("CatalogIntake_PhotoNumberAccessibility", "صورة الكتالوج %ld"),
+            index + 1
+        )
     }
 
     private func mediaRemoveLabel(index: Int) -> String {
@@ -6973,7 +8162,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
         VStack(alignment: .leading, spacing: AdminSpacing.sm) {
             fieldLabel(tr("CatalogIntake_WeightLabel", "الوزن أو الحجم"), required: false)
             TextField("0.0", text: $viewModel.weightText)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .font(AdminType.headline)
                 .keyboardType(.decimalPad)
                 .focused($focusedField, equals: .weight)
                 .environment(\.layoutDirection, .leftToRight)
@@ -7082,7 +8271,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             .font(AdminType.caption)
                             .foregroundStyle(AdminSurface.secondaryText)
                         Text(String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")))
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
+                            .font(AdminType.title2)
                             .foregroundStyle(AdminSurface.primary)
                             .environment(\.layoutDirection, .leftToRight)
                     }
@@ -7107,7 +8296,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             viewModel.quantity = max(0, viewModel.quantity - 1)
                         }
                         Text("\(viewModel.quantity)")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(AdminType.title)
                             .monospacedDigit()
                             .frame(maxWidth: .infinity)
                             .accessibilityLabel(String(
@@ -7152,7 +8341,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
         VStack(alignment: .leading, spacing: AdminSpacing.sm) {
             fieldLabel(title, required: required)
             TextField("0.00", text: text)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .font(AdminType.headline)
                 .keyboardType(.decimalPad)
                 .focused($focusedField, equals: focus)
                 .environment(\.layoutDirection, .leftToRight)
@@ -7496,12 +8685,23 @@ private struct PPAccessoryFoodIntakeJourney: View {
             if viewModel.selectedMainKind == nil {
                 return tr("CatalogIntake_ValidationCategory", "اختر الفئة الرئيسية للصنف.")
             }
+            if !viewModel.isValidWeightInput() {
+                return tr("CatalogIntake_ValidationWeight", "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية.")
+            }
         case .pricing:
             let clean = viewModel.priceText
                 .replacingOccurrences(of: ",", with: ".")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            if Double(clean).map({ $0 > 0 }) != true {
+            if let value = Double(clean), value.isFinite, value > 0 {
+                // Continue to optional discount validation.
+            } else {
                 return tr("CatalogIntake_ValidationPrice", "أدخل سعراً أساسياً صحيحاً أكبر من صفر.")
+            }
+            if !viewModel.isValidDiscountPercentInput() {
+                return tr("CatalogIntake_ValidationDiscountPercent", "أدخل نسبة خصم بين 0 و100 وبحد أقصى منزلتين عشريتين.")
+            }
+            if !viewModel.isValidDiscountAmountInput() {
+                return tr("CatalogIntake_ValidationDiscountAmount", "أدخل مبلغ خصم صالحاً وبحد أقصى منزلتين عشريتين.")
             }
         case .governance:
             if viewModel.selectedStoreID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

@@ -10,6 +10,8 @@
 import SwiftUI
 import Combine
 import UIKit
+import Firebase
+@preconcurrency import FirebaseFirestore
 
 // MARK: - Bridge Descriptor (Preserved Obj-C Contract)
 
@@ -497,6 +499,10 @@ struct AdminCommandCenterScreenView: View {
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
                 onRoute: { route($0) }
+            )
+
+            CommandAccountingSovereignCard(
+                onRoute: { route("accounting") }
             )
 
             CommandPriorityRunway(
@@ -1866,7 +1872,6 @@ private struct CommandQuickActionsDeck: View {
                             .frame(width: widths.oneCol)
                         }
                     } else if items.count >= 5 {
-                        // Payments temporarily hidden per user request:
                         // Row 1: POS (2 columns) + Stock & Items (1 column)
                         HStack(spacing: spacing) {
                             CommandQuickActionCard(item: items[0], isTwoColumn: true) {
@@ -1880,28 +1885,26 @@ private struct CommandQuickActionsDeck: View {
                             .frame(width: widths.oneCol)
                         }
 
-                        // Row 2: Fulfillment (2 columns) + Delivery Fleet (1 column)
+                        // Row 2: Fulfillment + Delivery Fleet + Notifications in ONE unified 3-column row
                         if let fulfillment = items.first(where: { $0.id == "fulfillment" }),
-                           let delivery = items.first(where: { $0.id == "delivery" }) {
+                           let delivery = items.first(where: { $0.id == "delivery" }),
+                           let broadcast = items.first(where: { $0.id == "notificationsCompose" }) {
                             HStack(spacing: spacing) {
-                                CommandQuickActionCard(item: fulfillment, isTwoColumn: true) {
+                                CommandQuickActionCard(item: fulfillment, isTwoColumn: false) {
                                     onRoute(fulfillment.tag)
                                 }
-                                .frame(width: widths.twoCol)
+                                .frame(width: widths.oneCol)
 
                                 CommandQuickActionCard(item: delivery, isTwoColumn: false) {
                                     onRoute(delivery.tag)
                                 }
                                 .frame(width: widths.oneCol)
-                            }
-                        }
 
-                        // Row 3: Broadcast (Full width action banner matching hero edge)
-                        if let broadcast = items.first(where: { $0.id == "notificationsCompose" }) {
-                            CommandQuickActionCard(item: broadcast, isTwoColumn: true) {
-                                onRoute(broadcast.tag)
+                                CommandQuickActionCard(item: broadcast, isTwoColumn: false) {
+                                    onRoute(broadcast.tag)
+                                }
+                                .frame(width: widths.oneCol)
                             }
-                            .frame(maxWidth: .infinity)
                         }
                     }
                 }
@@ -2675,5 +2678,405 @@ struct CommandPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.76 : 1.0)
+    }
+}
+
+// MARK: - Category-Defining Flagship Accounting Sovereign Entry Card
+
+@MainActor
+private final class CommandAccountingCardViewModel: ObservableObject {
+    @Published private(set) var grossRevenue: Double = 0.0
+    @Published private(set) var totalExpenses: Double = 0.0
+    @Published private(set) var paidOrderCount: Int = 0
+    @Published private(set) var expenseCount: Int = 0
+    @Published private(set) var isLoading: Bool = true
+
+    private let service: PPAccountingService
+    private nonisolated(unsafe) var listeners: [any ListenerRegistration] = []
+
+    init(service: PPAccountingService = .shared()) {
+        self.service = service
+        subscribe()
+    }
+
+    deinit {
+        listeners.forEach { $0.remove() }
+    }
+
+    func subscribe() {
+        listeners.forEach { $0.remove() }
+        listeners.removeAll()
+        isLoading = true
+
+        let filter = "month"
+        let expReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sync()
+            }
+        }
+        let revReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.sync()
+            }
+        }
+        listeners = [expReg, revReg]
+        sync()
+    }
+
+    private func sync() {
+        grossRevenue = service.orderRevenue
+        paidOrderCount = service.orderCount
+        let exps = service.expenses ?? []
+        totalExpenses = exps.reduce(0.0) { $0 + $1.amount }
+        expenseCount = exps.count
+        isLoading = false
+    }
+
+    var netProfit: Double {
+        grossRevenue - totalExpenses
+    }
+
+    var isProfitable: Bool {
+        netProfit >= 0
+    }
+
+    var profitMarginPercent: Double {
+        guard grossRevenue > 0 else { return 0.0 }
+        return (netProfit / grossRevenue) * 100.0
+    }
+
+    var expenseRatio: Double {
+        guard grossRevenue > 0 else { return totalExpenses > 0 ? 1.0 : 0.0 }
+        return min(max(totalExpenses / grossRevenue, 0.0), 1.0)
+    }
+}
+
+private struct CommandAccountingSovereignCard: View {
+    let onRoute: () -> Void
+
+    @StateObject private var viewModel = CommandAccountingCardViewModel()
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPulsing = false
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onRoute()
+        }) {
+            VStack(alignment: .leading, spacing: 14) {
+                // Header Flight Deck: Live Beacon + Section Identity + Quick Route Pill
+                headerDeck
+
+                // Primary Hologram: Net Operating Profit
+                netProfitHero
+
+                // Secondary Telemetry Twin-Pillars: Inflow (Revenue) vs Outflow (Expenses)
+                twinPillars
+
+                // Micro Financial Efficiency Progress Gauge
+                efficiencyGauge
+            }
+            .padding(18)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(cardBorder)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
+                radius: 12,
+                x: 0,
+                y: 5
+            )
+            .scaleEffect(isPressed ? 0.985 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 50, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح الخزينة والتقارير المالية الكاملة" : "Tap to open complete financial command center")
+    }
+
+    private var headerDeck: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // Glowing Symbol Squircle
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.16, green: 0.72, blue: 0.44).opacity(colorScheme == .dark ? 0.30 : 0.16),
+                                Color(red: 0.10, green: 0.55, blue: 0.85).opacity(colorScheme == .dark ? 0.22 : 0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.40), lineWidth: 0.75)
+                    )
+
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Language.get("Accounting_Title", alter: "الخزينة والمالية"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    // Live Telemetry Pulse Dot
+                    HStack(spacing: 3.5) {
+                        Circle()
+                            .fill(Color(red: 0.16, green: 0.78, blue: 0.48))
+                            .frame(width: 5, height: 5)
+                            .scaleEffect(isPulsing ? 1.3 : 0.8)
+                        Text(Language.get("LiveSync", alter: "مباشر"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.16, green: 0.78, blue: 0.48).opacity(0.12), in: Capsule())
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                            isPulsing = true
+                        }
+                    }
+                }
+
+                Text(Language.isRTL() ? "الأداء التشغيلي والخزينة • هذا الشهر" : "Operational Performance & Treasury • This Month")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            // Tactile Entry Pill
+            HStack(spacing: 4) {
+                Text(Language.isRTL() ? "استعراض" : "Open")
+                    .font(AdminType.caption2Bold)
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(AdminSurface.primary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.5)
+            )
+        }
+    }
+
+    private var netProfitHero: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Language.isRTL() ? "صافي الربح التشغيلي" : "Net Operating Profit")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                Spacer()
+
+                // Margin Percentage Chip
+                HStack(spacing: 3) {
+                    Image(systemName: viewModel.isProfitable ? "arrow.up.right" : "arrow.down.right")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(String(format: "%@%.1f%%", viewModel.isProfitable ? "+" : "", viewModel.profitMarginPercent))
+                        .font(AdminType.caption2Bold)
+                        .monospacedDigit()
+                }
+                .foregroundStyle(viewModel.isProfitable ? Color(red: 0.16, green: 0.78, blue: 0.48) : Color(red: 0.95, green: 0.35, blue: 0.40))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    (viewModel.isProfitable ? Color(red: 0.16, green: 0.78, blue: 0.48) : Color(red: 0.95, green: 0.35, blue: 0.40))
+                        .opacity(colorScheme == .dark ? 0.20 : 0.10),
+                    in: Capsule()
+                )
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(formatCurrency(viewModel.netProfit))
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .foregroundStyle(viewModel.isProfitable ? AdminSurface.primaryText : Color(red: 0.95, green: 0.35, blue: 0.40))
+                    .monospacedDigit()
+
+                Text(Language.isRTL() ? "ر.ق" : "QAR")
+                    .font(AdminType.calloutBold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+        }
+    }
+
+    private var twinPillars: some View {
+        HStack(spacing: 10) {
+            // Revenue Pillar
+            pillarCell(
+                title: Language.isRTL() ? "الإيرادات" : "Revenue",
+                amount: viewModel.grossRevenue,
+                subtitle: Language.isRTL() ? "\(viewModel.paidOrderCount) طلب مسدد" : "\(viewModel.paidOrderCount) orders",
+                symbol: "arrow.up.forward.circle.fill",
+                tint: Color(red: 0.16, green: 0.78, blue: 0.48)
+            )
+
+            // Expenses Pillar
+            pillarCell(
+                title: Language.isRTL() ? "المصروفات" : "Expenses",
+                amount: viewModel.totalExpenses,
+                subtitle: Language.isRTL() ? "\(viewModel.expenseCount) سند صرف" : "\(viewModel.expenseCount) vouchers",
+                symbol: "arrow.down.forward.circle.fill",
+                tint: Color(red: 0.95, green: 0.40, blue: 0.35)
+            )
+        }
+    }
+
+    private func pillarCell(title: String, amount: Double, subtitle: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                HStack(spacing: 3) {
+                    Text(formatCurrency(amount))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .monospacedDigit()
+                    Text(Language.isRTL() ? "ر.ق" : "QAR")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Text(subtitle)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
+        )
+    }
+
+    private var efficiencyGauge: some View {
+        VStack(spacing: 5) {
+            GeometryReader { proxy in
+                let w = proxy.size.width
+                let expenseRatio = CGFloat(viewModel.expenseRatio)
+                let revenueRatio = max(1.0 - expenseRatio, 0.0)
+
+                ZStack(alignment: .leading) {
+                    // Track background
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
+
+                    // Dynamic multi-segment
+                    HStack(spacing: 2) {
+                        if revenueRatio > 0 {
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.16, green: 0.78, blue: 0.48), Color(red: 0.10, green: 0.65, blue: 0.70)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(w * revenueRatio - 1, 4))
+                        }
+
+                        if expenseRatio > 0 {
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.95, green: 0.45, blue: 0.35), Color(red: 0.90, green: 0.25, blue: 0.35)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(w * expenseRatio - 1, 4))
+                        }
+                    }
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Text(Language.isRTL() ? "كفاءة التشغيل المالي" : "Capital Efficiency")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Spacer()
+                Text(Language.isRTL() ? "انقر لفتح الخزينة والتحليلات ←" : "Tap for full ledger & analytics →")
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private var cardBackground: some View {
+        ZStack {
+            AdminSurface.control
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.16, green: 0.78, blue: 0.48).opacity(colorScheme == .dark ? 0.08 : 0.04),
+                    Color(red: 0.10, green: 0.55, blue: 0.85).opacity(colorScheme == .dark ? 0.06 : 0.02),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.16, green: 0.78, blue: 0.48).opacity(colorScheme == .dark ? 0.40 : 0.25),
+                        AdminSurface.primary.opacity(colorScheme == .dark ? 0.25 : 0.15),
+                        Color.white.opacity(colorScheme == .dark ? 0.08 : 0.40)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.85
+            )
+    }
+
+    private var accessibilityLabel: String {
+        let title = Language.isRTL() ? "الخزينة والمالية" : "Treasury and Finance"
+        let profit = formatCurrency(viewModel.netProfit)
+        let curr = Language.isRTL() ? "ريال قطري" : "QAR"
+        return "\(title), \(profit) \(curr)"
+    }
+
+    private func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
     }
 }

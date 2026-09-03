@@ -2204,13 +2204,11 @@ public final class PPAdminUsersListHostingController: UIViewController {
 
         let host = UIHostingController(
             rootView: AdminUsersListView(onDismiss: { [weak self] in
-                guard let self else { return }
-                if let navigationController = self.navigationController,
-                   navigationController.viewControllers.count > 1 {
-                    navigationController.popViewController(animated: true)
-                } else {
-                    self.dismiss(animated: true)
+                guard let self = self else {
+                    PPAdminNavigationFallback.popOrDismiss()
+                    return
                 }
+                PPAdminNavigationFallback.popOrDismiss(from: self)
             })
         )
         addChild(host)
@@ -2240,13 +2238,11 @@ public final class PPAdminChatsHostingController: UIViewController {
 
         let host = UIHostingController(
             rootView: AdminChatsView(onDismiss: { [weak self] in
-                guard let self else { return }
-                if let navigationController = self.navigationController,
-                   navigationController.viewControllers.count > 1 {
-                    navigationController.popViewController(animated: true)
-                } else {
-                    self.dismiss(animated: true)
+                guard let self = self else {
+                    PPAdminNavigationFallback.popOrDismiss()
+                    return
                 }
+                PPAdminNavigationFallback.popOrDismiss(from: self)
             })
         )
         addChild(host)
@@ -2295,13 +2291,11 @@ public final class PPAdminUserManagementHostingController: UIViewController {
                 controllerFactory: { controller },
                 titleText: titleText,
                 onDismiss: { [weak self] in
-                    guard let self else { return }
-                    if let navigationController = self.navigationController,
-                       navigationController.viewControllers.count > 1 {
-                        navigationController.popViewController(animated: true)
-                    } else {
-                        self.dismiss(animated: true)
+                    guard let self = self else {
+                        PPAdminNavigationFallback.popOrDismiss()
+                        return
                     }
+                    PPAdminNavigationFallback.popOrDismiss(from: self)
                 }
             )
         )
@@ -2348,13 +2342,11 @@ public final class PPAdminSupportThreadHostingController: UIViewController {
             rootView: AdminSupportThreadView(
                 controllerFactory: { controller },
                 onDismiss: { [weak self] in
-                    guard let self else { return }
-                    if let navigationController = self.navigationController,
-                       navigationController.viewControllers.count > 1 {
-                        navigationController.popViewController(animated: true)
-                    } else {
-                        self.dismiss(animated: true)
+                    guard let self = self else {
+                        PPAdminNavigationFallback.popOrDismiss()
+                        return
                     }
+                    PPAdminNavigationFallback.popOrDismiss(from: self)
                 }
             )
         )
