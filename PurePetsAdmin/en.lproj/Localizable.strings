@@ -2851,6 +2851,10 @@
 "Branches_Error_Title" = "Something went wrong";
 "Branches_Error_Subtitle" = "We couldn't load branches. Check your connection and try again.";
 "Branches_Retry" = "Try Again";
+"Branches_Default_Confirm_Format" = "Set \"%@\" as the primary default branch?";
+"ConfirmDelete_Branch_Format" = "Are you sure you want to permanently delete \"%@\"? This action cannot be undone.";
+"Branches_Deactivate_Confirm_Format" = "Do you want to deactivate \"%@\"? This branch will not appear in sales until reactivated.";
+"Branches_Cannot_Delete_Default" = "Cannot delete the primary default branch.";
 
 /* ===================== Agents Section ===================== */
 "Agents_Title" = "Agents";
@@ -5170,3 +5174,49 @@
 "Staff_Branch_Default_Badge" = "Default";
 "Staff_Branch_Set_Default" = "Set Default";
 "Staff_Error_BranchRequired" = "Please select at least one branch or enable Global Scope.";
+
+/* ===================== Pets Hotel & Boarding Hub ===================== */
+"Hotel_Title" = "Pets Hotel & Resort";
+"Hotel_Subtitle" = "Occupancy, In-House Guests, Suites & Holistic Care";
+"Hotel_Tab_Overview" = "Operations Deck";
+"Hotel_Tab_Guests" = "Guests & Stays";
+"Hotel_Tab_Reservations" = "Reservations";
+"Hotel_Tab_Rooms" = "Rooms & Suites";
+"Hotel_Tab_Care" = "Care & Tasks";
+"Hotel_Occupancy" = "Occupancy Rate";
+"Hotel_Occupied" = "Occupied";
+"Hotel_Available" = "Available";
+"Hotel_Cleaning" = "Sanitization";
+"Hotel_Maintenance" = "Maintenance";
+"Hotel_Blocked" = "Blocked";
+"Hotel_Inspection" = "Inspection";
+"Hotel_Wing_Dogs" = "Canine Wing";
+"Hotel_Wing_Cats" = "Feline Wing";
+"Hotel_Wing_Birds" = "Avian Wing";
+"Hotel_Wing_Daycare" = "Daycare Playpark";
+"Hotel_Wing_Isolation" = "Clinical Isolation";
+"Hotel_CheckIn" = "Express Check-In";
+"Hotel_CheckOut" = "Discharge & Handover";
+"Hotel_Room_Status_Update" = "Update Suite Status";
+"Hotel_Belongings" = "Guest Belongings";
+"Hotel_Care_Routine" = "Daily Care Routine";
+"Hotel_Special_Attention" = "Special Attention & Clinical Notes";
+"Hotel_VerificationTitle" = "Intake Requirements & Verification";
+"Hotel_VerifyIdentity" = "Verify Guest & Owner Identity";
+"Hotel_VerifyVaccination" = "Valid Vaccination Certificate";
+"Hotel_VerifyInspection" = "Initial Clinical Inspection Clear";
+"Hotel_VerifyDiet" = "Diet & Allergy Confirmation";
+"Hotel_VerifyEmergency" = "Emergency Contact Confirmed";
+"Hotel_VerifyAgreement" = "Boarding Terms & Policy Acknowledged";
+"Hotel_DischargeHealthCheck" = "Pre-Discharge Health Check Complete";
+"Hotel_DischargeHealthSub" = "Guest in stable & healthy condition";
+"Hotel_BelongingsVerifySub" = "All items matched and returned";
+"Hotel_EarlyCheckoutAlert" = "Early Departure Warning";
+"Hotel_EarlyCheckoutSub" = "Actual nights will be billed per platform policy";
+"Hotel_Task_PhotoUpdate" = "Update Guest Photo";
+"Hotel_Ledger_Total" = "Total Bill:";
+"Hotel_Ledger_Balance" = "Outstanding Balance:";
+"Hotel_Err_InvalidResponse" = "Invalid response from hotel server.";
+"Hotel_Err_Unauthenticated" = "Staff session expired or unauthenticated.";
+"Hotel_Err_PermissionDenied" = "You do not have permission for this hotel action.";
+"Hotel_Err_StayNotFound" = "Stay record not found.";

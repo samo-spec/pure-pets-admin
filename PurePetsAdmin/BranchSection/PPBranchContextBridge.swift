@@ -83,6 +83,14 @@ public final class BranchContextStore: ObservableObject {
         }
     }
 
+    public func branch(for id: String) -> PPBranchModel? {
+        PPBranchContextManager.shared().branch(withID: id)
+    }
+
+    public func localizedBranchName(for id: String?, fallback: String? = nil) -> String {
+        PPBranchContextManager.shared().localizedBranchName(forID: id, fallback: fallback)
+    }
+
     public func clear() {
         PPBranchContextManager.shared().clearContext()
         syncFromManager()

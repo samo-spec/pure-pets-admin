@@ -185,6 +185,10 @@ final class AdminBranchesViewModel: ObservableObject {
     func deleteBranch(_ branch: PPBranchModel, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
         let branchID = branch.branchID
         guard !branchID.isEmpty else { return }
+        guard canManage else {
+            completion(false, Language.get("PPAlert_Error_Permission_Message", alter: "Missing or insufficient permissions."))
+            return
+        }
         if branch.isDefault {
             completion(false, Language.get("Branches_Cannot_Delete_Default", alter: "Cannot delete default branch"))
             return
@@ -244,8 +248,6 @@ struct AdminBranchesView: View {
     @State private var isPresentingNewBranch = false
     @State private var toastMessage: String? = nil
     @State private var isErrorToast = false
-    @State private var branchToConfirmDefault: PPBranchModel? = nil
-    @State private var branchToDelete: PPBranchModel? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(onDismiss: (() -> Void)? = nil) {
@@ -299,10 +301,15 @@ struct AdminBranchesView: View {
             AdminBranchEditorSheet(
                 branch: branch,
                 canManage: viewModel.canManage,
+                agentCount: viewModel.agentCount(for: branch.branchID),
                 onDismiss: { editingBranch = nil },
                 onSaved: { msg in
                     editingBranch = nil
-                    showToast(msg, isError: false)
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Branches_Updated", alter: "تم التحديث"), subtitle: msg)
+                },
+                onDelete: { b in
+                    editingBranch = nil
+                    confirmDeleteBranch(b)
                 }
             )
         }
@@ -310,51 +317,14 @@ struct AdminBranchesView: View {
             AdminBranchEditorSheet(
                 branch: nil,
                 canManage: viewModel.canManage,
+                agentCount: 0,
                 onDismiss: { isPresentingNewBranch = false },
                 onSaved: { msg in
                     isPresentingNewBranch = false
-                    showToast(msg, isError: false)
-                }
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Branches_Created", alter: "تم إنشاء الفرع"), subtitle: msg)
+                },
+                onDelete: nil
             )
-        }
-        .alert(
-            Language.get("Branches_Default_Label", alter: nil),
-            isPresented: Binding(
-                get: { branchToConfirmDefault != nil },
-                set: { if !$0 { branchToConfirmDefault = nil } }
-            )
-        ) {
-            Button(Language.get("Cancel", alter: nil), role: .cancel) { branchToConfirmDefault = nil }
-            Button(Language.get("Confirm", alter: nil)) {
-                if let branch = branchToConfirmDefault {
-                    viewModel.setDefaultBranch(branch) { success, msg in
-                        showToast(msg ?? "", isError: !success)
-                    }
-                }
-                branchToConfirmDefault = nil
-            }
-        } message: {
-            Text(Language.get("Branches_Default_Confirm_Msg", alter: "Set this branch as the primary default branch?"))
-        }
-        .confirmationDialog(
-            Language.get("Delete", alter: nil),
-            isPresented: Binding(
-                get: { branchToDelete != nil },
-                set: { if !$0 { branchToDelete = nil } }
-            ),
-            titleVisibility: .visible
-        ) {
-            Button(Language.get("Delete", alter: nil), role: .destructive) {
-                if let branch = branchToDelete {
-                    viewModel.deleteBranch(branch) { success, msg in
-                        showToast(msg ?? "", isError: !success)
-                    }
-                }
-                branchToDelete = nil
-            }
-            Button(Language.get("Cancel", alter: nil), role: .cancel) { branchToDelete = nil }
-        } message: {
-            Text(Language.get("ConfirmDelete", alter: "Are you sure you want to delete this branch?"))
         }
     }
 
@@ -629,15 +599,13 @@ struct AdminBranchesView: View {
 
                 if !branch.isDefault {
                     Button {
-                        branchToConfirmDefault = branch
+                        confirmSetDefaultBranch(branch)
                     } label: {
                         Label(Language.get("Branches_Default_Label", alter: nil), systemImage: "star.fill")
                     }
 
                     Button {
-                        viewModel.toggleActive(for: branch) { success, msg in
-                            showToast(msg ?? "", isError: !success)
-                        }
+                        confirmToggleActiveBranch(branch)
                     } label: {
                         Label(
                             branch.isActive ? Language.get("Branches_Deactivate", alter: nil) : Language.get("Branches_Activate", alter: nil),
@@ -647,7 +615,7 @@ struct AdminBranchesView: View {
 
                     if count == 0 {
                         Button(role: .destructive) {
-                            branchToDelete = branch
+                            confirmDeleteBranch(branch)
                         } label: {
                             Label(Language.get("Delete", alter: nil), systemImage: "trash")
                         }
@@ -655,6 +623,82 @@ struct AdminBranchesView: View {
                 }
             }
         }
+    }
+
+    private func confirmSetDefaultBranch(_ branch: PPBranchModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Branches_Default_Label", alter: "الفرع الافتراضي"),
+            subtitle: String(format: Language.get("Branches_Default_Confirm_Format", alter: "هل تريد تعيين الفرع \"%@\" كفرع رئيسي افتراضي؟"), branch.localizedName()),
+            confirmButton: Language.get("Confirm", alter: "تأكيد"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "star.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.setDefaultBranch(branch) { success, msg in
+                    if success {
+                        PPAlertHelper.showSuccess(in: nil, title: Language.get("Branches_Updated", alter: "تم التحديث"), subtitle: msg)
+                    } else {
+                        PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: msg)
+                    }
+                }
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func confirmToggleActiveBranch(_ branch: PPBranchModel) {
+        if branch.isActive {
+            PPAlertHelper.showConfirmation(
+                in: nil,
+                title: Language.get("Branches_Deactivate", alter: "تعطيل الفرع"),
+                subtitle: String(format: Language.get("Branches_Deactivate_Confirm_Format", alter: "هل تريد تعطيل الفرع \"%@\"؟ لن يظهر هذا الفرع في عمليات البيع حتى يتم تنشيطه مجدداً."), branch.localizedName()),
+                confirmButton: Language.get("Branches_Deactivate", alter: "تعطيل"),
+                cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                icon: UIImage(systemName: "pause.circle.fill"),
+                confirmBlock: { _, didConfirm in
+                    guard didConfirm else { return }
+                    viewModel.toggleActive(for: branch) { success, msg in
+                        if success {
+                            PPAlertHelper.showSuccess(in: nil, title: Language.get("Branches_Updated", alter: "تم التحديث"), subtitle: msg)
+                        } else {
+                            PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: msg)
+                        }
+                    }
+                },
+                cancelBlock: nil
+            )
+        } else {
+            viewModel.toggleActive(for: branch) { success, msg in
+                if success {
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Branches_Updated", alter: "تم التحديث"), subtitle: msg)
+                } else {
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: msg)
+                }
+            }
+        }
+    }
+
+    private func confirmDeleteBranch(_ branch: PPBranchModel) {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Delete", alter: "حذف الفرع"),
+            subtitle: String(format: Language.get("ConfirmDelete_Branch_Format", alter: "هل أنت متأكد من رغبتك في حذف الفرع \"%@\" نهائياً؟ لن تتمكن من استرجاع هذا الفرع بعد الحذف."), branch.localizedName()),
+            confirmButton: Language.get("Delete", alter: "تأكيد الحذف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.deleteBranch(branch) { success, msg in
+                    if success {
+                        PPAlertHelper.showSuccess(in: nil, title: Language.get("Deleted", alter: "تم الحذف"), subtitle: msg)
+                    } else {
+                        PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: msg)
+                    }
+                }
+            },
+            cancelBlock: nil
+        )
     }
 
     private func showToast(_ message: String, isError: Bool) {
@@ -696,8 +740,10 @@ struct AdminBranchesView: View {
 struct AdminBranchEditorSheet: View {
     let branch: PPBranchModel?
     let canManage: Bool
+    let agentCount: Int
     let onDismiss: () -> Void
     let onSaved: (String) -> Void
+    let onDelete: ((PPBranchModel) -> Void)?
 
     @State private var nameAr: String = ""
     @State private var nameEn: String = ""
@@ -712,11 +758,20 @@ struct AdminBranchEditorSheet: View {
 
     private var isEditing: Bool { branch != nil }
 
-    init(branch: PPBranchModel?, canManage: Bool, onDismiss: @escaping () -> Void, onSaved: @escaping (String) -> Void) {
+    init(
+        branch: PPBranchModel?,
+        canManage: Bool,
+        agentCount: Int = 0,
+        onDismiss: @escaping () -> Void,
+        onSaved: @escaping (String) -> Void,
+        onDelete: ((PPBranchModel) -> Void)? = nil
+    ) {
         self.branch = branch
         self.canManage = canManage
+        self.agentCount = agentCount
         self.onDismiss = onDismiss
         self.onSaved = onSaved
+        self.onDelete = onDelete
         _nameAr = State(initialValue: branch?.nameAr ?? "")
         _nameEn = State(initialValue: branch?.nameEn ?? "")
         _code = State(initialValue: branch?.code ?? "")
@@ -899,26 +954,50 @@ struct AdminBranchEditorSheet: View {
         }
     }
 
+    @ViewBuilder
     private var saveButton: some View {
-        Button {
-            saveBranch()
-        } label: {
-            HStack(spacing: 8) {
-                if isSaving {
-                    ProgressView().tint(.white)
-                } else {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 16, weight: .bold))
+        VStack(spacing: 8) {
+            Button {
+                saveBranch()
+            } label: {
+                HStack(spacing: 8) {
+                    if isSaving {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    Text(Language.get("Save", alter: nil))
+                        .font(AdminType.headline)
                 }
-                Text(Language.get("Save", alter: nil))
-                    .font(AdminType.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
             }
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .frame(height: 52)
-            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+            .disabled(isSaving || !canManage)
+
+            if isEditing, canManage, !isDefault, agentCount == 0, let b = branch {
+                Button(role: .destructive) {
+                    onDelete?(b)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text(Language.get("Delete", alter: "حذف الفرع"))
+                            .font(AdminType.headline)
+                    }
+                    .foregroundColor(Color(uiColor: .ppError))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                            .stroke(Color(uiColor: .ppError).opacity(0.24), lineWidth: 1)
+                    )
+                }
+            }
         }
-        .disabled(isSaving || !canManage)
         .padding(.top, 8)
     }
 
@@ -928,7 +1007,9 @@ struct AdminBranchEditorSheet: View {
         let trimmedCode = code.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if trimmedAr.isEmpty && trimmedEn.isEmpty {
-            validationError = Language.get("Branches_Name_Required", alter: "Branch name is required")
+            let requiredMsg = Language.get("Branches_Name_Required", alter: "Branch name is required")
+            validationError = requiredMsg
+            PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: requiredMsg)
             return
         }
 
@@ -977,6 +1058,7 @@ struct AdminBranchEditorSheet: View {
                         self.isSaving = false
                         if let error {
                             self.validationError = error.localizedDescription
+                            PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: error.localizedDescription)
                         } else {
                             self.writeSaveAuditLog(branchID: docID, isNew: !self.isEditing)
                             self.onSaved(self.isEditing ? Language.get("Branches_Updated", alter: nil) : Language.get("Branches_Created", alter: nil))
@@ -990,6 +1072,7 @@ struct AdminBranchEditorSheet: View {
                     self.isSaving = false
                     if let error {
                         self.validationError = error.localizedDescription
+                        PPAlertHelper.showError(in: nil, title: Language.get("Error_Generic", alter: "خطأ"), subtitle: error.localizedDescription)
                     } else {
                         self.writeSaveAuditLog(branchID: docID, isNew: !self.isEditing)
                         self.onSaved(self.isEditing ? Language.get("Branches_Updated", alter: nil) : Language.get("Branches_Created", alter: nil))

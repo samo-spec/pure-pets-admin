@@ -394,3 +394,27 @@ import SwiftUI
     }
 }
 
+@objc public final class AdminPetsHotelHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let host = UIHostingController(rootView: AdminPetsHotelHubView())
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+

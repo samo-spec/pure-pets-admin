@@ -1,6 +1,8 @@
 #import "PetAccessory.h"
 #import "ArabicNormalizer.h"
 #import "MainKindsArrayManager.h"
+#import "PPBranchContextManager.h"
+#import "PPBranchModel.h"
 #import <math.h>
 
 @interface PetImageItem (PPAccessoryMetadata)
@@ -213,6 +215,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _ownerID = @"";
         _storeID = @"";
         _storeName = @"";
+        _branchID = @"";
+        _branchCode = @"";
         _imageURLsArray = @[];
         _createdAt = [NSDate date];
         _accessKindType = AccessTypeAccessory;
@@ -303,6 +307,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         dict[@"expiryDate"] = [NSNull null];
     }
     if (self.ownerID.length > 0) dict[@"ownerID"] = self.ownerID;
+    if (self.branchID.length > 0) {
+        dict[@"branchID"] = self.branchID;
+        dict[@"branchId"] = self.branchID;
+    } else if (self.storeID.length > 0 && ![self.storeID isEqualToString:@"main_store"]) {
+        dict[@"branchID"] = self.storeID;
+        dict[@"branchId"] = self.storeID;
+    }
+    if (self.branchCode.length > 0) dict[@"branchCode"] = self.branchCode;
     if (self.storeID.length > 0) dict[@"storeID"] = self.storeID;
     if (self.storeName.length > 0) dict[@"storeName"] = self.storeName;
     if (self.ownerType) dict[@"ownerType"] = self.ownerType;
@@ -525,8 +537,17 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _expiryDate = PPNullableDateFromFirestoreValue(dict[@"expiryDate"]);
 
         _ownerID = PPAccessoryStringValueForKeys(dict, (@[@"ownerID"]));
-        _storeID = PPAccessoryStringValueForKeys(dict, (@[@"storeID"]));
-        _storeName = PPAccessoryStringValueForKeys(dict, (@[@"storeName"]));
+        _branchID = PPAccessoryStringValueForKeys(dict, (@[@"branchID", @"branchId", @"branch_id"]));
+        _branchCode = PPAccessoryStringValueForKeys(dict, (@[@"branchCode", @"branch_code"]));
+        _storeID = PPAccessoryStringValueForKeys(dict, (@[@"storeID", @"storeId"]));
+        _storeName = PPAccessoryStringValueForKeys(dict, (@[@"storeName", @"branchName"]));
+
+        if (_branchID.length == 0 && _storeID.length > 0 && ![_storeID isEqualToString:@"main_store"]) {
+            _branchID = _storeID;
+        }
+        if (_storeID.length == 0 && _branchID.length > 0) {
+            _storeID = _branchID;
+        }
         _ownerType = [dict[@"ownerType"] isKindOfClass:NSString.class] ? dict[@"ownerType"] : nil;
         _source = [dict[@"source"] isKindOfClass:NSString.class] ? dict[@"source"] : nil;
         _inventoryMode = [dict[@"inventoryMode"] isKindOfClass:NSString.class]
@@ -616,6 +637,8 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.ownerID = [source.ownerID copy];
     copy.storeID = [source.storeID copy];
     copy.storeName = [source.storeName copy];
+    copy.branchID = [source.branchID copy];
+    copy.branchCode = [source.branchCode copy];
     copy.ownerType = [source.ownerType copy];
     copy.source = [source.source copy];
     copy.inventoryMode = [source.inventoryMode copy];
@@ -834,6 +857,33 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 + (void)copyToClipboard:(PetAccessory *)accessory {
     NSString *message = [self shareMessageForAccessory:accessory];
     [UIPasteboard generalPasteboard].string = message;
+}
+
+#pragma mark - Branch Resolution
+
+- (NSString *)resolvedBranchID {
+    if (self.branchID.length > 0) return self.branchID;
+    if (self.storeID.length > 0) return self.storeID;
+    return @"";
+}
+
+- (NSString *)resolvedBranchName {
+    NSString *bID = [self resolvedBranchID];
+    if (bID.length > 0 && ![bID isEqualToString:@"main_store"]) {
+        PPBranchModel *branch = [[PPBranchContextManager sharedManager] branchWithID:bID];
+        if (branch) {
+            return [branch localizedName];
+        }
+    }
+    if (self.storeName.length > 0 &&
+        ![self.storeName isEqualToString:@"المتجر الرئيسي"] &&
+        ![self.storeName caseInsensitiveCompare:@"main store"] == NSOrderedSame) {
+        return self.storeName;
+    }
+    if (self.branchCode.length > 0) {
+        return self.branchCode;
+    }
+    return [Language isRTL] ? @"المتجر الرئيسي" : @"Main Store";
 }
 
 @end

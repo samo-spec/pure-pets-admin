@@ -68,6 +68,7 @@
     if ([identifier isEqualToString:@"categories"]) return [AdminCategoriesHostingController new];
     if ([identifier isEqualToString:@"banners"]) return [PPBannersListVC new];
     if ([identifier isEqualToString:@"listings"]) return [PPListingsAdminViewController new];
+    if ([identifier isEqualToString:@"hotel"]) return [AdminPetsHotelHostingController new];
     return nil;
 }
 

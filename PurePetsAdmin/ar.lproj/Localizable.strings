@@ -2901,6 +2901,10 @@
 "Branches_Error_Title" = "حدث خطأ ما";
 "Branches_Error_Subtitle" = "تعذّر تحميل الفروع. تحقق من اتصالك وحاول مرة أخرى.";
 "Branches_Retry" = "حاول مرة أخرى";
+"Branches_Default_Confirm_Format" = "هل تريد تعيين الفرع \"%@\" كفرع رئيسي افتراضي؟";
+"ConfirmDelete_Branch_Format" = "هل أنت متأكد من رغبتك في حذف الفرع \"%@\" نهائياً؟ لن تتمكن من استرجاع هذا الفرع بعد الحذف.";
+"Branches_Deactivate_Confirm_Format" = "هل تريد تعطيل الفرع \"%@\"؟ لن يظهر هذا الفرع في عمليات البيع حتى يتم تنشيطه مجدداً.";
+"Branches_Cannot_Delete_Default" = "لا يمكن حذف الفرع الرئيسي الافتراضي.";
 
 /* ===================== Agents Section ===================== */
 "Agents_Title" = "الوكلاء";
@@ -5231,3 +5235,49 @@
 "Staff_Branch_Default_Badge" = "الافتراضي";
 "Staff_Branch_Set_Default" = "تعيين افتراضي";
 "Staff_Error_BranchRequired" = "يرجى تحديد فرع عمل واحد على الأقل، أو تفعيل الوصول الشامل لكافة الفروع.";
+
+/* ===================== Pets Hotel & Boarding Hub ===================== */
+"Hotel_Title" = "فندق ورعاية الحيوانات";
+"Hotel_Subtitle" = "الإشغال والنزلاء • الغرف والأجنحة والرعاية المتكاملة";
+"Hotel_Tab_Overview" = "لوحة العمليات";
+"Hotel_Tab_Guests" = "النزلاء والإقامة";
+"Hotel_Tab_Reservations" = "الحجوزات";
+"Hotel_Tab_Rooms" = "الغرف والأجنحة";
+"Hotel_Tab_Care" = "الرعاية والمهام";
+"Hotel_Occupancy" = "معدل الإشغال";
+"Hotel_Occupied" = "مشغول";
+"Hotel_Available" = "متاح";
+"Hotel_Cleaning" = "تعقيم وتنظيف";
+"Hotel_Maintenance" = "صيانة";
+"Hotel_Blocked" = "محجوب";
+"Hotel_Inspection" = "فحص جاهزية";
+"Hotel_Wing_Dogs" = "جناح الكلاب";
+"Hotel_Wing_Cats" = "جناح القطط";
+"Hotel_Wing_Birds" = "جناح الطيور";
+"Hotel_Wing_Daycare" = "الرعاية النهارية";
+"Hotel_Wing_Isolation" = "العزل الطبي";
+"Hotel_CheckIn" = "تسجيل وصول النزيل";
+"Hotel_CheckOut" = "تسليم ومغادرة";
+"Hotel_Room_Status_Update" = "تحديث حالة الغرفة";
+"Hotel_Belongings" = "مقتنيات النزيل";
+"Hotel_Care_Routine" = "الجدول اليومي للرعاية";
+"Hotel_Special_Attention" = "عناية خاصة وملاحظات طبية";
+"Hotel_VerificationTitle" = "متطلبات الدخول والتحقق الإلزامي";
+"Hotel_VerifyIdentity" = "التحقق من هوية الحيوان والمالك";
+"Hotel_VerifyVaccination" = "شهادة التطعيمات سارية وموثقة";
+"Hotel_VerifyInspection" = "الفحص السريري الأولي سليم";
+"Hotel_VerifyDiet" = "تأكيد النظام الغذائي والحساسيات";
+"Hotel_VerifyEmergency" = "تأكيد رقم الطوارئ البديل";
+"Hotel_VerifyAgreement" = "الموافقة على شروط الرعاية الفندقية";
+"Hotel_DischargeHealthCheck" = "فحص المؤشرات الصحية قبل المغادرة";
+"Hotel_DischargeHealthSub" = "النزيل بحالة طبيعية ومستقرة";
+"Hotel_BelongingsVerifySub" = "تم التحقق من تطابق العهدة ومحتوياتها";
+"Hotel_EarlyCheckoutAlert" = "مغادرة مبكرة قبل الموعد المقرر";
+"Hotel_EarlyCheckoutSub" = "سيتم احتساب الليالي الفعلية وفق السياسة التشغيلية";
+"Hotel_Task_PhotoUpdate" = "تحديث صورة النزيل";
+"Hotel_Ledger_Total" = "إجمالي الحساب:";
+"Hotel_Ledger_Balance" = "المتبقي للدفع:";
+"Hotel_Err_InvalidResponse" = "استجابة غير صالحة من خادم فندق الحيوانات.";
+"Hotel_Err_Unauthenticated" = "الجلسة غير مسجلة أو انتهت صلاحيتها.";
+"Hotel_Err_PermissionDenied" = "ليس لديك صلاحية لتنفيذ هذه العملية الفندقية.";
+"Hotel_Err_StayNotFound" = "سجل الإقامة المطلوب غير موجود.";

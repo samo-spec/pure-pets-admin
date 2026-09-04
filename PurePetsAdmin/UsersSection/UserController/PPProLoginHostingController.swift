@@ -603,6 +603,7 @@ final class PPProLoginHostingController: UIViewController {
         view.backgroundColor = .ppBackground
 
         let coordinator = PPProLoginCoordinator(presenting: self)
+        coordinator.suppressesHUD = true
         let viewModel = PPProLoginViewModel(coordinator: coordinator)
         let host = UIHostingController(rootView: PPProLoginScreen(viewModel: viewModel))
         host.view.backgroundColor = .clear

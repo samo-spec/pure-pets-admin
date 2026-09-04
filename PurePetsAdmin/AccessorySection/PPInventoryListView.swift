@@ -1245,8 +1245,10 @@ final class PPInventoryListViewModel: ObservableObject {
             let desc = item.desc.lowercased()
             let searchTitle = item.searchTitle.lowercased()
             let store = (item.storeName ?? "").lowercased()
+            let branchName = item.resolvedBranchName().lowercased()
+            let branchCode = (item.branchCode ?? "").lowercased()
             let docID = item.accessoryID.lowercased()
-            return name.contains(query) || desc.contains(query) || searchTitle.contains(query) || store.contains(query) || docID.contains(query)
+            return name.contains(query) || desc.contains(query) || searchTitle.contains(query) || store.contains(query) || branchName.contains(query) || branchCode.contains(query) || docID.contains(query)
         }
 
         result.sort { a, b in
@@ -2178,8 +2180,9 @@ private struct FlagshipInventoryCard: View {
                     VStack(alignment: .leading, spacing: 6) {
                         // Top Meta Runway: Origin + Condition + Weight + Vitality Pill
                         HStack(alignment: .center, spacing: 6) {
-                            if let store = item.storeName, !store.isEmpty {
-                                Text(store)
+                            let branchDisplayName = item.resolvedBranchName()
+                            if !branchDisplayName.isEmpty {
+                                Text(branchDisplayName)
                                     .font(AdminType.caption2Bold)
                                     .foregroundColor(AdminSurface.primary)
                                     .padding(.horizontal, 7)
@@ -2831,12 +2834,12 @@ public struct PPInventoryItemDetailView: View {
                     .overlay(Capsule(style: .continuous).strokeBorder(inventoryTrackingTint.opacity(0.25), lineWidth: 0.5))
 
                     // Store Location Pill
-                    let storeName = item.storeName ?? Language.get("MainStore", alter: "المتجر الرئيسي")
-                    if !storeName.isEmpty {
+                    let branchDisplayName = item.resolvedBranchName()
+                    if !branchDisplayName.isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "building.2.fill")
                                 .font(.system(size: 9))
-                            Text(localizedBranchName(storeName, id: storeName))
+                            Text(branchDisplayName)
                                 .font(Font.custom("Beiruti-Regular", size: 11))
                         }
                         .foregroundStyle(AdminSurface.secondaryText)
@@ -3064,10 +3067,9 @@ public struct PPInventoryItemDetailView: View {
     private var operationalDossierGrid: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                let storeName = item.storeName ?? Language.get("MainStore", alter: "المتجر الرئيسي")
                 dossierAttributeCard(
                     title: Language.get("Store", alter: "المتجر"),
-                    value: localizedBranchName(storeName, id: storeName),
+                    value: item.resolvedBranchName(),
                     icon: "building.2.fill"
                 )
                 dossierAttributeCard(
@@ -3922,6 +3924,9 @@ public struct PPInventoryItemDetailView: View {
         }
         if let cached = PPLivePetInventoryService.branch(for: id) {
             return cached.fullMeaningfulTitle
+        }
+        if let b = PPBranchContextManager.shared().branch(withID: id) {
+            return b.localizedName()
         }
         return name.isEmpty ? id : name
     }

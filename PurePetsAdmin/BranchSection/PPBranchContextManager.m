@@ -21,6 +21,7 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
 
 @property (nonatomic, strong, nullable, readwrite) PPBranchModel *activeBranch;
 @property (nonatomic, copy, readwrite) NSArray<PPBranchModel *> *availableBranches;
+@property (nonatomic, copy, readwrite) NSArray<PPBranchModel *> *allBranches;
 @property (nonatomic, strong, nullable, readwrite) PPStaffDoc *currentStaff;
 @property (nonatomic, assign, readwrite) BOOL isGlobalAccess;
 @property (nonatomic, assign, readwrite) BOOL needsBranchSelection;
@@ -41,6 +42,7 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
 - (instancetype)init {
     if (self = [super init]) {
         _availableBranches = @[];
+        _allBranches = @[];
         _activeBranch = nil;
         _isGlobalAccess = NO;
         _needsBranchSelection = NO;
@@ -99,9 +101,11 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
                 return;
             }
 
+            NSMutableArray<PPBranchModel *> *all = [NSMutableArray array];
             NSMutableArray<PPBranchModel *> *loaded = [NSMutableArray array];
             for (FIRDocumentSnapshot *doc in snapshot.documents) {
                 PPBranchModel *branch = [PPBranchModel fromDictionary:doc.data withID:doc.documentID];
+                [all addObject:branch];
                 if (branch.isActive) {
                     if (self.isGlobalAccess || [self.currentStaff hasAccessToBranch:branch.branchID]) {
                         [loaded addObject:branch];
@@ -109,6 +113,7 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
                 }
             }
 
+            self.allBranches = [all copy];
             self.availableBranches = [loaded copy];
             [[NSNotificationCenter defaultCenter] postNotificationName:PPAvailableBranchesDidChangeNotification object:self];
 
@@ -119,6 +124,46 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
             }
         });
     }];
+}
+
+#pragma mark - Resolution & Lookup
+
+- (nullable PPBranchModel *)branchWithID:(nullable NSString *)branchID {
+    if (branchID.length == 0) return nil;
+
+    for (PPBranchModel *b in self.allBranches) {
+        if ([b.branchID isEqualToString:branchID] ||
+            [b.code caseInsensitiveCompare:branchID] == NSOrderedSame) {
+            return b;
+        }
+    }
+    for (PPBranchModel *b in self.availableBranches) {
+        if ([b.branchID isEqualToString:branchID] ||
+            [b.code caseInsensitiveCompare:branchID] == NSOrderedSame) {
+            return b;
+        }
+    }
+    return nil;
+}
+
+- (NSString *)localizedBranchNameForID:(nullable NSString *)branchID fallback:(nullable NSString *)fallback {
+    if (branchID.length == 0 || [branchID isEqualToString:@"main_store"] || [branchID caseInsensitiveCompare:@"main store"] == NSOrderedSame) {
+        if (fallback.length > 0 &&
+            ![fallback isEqualToString:@"المتجر الرئيسي"] &&
+            ![fallback caseInsensitiveCompare:@"main store"] == NSOrderedSame) {
+            return fallback;
+        }
+        return [Language isRTL] ? @"المتجر الرئيسي" : @"Main Store";
+    }
+
+    PPBranchModel *b = [self branchWithID:branchID];
+    if (b) {
+        return [b localizedName];
+    }
+    if (fallback.length > 0) {
+        return fallback;
+    }
+    return branchID;
 }
 
 - (void)resolveActiveBranch {

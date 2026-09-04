@@ -528,6 +528,10 @@ struct AdminCommandCenterScreenView: View {
                 onRoute: { route("accounting") }
             )
 
+            CommandHotelSovereignCard(
+                onRoute: { route("hotel") }
+            )
+
             CommandPriorityRunway(
                 title: runwayTitle,
                 detail: runwayDetail,
@@ -3311,5 +3315,362 @@ private struct CommandAccountingSovereignCard: View {
         formatter.minimumFractionDigits = 0
         formatter.maximumFractionDigits = 2
         return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f", value)
+    }
+}
+
+// MARK: - Command Hotel Sovereign Card
+
+private struct CommandHotelSovereignCard: View {
+    let onRoute: () -> Void
+
+    @ObservedObject private var viewModel = AdminPetsHotelViewModel.shared
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPulsing = false
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onRoute()
+        }) {
+            VStack(alignment: .leading, spacing: 14) {
+                // 1. Header Flight Deck
+                headerDeck
+
+                // 2. Primary Hologram: Occupancy Radar & In-House Guests
+                occupancyHero
+
+                // 3. Operational Horizon Twin Pillars: Arrivals vs Departures
+                operationalPillars
+
+                // 4. Multi-Wing Capacity Horizon Bar
+                wingHorizonBar
+            }
+            .padding(18)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(cardBorder)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06),
+                radius: 12,
+                x: 0,
+                y: 5
+            )
+            .scaleEffect(isPressed ? 0.985 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isPressed)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 50, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(Language.isRTL() ? "اضغط لفتح عمليات فندق ورعاية الحيوانات" : "Tap to open pets hotel operations hub")
+    }
+
+    // MARK: - Header Deck
+    private var headerDeck: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // Glowing Symbol Squircle
+            ZStack {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.30 : 0.16),
+                                Color(red: 0.20, green: 0.65, blue: 0.95).opacity(colorScheme == .dark ? 0.22 : 0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .strokeBorder(Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.40), lineWidth: 0.75)
+                    )
+
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color(red: 0.68, green: 0.45, blue: 1.0))
+            }
+            .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    // Live Telemetry Pulse Dot
+                    HStack(spacing: 3.5) {
+                        Circle()
+                            .fill(Color(red: 0.35, green: 0.80, blue: 0.55))
+                            .frame(width: 5, height: 5)
+                            .scaleEffect(isPulsing ? 1.3 : 0.8)
+                        Text(Language.get("LiveSync", alter: "مباشر"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 0.35, green: 0.80, blue: 0.55))
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 0.35, green: 0.80, blue: 0.55).opacity(0.12), in: Capsule())
+                    .onAppear {
+                        withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                            isPulsing = true
+                        }
+                    }
+                }
+
+                Text(Language.isRTL() ? "الإشغال والنزلاء • الغرف والرعاية الفندقية" : "Occupancy & In-House Guests • Boarding & Care")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            Spacer(minLength: 4)
+
+            // Tactile Entry Pill
+            HStack(spacing: 4) {
+                Text(Language.isRTL() ? "استعراض" : "Open")
+                    .font(AdminType.caption2Bold)
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(Color(red: 0.58, green: 0.35, blue: 0.95))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.18 : 0.08), in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(Color(red: 0.58, green: 0.35, blue: 0.95).opacity(0.26), lineWidth: 0.5)
+            )
+        }
+    }
+
+    // MARK: - Occupancy Hero
+    private var occupancyHero: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(Language.isRTL() ? "معدل إشغال الغرف والأجنحة" : "Room & Suite Occupancy Rate")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                Spacer()
+
+                // Active Capacity Chip
+                HStack(spacing: 4) {
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(Language.isRTL() ? "\(viewModel.inHouseGuestsCount) نزيل مقيم" : "\(viewModel.inHouseGuestsCount) In-House")
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(Color(red: 0.58, green: 0.35, blue: 0.95))
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(
+                    Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.20 : 0.10),
+                    in: Capsule()
+                )
+            }
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(viewModel.occupancyPercentageString)
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .monospacedDigit()
+
+                Text(Language.isRTL() ? "(\(viewModel.occupiedRoomsCount) من \(viewModel.totalRoomsCount) غرفة)" : "(\(viewModel.occupiedRoomsCount) of \(viewModel.totalRoomsCount) suites)")
+                    .font(AdminType.caption1)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                if viewModel.attentionGuestsCount > 0 {
+                    HStack(spacing: 3) {
+                        Image(systemName: "cross.case.fill")
+                            .font(.system(size: 8, weight: .bold))
+                        Text(Language.isRTL() ? "\(viewModel.attentionGuestsCount) عناية خاصة" : "\(viewModel.attentionGuestsCount) clinical")
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundStyle(Color.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.12), in: Capsule())
+                }
+            }
+        }
+    }
+
+    // MARK: - Operational Twin Pillars
+    private var operationalPillars: some View {
+        HStack(spacing: 10) {
+            // Arrivals Pillar
+            pillarCell(
+                title: Language.isRTL() ? "وصول اليوم" : "Arrivals Today",
+                count: viewModel.arrivalsTodayCount,
+                subtitle: Language.isRTL() ? "حجوزات مؤكدة" : "Confirmed bookings",
+                symbol: "arrow.down.right.and.arrow.up.left",
+                tint: Color(red: 0.20, green: 0.70, blue: 0.50)
+            )
+
+            // Departures Pillar
+            pillarCell(
+                title: Language.isRTL() ? "مغادرة اليوم" : "Departures Today",
+                count: viewModel.departuresTodayCount,
+                subtitle: Language.isRTL() ? "تسليم لأصحابها" : "Discharge & handover",
+                symbol: "arrow.up.left.and.arrow.down.right",
+                tint: Color(red: 0.30, green: 0.60, blue: 0.95)
+            )
+        }
+    }
+
+    private func pillarCell(title: String, count: Int, subtitle: String, symbol: String, tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                HStack(spacing: 4) {
+                    Text("\(count)")
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .monospacedDigit()
+                    Text(Language.isRTL() ? "حالات" : "items")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Text(subtitle)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.black.opacity(0.025))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .strokeBorder(tint.opacity(colorScheme == .dark ? 0.20 : 0.12), lineWidth: 0.5)
+        )
+    }
+
+    // MARK: - Multi-Wing Horizon Bar
+    private var wingHorizonBar: some View {
+        VStack(spacing: 5) {
+            GeometryReader { proxy in
+                let w = proxy.size.width
+                let total = max(viewModel.totalRoomsCount, 1)
+                let occupiedW = w * CGFloat(viewModel.occupiedRoomsCount) / CGFloat(total)
+                let availableW = w * CGFloat(viewModel.availableRoomsCount) / CGFloat(total)
+                let cleaningW = w * CGFloat(viewModel.cleaningRoomsCount) / CGFloat(total)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.06))
+
+                    HStack(spacing: 2) {
+                        if occupiedW > 3 {
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.58, green: 0.35, blue: 0.95), Color(red: 0.45, green: 0.25, blue: 0.85)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(occupiedW - 2, 4))
+                        }
+                        if availableW > 3 {
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(red: 0.20, green: 0.75, blue: 0.50), Color(red: 0.15, green: 0.65, blue: 0.45)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(availableW - 2, 4))
+                        }
+                        if cleaningW > 3 {
+                            Capsule()
+                                .fill(Color.orange.opacity(0.85))
+                                .frame(width: max(cleaningW - 2, 4))
+                        }
+                    }
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                HStack(spacing: 12) {
+                    legendDot(color: Color(red: 0.58, green: 0.35, blue: 0.95), label: Language.isRTL() ? "مشغول (\(viewModel.occupiedRoomsCount))" : "Occupied (\(viewModel.occupiedRoomsCount))")
+                    legendDot(color: Color(red: 0.20, green: 0.75, blue: 0.50), label: Language.isRTL() ? "متاح (\(viewModel.availableRoomsCount))" : "Available (\(viewModel.availableRoomsCount))")
+                    if viewModel.cleaningRoomsCount > 0 {
+                        legendDot(color: Color.orange, label: Language.isRTL() ? "تعقيم (\(viewModel.cleaningRoomsCount))" : "Cleaning (\(viewModel.cleaningRoomsCount))")
+                    }
+                }
+                Spacer()
+                Text(Language.isRTL() ? "إدارة الفندق والنزلاء ←" : "Manage Hotel & Guests →")
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(Color(red: 0.58, green: 0.35, blue: 0.95))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func legendDot(color: Color, label: String) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(color)
+                .frame(width: 5, height: 5)
+            Text(label)
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.secondary)
+        }
+    }
+
+    // MARK: - Visual Enclosure
+    private var cardBackground: some View {
+        ZStack {
+            AdminSurface.control
+
+            LinearGradient(
+                colors: [
+                    Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.08 : 0.04),
+                    Color(red: 0.20, green: 0.65, blue: 0.95).opacity(colorScheme == .dark ? 0.06 : 0.02),
+                    Color.clear
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
+
+    private var cardBorder: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.58, green: 0.35, blue: 0.95).opacity(colorScheme == .dark ? 0.40 : 0.25),
+                        Color(red: 0.20, green: 0.65, blue: 0.95).opacity(colorScheme == .dark ? 0.25 : 0.15),
+                        Color.white.opacity(colorScheme == .dark ? 0.08 : 0.40)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 0.85
+            )
+    }
+
+    private var accessibilityLabel: String {
+        let title = Language.isRTL() ? "فندق ورعاية الحيوانات" : "Pets Hotel and Boarding"
+        let rate = viewModel.occupancyPercentageString
+        let guests = "\(viewModel.inHouseGuestsCount)"
+        return "\(title), \(rate), \(guests)"
     }
 }

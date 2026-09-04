@@ -38,6 +38,7 @@ final class AdminAuthenticationService {
         guard self.presentingViewController !== presentingViewController else { return }
         self.presentingViewController = presentingViewController
         coordinator = PPProLoginCoordinator(presenting: presentingViewController)
+        coordinator?.suppressesHUD = true
     }
 
     var savedEmail: String { coordinator?.savedEmail() ?? "" }

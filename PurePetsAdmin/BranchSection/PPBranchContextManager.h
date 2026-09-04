@@ -47,7 +47,16 @@ extern NSNotificationName const PPAvailableBranchesDidChangeNotification;
 /// Localized display name for the active branch, or a fallback if none is selected.
 @property (nonatomic, copy, readonly) NSString *currentBranchDisplayName;
 
+/// All branches loaded from Firestore regardless of staff assignment (used for resolution/display).
+@property (nonatomic, copy, readonly) NSArray<PPBranchModel *> *allBranches;
+
 // ── Lifecycle & Operations ────────────────────────────────────────────────
+
+/// Finds a branch by branchID or human-readable code across all loaded branches.
+- (nullable PPBranchModel *)branchWithID:(nullable NSString *)branchID;
+
+/// Returns localized branch name for given branchID, falling back to fallback string or "المتجر الرئيسي".
+- (NSString *)localizedBranchNameForID:(nullable NSString *)branchID fallback:(nullable NSString *)fallback;
 
 /// Initializes or updates the context with the given staff member.
 /// Automatically handles:

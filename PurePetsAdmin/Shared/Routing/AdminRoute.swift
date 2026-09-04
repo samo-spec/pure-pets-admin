@@ -35,6 +35,7 @@ enum AdminRoute: Hashable, Identifiable {
     case categories
     case banners
     case listings
+    case hotel
 
     var id: String { payload.map { "\(identifier):\($0)" } ?? identifier }
 
@@ -73,6 +74,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return "categories"
         case .banners: return "banners"
         case .listings: return "listings"
+        case .hotel: return "hotel"
         }
     }
 
@@ -115,6 +117,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return "Categories_Title"
         case .banners: return "Staff_Module_Banners"
         case .listings: return "Staff_Module_Listings"
+        case .hotel: return "Hotel_Title"
         }
     }
 
@@ -127,7 +130,7 @@ enum AdminRoute: Hashable, Identifiable {
              .accessories, .food, .livePets:
             return "CommandCenter_Work_Title"
         case .delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting,
-             .branches, .agents, .homeControl, .services, .veterinarians, .moderation:
+             .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .hotel:
             return "CommandCenter_Operations_Title"
         case .users:
             return "CommandCenter_People_Title"
@@ -175,6 +178,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return "square.grid.2x2"
         case .banners: return "square.3.layers.3d.middle.filled"
         case .listings: return "list.bullet.clipboard"
+        case .hotel: return "bed.double.fill"
         }
     }
 
@@ -209,6 +213,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return ["categories.view", "categories.manage"]
         case .banners: return ["banners.manage"]
         case .listings: return ["listings.view", "listings.manage", "listings.moderate"]
+        case .hotel: return ["hotel.view", "hotel.manage", "services.view", "services.manage", "dashboard.view"]
         }
     }
 

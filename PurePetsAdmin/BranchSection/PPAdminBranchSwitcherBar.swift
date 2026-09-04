@@ -21,6 +21,8 @@ public struct PPAdminBranchSwitcherBar: View {
     @State private var isBeaconPulsing = false
     public let style: PPBranchSwitcherStyle
 
+    private let compactCornerRadius: CGFloat = 18
+
     public init(style: PPBranchSwitcherStyle = .compact) {
         self.style = style
     }
@@ -36,6 +38,7 @@ public struct PPAdminBranchSwitcherBar: View {
                 prominentHeroBanner
             }
         }
+        .frame(maxWidth: .infinity)
         .buttonStyle(BranchCapsulePressStyle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(branchSwitcherAccessibilityLabel))
@@ -164,16 +167,10 @@ public struct PPAdminBranchSwitcherBar: View {
 
             branchSwitchAffordance
         }
-        .padding(.leading, 7)
+        .padding(.leading, 8)
         .padding(.trailing, AdminSpacing.sm)
-        .padding(.vertical, 7)
-        .frame(
-            minWidth: dynamicTypeSize.isAccessibilitySize ? 260 : 220,
-            idealWidth: dynamicTypeSize.isAccessibilitySize ? 310 : 254,
-            maxWidth: dynamicTypeSize.isAccessibilitySize ? 340 : 300,
-            minHeight: AdminTouchTarget.expanded,
-            alignment: .leading
-        )
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
         .background(compactCapsuleSurface)
         .overlay(compactCapsuleBorder)
         .shadow(
@@ -188,7 +185,7 @@ public struct PPAdminBranchSwitcherBar: View {
             x: 0,
             y: 1
         )
-        .contentShape(Capsule(style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous))
     }
 
     private var branchIdentityEmblem: some View {
@@ -288,10 +285,10 @@ public struct PPAdminBranchSwitcherBar: View {
 
     private var compactCapsuleSurface: some View {
         ZStack {
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous)
                 .fill(AdminSurface.surface)
 
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -304,7 +301,7 @@ public struct PPAdminBranchSwitcherBar: View {
                     )
                 )
 
-            Capsule(style: .continuous)
+            RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [Color.white.opacity(0.28), Color.clear],
@@ -314,11 +311,11 @@ public struct PPAdminBranchSwitcherBar: View {
                 )
                 .padding(1)
         }
-        .clipShape(Capsule(style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous))
     }
 
     private var compactCapsuleBorder: some View {
-        Capsule(style: .continuous)
+        RoundedRectangle(cornerRadius: compactCornerRadius, style: .continuous)
             .stroke(
                 LinearGradient(
                     colors: [

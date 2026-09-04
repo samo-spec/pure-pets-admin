@@ -1260,8 +1260,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.petMainCategoryID = selectedMainKind?.id ?? 0
         accessory.petSubCategoryID = selectedSubKind?.id ?? 0
         
-        accessory.storeID = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
-        accessory.storeName = selectedStoreName.isEmpty ? Language.get("Main Store", alter: "المتجر الرئيسي") : selectedStoreName
+        let branchIdToSave = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
+        accessory.storeID = branchIdToSave
+        accessory.branchID = branchIdToSave
+        if let b = BranchContextStore.shared.branch(for: branchIdToSave) {
+            accessory.branchCode = b.code
+            accessory.storeName = b.localizedName()
+        } else {
+            accessory.storeName = selectedStoreName.isEmpty ? Language.get("Main Store", alter: "المتجر الرئيسي") : selectedStoreName
+        }
 
         let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
         if normalizedWeight.isEmpty {
@@ -1533,8 +1540,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.accessKindType = .typeLivePets
         original.petMainCategoryID = selectedMainKind?.id ?? 0
         original.petSubCategoryID = selectedSubKind?.id ?? 0
-        original.storeID = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
-        original.storeName = selectedStoreName
+        let liveBranchId = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
+        original.storeID = liveBranchId
+        original.branchID = liveBranchId
+        if let b = BranchContextStore.shared.branch(for: liveBranchId) {
+            original.branchCode = b.code
+            original.storeName = b.localizedName()
+        } else {
+            original.storeName = selectedStoreName
+        }
         original.inventoryMode = liveInventoryMode.rawValue
         if liveInventoryMode == .individual {
             original.standardSellingPrice = NSNumber(value: basePrice)

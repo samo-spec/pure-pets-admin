@@ -52,6 +52,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSString *ownerID;
 @property (nonatomic, copy, nullable) NSString *storeID;
 @property (nonatomic, copy, nullable) NSString *storeName;
+@property (nonatomic, copy, nullable) NSString *branchID;
+@property (nonatomic, copy, nullable) NSString *branchCode;
+- (NSString *)resolvedBranchID;
+- (NSString *)resolvedBranchName;
 @property (nonatomic, strong, nullable) NSString *ownerType;
 @property (nonatomic, strong, nullable) NSString *source;
 @property (nonatomic, copy, nullable) NSString *inventoryMode;

@@ -62,7 +62,7 @@ struct AdminAppShell: View {
                 case .operations:
                     AdminModuleListView(
                         tab: .operations,
-                        routes: available([.delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting, .branches, .agents, .homeControl, .services, .veterinarians, .moderation]),
+                        routes: available([.delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting, .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .hotel]),
                         session: session,
                         router: router,
                         commandState: commandState,
@@ -578,10 +578,7 @@ private struct AdminModuleListView: View {
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Spacer()
-                    PPAdminBranchSwitcherBar()
-                }
+                PPAdminBranchSwitcherBar()
 
                 if AdminTab.command.isAuthorized(for: session) {
                     AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
@@ -625,10 +622,7 @@ private struct AdminMoreView: View {
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
             LazyVStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    Spacer()
-                    PPAdminBranchSwitcherBar()
-                }
+                PPAdminBranchSwitcherBar()
 
                 if AdminTab.command.isAuthorized(for: session) {
                     AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)

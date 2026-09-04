@@ -60,6 +60,12 @@
 		A6C0000A2FA9000100A6C00A /* PPAdminSessionBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010B2FA9000100A6C00B /* PPAdminSessionBridge.m */; };
 		A6C0000B2FA9000100A6C00B /* PPAdminCommandCenterService.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010D2FA9000100A6C00D /* PPAdminCommandCenterService.m */; };
 		A6C0000C2FA9000100A6C00C /* PPAdminRouteFactory.m in Sources */ = {isa = PBXBuildFile; fileRef = A6C0010F2FA9000100A6C00F /* PPAdminRouteFactory.m */; };
+		A6C000312FA9000100A6C031 /* AdminPetsHotelModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001312FA9000100A6C031 /* AdminPetsHotelModels.swift */; };
+		A6C000322FA9000100A6C032 /* AdminPetsHotelViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001322FA9000100A6C032 /* AdminPetsHotelViewModel.swift */; };
+		A6C000332FA9000100A6C033 /* AdminPetsHotelStayDetailSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001332FA9000100A6C033 /* AdminPetsHotelStayDetailSheet.swift */; };
+		A6C000342FA9000100A6C034 /* AdminPetsHotelCheckInOutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001342FA9000100A6C034 /* AdminPetsHotelCheckInOutViews.swift */; };
+		A6C000352FA9000100A6C035 /* AdminPetsHotelHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001352FA9000100A6C035 /* AdminPetsHotelHubView.swift */; };
+		A6C000362FA9000100A6C036 /* AdminPetsHotelService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6C001362FA9000100A6C036 /* AdminPetsHotelService.swift */; };
 		A72D13A3A310632E0D519B88 /* QBAssetsViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A00759CF4579FBA409A2847 /* QBAssetsViewController.m */; };
 		A7C91D01FBE74D56A8101001 /* POSReceiptDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D02FBE74D56A8101002 /* POSReceiptDocument.swift */; };
 		A7C91D03FBE74D56A8101003 /* POSReservedLivePetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7C91D04FBE74D56A8101004 /* POSReservedLivePetsView.swift */; };
@@ -418,6 +424,12 @@
 		A6C0010D2FA9000100A6C00D /* PPAdminCommandCenterService.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Services/CommandCenter/PPAdminCommandCenterService.m; sourceTree = "<group>"; };
 		A6C0010E2FA9000100A6C00E /* PPAdminRouteFactory.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Shared/Routing/PPAdminRouteFactory.h; sourceTree = "<group>"; };
 		A6C0010F2FA9000100A6C00F /* PPAdminRouteFactory.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Shared/Routing/PPAdminRouteFactory.m; sourceTree = "<group>"; };
+		A6C001312FA9000100A6C031 /* AdminPetsHotelModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelModels.swift; sourceTree = "<group>"; };
+		A6C001322FA9000100A6C032 /* AdminPetsHotelViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelViewModel.swift; sourceTree = "<group>"; };
+		A6C001332FA9000100A6C033 /* AdminPetsHotelStayDetailSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelStayDetailSheet.swift; sourceTree = "<group>"; };
+		A6C001342FA9000100A6C034 /* AdminPetsHotelCheckInOutViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelCheckInOutViews.swift; sourceTree = "<group>"; };
+		A6C001352FA9000100A6C035 /* AdminPetsHotelHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelHubView.swift; sourceTree = "<group>"; };
+		A6C001362FA9000100A6C036 /* AdminPetsHotelService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Hotel/AdminPetsHotelService.swift; sourceTree = "<group>"; };
 		A7C91D02FBE74D56A8101002 /* POSReceiptDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReceiptDocument.swift; sourceTree = "<group>"; };
 		A7C91D04FBE74D56A8101004 /* POSReservedLivePetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSReservedLivePetsView.swift; sourceTree = "<group>"; };
 		A7C91D06FBE74D56A8101006 /* POSCustomerPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/POS/POSCustomerPickerSheet.swift; sourceTree = "<group>"; };
@@ -1234,6 +1246,12 @@
 				A6C001082FA9000100A6C008 /* AdminCommandCenterScreen.swift */,
 				A6C001092FA9000100A6C009 /* AdminRoute.swift */,
 				C537C8DF3ED9402BAAC1B22E /* AdminRouteBridges.swift */,
+				A6C001312FA9000100A6C031 /* AdminPetsHotelModels.swift */,
+				A6C001322FA9000100A6C032 /* AdminPetsHotelViewModel.swift */,
+				A6C001332FA9000100A6C033 /* AdminPetsHotelStayDetailSheet.swift */,
+				A6C001342FA9000100A6C034 /* AdminPetsHotelCheckInOutViews.swift */,
+				A6C001352FA9000100A6C035 /* AdminPetsHotelHubView.swift */,
+				A6C001362FA9000100A6C036 /* AdminPetsHotelService.swift */,
 				3DA39278C2834B63BDD94871 /* AdminRouteDestinationView.swift */,
 				9A60804E52A24E6D85A922EC /* AdminSpacing.swift */,
 				42DA80A39BF64129B96DBB84 /* PaymentListView.swift */,
@@ -2193,6 +2211,12 @@
 				A6C0000A2FA9000100A6C00A /* PPAdminSessionBridge.m in Sources */,
 				A6C0000B2FA9000100A6C00B /* PPAdminCommandCenterService.m in Sources */,
 				A6C0000C2FA9000100A6C00C /* PPAdminRouteFactory.m in Sources */,
+				A6C000312FA9000100A6C031 /* AdminPetsHotelModels.swift in Sources */,
+				A6C000322FA9000100A6C032 /* AdminPetsHotelViewModel.swift in Sources */,
+				A6C000332FA9000100A6C033 /* AdminPetsHotelStayDetailSheet.swift in Sources */,
+				A6C000342FA9000100A6C034 /* AdminPetsHotelCheckInOutViews.swift in Sources */,
+				A6C000352FA9000100A6C035 /* AdminPetsHotelHubView.swift in Sources */,
+				A6C000362FA9000100A6C036 /* AdminPetsHotelService.swift in Sources */,
 				FA23686D0529430AA2E37709 /* PPVetModel.m in Sources */,
 				6C65E6AFB8534ED2B64E8AC0 /* PPVetManager.m in Sources */,
 				66213DB3EE11415A8153A6AA /* PPAddEditVetViewController.m in Sources */,

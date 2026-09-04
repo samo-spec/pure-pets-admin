@@ -177,9 +177,11 @@ static NSString * const kPPFIRAuthDeserializedResponseKey = @"FIRAuthErrorUserIn
                                                                              fullName:appleIDCredential.fullName];
 
         PPAdminSetLoginInProgress(YES);
-        [PPHUD showIndeterminateIn:self.presentingViewController.view
-                              title:kLang(@"Please wait")
-                           subtitle:kLang(@"StatusLoggingIn")];
+        if (!self.suppressesHUD) {
+            [PPHUD showIndeterminateIn:self.presentingViewController.view
+                                  title:kLang(@"Please wait")
+                               subtitle:kLang(@"StatusLoggingIn")];
+        }
 
         __weak typeof(self) weakSelf = self;
         [[FIRAuth auth] signInWithCredential:credential completion:^(FIRAuthDataResult * _Nullable authResult, NSError * _Nullable error) {
