@@ -238,10 +238,17 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         navigationController.didMove(toParent: self)
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        workflowNavigationController?.viewWillAppear(animated)
+        PPAdminRefreshCommandSpineDashboard(dashboard)
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         refreshBottomDockLanguage()
         applyBottomDockPolish()
+        PPAdminRefreshCommandSpineDashboard(dashboard)
     }
 
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -342,6 +349,7 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
                       self.appliedSession == session else {
                     return
                 }
+                PPAdminRefreshCommandSpineDashboard(self.dashboard)
                 NotificationCenter.default.post(
                     name: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"),
                     object: self.dashboard

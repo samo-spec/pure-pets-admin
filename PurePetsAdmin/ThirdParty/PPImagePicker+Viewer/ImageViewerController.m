@@ -7,8 +7,7 @@
 
 
 #import "ImageViewerController.h"
- 
-#import <SDWebImage/UIImageView+WebCache.h>
+#import "PurePetsAdmin-Swift.h"
 
 @interface ImageViewerController () <UIScrollViewDelegate>
 
@@ -180,9 +179,10 @@
            // JGProgressHUD *hud = [JGProgressHUD progressHUDWithStyle:JGProgressHUDStyleDark];
             [PPHUD showRingIn:imageView title:@""];
             
-            [imageView sd_setImageWithURL:[NSURL URLWithString:urlString]
-                          placeholderImage:[UIImage imageNamed:@"placeholder"]
-                                 completed:^(UIImage * _Nullable image, NSError * _Nullable error, SDImageCacheType cacheType, NSURL * _Nullable imageURL) {
+            [PPAdminImageLoader setImageWithURLString:urlString
+                                       onImageView:imageView
+                                       placeholder:[UIImage imageNamed:@"placeholder"]
+                                       completion:^(UIImage * _Nullable image) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [PPHUD dismiss];
                     if (image) {

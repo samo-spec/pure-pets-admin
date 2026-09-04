@@ -1467,11 +1467,18 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(pp_commandAuthorizationDidChange:)
                                                  name:@"PPAdminCommandAuthorizationDidChangeNotification"
-                                               object:self];
+                                               object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(pp_branchContextDidChange:)
                                                  name:PPActiveBranchDidChangeNotification
                                                object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(pp_branchContextDidChange:)
+                                                 name:PPAvailableBranchesDidChangeNotification
+                                               object:nil];
+    if (self.pp_isCommandSpine) {
+        self.pp_commandSurfaceVisible = YES;
+    }
     [self pp_buildDashboardLoadingStateIfNeeded];
 
     NSString *currentUID = [FIRAuth auth].currentUser.uid;
@@ -2757,6 +2764,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
                                   capabilityCount:self.dashboardActionCount
                                           signals:descriptors
                                          animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
+    [self.pp_commandOrbitController applyHotelAccess:[self pp_canAccessPermission:kStaffPermHotelView]];
     [self pp_pushCommandReadiness];
 }
 
@@ -2790,26 +2798,34 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     }
 }
 
-/// Drops areas the current permissions do not allow so readiness never waits
-/// on a source this operator can never see.
-- (void)pp_pruneUntrackedCommandFeedAreas {
+/// Synchronizes tracked feed areas with current permissions so newly authorized
+/// areas start pending, and unauthorized areas are pruned.
+- (void)pp_syncCommandFeedAreasWithPermissions {
+    if (!self.pp_feedStatusByArea) {
+        self.pp_feedStatusByArea = [NSMutableDictionary dictionary];
+    }
     for (NSString *area in PPAdminCommandTrackedFeedAreas()) {
         BOOL allowed = [self pp_commandAllowsTag:area];
         if (allowed && [area isEqualToString:@"payments"] &&
             ![[PPPaymentManagementService shared] currentAdminCanViewPayments]) {
             allowed = NO;
         }
-        if (!allowed) {
+        if (allowed) {
+            if (self.pp_feedStatusByArea[area] == nil) {
+                self.pp_feedStatusByArea[area] = kPPAdminCommandFeedPending;
+            }
+        } else {
             [self.pp_feedStatusByArea removeObjectForKey:area];
         }
     }
 }
 
 - (void)pp_startCommandPriorityFeedsIfNeeded {
-    if (!self.pp_commandOrbitController || !self.pp_commandSurfaceVisible) return;
+    if (!self.pp_commandOrbitController) return;
+    if (!self.pp_isCommandSpine && !self.pp_commandSurfaceVisible) return;
     if (!self.pp_priorityFeedsStarted) self.pp_priorityLiveGeneration += 1;
     NSUInteger liveGeneration = self.pp_priorityLiveGeneration;
-    [self pp_pruneUntrackedCommandFeedAreas];
+    [self pp_syncCommandFeedAreasWithPermissions];
 
     if ([self pp_commandAllowsTag:@"fulfillment"] && !self.pp_fulfillmentPriorityReg) {
         __weak typeof(self) weakSelf = self;
@@ -2820,7 +2836,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
             (void)isFromCache;
             BOOL isPartialRead = [PPFulfillmentService isPartialReadError:error];
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
+                if (!weakSelf || (!weakSelf.pp_isCommandSpine && !weakSelf.pp_commandSurfaceVisible) ||
                     liveGeneration != weakSelf.pp_priorityLiveGeneration) return;
                 [weakSelf pp_setCommandFeedStatus:(error && !isPartialRead) ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
                                           forArea:@"fulfillment"];
@@ -2839,7 +2855,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         self.pp_inventoryPriorityReg =
             [[AccessoryManager shared] observeAllAccessories:^(NSArray<PetAccessory *> * _Nullable items, NSError * _Nullable error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
+                if (!weakSelf || (!weakSelf.pp_isCommandSpine && !weakSelf.pp_commandSurfaceVisible) ||
                     liveGeneration != weakSelf.pp_priorityLiveGeneration) return;
                 [weakSelf pp_setCommandFeedStatus:error ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
                                           forArea:@"accessories"];
@@ -2865,7 +2881,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         __weak typeof(self) weakSelf = self;
         [[PPDeliveryService shared] fetchCommandCenterWithCompletion:^(PPDeliveryCommandCenterSnapshot *projection, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
+                if (!weakSelf || (!weakSelf.pp_isCommandSpine && !weakSelf.pp_commandSurfaceVisible) ||
                     generation != weakSelf.pp_priorityOneShotGeneration) return;
                 [weakSelf pp_setCommandFeedStatus:error ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
                                           forArea:@"delivery"];
@@ -2891,7 +2907,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
             (void)nextCursor;
             BOOL isPartialRead = [PPPaymentManagementService isPartialReadError:error];
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (!weakSelf || !weakSelf.pp_commandSurfaceVisible ||
+                if (!weakSelf || (!weakSelf.pp_isCommandSpine && !weakSelf.pp_commandSurfaceVisible) ||
                     generation != weakSelf.pp_priorityOneShotGeneration) return;
                 [weakSelf pp_setCommandFeedStatus:(error && !isPartialRead) ? kPPAdminCommandFeedFailed : kPPAdminCommandFeedLoaded
                                           forArea:@"payments"];
@@ -2929,6 +2945,9 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 - (void)refreshCommandFeedsFromUser {
     if (!self.pp_commandOrbitController) return;
 
+    [self pp_rebuildDashboardFormPreservingOffset:YES];
+    [self pp_syncCommandFeedAreasWithPermissions];
+
     BOOL fulfillmentFailed = [self.pp_feedStatusByArea[@"fulfillment"] isEqualToString:kPPAdminCommandFeedFailed];
     BOOL inventoryFailed = [self.pp_feedStatusByArea[@"accessories"] isEqualToString:kPPAdminCommandFeedFailed];
     if (fulfillmentFailed || inventoryFailed) {
@@ -2943,6 +2962,15 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     }
     [self pp_refreshCommandOrbitSnapshot];
     [self pp_startCommandPriorityFeedsIfNeeded];
+}
+
+void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
+    if ([controller isKindOfClass:[AdminDashboardViewController class]]) {
+        AdminDashboardViewController *dashboard = (AdminDashboardViewController *)controller;
+        dashboard.pp_commandSurfaceVisible = YES;
+        [dashboard pp_rebuildDashboardFormPreservingOffset:YES];
+        [dashboard refreshCommandFeedsFromUser];
+    }
 }
 
 // PP_ADMIN_COMMAND_SPINE_METHODS_END
@@ -3501,6 +3529,14 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     if ([tag isEqualToString:@"accounting"]) {
         return [AdminAccountingHostingController new];
     }
+    if ([tag isEqualToString:@"hotel"]) {
+        if (![self pp_canAccessPermission:kStaffPermHotelView]) {
+            return nil;
+        }
+        UIViewController *controller = [AdminPetsHotelHostingController new];
+        controller.hidesBottomBarWhenPushed = YES;
+        return controller;
+    }
     if ([tag isEqualToString:@"providerApplications"]) {
         return [PPProviderApplicationsHostingController new];
     }
@@ -3640,6 +3676,7 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)pp_branchContextDidChange:(NSNotification *)note {
     dispatch_async(dispatch_get_main_queue(), ^{
+        [self pp_rebuildDashboardFormPreservingOffset:YES];
         [self pp_refreshBranchContextUI];
         [self refreshCommandFeedsFromUser];
     });

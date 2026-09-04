@@ -1,4 +1,172 @@
 import SwiftUI
+import UIKit
+import Kingfisher
+
+/// The only remote-image pipeline used by the Admin app. Its named Kingfisher cache
+/// persists catalog, POS, banner, and profile media on disk for subsequent screens.
+enum AdminRemoteImageCache {
+    static let cache: ImageCache = {
+        let cache = ImageCache(name: "com.pb.purepets.admin.remote-images")
+        cache.memoryStorage.config.totalCostLimit = 100 * 1024 * 1024
+        cache.diskStorage.config.sizeLimit = 500 * 1024 * 1024
+        cache.diskStorage.config.expiration = .days(30)
+        return cache
+    }()
+
+    static let options: KingfisherOptionsInfo = [
+        .targetCache(cache),
+        .cacheOriginalImage
+    ]
+}
+
+/// Shared, cache-backed SwiftUI remote image view. Every Admin SwiftUI screen uses
+/// this component instead of `AsyncImage`, while UIKit uses `PPAdminImageLoader`
+/// below against the same Kingfisher cache.
+struct AdminRemoteImage<Placeholder: View>: View {
+    let url: URL?
+    let contentMode: SwiftUI.ContentMode
+    let targetSize: CGSize?
+    private let placeholder: Placeholder
+
+    init(
+        url: URL?,
+        contentMode: SwiftUI.ContentMode = .fill,
+        targetSize: CGSize? = nil,
+        @ViewBuilder placeholder: () -> Placeholder
+    ) {
+        self.url = url
+        self.contentMode = contentMode
+        self.targetSize = targetSize
+        self.placeholder = placeholder()
+    }
+
+    var body: some View {
+        Group {
+            if let url {
+                if let targetSize {
+                    KFImage(url)
+                        .placeholder { placeholder }
+                        .targetCache(AdminRemoteImageCache.cache)
+                        .setProcessor(DownsamplingImageProcessor(size: targetSize))
+                        .cacheOriginalImage()
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                } else {
+                    KFImage(url)
+                        .placeholder { placeholder }
+                        .targetCache(AdminRemoteImageCache.cache)
+                        .cacheOriginalImage()
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                }
+            } else {
+                placeholder
+            }
+        }
+    }
+}
+
+private struct SendableClosureBox<T>: @unchecked Sendable {
+    let closure: T
+}
+
+/// Objective-C-compatible bridge for the established UIKit portions of Admin.
+/// It intentionally shares the exact cache and URL keys used by `AdminRemoteImage`.
+@MainActor
+@objc(PPAdminImageLoader)
+final class PPAdminImageLoader: NSObject {
+    @objc(setImageWithURLString:onImageView:placeholder:completion:)
+    class func setImage(
+        urlString: String?,
+        on imageView: UIImageView,
+        placeholder: UIImage?,
+        completion: ((UIImage?) -> Void)?
+    ) {
+        guard let urlString, let url = URL(string: urlString) else {
+            imageView.image = placeholder
+            completion?(placeholder)
+            return
+        }
+
+        let box = SendableClosureBox(closure: completion)
+        imageView.kf.setImage(
+            with: url,
+            placeholder: placeholder,
+            options: AdminRemoteImageCache.options
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let value): box.closure?(value.image)
+                case .failure: box.closure?(placeholder)
+                }
+            }
+        }
+    }
+
+    @objc(loadImageWithURLString:completion:)
+    class func loadImage(
+        urlString: String?,
+        completion: @escaping (UIImage?, NSError?, Bool) -> Void
+    ) {
+        guard let urlString, let url = URL(string: urlString) else {
+            completion(nil, NSError(domain: "PPAdminImageLoader", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid image URL"]), false)
+            return
+        }
+
+        let box = SendableClosureBox(closure: completion)
+        KingfisherManager.shared.retrieveImage(with: url, options: AdminRemoteImageCache.options) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let value): box.closure(value.image, nil, value.cacheType != .none)
+                case .failure(let error): box.closure(nil, error as NSError, false)
+                }
+            }
+        }
+    }
+
+    @objc(cancelLoadForImageView:)
+    class func cancelLoad(for imageView: UIImageView) {
+        imageView.kf.cancelDownloadTask()
+    }
+
+    @objc(cachedImageForURLString:)
+    class func cachedImage(urlString: String?) -> UIImage? {
+        guard let urlString else { return nil }
+        return AdminRemoteImageCache.cache.retrieveImageInMemoryCache(forKey: urlString)
+    }
+
+    @objc(removeImageForCacheKey:completion:)
+    class func removeImage(cacheKey: String?, completion: (() -> Void)?) {
+        guard let cacheKey else {
+            completion?()
+            return
+        }
+        let box = SendableClosureBox(closure: completion)
+        AdminRemoteImageCache.cache.removeImage(forKey: cacheKey, fromMemory: true, fromDisk: true) {
+            box.closure?()
+        }
+    }
+
+    @objc(calculateDiskCacheSizeWithCompletion:)
+    class func calculateDiskCacheSize(completion: @escaping (NSNumber?) -> Void) {
+        let box = SendableClosureBox(closure: completion)
+        AdminRemoteImageCache.cache.calculateDiskStorageSize { result in
+            switch result {
+            case .success(let size): box.closure(NSNumber(value: size))
+            case .failure: box.closure(nil)
+            }
+        }
+    }
+
+    @objc(clearAllCachedImagesWithCompletion:)
+    class func clearAllCachedImages(completion: (() -> Void)?) {
+        let box = SendableClosureBox(closure: completion)
+        AdminRemoteImageCache.cache.clearMemoryCache()
+        AdminRemoteImageCache.cache.clearDiskCache {
+            box.closure?()
+        }
+    }
+}
 
 struct AdminStatusBadge: View {
     enum Status { case success, warning, error, info, neutral, processing }

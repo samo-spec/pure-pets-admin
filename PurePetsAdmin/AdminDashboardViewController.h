@@ -24,5 +24,6 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 FOUNDATION_EXTERN UIViewController *PPAdminCreateCommandSpineDashboardController(void);
+FOUNDATION_EXTERN void PPAdminRefreshCommandSpineDashboard(UIViewController *controller);
 
 NS_ASSUME_NONNULL_END

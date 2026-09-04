@@ -17,6 +17,7 @@ import UIKit
 import AVFoundation
 import AudioToolbox
 import FirebaseFirestore
+import Combine
 
 // MARK: - Live Pet Inventory Contract
 
@@ -33,9 +34,12 @@ extension PetAccessory {
         isLivePet && (inventoryMode?.uppercased() == kPOSIndividualInventoryMode)
     }
 
-    /// Console parity: `isPosCatalogSellable`.
+    /// Console parity: `isPosCatalogSellable` (per active branch).
+    @MainActor
     var pos_isSellable: Bool {
-        active && !noStock && quantity > 0 && !isBlocked && !isDeleted && !isDisabled && !isArchived
+        guard active && !isBlocked && !isDeleted && !isDisabled && !isArchived else { return false }
+        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
+        return branchStock > 0 && !noStock
     }
 
     /// The canonical catalog unit price the server validates against.
@@ -45,10 +49,11 @@ extension PetAccessory {
     /// `price` fails `assertPriceAssertion` for any discounted item with
     /// "Submitted unit price does not match the canonical catalog price".
     /// `finalPrice` is a computed getter that applies percent/amount discounts.
+    @MainActor
     var pos_canonicalUnitPrice: Double {
         let discounted = finalPrice.doubleValue
-        if discounted > 0 { return discounted }
-        return price.doubleValue
+        let base = (discounted > 0) ? discounted : price.doubleValue
+        return PPBranchInventoryService.shared.effectiveSellingPrice(for: accessoryID, fallbackPrice: base)
     }
 }
 
@@ -133,6 +138,7 @@ struct POSCartItem: Identifiable, Equatable {
     var isIndividuallyTracked: Bool { inventoryMode == kPOSIndividualInventoryMode }
 
     /// Exact-unit lines total the selected animals, never quantity × catalog price.
+    @MainActor
     var lineTotal: Double {
         if isIndividuallyTracked {
             return unitPrices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
@@ -140,6 +146,7 @@ struct POSCartItem: Identifiable, Equatable {
         return accessory.pos_canonicalUnitPrice * Double(quantity)
     }
 
+    @MainActor
     var unitPriceDisplay: Double {
         if isIndividuallyTracked {
             return quantity > 0 ? lineTotal / Double(quantity) : 0
@@ -220,12 +227,19 @@ private struct POSSubmitFailure: Sendable {
     let productID: String
     let unitID: String
     let ringTag: String
+    let domainCode: String
+    let functionsCode: Int
+    let serverMessage: String
 
     init(error: Error) {
+        let nsError = error as NSError
         let details = PPPOSService.exactUnitConflictDetails(forError: error)
         productID = (details["productId"] as? String) ?? ""
         unitID = (details["unitId"] as? String) ?? ""
         ringTag = (details["ringTag"] as? String) ?? ""
+        domainCode = ((details["domainCode"] as? String) ?? "").uppercased()
+        functionsCode = nsError.code
+        serverMessage = nsError.localizedDescription
     }
 }
 
@@ -371,6 +385,15 @@ final class POSFastSellViewModel: ObservableObject {
     @Published var searchText: String = ""
     @Published private(set) var allAccessories: [PetAccessory] = []
     @Published private(set) var cartItems: [POSCartItem] = []
+    private var branchInventoryCancellable: AnyCancellable?
+
+    init() {
+        branchInventoryCancellable = PPBranchInventoryService.shared.$inventoryMap
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+    }
     @Published private(set) var selectedPaymentMethod: String = "cash"
     @Published private(set) var isSubmitting = false
     @Published private(set) var isPreparingReceipt = false
@@ -419,7 +442,10 @@ final class POSFastSellViewModel: ObservableObject {
         if !searchText.isEmpty {
             let q = searchText.lowercased()
             list = list.filter {
-                $0.name.lowercased().contains(q)
+                $0.name.lowercased().contains(q) ||
+                $0.accessoryID.lowercased().contains(q) ||
+                ($0.sku?.lowercased().contains(q) ?? false) ||
+                ($0.barcode?.lowercased().contains(q) ?? false)
             }
         }
         list.sort { a, b in
@@ -438,7 +464,12 @@ final class POSFastSellViewModel: ObservableObject {
         var list = allAccessories.filter { $0.pos_isSellable && catalogFilter.matches($0) }
         let q = catalogSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !q.isEmpty {
-            list = list.filter { $0.name.lowercased().contains(q) || $0.accessoryID.lowercased().contains(q) }
+            list = list.filter {
+                $0.name.lowercased().contains(q) ||
+                $0.accessoryID.lowercased().contains(q) ||
+                ($0.sku?.lowercased().contains(q) ?? false) ||
+                ($0.barcode?.lowercased().contains(q) ?? false)
+            }
         }
         list.sort { a, b in
             let dateA = a.createdAt
@@ -529,10 +560,12 @@ final class POSFastSellViewModel: ObservableObject {
     @discardableResult
     func addToCart(_ accessory: PetAccessory) -> Bool {
         guard accessory.pos_isSellable else { return false }
+        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
         if let idx = cartIndex(for: accessory.accessoryID) {
-            guard cartItems[idx].quantity < accessory.quantity else { return false }
+            guard cartItems[idx].quantity < branchStock else { return false }
             cartItems[idx].quantity += 1
         } else {
+            guard branchStock > 0 else { return false }
             cartItems.append(POSCartItem(accessory: accessory, quantity: 1))
         }
         invalidateSubmissionCommand()
@@ -610,7 +643,8 @@ final class POSFastSellViewModel: ObservableObject {
     func increaseQuantity(_ item: POSCartItem) {
         guard let idx = cartItems.firstIndex(where: { $0.id == item.id }) else { return }
         guard !cartItems[idx].isIndividuallyTracked else { return }
-        guard cartItems[idx].quantity < cartItems[idx].accessory.quantity else { return }
+        let branchStock = PPBranchInventoryService.shared.availableStock(for: cartItems[idx].accessory.accessoryID, fallback: cartItems[idx].accessory.quantity)
+        guard cartItems[idx].quantity < branchStock else { return }
         cartItems[idx].quantity += 1
         invalidateSubmissionCommand()
     }
@@ -649,6 +683,55 @@ final class POSFastSellViewModel: ObservableObject {
         invalidateSubmissionCommand()
     }
 
+    private func localizedSubmitFailure(_ failure: POSSubmitFailure) -> String {
+        switch failure.domainCode {
+        case "POS_INSUFFICIENT_BRANCH_STOCK":
+            return Language.get(
+                "POS_BranchStockUnavailable",
+                alter: "مخزون الفرع غير كافٍ أو لم تتم مزامنته بعد. حدّث المخزون أو اختر فرعًا آخر ثم أعد المحاولة."
+            )
+        case "POS_INSUFFICIENT_STOCK":
+            return Language.get(
+                "POS_StockChanged",
+                alter: "تغيّرت الكمية المتاحة لهذا العنصر. حدّث المنتجات ثم أعد المحاولة."
+            )
+        case "POS_PRODUCT_NOT_FOUND":
+            return Language.get(
+                "POS_ProductUnavailable",
+                alter: "لم يعد أحد عناصر السلة متاحًا. حدّث المنتجات وأعد اختيار العنصر."
+            )
+        default:
+            break
+        }
+
+        let message = failure.serverMessage.lowercased()
+        if message.contains("customer reservation fields require pending status") {
+            return Language.get(
+                "POS_BackendSyncRequired",
+                alter: "تعذر مزامنة بيانات الفرع مع خدمة البيع. حدّث التطبيق أو تواصل مع المسؤول ثم أعد المحاولة."
+            )
+        }
+        switch failure.functionsCode {
+        case 7:
+            return Language.get(
+                "POS_CheckoutPermissionDenied",
+                alter: "ليست لديك صلاحية إتمام البيع في هذا الفرع. اختر فرعًا مسموحًا أو اطلب الصلاحية."
+            )
+        case 14:
+            return Language.get(
+                "POS_CheckoutNetworkUnavailable",
+                alter: "تعذر الوصول إلى خدمة البيع. تحقق من الاتصال ثم أعد المحاولة؛ لن يتكرر البيع عند إعادة المحاولة."
+            )
+        case 16:
+            return Language.get(
+                "POS_CheckoutSessionExpired",
+                alter: "انتهت جلسة تسجيل الدخول. سجّل الدخول مجددًا ثم أعد المحاولة."
+            )
+        default:
+            return Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
+        }
+    }
+
     func submitOrder(cashReceived: Double? = nil) {
         guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return }
         isSubmitting = true
@@ -684,6 +767,7 @@ final class POSFastSellViewModel: ObservableObject {
         let customerName = selectedCustomer?.name
         let customerPhone = selectedCustomer?.phone
         let posCustomerID = selectedCustomer?.id
+        let activeBranchId = BranchContextStore.shared.activeBranch?.branchID
 
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
@@ -695,7 +779,8 @@ final class POSFastSellViewModel: ObservableObject {
             commandID: commandID,
             customerName: customerName,
             customerPhone: customerPhone,
-            posCustomerID: posCustomerID
+            posCustomerID: posCustomerID,
+            branchID: activeBranchId
         ) { [weak self] result, error in
             // Project ObjC/Foundation values before crossing into MainActor.
             let transactionID = result?.transactionID ?? ""
@@ -717,7 +802,7 @@ final class POSFastSellViewModel: ObservableObject {
                         self.invalidateSubmissionCommand()
                         self.submitError = Language.get("POS_ExactUnitRefreshNeeded", alter: "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى.")
                     } else {
-                        self.submitError = Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
+                        self.submitError = self.localizedSubmitFailure(failure)
                     }
                     return
                 }
@@ -1073,6 +1158,7 @@ struct AdminPOSFastSellView: View {
     private var commandDeck: some View {
         VStack(spacing: AdminSpacing.sm) {
             commandHeaderView
+            PPAdminBranchSwitcherBar(style: .compact)
             customerBarView
             omniSearchAndFilterBar
             commandStatusView
@@ -1521,11 +1607,7 @@ struct AdminPOSFastSellView: View {
         } else {
             ScrollView {
                 LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 8),
-                        GridItem(.flexible(), spacing: 8),
-                        GridItem(.flexible(), spacing: 8)
-                    ],
+                    columns: catalogGridColumns,
                     spacing: 8
                 ) {
                     ForEach(items, id: \.accessoryID) { accessory in
@@ -1554,6 +1636,18 @@ struct AdminPOSFastSellView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var catalogGridColumns: [GridItem] {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            return Array(repeating: GridItem(.flexible(), spacing: 8), count: 5)
+        } else {
+            return [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8)
+            ]
         }
     }
 
@@ -2587,10 +2681,11 @@ private struct POSCustomCashSheet: View {
                                         Text(accessory.name)
                                             .font(AdminType.calloutBold)
                                             .foregroundColor(AdminSurface.primaryText)
+                                        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
                                         Text(stockLabel(for: accessory))
                                             .font(AdminType.caption2)
                                             .foregroundColor(
-                                                accessory.quantity > 0 ? AdminSurface.secondaryText : .red
+                                                branchStock > 0 ? AdminSurface.secondaryText : .red
                                             )
                                     }
                                     Spacer()
@@ -2601,7 +2696,7 @@ private struct POSCustomCashSheet: View {
                                 .padding(.horizontal, AdminSpacing.base)
                                 .frame(minHeight: AdminTouchTarget.minimum)
                             }
-                            .disabled(accessory.quantity <= 0 || accessory.noStock)
+                            .disabled(!accessory.pos_isSellable)
 
                             if accessory.accessoryID != viewModel.searchResults.last?.accessoryID {
                                 Divider().background(AdminSurface.hairline)
@@ -2654,7 +2749,8 @@ private struct POSCustomCashSheet: View {
 
     private func stockLabel(for accessory: PetAccessory) -> String {
         let stockTitle = Language.get("Stock", alter: "المخزون")
-        return "\(stockTitle): \(accessory.quantity)"
+        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+        return "\(stockTitle): \(branchStock)"
     }
 }
 
@@ -3341,22 +3437,29 @@ private struct POSCatalogThumbnail: View {
     let accessory: PetAccessory
 
     var body: some View {
-        ZStack {
-            AdminSurface.primary.opacity(0.12)
-            if let urlString = accessory.imageURLsArray.first,
-               let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().scaledToFill()
-                    } else {
+        GeometryReader { geo in
+            let w = max(1, geo.size.width)
+            let h = max(1, geo.size.height)
+            ZStack {
+                AdminSurface.primary.opacity(0.12)
+                if let urlString = accessory.imageURLsArray.first,
+                   let url = URL(string: urlString) {
+                    AdminRemoteImage(
+                        url: url,
+                        contentMode: .fill,
+                        targetSize: UIDevice.current.userInterfaceIdiom == .pad ? CGSize(width: 180, height: 160) : CGSize(width: 140, height: 120)
+                    ) {
                         glyph
                     }
+                    .frame(width: w, height: h)
+                    .clipped()
+                } else {
+                    glyph
                 }
-            } else {
-                glyph
             }
+            .frame(width: w, height: h)
+            .clipped()
         }
-        .clipped()
     }
 
     private var glyph: some View {
@@ -3375,7 +3478,47 @@ private struct POSCatalogTile: View {
     let currency: (Double) -> String
     let onTap: (CGRect) -> Void
 
-    private let tileHeight: CGFloat = 134
+    private var tileHeight: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 160 : 134
+    }
+
+    @MainActor
+    private var totalStock: Int {
+        if accessory.noStock || accessory.isBlocked || accessory.isDeleted || accessory.isDisabled || accessory.isArchived {
+            return 0
+        }
+        return PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+    }
+
+    @MainActor
+    private var remainingStock: Int {
+        max(0, totalStock - inCart)
+    }
+
+    @MainActor
+    private var stockText: String {
+        if remainingStock <= 0 {
+            return Language.get("POS_OutOfStock", alter: "نفد المخزون")
+        }
+        return String(
+            format: Language.get("POS_RemainingStockFormat", alter: "المتبقي: %d"),
+            remainingStock
+        )
+    }
+
+    @MainActor
+    private var stockDotColor: Color {
+        if remainingStock <= 0 { return .red }
+        if remainingStock <= 3 { return .orange }
+        return Color(red: 0.1, green: 0.72, blue: 0.45)
+    }
+
+    @MainActor
+    private var stockTextColor: Color {
+        if remainingStock <= 0 { return .red }
+        if remainingStock <= 3 { return .orange }
+        return AdminSurface.secondaryText
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -3383,10 +3526,10 @@ private struct POSCatalogTile: View {
                 onTap(geo.frame(in: .named(POSFastSellSpace.root)))
             } label: {
                 VStack(alignment: .leading, spacing: 3) {
+                    // Top: Image thumbnail expands to fill all remaining vertical space safely
                     ZStack(alignment: .topTrailing) {
                         POSCatalogThumbnail(accessory: accessory)
-                            .frame(height: 75)
-                            .frame(maxWidth: .infinity)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                         if inCart > 0 {
@@ -3398,14 +3541,16 @@ private struct POSCatalogTile: View {
                                 .padding(3)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    // Bottom: All labels anchored to bottom, laid out from bottom to top with guaranteed priority
+                    VStack(alignment: .leading, spacing: 1.5) {
                         Text(accessory.name)
                             .font(AdminType.caption2Bold)
                             .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                             .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
 
                         HStack(spacing: 2) {
                             Text(currency(accessory.pos_canonicalUnitPrice))
@@ -3422,10 +3567,26 @@ private struct POSCatalogTile: View {
                                     .foregroundColor(AdminSurface.secondaryText)
                             }
                         }
+
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(stockDotColor)
+                                .frame(width: 4, height: 4)
+
+                            Text(stockText)
+                                .font(AdminType.caption2)
+                                .foregroundColor(stockTextColor)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+
+                            Spacer(minLength: 0)
+                        }
                     }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
                 }
                 .padding(6)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -3433,7 +3594,7 @@ private struct POSCatalogTile: View {
                 )
             }
             .buttonStyle(POSTilePressStyle())
-            .accessibilityLabel("\(accessory.name), \(currency(accessory.pos_canonicalUnitPrice))")
+            .accessibilityLabel("\(accessory.name), \(currency(accessory.pos_canonicalUnitPrice)), \(stockText)")
             .accessibilityHint(
                 accessory.pos_isIndividuallyTrackedLivePet
                     ? Language.get("POS_ExactAnimalTitle", alter: "اختيار الحيوانات المحددة")

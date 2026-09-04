@@ -10,6 +10,7 @@
 import SwiftUI
 
 // MARK: - Express Check-In Sheet
+@MainActor
 public struct AdminPetsHotelCheckInSheet: View {
     let reservation: AdminHotelReservation
     @ObservedObject var viewModel: AdminPetsHotelViewModel
@@ -17,10 +18,9 @@ public struct AdminPetsHotelCheckInSheet: View {
 
     @State private var selectedRoom: AdminHotelAccommodation?
     @State private var verification = AdminHotelCheckInVerification()
-    @State private var belongings: [AdminHotelBelongingItem] = [
-        AdminHotelBelongingItem(name: "طعام مخصص للحيوان", quantity: 1),
-        AdminHotelBelongingItem(name: "طوق أو حزام مشي", quantity: 1)
-    ]
+    @State private var belongings: [AdminHotelBelongingItem] = []
+    @State private var availableRoomIDs: Set<String>?
+    @State private var isLoadingAvailability = false
     @State private var newBelongingName: String = ""
     @State private var internalNotes: String = ""
     @State private var showVerificationDetails: Bool = true
@@ -78,7 +78,7 @@ public struct AdminPetsHotelCheckInSheet: View {
                 }
             }
             .onAppear {
-                autoSuggestAvailableRoom()
+                loadAvailability()
             }
         }
     }
@@ -123,9 +123,21 @@ public struct AdminPetsHotelCheckInSheet: View {
                 .font(Font.custom("Beiruti-Bold", size: 16))
                 .foregroundStyle(AdminSurface.primaryText)
 
-            let availableRooms = viewModel.accommodations.filter { $0.wing == reservation.wing && $0.status == .available }
+            let availableRooms = viewModel.accommodations.filter {
+                (availableRoomIDs?.contains($0.id) ?? false)
+            }
 
-            if availableRooms.isEmpty {
+            if isLoadingAvailability {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text(Language.get("Hotel_AvailabilityLoading", alter: "جاري التحقق من التوفر للفترة المحددة"))
+                        .font(Font.custom("Beiruti-Medium", size: 13))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else if availableRooms.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
@@ -187,6 +199,26 @@ public struct AdminPetsHotelCheckInSheet: View {
         }
     }
 
+    /// The reservation projection intentionally does not expose care declarations.
+    /// Resolve its selected, server-projected stay before rendering a clinical
+    /// check-in requirement; no pet ID or client-derived field can substitute.
+    private var authoritativeCheckInStay: AdminHotelStay? {
+        let projectedStayIDs = Set(reservation.stayIds)
+        guard !projectedStayIDs.isEmpty else { return nil }
+
+        let candidates = viewModel.stays.filter { stay in
+            projectedStayIDs.contains(stay.id) && stay.reservationId == reservation.id
+        }
+        guard !reservation.petId.isEmpty else {
+            return candidates.count == 1 ? candidates.first : nil
+        }
+        return candidates.first { $0.petId == reservation.petId }
+    }
+
+    private var medicationConfirmationRequired: Bool {
+        authoritativeCheckInStay?.medicationConfirmationRequired == true
+    }
+
     private var intakeVerificationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -206,6 +238,19 @@ public struct AdminPetsHotelCheckInSheet: View {
 
             if showVerificationDetails {
                 VStack(spacing: 8) {
+                    if authoritativeCheckInStay == nil {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text(Language.get("Hotel_Err_StayRequired", alter: "لا يوجد سجل إقامة جاهز لتسجيل وصول هذا الحجز."))
+                                .font(Font.custom("Beiruti-Medium", size: 13))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
+                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
                     verificationToggleRow(
                         title: Language.get("Hotel_VerifyIdentity", alter: "التحقق من هوية الحيوان والمالك"),
                         icon: "person.text.rectangle.fill",
@@ -226,6 +271,13 @@ public struct AdminPetsHotelCheckInSheet: View {
                         icon: "fork.knife",
                         binding: $verification.dietConfirmed
                     )
+                    if medicationConfirmationRequired {
+                        verificationToggleRow(
+                            title: Language.get("Hotel_VerifyMedication", alter: "تأكيد خطة الأدوية إن وجدت"),
+                            icon: "pill.fill",
+                            binding: $verification.medicationConfirmed
+                        )
+                    }
                     verificationToggleRow(
                         title: Language.get("Hotel_VerifyEmergency", alter: "تأكيد رقم الطوارئ البديل"),
                         icon: "phone.badge.checkmark",
@@ -236,6 +288,13 @@ public struct AdminPetsHotelCheckInSheet: View {
                         icon: "doc.text.fill",
                         binding: $verification.agreementAcknowledged
                     )
+                    if (reservation.depositMinor ?? 0) > 0 {
+                        verificationToggleRow(
+                            title: Language.get("Hotel_VerifyDeposit", alter: "تأكيد حالة العربون المستحق"),
+                            icon: "creditcard.fill",
+                            binding: $verification.depositSettled
+                        )
+                    }
                 }
                 .padding(12)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -344,10 +403,11 @@ public struct AdminPetsHotelCheckInSheet: View {
 
     private var confirmButton: some View {
         Button {
-            guard let room = selectedRoom else { return }
+            guard let room = selectedRoom, let stay = authoritativeCheckInStay else { return }
             Task {
                 await viewModel.executeCheckIn(
                     reservation: reservation,
+                    stay: stay,
                     assignedRoom: room,
                     belongings: belongings,
                     verification: verification,
@@ -372,34 +432,63 @@ public struct AdminPetsHotelCheckInSheet: View {
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 52)
             .background(
-                (selectedRoom == nil || viewModel.isSubmitting)
+                (selectedRoom == nil || authoritativeCheckInStay == nil || !isCheckInVerificationComplete || viewModel.isSubmitting)
                     ? Color.gray.opacity(0.4)
                     : Color(red: 0.16, green: 0.72, blue: 0.44),
                 in: RoundedRectangle(cornerRadius: 18, style: .continuous)
             )
-            .shadow(color: selectedRoom == nil ? .clear : Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.3), radius: 10, y: 4)
+            .shadow(color: selectedRoom == nil || authoritativeCheckInStay == nil || !isCheckInVerificationComplete ? .clear : Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.3), radius: 10, y: 4)
         }
-        .disabled(selectedRoom == nil || viewModel.isSubmitting)
+        .disabled(selectedRoom == nil || authoritativeCheckInStay == nil || !isCheckInVerificationComplete || viewModel.isSubmitting)
         .buttonStyle(PlainButtonStyle())
+    }
+
+    private var isCheckInVerificationComplete: Bool {
+        guard authoritativeCheckInStay != nil else { return false }
+        return verification.petIdentityVerified &&
+        verification.vaccinationVerified &&
+        verification.healthInspectionCompleted &&
+        verification.emergencyContactConfirmed &&
+        verification.agreementAcknowledged &&
+        (!medicationConfirmationRequired || verification.medicationConfirmed) &&
+        ((reservation.depositMinor ?? 0) == 0 || verification.depositSettled)
+    }
+
+    private func loadAvailability() {
+        isLoadingAvailability = true
+        availableRoomIDs = nil
+        Task {
+            do {
+                availableRoomIDs = try await viewModel.availableAccommodationIDs(for: reservation)
+                autoSuggestAvailableRoom()
+            } catch {
+                availableRoomIDs = []
+                viewModel.errorMessage = error.localizedDescription
+            }
+            isLoadingAvailability = false
+        }
     }
 
     private func autoSuggestAvailableRoom() {
         if let assignedId = reservation.assignedAccommodationId,
-           let match = viewModel.accommodations.first(where: { $0.id == assignedId && $0.status == .available }) {
+           availableRoomIDs?.contains(assignedId) == true,
+           let match = viewModel.accommodations.first(where: { $0.id == assignedId }) {
             selectedRoom = match
-        } else if let match = viewModel.accommodations.first(where: { $0.wing == reservation.wing && $0.status == .available }) {
+        } else if let match = viewModel.accommodations.first(where: {
+            availableRoomIDs?.contains($0.id) == true
+        }) {
             selectedRoom = match
         }
     }
 }
 
 // MARK: - Express Check-Out Sheet
+@MainActor
 public struct AdminPetsHotelCheckOutSheet: View {
     let stay: AdminHotelStay
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
 
-    @State private var sendRoomForCleaning: Bool = true
     @State private var verification = AdminHotelCheckOutVerification()
     @State private var earlyReason: String = "early_departure_by_owner"
 
@@ -409,7 +498,8 @@ public struct AdminPetsHotelCheckOutSheet: View {
 
     public var body: some View {
         NavigationView {
-            VStack(spacing: 18) {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 18) {
                 // Stay Discharge Hero
                 VStack(spacing: 12) {
                     ZStack {
@@ -448,19 +538,21 @@ public struct AdminPetsHotelCheckOutSheet: View {
 
                 // Verification Checklist
                 VStack(spacing: 10) {
-                    Toggle(isOn: $verification.belongingsReturned) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(Language.get("Hotel_BelongingsHandedBack", alter: "تسليم كافة الأغراض للمالك"))
-                                .font(Font.custom("Beiruti-Bold", size: 15))
-                                .foregroundStyle(AdminSurface.primaryText)
-                            Text(Language.get("Hotel_BelongingsVerifySub", alter: "تم التحقق من تطابق العهدة ومحتوياتها"))
-                                .font(Font.custom("Beiruti-Medium", size: 12))
-                                .foregroundStyle(AdminSurface.secondaryText)
+                    if stay.belongingCount > 0 {
+                        Toggle(isOn: $verification.belongingsReturned) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("Hotel_BelongingsHandedBack", alter: "تسليم كافة الأغراض للمالك"))
+                                    .font(Font.custom("Beiruti-Bold", size: 15))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(Language.get("Hotel_BelongingsVerifySub", alter: "تم التحقق من تطابق العهدة ومحتوياتها"))
+                                    .font(Font.custom("Beiruti-Medium", size: 12))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
                         }
-                    }
-                    .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
+                        .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
 
-                    Divider()
+                        Divider()
+                    }
 
                     Toggle(isOn: $verification.healthCheckCompleted) {
                         VStack(alignment: .leading, spacing: 2) {
@@ -476,17 +568,47 @@ public struct AdminPetsHotelCheckOutSheet: View {
 
                     Divider()
 
-                    Toggle(isOn: $sendRoomForCleaning) {
+                    Toggle(isOn: $verification.roomInspectionCompleted) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(Language.get("Hotel_SendRoomCleaningPrompt", alter: "إرسال الجناح (\(stay.roomNumber)) للتعقيم والتنظيف فوراً"))
+                            Text(Language.get("Hotel_RoomInspectionComplete", alter: "اكتمال فحص الغرفة قبل التسليم"))
                                 .font(Font.custom("Beiruti-Bold", size: 15))
                                 .foregroundStyle(AdminSurface.primaryText)
-                            Text(Language.get("Hotel_SendRoomCleaningDetail", alter: "سيتغير وضع الجناح إلى 'قيد التنظيف' حتى إشعاره جاهزاً"))
+                            Text(Language.get("Hotel_RoomInspectionDetail", alter: "تم توثيق حالة الغرفة وأي ملاحظات تشغيلية"))
                                 .font(Font.custom("Beiruti-Medium", size: 12))
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
                     }
-                    .toggleStyle(SwitchToggleStyle(tint: AdminSurface.primary))
+                    .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
+
+                    Divider()
+
+                    if stay.criticalIncidentCount > 0 {
+                        Toggle(Language.get("Hotel_IncidentsAcknowledged", alter: "مراجعة الحوادث والملاحظات المفتوحة"), isOn: $verification.incidentsAcknowledged)
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
+
+                        Divider()
+                    }
+
+                    if stay.pendingMedicationCount > 0 {
+                        Toggle(Language.get("Hotel_MedicationResolved", alter: "تسوية جميع مهام الأدوية"), isOn: $verification.medicationResolved)
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
+
+                        Divider()
+                    }
+
+                    Toggle(Language.get("Hotel_HandoverVerified", alter: "التحقق من هوية المستلم وتسليم النزيل"), isOn: $verification.handoverVerified)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .toggleStyle(SwitchToggleStyle(tint: Color(red: 0.16, green: 0.72, blue: 0.44)))
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("Hotel_RoomCleaningAutomatic", alter: "بعد المغادرة ينقل الخادم الغرفة تلقائياً إلى حالة التنظيف."))
+                            .font(Font.custom("Beiruti-Medium", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
                 }
                 .padding(16)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
@@ -515,15 +637,12 @@ public struct AdminPetsHotelCheckOutSheet: View {
                     .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
 
-                Spacer()
-
                 // Execute Departure Button
                 Button {
                     Task {
                         await viewModel.executeCheckOut(
                             stay: stay,
                             verification: verification,
-                            markRoomCleaning: sendRoomForCleaning,
                             earlyReason: isEarly ? earlyReason : nil
                         )
                         if viewModel.errorMessage == nil {
@@ -545,18 +664,19 @@ public struct AdminPetsHotelCheckOutSheet: View {
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity, minHeight: 52)
                     .background(
-                        viewModel.isSubmitting
+                        viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut
                             ? Color.gray.opacity(0.4)
                             : Color(red: 0.82, green: 0.15, blue: 0.35),
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
                     .shadow(color: Color(red: 0.82, green: 0.15, blue: 0.35).opacity(0.3), radius: 10, y: 4)
                 }
-                .disabled(viewModel.isSubmitting)
+                .disabled(viewModel.isSubmitting || !isCheckOutVerificationComplete || !viewModel.canCheckOut)
                 .buttonStyle(PlainButtonStyle())
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 24)
             }
-            .padding(.horizontal, 18)
-            .padding(.bottom, 24)
             .background(AdminSurface.background.ignoresSafeArea())
             .navigationTitle(Language.get("Hotel_Checkout_Title", alter: "تسجيل المغادرة"))
             .navigationBarTitleDisplayMode(.inline)
@@ -571,9 +691,19 @@ public struct AdminPetsHotelCheckOutSheet: View {
             }
         }
     }
+
+    private var isCheckOutVerificationComplete: Bool {
+        verification.healthCheckCompleted &&
+        verification.roomInspectionCompleted &&
+        verification.handoverVerified &&
+        (stay.belongingCount == 0 || verification.belongingsReturned) &&
+        (stay.criticalIncidentCount == 0 || verification.incidentsAcknowledged) &&
+        (stay.pendingMedicationCount == 0 || verification.medicationResolved)
+    }
 }
 
 // MARK: - Room Status Quick Dial Sheet
+@MainActor
 public struct AdminPetsHotelRoomStatusSheet: View {
     let room: AdminHotelAccommodation
     @ObservedObject var viewModel: AdminPetsHotelViewModel
@@ -612,11 +742,14 @@ public struct AdminPetsHotelRoomStatusSheet: View {
 
                 // Status Options List
                 VStack(spacing: 8) {
-                    ForEach([HotelAccommodationStatus.available, .cleaning, .inspection, .maintenance, .blocked], id: \.self) { status in
+                    ForEach([HotelAccommodationStatus.available, .cleaning, .inspection, .maintenance, .blocked, .isolation], id: \.self) { status in
                         let isCurrent = room.status == status
                         Button {
-                            viewModel.setRoomStatus(room: room, newStatus: status)
-                            dismiss()
+                            Task {
+                                if await viewModel.setRoomStatus(room: room, newStatus: status) {
+                                    dismiss()
+                                }
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 ZStack {
@@ -652,6 +785,7 @@ public struct AdminPetsHotelRoomStatusSheet: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .disabled(isCurrent || viewModel.isSubmitting || !viewModel.canManageAccommodations)
                     }
                 }
 

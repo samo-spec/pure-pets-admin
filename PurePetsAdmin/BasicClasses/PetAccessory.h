@@ -28,6 +28,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, strong) NSString *accessoryID;
 @property (nonatomic, strong) NSString *name;
+@property (nonatomic, copy, nullable) NSString *sku;
+@property (nonatomic, copy, nullable) NSString *barcode;
+@property (nonatomic, strong, nullable) NSNumber *costPrice;
 @property (nonatomic, strong) NSString *desc;
 @property (nonatomic, strong) NSNumber *price;                     // Base/original price
 @property (nonatomic, readonly) BOOL hasResolvedSellingPrice;      // NO when the catalog projection has no priced available unit

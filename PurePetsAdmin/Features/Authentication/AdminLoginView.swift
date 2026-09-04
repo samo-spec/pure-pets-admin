@@ -153,12 +153,12 @@ struct AdminLoginView: View {
                     }
             }
         }
-        .overlay(alignment: state.isRTL ? .topLeading : .topTrailing) {
+        .overlay(alignment: .topTrailing) {
             if isMoreMenuPresented {
                 customMoreActionsMenuCard
                     .offset(y: 52)
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.88, anchor: state.isRTL ? .topLeading : .topTrailing).combined(with: .opacity),
+                        insertion: .scale(scale: 0.88, anchor: .topTrailing).combined(with: .opacity),
                         removal: .opacity
                     ))
                     .zIndex(300)

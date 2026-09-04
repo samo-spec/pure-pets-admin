@@ -213,7 +213,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return ["categories.view", "categories.manage"]
         case .banners: return ["banners.manage"]
         case .listings: return ["listings.view", "listings.manage", "listings.moderate"]
-        case .hotel: return ["hotel.view", "hotel.manage", "services.view", "services.manage", "dashboard.view"]
+        case .hotel: return ["hotel.view"]
         }
     }
 
@@ -596,4 +596,3 @@ public final class PPAdminNavigationFallback: NSObject {
         return root
     }
 }
-

@@ -209,6 +209,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 - (instancetype)init {
     if (self = [super init]) {
         _name = @"";
+        _sku = @"";
+        _barcode = @"";
+        _costPrice = nil;
         _desc = @"";
         _price = @(0);
         _hasResolvedSellingPrice = NO;
@@ -255,6 +258,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     // Basic info
     if (self.name) dict[@"name"] = self.name;
     dict[@"searchTitle"] = [ArabicNormalizer normalize:self.name ?: @""];
+    dict[@"sku"] = self.sku.length > 0 ? self.sku : [NSNull null];
+    dict[@"barcode"] = self.barcode.length > 0 ? self.barcode : [NSNull null];
+    dict[@"costPrice"] = self.costPrice ?: [NSNull null];
     if (self.desc) dict[@"desc"] = self.desc;
     if (self.hasResolvedSellingPrice) dict[@"price"] = self.price;
 
@@ -462,6 +468,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self = [super init]) {
         _accessoryID = docID ?: @"";
         _name = PPAccessoryStringValueForKeys(dict, (@[@"name", @"title"]));
+        _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
+        _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"Barcode", @"barCode", @"upc", @"ean"]));
+        _costPrice = PPAccessoryNumberValueForKeys(dict, (@[@"costPrice", @"cost_price", @"cost"]));
         _desc = PPAccessoryStringValueForKeys(dict, (@[@"desc", @"description"]));
 
         // Individually tracked live-pet parent documents intentionally expose
@@ -616,6 +625,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     PetAccessory *copy = [[PetAccessory alloc] init];
     copy.accessoryID = [source.accessoryID copy];
     copy.name = [source.name copy];
+    copy.sku = [source.sku copy];
+    copy.barcode = [source.barcode copy];
+    copy.costPrice = [source.costPrice copy];
     if (source.hasResolvedSellingPrice) {
         copy.price = [source.price copy];
     }

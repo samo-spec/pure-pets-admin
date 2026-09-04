@@ -1194,15 +1194,11 @@ struct AdminDeliveryListView: View {
         if let rawURL = member?.photoURL,
            let url = URL(string: rawURL),
            !rawURL.isEmpty {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                        .background(AdminSurface.primary.opacity(0.10))
-                }
+            AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+                    .background(AdminSurface.primary.opacity(0.10))
             }
             .frame(width: 48, height: 48)
             .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
@@ -2213,14 +2209,10 @@ private struct DeliveryDriverDetailSheet: View {
         if let rawURL = member?.photoURL,
            let url = URL(string: rawURL),
            !rawURL.isEmpty {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().scaledToFill()
-                } else {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.system(size: 38, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
+            AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 84, height: 84)) {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 38, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
             }
             .frame(width: 84, height: 84)
             .background(AdminSurface.primary.opacity(0.10))

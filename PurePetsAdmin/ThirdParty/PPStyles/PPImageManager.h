@@ -11,12 +11,11 @@
 //  PurePetsAdmin
 //
 //  Created by ChatGPT on 2025-09-13.
-//  Wrapper around SDWebImage for consistent image loading, caching & transitions.
+//  Compatibility façade for the shared Kingfisher image pipeline.
 //
 
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
-#import "SDWebImageDefine.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -33,7 +32,7 @@ typedef NS_ENUM(NSInteger, PPImageFadeType) {
 
 #pragma mark - UIImageView set methods (convenience)
 
-/// default: placeholder=nil, fadeType=CrossDissolve, duration=0.25, will use SDWebImageRetryFailed|HighPriority
+/// default: placeholder=nil, fadeType=CrossDissolve, duration=0.25, using the shared Kingfisher cache
 - (void)setImageFromUrl:(nullable NSString *)urlString
            toImageView:(UIImageView *)imageView;
 
@@ -55,11 +54,11 @@ typedef NS_ENUM(NSInteger, PPImageFadeType) {
               duration:(NSTimeInterval)duration
             completion:(nullable void(^)(UIImage * _Nullable image))completion;
 
-/// full control (SDWebImage options + context)
+/// full control (legacy compatibility options are ignored by the Kingfisher pipeline)
 - (void)setImageFromUrl:(nullable NSString *)urlString
            toImageView:(UIImageView *)imageView
                 options:(NSUInteger)sdOptions
-                context:(nullable NSDictionary<SDWebImageContextOption,id> *)context
+                context:(nullable NSDictionary *)context
            placeholder:(nullable NSString *)placeholderName
              fadeType:(PPImageFadeType)fadeType
              duration:(NSTimeInterval)duration
@@ -74,7 +73,7 @@ typedef NS_ENUM(NSInteger, PPImageFadeType) {
 
 - (void)imageFromUrl:(nullable NSString *)urlString
              options:(NSUInteger)sdOptions
-             context:(nullable NSDictionary<SDWebImageContextOption,id> *)context
+             context:(nullable NSDictionary *)context
           completion:(nullable void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion;
 
 #pragma mark - prefetch

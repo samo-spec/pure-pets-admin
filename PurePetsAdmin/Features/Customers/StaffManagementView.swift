@@ -280,9 +280,7 @@ struct AdminStaffManagementView: View {
 
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(spacing: AdminSpacing.sectionSpacing) {
-                            heroHeader
-                            filterSegment
-                            searchSection
+                            staffCommandCockpit
                             staffListContent
                         }
                         .padding(.horizontal, AdminSpacing.screenMargin)
@@ -406,133 +404,255 @@ struct AdminStaffManagementView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Hero Header
+    // MARK: - Reimagined Command Cockpit (Hero + Telemetry Matrix + Precision Search)
 
-    private var heroHeader: some View {
-        AdminCard {
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                        Text(Language.get("StaffMembers_Title", alter: "فريق العمل والوصول"))
-                            .font(AdminType.title2)
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        Text(Language.get("StaffMembers_Subtitle", alter: "إدارة أعضاء الفريق والأدوار وصلاحيات النظام."))
-                            .font(AdminType.subheadline)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    ZStack {
-                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                            .fill(AdminSurface.primary.opacity(0.12))
-                            .frame(width: 52, height: 52)
-                        Image(systemName: "person.3.sequence.fill")
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundColor(AdminSurface.primary)
-                    }
-                    .accessibilityHidden(true)
-                }
-
-                HStack(spacing: 10) {
-                    statPill(value: viewModel.totalCount, titleKey: "Total", accent: AdminSurface.primary)
-                    statPill(value: viewModel.activeCount, titleKey: "Active", accent: Color(uiColor: .ppSuccess))
-                    statPill(value: viewModel.disabledCount, titleKey: "Disabled", accent: Color(uiColor: .ppWarning))
-
-                    Spacer()
-
-                    if viewModel.canManage {
-                        Button {
-                            isCreatingNew = true
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 13, weight: .bold))
-                                Text(Language.get("Staff_Create_New", alter: "عضو جديد"))
-                                    .font(AdminType.captionBold)
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 36)
-                            .background(AdminSurface.primary, in: Capsule())
-                        }
-                        .accessibilityLabel(Language.get("Staff_Create_New", alter: nil))
-                    }
-                }
-            }
-            .padding(AdminSpacing.cardPadding)
-        }
-    }
-
-    private func statPill(value: Int, titleKey: String, accent: Color) -> some View {
-        HStack(spacing: 6) {
-            Circle().fill(accent).frame(width: 6, height: 6)
-            Text("\(value) \(Language.get(titleKey, alter: titleKey))")
-                .font(AdminType.captionBold)
-                .foregroundColor(accent)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(accent.opacity(0.09), in: Capsule())
-    }
-
-    // MARK: - Filter Segment
-
-    private var filterSegment: some View {
-        HStack(spacing: 0) {
-            ForEach(AdminStaffManagementViewModel.StaffStatusFilter.allCases, id: \.rawValue) { filter in
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                        viewModel.selectedFilter = filter
-                    }
-                } label: {
-                    Text(filter.title)
-                        .font(viewModel.selectedFilter == filter ? AdminType.footnoteBold : AdminType.footnote)
-                        .foregroundColor(viewModel.selectedFilter == filter ? .white : AdminSurface.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(
-                            viewModel.selectedFilter == filter ? AdminSurface.primary : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+    private var staffCommandCockpit: some View {
+        VStack(spacing: 14) {
+            // ─── TIER 1: Executive Identity & Fast Provisioning Dock ───
+            HStack(alignment: .center, spacing: 14) {
+                // Holographic Security Crest / Avatar
+                ZStack {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary,
+                                    Color(red: 0.92, green: 0.18, blue: 0.35)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.28), radius: 10, x: 0, y: 4)
+
+                    Image(systemName: "person.2.badge.gearshape.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                        .shadow(color: Color.black.opacity(0.2), radius: 2, x: 0, y: 1)
                 }
-            }
-        }
-        .padding(4)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(AdminSurface.hairline))
-    }
+                .accessibilityHidden(true)
 
-    // MARK: - Search Section
+                // Identity Typography Stack
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("StaffMembers_Title", alter: "أعضاء الفريق والوصول"))
+                        .font(Font.custom("Beiruti-Bold", size: 21))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
 
-    private var searchSection: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(AdminSurface.secondaryText)
-                .font(.system(size: 16, weight: .medium))
-
-            TextField(Language.get("Search", alter: "بحث في أعضاء الفريق..."), text: $viewModel.searchText)
-                .font(AdminType.body)
-                .foregroundColor(AdminSurface.primaryText)
-
-            if !viewModel.searchText.isEmpty {
-                Button {
-                    viewModel.searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Text(Language.get("StaffMembers_Subtitle", alter: "إدارة الصلاحيات والوصول الإداري."))
+                        .font(Font.custom("Beiruti-Regular", size: 13))
                         .foregroundColor(AdminSurface.secondaryText)
-                        .font(.system(size: 16))
+                        .lineLimit(1)
                 }
-                .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum)
-                .accessibilityLabel(Language.get("Clear", alter: nil))
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Flagship Quick Provisioning Action (+ Create Account)
+                if viewModel.canManage {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        isCreatingNew = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .black))
+                            Text(Language.get("Staff_Create_New", alter: "إنشاء حساب"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, AdminSurface.primaryPressed],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: Capsule()
+                        )
+                        .overlay(
+                            Capsule().strokeBorder(Color.white.opacity(0.24), lineWidth: 0.8)
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.32), radius: 8, x: 0, y: 3)
+                    }
+                    .buttonStyle(StaffCockpitPressStyle())
+                    .accessibilityLabel(Language.get("Staff_Create_New", alter: nil))
+                }
             }
+
+            // ─── TIER 2: Interactive Telemetry Spectrum (Metrics Fused With Filters) ───
+            HStack(spacing: 8) {
+                cockpitTelemetryTab(
+                    filter: .all,
+                    count: viewModel.totalCount,
+                    title: Language.get("All", alter: "الكل"),
+                    symbol: "person.3.fill",
+                    accentColor: AdminSurface.primary
+                )
+
+                cockpitTelemetryTab(
+                    filter: .active,
+                    count: viewModel.activeCount,
+                    title: Language.get("Active", alter: "نشط"),
+                    symbol: "checkmark.shield.fill",
+                    accentColor: Color(uiColor: .ppSuccess)
+                )
+
+                cockpitTelemetryTab(
+                    filter: .disabled,
+                    count: viewModel.disabledCount,
+                    title: Language.get("Disabled", alter: "معطل"),
+                    symbol: "slash.circle.fill",
+                    accentColor: Color(uiColor: .ppWarning)
+                )
+            }
+            .padding(4)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+
+            // ─── TIER 3: Precision Search & Match Radar ───
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(viewModel.searchText.isEmpty ? AdminSurface.secondaryText : AdminSurface.primary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 20, height: 20)
+
+                TextField(Language.get("Search", alter: "بحث في أعضاء الفريق..."), text: $viewModel.searchText)
+                    .font(Font.custom("Beiruti-Medium", size: 14.5))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .textInputAutocapitalization(.never)
+                    .disableAutocorrection(true)
+
+                // Match Radar Telemetry Pill
+                if !viewModel.searchText.isEmpty {
+                    Text("\(viewModel.filteredStaff.count) / \(viewModel.totalCount)")
+                        .font(Font.custom("Beiruti-Bold", size: 11.5))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        .transition(.scale.combined(with: .opacity))
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .font(.system(size: 16, weight: .medium))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 46)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        !viewModel.searchText.isEmpty ? AdminSurface.primary.opacity(0.35) : AdminSurface.hairline,
+                        lineWidth: 0.75
+                    )
+            )
         }
-        .padding(.horizontal, 16)
-        .frame(height: 50)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous).stroke(AdminSurface.hairline))
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 14, x: 0, y: 5)
     }
+
+    private func cockpitTelemetryTab(
+        filter: AdminStaffManagementViewModel.StaffStatusFilter,
+        count: Int,
+        title: String,
+        symbol: String,
+        accentColor: Color
+    ) -> some View {
+        let isSelected = viewModel.selectedFilter == filter
+
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82)) {
+                viewModel.selectedFilter = filter
+            }
+        } label: {
+            HStack(spacing: 8) {
+                // Live Status Indicator Icon / Glyph
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? accentColor.opacity(0.18) : accentColor.opacity(0.10))
+                        .frame(width: 26, height: 26)
+
+                    if filter == .active {
+                        Circle()
+                            .fill(accentColor)
+                            .frame(width: 8, height: 8)
+                            .overlay(
+                                Circle()
+                                    .stroke(accentColor.opacity(0.4), lineWidth: 2)
+                                    .scaleEffect(isSelected ? 1.4 : 1.0)
+                            )
+                    } else {
+                        Image(systemName: symbol)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(accentColor)
+                    }
+                }
+
+                // Data Metric & Label Stack
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 4) {
+                        Text("\(count)")
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.85))
+
+                        Text(title)
+                            .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 12))
+                            .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                isSelected ? AdminSurface.surface : Color.clear,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(
+                        isSelected ? accentColor.opacity(0.35) : Color.clear,
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: isSelected ? Color.black.opacity(0.06) : Color.clear,
+                radius: 6,
+                x: 0,
+                y: 2
+            )
+        }
+        .buttonStyle(StaffCockpitPressStyle())
+        .accessibilityLabel("\(title): \(count)")
+    }
+
 
     // MARK: - Staff List Content
 
@@ -569,95 +689,23 @@ struct AdminStaffManagementView: View {
         }
     }
 
-    // MARK: - Staff Member Card
+    // MARK: - Sovereign Flagship Staff Member Card (Reimagined from First Principles)
 
     private func staffMemberCard(member: PPStaffDoc) -> some View {
-        let isRTL = Language.isRTL()
         let isCurrent = Auth.auth().currentUser?.uid == member.uid
-        let isActive = member.status == .active
-        let permsCount = member.permissions.count
 
-        return Button {
-            selectedMemberForEdit = member
-        } label: {
-            HStack(spacing: AdminSpacing.md) {
-                // Avatar Shell
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.primary.opacity(0.12))
-                        .frame(width: 48, height: 48)
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .accessibilityHidden(true)
-
-                // Info Stack
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text(member.displayName ?? Language.get("Staff_Edit_Existing", alter: "عضو فريق"))
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(1)
-
-                        if isCurrent {
-                            Text(Language.get("You", alter: "أنت"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundColor(AdminSurface.primary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                        }
-                    }
-
-                    if let email = member.email, !email.isEmpty {
-                        Text(email)
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .lineLimit(1)
-                    }
-
-                    HStack(spacing: 8) {
-                        // Role Pill
-                        Text(PPAdminSessionBridge.localizedRoleName(for: member.roleIdentifier))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
-
-                        // Permissions Count
-                        Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%lu صلاحية"), permsCount))
-                            .font(AdminType.caption1)
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                    .padding(.top, 2)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // Status & Chevron
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(isActive ? Color.green : Color.orange)
-                        .frame(width: 8, height: 8)
-
-                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.60))
-                }
+        return StaffMemberSovereignCard(
+            member: member,
+            isCurrent: isCurrent,
+            onTap: {
+                selectedMemberForEdit = member
             }
-            .padding(AdminSpacing.base)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .stroke(AdminSurface.hairline)
-            )
-            .shadow(color: AdminShadow.card.color, radius: AdminShadow.card.radius, y: AdminShadow.card.y)
-        }
-        .buttonStyle(.plain)
+        )
     }
 
-    private func showToast(_ message: String, isError: Bool) {
+    // MARK: - Toast Banner & Notifications
+
+    private func showToast(_ message: String, isError: Bool = false) {
         guard !message.isEmpty else { return }
         toastMessage = message
         isErrorToast = isError
@@ -687,6 +735,294 @@ struct AdminStaffManagementView: View {
                 .stroke(isError ? Color.red.opacity(0.3) : Color.green.opacity(0.3))
         )
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+}
+
+// MARK: - Sovereign Flagship Staff Member Card Component
+
+private struct StaffMemberSovereignCard: View {
+    let member: PPStaffDoc
+    let isCurrent: Bool
+    let onTap: () -> Void
+
+    private var isRTL: Bool { Language.isRTL() }
+    private var isActive: Bool { member.isActive() }
+
+    private var roleOption: StaffRoleOption? {
+        StaffRoleOption(rawValue: member.roleIdentifier)
+    }
+
+    private var roleTitle: String {
+        roleOption?.title ?? PPAdminSessionBridge.localizedRoleName(for: member.roleIdentifier)
+    }
+
+    private var roleAccentColor: Color {
+        roleOption?.accentColor ?? AdminSurface.primary
+    }
+
+    private var roleIcon: String {
+        roleOption?.icon ?? "shield.fill"
+    }
+
+    private var permsCount: Int {
+        member.permissions.count > 0 ? member.permissions.count : (roleOption?.defaultPermissionsCount ?? 0)
+    }
+
+    private var userInitials: String {
+        let name = (member.displayName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != "عضو فريق", name != "Staff Member" else {
+            if let email = member.email, !email.isEmpty {
+                return String(email.prefix(2)).uppercased()
+            }
+            return "PP"
+        }
+        let comps = name.components(separatedBy: " ").filter { !$0.isEmpty }
+        if comps.count >= 2, let f = comps.first?.first, let l = comps.last?.first {
+            return "\(f)\(l)".uppercased()
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                avatarView
+                identityAndMetadataView
+                trailingActionView
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .overlay(
+                        LinearGradient(
+                            colors: [
+                                roleAccentColor.opacity(0.035),
+                                Color.clear
+                            ],
+                            startPoint: isRTL ? .trailing : .leading,
+                            endPoint: isRTL ? .leading : .trailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        isCurrent
+                            ? AdminSurface.primary.opacity(0.4)
+                            : (isActive ? AdminSurface.hairline : Color.orange.opacity(0.25)),
+                        lineWidth: isCurrent ? 1.2 : 0.75
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.035), radius: 8, y: 3)
+        }
+        .buttonStyle(StaffCardPressStyle())
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Avatar & Authority Emblem
+
+    private var avatarView: some View {
+        ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                if let photo = member.photoURL, let url = URL(string: photo), !photo.isEmpty {
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
+                        monogramFallback
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    monogramFallback
+                }
+            }
+            .frame(width: 52, height: 52)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isCurrent ? AdminSurface.primary.opacity(0.4) : roleAccentColor.opacity(0.25), lineWidth: 1.2)
+            )
+
+            // Live presence beacon
+            Circle()
+                .fill(isActive ? Color(red: 0.12, green: 0.78, blue: 0.45) : Color.orange)
+                .frame(width: 13, height: 13)
+                .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2.2))
+                .shadow(color: isActive ? Color.green.opacity(0.4) : Color.orange.opacity(0.3), radius: 3, y: 1)
+                .offset(x: 2, y: 2)
+        }
+        .frame(width: 54, height: 54)
+    }
+
+    private var monogramFallback: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    roleAccentColor.opacity(0.95),
+                    roleAccentColor.opacity(0.70)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Text(userInitials)
+                .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                .foregroundColor(.white)
+                .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Identity & Operational Metadata
+
+    private var identityAndMetadataView: some View {
+        VStack(alignment: .leading, spacing: 3.5) {
+            // Row 1: Name + Current Pill + Verified Badge
+            HStack(spacing: 6) {
+                Text(member.displayName ?? Language.get("Staff_Edit_Existing", alter: "عضو فريق"))
+                    .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .headline))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                if isCurrent {
+                    HStack(spacing: 3) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 8))
+                        Text(Language.get("You", alter: "أنت"))
+                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(
+                        LinearGradient(
+                            colors: [AdminSurface.primary, Color(red: 1.0, green: 0.35, blue: 0.48)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ),
+                        in: Capsule()
+                    )
+                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 3, y: 1)
+                }
+
+                if member.isVerified {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(Color(red: 0.15, green: 0.52, blue: 0.95))
+                }
+            }
+
+            // Row 2: Contact Info (Email or Phone)
+            if let email = member.email, !email.isEmpty {
+                HStack(spacing: 4.5) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+
+                    Text(email)
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+            } else if let phone = member.phone, !phone.isEmpty {
+                HStack(spacing: 4.5) {
+                    Image(systemName: "phone.fill")
+                        .font(.system(size: 9))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+
+                    Text(phone)
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            // Row 3: Role Insignia + Permissions Count + Scope
+            HStack(spacing: 6) {
+                // Role Capsule
+                HStack(spacing: 4) {
+                    Image(systemName: roleIcon)
+                        .font(.system(size: 9.5, weight: .bold))
+                    Text(roleTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                }
+                .foregroundColor(roleAccentColor)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(roleAccentColor.opacity(0.12), in: Capsule())
+                .overlay(Capsule().stroke(roleAccentColor.opacity(0.25), lineWidth: 0.6))
+
+                // Permissions Count
+                HStack(spacing: 3) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 8))
+                    Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%lu صلاحية"), permsCount))
+                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                }
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(Capsule().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5))
+
+                // Global Scope Badge
+                if member.hasGlobalScope() {
+                    HStack(spacing: 3) {
+                        Image(systemName: "globe.americas.fill")
+                            .font(.system(size: 8))
+                        Text(Language.get("Staff_Branch_Scope_Global", alter: "شامل"))
+                            .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
+                    }
+                    .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.45))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 0.10, green: 0.65, blue: 0.45).opacity(0.10), in: Capsule())
+                }
+            }
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Trailing Status & Navigation Affordance
+
+    private var trailingActionView: some View {
+        HStack(spacing: 8) {
+            // Status Capsule
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(isActive ? Color(red: 0.12, green: 0.78, blue: 0.45) : Color.orange)
+                    .frame(width: 6, height: 6)
+
+                Text(isActive ? Language.get("Active", alter: "نشط") : Language.get("Disabled", alter: "معطل"))
+                    .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                    .foregroundColor(isActive ? Color(red: 0.10, green: 0.65, blue: 0.35) : Color.orange)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3.5)
+            .background((isActive ? Color.green : Color.orange).opacity(0.08), in: Capsule())
+
+            // Chevron Action Disc
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.control)
+                    .frame(width: 28, height: 28)
+                    .overlay(Circle().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.6))
+
+                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+            }
+        }
+    }
+}
+
+private struct StaffCardPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
 
@@ -941,14 +1277,8 @@ struct AdminStaffMemberEditorView: View {
                 // Avatar with Live Presence & Status Halo
                 ZStack(alignment: .bottomTrailing) {
                     if let photo = effectivePhotoURL, let url = URL(string: photo), !photo.isEmpty {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable()
-                                   .scaledToFill()
-                            default:
-                                monogramView
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 70, height: 70)) {
+                            monogramView
                         }
                         .frame(width: 70, height: 70)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -2965,11 +3295,8 @@ struct AdminUserPickerSheet: View {
                 // Avatar
                 ZStack(alignment: .bottomTrailing) {
                     if let photo = user.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img): img.resizable().scaledToFill()
-                            default: pickerMonogram(user)
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
+                            pickerMonogram(user)
                         }
                         .frame(width: 48, height: 48)
                         .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
@@ -3113,5 +3440,14 @@ struct AdminUserPickerSheet: View {
         .padding(12)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(AdminSurface.hairline, lineWidth: 1))
+    }
+}
+
+fileprivate struct StaffCockpitPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }

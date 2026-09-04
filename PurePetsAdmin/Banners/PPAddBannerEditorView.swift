@@ -714,12 +714,8 @@ public struct PPAddBannerEditorScreen: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                 } else if let bgURL = viewModel.existingBgImageURL {
-                    AsyncImage(url: bgURL) { phase in
-                        if let img = phase.image {
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            presetGradientView(viewModel.selectedGradientPresetIndex)
-                        }
+                    AdminRemoteImage(url: bgURL, contentMode: .fill) {
+                        presetGradientView(viewModel.selectedGradientPresetIndex)
                     }
                 } else {
                     presetGradientView(viewModel.selectedGradientPresetIndex)
@@ -849,12 +845,8 @@ public struct PPAddBannerEditorScreen: View {
                     .frame(width: 95, height: 95)
                     .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
             } else if let sampleURL = viewModel.existingSampleImageURL {
-                AsyncImage(url: sampleURL) { phase in
-                    if let img = phase.image {
-                        img.resizable().aspectRatio(contentMode: .fit)
-                    } else {
-                        samplePlaceholderIcon
-                    }
+                AdminRemoteImage(url: sampleURL, contentMode: .fit, targetSize: CGSize(width: 95, height: 95)) {
+                    samplePlaceholderIcon
                 }
                 .frame(width: 95, height: 95)
                 .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
@@ -1032,12 +1024,8 @@ public struct PPAddBannerEditorScreen: View {
                         .aspectRatio(contentMode: .fit)
                         .frame(width: 90, height: 90)
                 } else if let sampleURL = viewModel.existingSampleImageURL {
-                    AsyncImage(url: sampleURL) { phase in
-                        if let img = phase.image {
-                            img.resizable().aspectRatio(contentMode: .fit)
-                        } else {
-                            Image(systemName: "photo").font(.system(size: 28))
-                        }
+                    AdminRemoteImage(url: sampleURL, contentMode: .fit, targetSize: CGSize(width: 90, height: 90)) {
+                        Image(systemName: "photo").font(.system(size: 28))
                     }
                     .frame(width: 90, height: 90)
                 } else {
@@ -1098,12 +1086,8 @@ public struct PPAddBannerEditorScreen: View {
                         .frame(height: 110)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else if let bgURL = viewModel.existingBgImageURL {
-                    AsyncImage(url: bgURL) { phase in
-                        if let img = phase.image {
-                            img.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Image(systemName: "photo").font(.system(size: 28))
-                        }
+                    AdminRemoteImage(url: bgURL, contentMode: .fill) {
+                        Image(systemName: "photo").font(.system(size: 28))
                     }
                     .frame(height: 110)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))

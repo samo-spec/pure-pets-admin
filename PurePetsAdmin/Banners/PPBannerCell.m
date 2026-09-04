@@ -34,10 +34,8 @@
 
 - (void)prepareForReuse {
     [super prepareForReuse];
-    // Reset visuals & cancel any pending image loads (if you use SDWebImage)
+    // Reset visuals; the shared Kingfisher loader cancels its own pending image work.
     [_bannerView prepareForReuse];
-    // Example if using SDWebImage:
-    
 }
 
 - (void)configureWithModel:(PPBannerViewModel *)vm {

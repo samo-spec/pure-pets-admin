@@ -71,3 +71,4 @@
 #import "UsersSection/SecFil/PPStaffAuth.h"
 #import "UsersSection/References/UserModel.h"
 FOUNDATION_EXPORT UIViewController * _Nonnull PPAdminCreateCommandSpineDashboardController(void);
+FOUNDATION_EXPORT void PPAdminRefreshCommandSpineDashboard(UIViewController * _Nonnull controller);

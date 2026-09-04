@@ -23,10 +23,8 @@
 #import "PPToast.h"
 #import "PPFunc.h"
 #import "UIViewController+PPNavBar.h"
-#import "UIImageView+WebCache.h"
 #import "UserManager+Refs.h"
 #import "PPStaffAuth.h"
-#import "SDImageCache.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseStorage;
@@ -1692,8 +1690,10 @@
     if (avatarStr.length > 0) {
         self.monogramLabel.hidden = YES;
         self.avatarImageView.hidden = NO;
-        [self.avatarImageView sd_setImageWithURL:[NSURL URLWithString:avatarStr]
-                               placeholderImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
+        [PPAdminImageLoader setImageWithURLString:avatarStr
+                                       onImageView:self.avatarImageView
+                                       placeholder:[UIImage systemImageNamed:@"person.crop.circle.fill"]
+                                       completion:nil];
     } else {
         self.avatarImageView.hidden = YES;
         self.monogramLabel.hidden = NO;
@@ -1706,11 +1706,12 @@
 }
 
 - (void)updateStorageData {
-    unsigned long long diskSize = [[SDImageCache sharedImageCache] totalDiskSize];
-    double mbSize = (double)diskSize / (1024.0 * 1024.0);
-    self.cacheFootprintLabel.text = [NSString stringWithFormat:@"%.1f MB", mbSize];
-    float ratio = MIN(MAX((float)(mbSize / 150.0), 0.05f), 1.0f);
-    self.cacheProgressBar.progress = ratio;
+    [PPAdminImageLoader calculateDiskCacheSizeWithCompletion:^(NSNumber * _Nullable bytes) {
+        double mbSize = bytes ? bytes.unsignedLongLongValue / (1024.0 * 1024.0) : 0;
+        self.cacheFootprintLabel.text = [NSString stringWithFormat:@"%.1f MB", mbSize];
+        float ratio = MIN(MAX((float)(mbSize / 150.0), 0.05f), 1.0f);
+        self.cacheProgressBar.progress = ratio;
+    }];
 }
 
 #pragma mark - User Actions
@@ -1765,8 +1766,7 @@
                                  icon:[UIImage systemImageNamed:@"trash.fill"]
                          confirmBlock:^{
         [PPHUD showIndeterminateIn:weakSelf.view title:kLang(@"Loading") subtitle:nil];
-        [[SDImageCache sharedImageCache] clearMemory];
-        [[SDImageCache sharedImageCache] clearDiskOnCompletion:^{
+        [PPAdminImageLoader clearAllCachedImagesWithCompletion:^{
             [PPHUD dismiss];
             [PPHUD showSuccess:kLang(@"Settings_Storage_Purged_Toast") ?: @"تم تنظيف الذاكرة المؤقتة بنجاح"];
             [weakSelf updateStorageData];

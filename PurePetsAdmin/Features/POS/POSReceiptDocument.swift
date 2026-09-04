@@ -74,6 +74,7 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     /// Confirmed-response fallback used only when the post-commit Firestore read
     /// is temporarily unavailable. It preserves the server transaction ID/total
     /// and the exact cart snapshot that produced the accepted command.
+    @MainActor
     init(
         transactionID: String,
         subtotal: Double = 0,

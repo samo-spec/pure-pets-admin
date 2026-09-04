@@ -421,22 +421,11 @@ struct AdminAccountView: View {
                         .frame(width: 96, height: 96)
 
                     if let url = viewModel.avatarURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 90, height: 90)
-                                    .clipShape(Circle())
-                            case .failure:
-                                defaultMonogramAvatar
-                            case .empty:
-                                ProgressView().tint(AdminSurface.primary)
-                            @unknown default:
-                                defaultMonogramAvatar
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 90, height: 90)) {
+                            defaultMonogramAvatar
                         }
+                        .frame(width: 90, height: 90)
+                        .clipShape(Circle())
                     } else {
                         defaultMonogramAvatar
                     }
@@ -1689,14 +1678,11 @@ struct AdminAvatarStudioSheetView: View {
                         .frame(width: 140, height: 140)
 
                     if let url = viewModel.avatarURL {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable().scaledToFill().frame(width: 130, height: 130).clipShape(Circle())
-                            default:
-                                defaultMonogram
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 130, height: 130)) {
+                            defaultMonogram
                         }
+                        .frame(width: 130, height: 130)
+                        .clipShape(Circle())
                     } else {
                         defaultMonogram
                     }

@@ -2,118 +2,48 @@
 //  PPImageManager.m
 //  PurePetsAdmin
 //
-//  Created by Mohammed Ahmed on 13/09/2025.
-//
-
-
-//
-//  PPImageManager.m
-//  PurePetsAdmin
-//
-//  Created by ChatGPT on 2025-09-13.
-//
+//  Compatibility façade for established UIKit callers. All retrieval now routes
+//  through PPAdminImageLoader / Kingfisher's shared Admin disk cache.
 
 #import "PPImageManager.h"
-#import "UIImageView+WebCache.h"
-#import "SDImageCache.h"
-#import "SDWebImageManager.h"
-#import "SDWebImagePrefetcher.h"
+#import "PurePetsAdmin-Swift.h"
 
 @implementation PPImageManager
 
 + (instancetype)sharedManager {
-    static PPImageManager *inst;
+    static PPImageManager *manager;
     static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        inst = [[PPImageManager alloc] init];
-    });
-    return inst;
+    dispatch_once(&onceToken, ^{ manager = [[PPImageManager alloc] init]; });
+    return manager;
 }
 
-#pragma mark - Convenience helpers
-
-+ (UIImage *)_placeholderFromName:(nullable NSString *)name {
-    if (!name) return nil;
-    UIImage *img = [UIImage imageNamed:name];
-    if (img) return img;
-    if (@available(iOS 13.0, *)) {
-        UIImage *sf = [UIImage systemImageNamed:name];
-        if (sf) return sf;
-    }
-    return nil;
++ (UIImage *)pp_placeholderFromName:(NSString *)name {
+    if (!name.length) return nil;
+    return [UIImage imageNamed:name] ?: [UIImage systemImageNamed:name];
 }
 
-+ (NSURL *)_urlFromString:(NSString *)s {
-    if (!s) return nil;
-    return [NSURL URLWithString:s];
-}
-
-+ (void)_callOnMain:(void(^)(void))block {
-    if (!block) return;
++ (void)pp_onMain:(dispatch_block_t)block {
     if ([NSThread isMainThread]) block();
     else dispatch_async(dispatch_get_main_queue(), block);
 }
 
-#pragma mark - Public set methods (simple overloads)
-
 - (void)setImageFromUrl:(NSString *)urlString toImageView:(UIImageView *)imageView {
-    [self setImageFromUrl:urlString
-              toImageView:imageView
-         placeholderName:nil
-               completion:nil];
+    [self setImageFromUrl:urlString toImageView:imageView placeholderName:nil completion:nil];
 }
 
 - (void)setImageFromUrl:(NSString *)urlString
            toImageView:(UIImageView *)imageView
-            completion:(void(^)(UIImage * _Nullable image))completion
-{
-    [self setImageFromUrl:urlString
-              toImageView:imageView
-          placeholderName:nil completion:^(UIImage * _Nullable image) {
-        if (completion) completion(image);
-    }];
+            completion:(void(^)(UIImage * _Nullable image))completion {
+    [self setImageFromUrl:urlString toImageView:imageView placeholderName:nil completion:completion];
 }
 
 - (void)setImageFromUrl:(NSString *)urlString
            toImageView:(UIImageView *)imageView
-              fadeType:(PPImageFadeType)fadeType
-              duration:(NSTimeInterval)duration
-            completion:(void(^)(UIImage * _Nullable image))completion
-{
-    // default placeholder nil
+      placeholderName:(NSString *)placeholderName
+            completion:(void(^)(UIImage * _Nullable image))completion {
     [self setImageFromUrl:urlString
               toImageView:imageView
-         placeholderImage:@"placeholder1x1" completion:^(UIImage * _Nullable image) {
-     
-        // perform custom fade
-        if (image && fadeType != PPImageFadeTypeNone) {
-            [PPImageManager _callOnMain:^{
-                [UIView transitionWithView:imageView
-                                  duration:duration > 0 ? duration : 0.25
-                                   options:(fadeType == PPImageFadeTypeCrossDissolve ? UIViewAnimationOptionTransitionCrossDissolve :
-                                            fadeType == PPImageFadeTypeFlipFromLeft ? UIViewAnimationOptionTransitionFlipFromLeft :
-                                            UIViewAnimationOptionTransitionFlipFromRight)
-                                animations:^{
-                    imageView.image = image;
-                } completion:nil];
-            }];
-        } else {
-            [PPImageManager _callOnMain:^{
-                imageView.image = image;
-            }];
-        }
-        if (completion) completion(image);
-    }];
-}
-
-- (void)setImageFromUrl:(NSString *)urlString
-           toImageView:(UIImageView *)imageView
-      placeholderImage:(NSString *)placeholderName
-            completion:(void(^)(UIImage * _Nullable image))completion
-{
-    [self setImageFromUrl:urlString
-              toImageView:imageView
-                   options:SDWebImageRetryFailed | SDWebImageHighPriority
+                   options:0
                    context:nil
               placeholder:placeholderName
                 fadeType:PPImageFadeTypeCrossDissolve
@@ -123,198 +53,121 @@
     }];
 }
 
-#pragma mark - Full control
+- (void)setImageFromUrl:(NSString *)urlString
+           toImageView:(UIImageView *)imageView
+              fadeType:(PPImageFadeType)fadeType
+              duration:(NSTimeInterval)duration
+            completion:(void(^)(UIImage * _Nullable image))completion {
+    [self setImageFromUrl:urlString
+              toImageView:imageView
+                   options:0
+                   context:nil
+              placeholder:@"placeholder1x1"
+                fadeType:fadeType
+                duration:duration
+              completion:^(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache) {
+        if (completion) completion(image);
+    }];
+}
 
 - (void)setImageFromUrl:(NSString *)urlString
            toImageView:(UIImageView *)imageView
                 options:(NSUInteger)sdOptions
-                context:(nullable NSDictionary<SDWebImageContextOption,id> *)context
-           placeholder:(nullable NSString *)placeholderName
+                context:(NSDictionary *)context
+           placeholder:(NSString *)placeholderName
              fadeType:(PPImageFadeType)fadeType
              duration:(NSTimeInterval)duration
-           completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion
-{
+           completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion {
     if (!imageView) {
         if (completion) completion(nil, [NSError errorWithDomain:@"PPImageManager" code:-1 userInfo:@{NSLocalizedDescriptionKey: @"imageView is nil"}], NO);
         return;
     }
 
-    // Cancel prior load to avoid race conditions
     [self cancelLoadForImageView:imageView];
-
-    UIImage *placeholder = [PPImageManager _placeholderFromName:placeholderName];
-
-    NSURL *url = [PPImageManager _urlFromString:urlString];
-    SDWebImageOptions options = (SDWebImageOptions)sdOptions;
-
-    // If no URL: set placeholder and bail
-    if (!url) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            imageView.image = placeholder;
-            if (completion) completion(placeholder, nil, YES);
-        });
+    UIImage *placeholder = [PPImageManager pp_placeholderFromName:placeholderName];
+    if (!urlString.length) {
+        imageView.image = placeholder;
+        if (completion) completion(placeholder, nil, YES);
         return;
     }
 
-    __weak typeof(self) weakSelf = self;
     __weak UIImageView *weakImageView = imageView;
-
-    // Use SDWebImage's sd_setImageWithURL which will handle memory/disk caches and progressive download
-    [imageView sd_setImageWithURL:url
-                 placeholderImage:placeholder
-                          options:options
-                          context:context
-                         progress:nil
-                        completed:^(UIImage * _Nullable image, NSError * _Nullable error, SDImageCacheType cacheType, NSURL * _Nullable imageURL) {
-
-        //__strong typeof(weakSelf) strongSelf = weakSelf;
-        UIImageView *iv = weakImageView;
-        BOOL fromCache = (cacheType != SDImageCacheTypeNone);
-
-        if (error) {
-            // keep placeholder
-            [PPImageManager _callOnMain:^{
-                if (iv && !iv.image) iv.image = placeholder;
-            }];
-            if (completion) completion(nil, error, fromCache);
-            return;
+    [PPAdminImageLoader setImageWithURLString:urlString onImageView:imageView placeholder:placeholder completion:^(UIImage * _Nullable image) {
+        UIImageView *view = weakImageView;
+        if (!view) return;
+        void (^finish)(void) = ^{
+            if (completion) completion(image, nil, NO);
+        };
+        if (image && fadeType != PPImageFadeTypeNone) {
+            UIViewAnimationOptions option = fadeType == PPImageFadeTypeFlipFromLeft ? UIViewAnimationOptionTransitionFlipFromLeft :
+                fadeType == PPImageFadeTypeFlipFromRight ? UIViewAnimationOptionTransitionFlipFromRight :
+                UIViewAnimationOptionTransitionCrossDissolve;
+            [UIView transitionWithView:view duration:(duration > 0 ? duration : 0.25) options:option | UIViewAnimationOptionAllowAnimatedContent animations:^{
+                view.image = image;
+            } completion:^(__unused BOOL finished) { finish(); }];
+        } else {
+            finish();
         }
-
-        if (!image) {
-            if (completion) completion(nil, nil, fromCache);
-            return;
-        }
-
-        // If fadeType requested AND image didn't come from memory cache (or even if it did, you may want animation)
-        // We'll animate manually to ensure consistent look.
-        [PPImageManager _callOnMain:^{
-            if (!iv) {
-                if (completion) completion(image, nil, fromCache);
-                return;
-            }
-
-            if (fadeType == PPImageFadeTypeNone) {
-                iv.image = image;
-                if (completion) completion(image, nil, fromCache);
-                return;
-            }
-
-            UIViewAnimationOptions animOption = UIViewAnimationOptionTransitionCrossDissolve;
-            if (fadeType == PPImageFadeTypeCrossDissolve) animOption = UIViewAnimationOptionTransitionCrossDissolve;
-            else if (fadeType == PPImageFadeTypeFlipFromLeft) animOption = UIViewAnimationOptionTransitionFlipFromLeft;
-            else if (fadeType == PPImageFadeTypeFlipFromRight) animOption = UIViewAnimationOptionTransitionFlipFromRight;
-
-            [UIView transitionWithView:iv
-                              duration:(duration > 0 ? duration : 0.25)
-                               options:animOption | UIViewAnimationOptionAllowAnimatedContent
-                            animations:^{
-                iv.image = image;
-            } completion:^(BOOL finished) {
-                if (completion) completion(image, nil, fromCache);
-            }];
-        }];
     }];
 }
 
-#pragma mark - Cancel
 - (void)cancelLoadForImageView:(UIImageView *)imageView {
-    if (!imageView) return;
-    [imageView sd_cancelCurrentImageLoad];
+    if (imageView) [PPAdminImageLoader cancelLoadForImageView:imageView];
 }
 
-#pragma mark - image-only fetchers
-
-- (void)imageFromUrl:(NSString *)urlString completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion {
-    [self imageFromUrl:urlString options:SDWebImageRetryFailed | SDWebImageHighPriority context:nil completion:completion];
+- (void)imageFromUrl:(NSString *)urlString
+          completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion {
+    [self imageFromUrl:urlString options:0 context:nil completion:completion];
 }
 
 - (void)imageFromUrl:(NSString *)urlString
              options:(NSUInteger)sdOptions
-             context:(nullable NSDictionary<SDWebImageContextOption,id> *)context
-          completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion
-{
-    NSURL *url = [PPImageManager _urlFromString:urlString];
-    if (!url) {
-        if (completion) [PPImageManager _callOnMain:^{ completion(nil, [NSError errorWithDomain:@"PPImageManager" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"Invalid URL"}], NO); }];
-        return;
-    }
-
-    SDWebImageOptions options = (SDWebImageOptions)sdOptions;
-    //__weak typeof(self) weakSelf = self;
-
-    [[SDWebImageManager sharedManager] loadImageWithURL:url
-                                                options:options
-                                               progress:nil
-                                              completed:^(UIImage * _Nullable image, NSData * _Nullable data, NSError * _Nullable error, SDImageCacheType cacheType, BOOL finished, NSURL * _Nullable imageURL) {
-        BOOL fromCache = (cacheType != SDImageCacheTypeNone);
-        [PPImageManager _callOnMain:^{
-            if (completion) completion(image, error, fromCache);
-        }];
+             context:(NSDictionary *)context
+          completion:(void(^)(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache))completion {
+    [PPAdminImageLoader loadImageWithURLString:urlString completion:^(UIImage * _Nullable image, NSError * _Nullable error, BOOL fromCache) {
+        if (completion) completion(image, error, fromCache);
     }];
 }
 
-#pragma mark - prefetch
 - (void)prefetchURLs:(NSArray<NSString *> *)urlStrings
-          completion:(void(^)(NSArray<NSURL *> * _Nullable finishedURLs, NSUInteger skippedCount))completion
-{
-    NSMutableArray<NSURL *> *urls = [NSMutableArray array];
-    for (NSString *s in urlStrings) {
-        NSURL *u = [PPImageManager _urlFromString:s];
-        if (u) [urls addObject:u];
+          completion:(void(^)(NSArray<NSURL *> * _Nullable finishedURLs, NSUInteger skippedCount))completion {
+    NSMutableArray<NSURL *> *validURLs = [NSMutableArray array];
+    dispatch_group_t group = dispatch_group_create();
+    for (NSString *urlString in urlStrings) {
+        NSURL *url = [NSURL URLWithString:urlString];
+        if (!url) continue;
+        [validURLs addObject:url];
+        dispatch_group_enter(group);
+        [PPAdminImageLoader loadImageWithURLString:urlString completion:^(__unused UIImage *image, __unused NSError *error, __unused BOOL fromCache) {
+            dispatch_group_leave(group);
+        }];
     }
-    if (urls.count == 0) {
-        if (completion) completion(@[], 0);
-        return;
-    }
-
-    [[SDWebImagePrefetcher sharedImagePrefetcher] prefetchURLs:urls
-                                                       progress:nil
-                                                      completed:^(NSUInteger finishedCount, NSUInteger skippedCount) {
-        if (completion) completion(urls, skippedCount);
-    }];
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        if (completion) completion(validURLs, urlStrings.count - validURLs.count);
+    });
 }
-
-#pragma mark - cache operations
 
 - (void)clearCacheForUrl:(NSString *)urlString completion:(void(^)(void))completion {
-    if (!urlString) {
-        if (completion) completion();
-        return;
-    }
-    NSString *key = urlString;
-    // SDImageCache uses URL.absoluteString as key by default
-    [[SDImageCache sharedImageCache] removeImageForKey:key fromDisk:YES withCompletion:^{
-        if (completion) completion();
-    }];
+    [PPAdminImageLoader removeImageForCacheKey:urlString completion:completion];
 }
 
 - (void)clearAllCacheWithCompletion:(void(^)(void))completion {
-    [[SDImageCache sharedImageCache] clearMemory];
-    [[SDImageCache sharedImageCache] clearDiskOnCompletion:^{
-        if (completion) completion();
-    }];
+    [PPAdminImageLoader clearAllCachedImagesWithCompletion:completion];
 }
 
 - (void)removeImageForKey:(NSString *)cacheKey completion:(void(^)(void))completion {
-    if (!cacheKey) {
-        if (completion) completion();
-        return;
-    }
-    [[SDImageCache sharedImageCache] removeImageForKey:cacheKey fromDisk:YES withCompletion:^{
-        if (completion) completion();
-    }];
+    [PPAdminImageLoader removeImageForCacheKey:cacheKey completion:completion];
 }
 
-- (NSURL *)cacheBustedURLForURLString:(NSString *)urlString token:(nullable NSString *)token {
-    if (!urlString) return nil;
-    NSString *t = token.length ? token : [NSString stringWithFormat:@"%.0f", [NSDate date].timeIntervalSince1970 * 1000];
-    NSURLComponents *c = [NSURLComponents componentsWithString:urlString];
-    if (!c) return [NSURL URLWithString:urlString];
-    // add query param 'v'
-    NSMutableArray<NSURLQueryItem *> *items = c.queryItems ? [c.queryItems mutableCopy] : [NSMutableArray array];
-    [items addObject:[NSURLQueryItem queryItemWithName:@"v" value:t]];
-    c.queryItems = items;
-    return c.URL;
+- (NSURL *)cacheBustedURLForURLString:(NSString *)urlString token:(NSString *)token {
+    if (!urlString.length) return nil;
+    NSURLComponents *components = [NSURLComponents componentsWithString:urlString];
+    if (!components) return [NSURL URLWithString:urlString];
+    NSMutableArray<NSURLQueryItem *> *items = [components.queryItems mutableCopy] ?: [NSMutableArray array];
+    NSString *version = token.length ? token : [NSString stringWithFormat:@"%.0f", NSDate.date.timeIntervalSince1970 * 1000];
+    [items addObject:[NSURLQueryItem queryItemWithName:@"v" value:version]];
+    components.queryItems = items;
+    return components.URL;
 }
 
 @end

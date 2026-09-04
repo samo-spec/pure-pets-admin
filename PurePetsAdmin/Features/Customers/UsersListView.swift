@@ -585,60 +585,83 @@ struct AdminUsersListView: View {
     }
 
     var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                liquidNavBar
-                bentoTelemetryGrid
-                searchAndFilterDeck
-                customerListSection
-            }
-
-            // Floating Operational Toast
-            if let toast = viewModel.toastMessage {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                        Text(toast)
-                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
-                            .foregroundColor(.white)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(red: 0.12, green: 0.14, blue: 0.18), Color(red: 0.18, green: 0.20, blue: 0.25)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: Capsule()
-                    )
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-                    .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
-                    .padding(.bottom, 24)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                VStack(spacing: 0) {
+                    liquidNavBar
+                    bentoTelemetryGrid
+                    searchAndFilterDeck
+                    customerListSection
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+
+                // Floating Operational Toast
+                if let toast = viewModel.toastMessage {
+                    VStack {
+                        Spacer()
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                            Text(toast)
+                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(
+                            LinearGradient(
+                                colors: [Color(red: 0.12, green: 0.14, blue: 0.18), Color(red: 0.18, green: 0.20, blue: 0.25)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: Capsule()
+                        )
+                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                        .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+                }
+
+                // Push Navigation Link for Customer Dossier View
+                NavigationLink(
+                    destination: Group {
+                        if let customer = viewModel.activeDossierCustomer {
+                            AdminCustomerDossierView(
+                                customer: customer,
+                                viewModel: viewModel,
+                                onDismiss: {
+                                    viewModel.activeDossierCustomer = nil
+                                }
+                            )
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.activeDossierCustomer != nil },
+                        set: { if !$0 { viewModel.activeDossierCustomer = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+                .hidden()
             }
+            .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $viewModel.activeDossierCustomer) { customer in
-            AdminCustomerDossierSheet(customer: customer, viewModel: viewModel)
-        }
         .sheet(isPresented: $viewModel.isAddCustomerSheetPresented) {
             AdminAddCustomerSheet(viewModel: viewModel)
         }
     }
 
-    // MARK: - 1. Liquid Navigation Bar
+    // MARK: - 1. Liquid Navigation Bar (Sovereign Team Members UI Pattern)
 
     private var liquidNavBar: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            // Back Button
+        HStack(spacing: 12) {
+            // 1. Transparent & Borderless Squircle Back Button
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 if let onDismiss {
@@ -647,109 +670,88 @@ struct AdminUsersListView: View {
                     dismiss()
                 }
             } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                        .font(.system(size: 14, weight: .bold))
-                    Text(Language.get("Back", alter: "رجوع"))
-                        .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .body))
-                }
-                .foregroundColor(AdminSurface.primary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(Color.clear)
             }
+            .buttonStyle(.plain)
             .accessibilityLabel(Language.get("Back", alter: "رجوع"))
 
-            VStack(alignment: .leading, spacing: 1) {
+            // 2. Title Stack matching Team Members Screen Pattern
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"))
+                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
                 HStack(spacing: 6) {
-                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء / حسابات العملاء"))
-                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 6, height: 6)
+
+                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • مباشر"))
+                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
                         .foregroundColor(AdminSurface.secondaryText)
                         .lineLimit(1)
 
-                    // Live Sync Pulse
-                    HStack(spacing: 3) {
-                        Circle()
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: 5, height: 5)
-                        Text(Language.get("LiveSync", alter: "مباشر"))
-                            .font(Font.custom("Beiruti-Bold", size: 9, relativeTo: .caption2))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                    }
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Capsule())
-                }
-
-                HStack(spacing: 6) {
-                    Text(Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"))
-                        .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Text("\(viewModel.totalCount)")
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption))
+                    Text("(\(viewModel.totalCount))")
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 1)
-                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Refresh Button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    isSpinning = true
-                }
-                viewModel.startListening()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    isSpinning = false
-                }
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .rotationEffect(.degrees(isSpinning ? 360 : 0))
-                    .frame(width: 34, height: 34)
-                    .background(AdminSurface.control, in: Circle())
-            }
-            .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+            Spacer(minLength: 8)
 
-            // "+ إضافة عميل" (Add Customer Action)
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                viewModel.isAddCustomerSheetPresented = true
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                    Text(Language.get("Add", alter: "إضافة"))
-                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .callout))
+            // 3. Trailing Action Items (Transparent & Borderless)
+            HStack(spacing: 6) {
+                // Refresh Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isSpinning = true
+                    }
+                    viewModel.startListening()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                        isSpinning = false
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .rotationEffect(.degrees(isSpinning ? 360 : 0))
+                        .frame(width: 44, height: 44)
+                        .background(Color.clear)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    LinearGradient(
-                        colors: [AdminSurface.primary, Color(red: 0.72, green: 0.05, blue: 0.18)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: Capsule()
-                )
-                .shadow(color: AdminSurface.primary.opacity(0.25), radius: 6, y: 2)
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+
+                // Add Customer Action Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.isAddCustomerSheetPresented = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(Language.get("Add", alter: "إضافة"))
+                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 38)
+                    .background(AdminSurface.primary, in: Capsule())
+                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 6, y: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("AddUser", alter: "إضافة عميل جديد"))
             }
-            .accessibilityLabel(Language.get("AddUser", alter: "إضافة عميل جديد"))
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
+        .padding(.top, 8)
         .padding(.bottom, 6)
-        .background(AdminSurface.surface)
-        .overlay(
-            Divider().background(AdminSurface.hairline),
-            alignment: .bottom
-        )
+        .background(Color.clear)
     }
 
     // MARK: - 2. Bento Telemetry Grid
@@ -1254,13 +1256,8 @@ private struct CustomerAccountCardView: View {
     private var avatarElement: some View {
         ZStack(alignment: .bottomTrailing) {
             if let photo = customer.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        monogramView
-                    }
+                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
+                    monogramView
                 }
                 .frame(width: 48, height: 48)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1320,11 +1317,14 @@ private struct CustomerAccountCardView: View {
     }
 }
 
-// MARK: - Reimagined Deep Customer Dossier Sheet
+// MARK: - Reimagined Deep Customer Dossier View (Push Citizenship)
 
-struct AdminCustomerDossierSheet: View {
+typealias AdminCustomerDossierSheet = AdminCustomerDossierView
+
+struct AdminCustomerDossierView: View {
     let customer: PPCustomerAccountModel
     @ObservedObject var viewModel: AdminCustomerAccountsViewModel
+    var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedStatus: CustomerAccountStatus
@@ -1332,9 +1332,14 @@ struct AdminCustomerDossierSheet: View {
     @State private var features: [String: Bool]
     @State private var restrictions: [String: Bool]
 
-    init(customer: PPCustomerAccountModel, viewModel: AdminCustomerAccountsViewModel) {
+    init(
+        customer: PPCustomerAccountModel,
+        viewModel: AdminCustomerAccountsViewModel,
+        onDismiss: (() -> Void)? = nil
+    ) {
         self.customer = customer
         self.viewModel = viewModel
+        self.onDismiss = onDismiss
         _selectedStatus = State(initialValue: customer.status)
         _isVerified = State(initialValue: customer.isVerified)
         _features = State(initialValue: customer.features)
@@ -1342,7 +1347,9 @@ struct AdminCustomerDossierSheet: View {
     }
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            dossierNavigationBar
+
             ScrollView {
                 VStack(spacing: 16) {
                     // Hero Profile Deck
@@ -1370,20 +1377,107 @@ struct AdminCustomerDossierSheet: View {
                 .padding(.top, 14)
                 .padding(.bottom, 36)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Done", alter: "تم")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
-                    .foregroundColor(AdminSurface.primary)
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: Dossier Navigation Bar (Sovereign Push Navigation)
+
+    private var dossierNavigationBar: some View {
+        HStack(spacing: 12) {
+            // 1. Transparent & Borderless Squircle Back Button
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
+            } label: {
+                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(Color.clear)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+
+            // 2. Title & Subtitle Stack
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"))
+                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6))
+                        .frame(width: 6, height: 6)
+
+                    Text(customer.name)
+                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
                 }
             }
+
+            Spacer(minLength: 8)
+
+            // 3. Trailing Action Menu (Transparent & Borderless)
+            Menu {
+                if !customer.phone.isEmpty {
+                    Button {
+                        let clean = customer.phone.filter { "0123456789+".contains($0) }
+                        if let url = URL(string: "tel://\(clean)") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
+                    }
+
+                    Button {
+                        let clean = customer.phone.filter { $0.isNumber }
+                        if let url = URL(string: "https://wa.me/\(clean)") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label(Language.get("WhatsApp", alter: "واتساب"), systemImage: "message.fill")
+                    }
+                }
+
+                if !customer.email.isEmpty {
+                    Button {
+                        if let url = URL(string: "mailto:\(customer.email)") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label(Language.get("Email", alter: "بريد إلكتروني"), systemImage: "envelope.fill")
+                    }
+                }
+
+                Button {
+                    UIPasteboard.general.string = customer.id
+                    viewModel.showToast(Language.get("UID_Copied", alter: "تم نسخ معرّف العميل"))
+                } label: {
+                    Label(Language.get("CopyUID", alter: "نسخ معرّف العميل"), systemImage: "doc.on.doc")
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .frame(width: 44, height: 44)
+                    .background(Color.clear)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Actions", alter: "خيارات إضافية"))
         }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(Color.clear)
     }
 
     // MARK: Dossier Hero View
@@ -1392,11 +1486,8 @@ struct AdminCustomerDossierSheet: View {
         VStack(spacing: 8) {
             ZStack(alignment: .bottomTrailing) {
                 if let photo = customer.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                    AsyncImage(url: url) { phase in
-                        switch phase {
-                        case .success(let img): img.resizable().scaledToFill()
-                        default: dossierMonogram
-                        }
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 72, height: 72)) {
+                        dossierMonogram
                     }
                     .frame(width: 72, height: 72)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

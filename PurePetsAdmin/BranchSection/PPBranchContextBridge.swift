@@ -8,11 +8,45 @@
 import SwiftUI
 import Combine
 
+// MARK: - Branch Session Model
+
+public struct PPBranchSession: Identifiable, Hashable, Sendable {
+    public let id: String
+    public let branchId: String
+    public let branchCode: String
+    public let branchName: String
+    public let userId: String
+    public let userName: String
+    public let openedAt: Date
+    public var isActive: Bool
+
+    public init(
+        id: String = UUID().uuidString,
+        branchId: String,
+        branchCode: String = "",
+        branchName: String = "",
+        userId: String = "",
+        userName: String = "",
+        openedAt: Date = Date(),
+        isActive: Bool = true
+    ) {
+        self.id = id
+        self.branchId = branchId
+        self.branchCode = branchCode
+        self.branchName = branchName
+        self.userId = userId
+        self.userName = userName
+        self.openedAt = openedAt
+        self.isActive = isActive
+    }
+}
+
 @MainActor
 public final class BranchContextStore: ObservableObject {
     public static let shared = BranchContextStore()
 
     @Published public private(set) var activeBranch: PPBranchModel?
+    @Published public private(set) var activeSession: PPBranchSession?
     @Published public private(set) var availableBranches: [PPBranchModel] = []
     @Published public private(set) var isGlobal: Bool = false
     public var isGlobalAccess: Bool { isGlobal }
@@ -20,6 +54,10 @@ public final class BranchContextStore: ObservableObject {
     @Published public private(set) var currentBranchDisplayName: String = ""
     @Published public private(set) var currentStaff: PPStaffDoc?
     @Published public private(set) var isSyncingBackend: Bool = false
+
+    public var currentSessionId: String {
+        activeSession?.id ?? ""
+    }
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -49,6 +87,27 @@ public final class BranchContextStore: ObservableObject {
         self.isGlobal = manager.isGlobalAccess
         self.needsBranchSelection = manager.needsBranchSelection
         self.currentBranchDisplayName = manager.currentBranchDisplayName
+
+        // Maintain operational branch session
+        if let branch = manager.activeBranch, !branch.branchID.isEmpty {
+            let branchId = branch.branchID
+            if activeSession == nil || activeSession?.branchId != branchId {
+                let staffId = manager.currentStaff?.uid ?? ""
+                let staffName = manager.currentStaff?.displayName ?? "Staff"
+                let session = PPBranchSession(
+                    branchId: branchId,
+                    branchCode: branch.code ?? "",
+                    branchName: branch.localizedName(),
+                    userId: staffId,
+                    userName: staffName
+                )
+                self.activeSession = session
+                UserDefaults.standard.set(session.id, forKey: "PPActiveBranchSessionID")
+            }
+        } else {
+            self.activeSession = nil
+            UserDefaults.standard.removeObject(forKey: "PPActiveBranchSessionID")
+        }
     }
 
     @discardableResult

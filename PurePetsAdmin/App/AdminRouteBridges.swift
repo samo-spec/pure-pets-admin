@@ -166,6 +166,10 @@ import SwiftUI
 }
 
 @objc public final class AdminPOSFastSellHostingController: UIViewController {
+    private let sessionActivityIndicator = UIActivityIndicatorView(style: .large)
+    private var sessionRestoreGeneration = UUID()
+    private var hasInstalledPOSHost = false
+
     public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
         hidesBottomBarWhenPushed = true
@@ -181,8 +185,43 @@ import SwiftUI
         view.backgroundColor = .ppBackground
         extendedLayoutIncludesOpaqueBars = true
         edgesForExtendedLayout = .all
+        showSessionRestoreLoadingState()
+        restoreCanonicalSession()
+    }
 
-        let session = AdminSession(source: PPAdminSessionSnapshot())
+    private func showSessionRestoreLoadingState() {
+        sessionActivityIndicator.translatesAutoresizingMaskIntoConstraints = false
+        sessionActivityIndicator.color = .ppPrimary
+        sessionActivityIndicator.startAnimating()
+        view.addSubview(sessionActivityIndicator)
+        NSLayoutConstraint.activate([
+            sessionActivityIndicator.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            sessionActivityIndicator.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+    }
+
+    private func restoreCanonicalSession() {
+        let generation = UUID()
+        sessionRestoreGeneration = generation
+
+        PPAdminSessionBridge.restoreCurrentSession { [weak self] snapshot, error in
+            DispatchQueue.main.async {
+                guard let self, self.sessionRestoreGeneration == generation, !self.hasInstalledPOSHost else { return }
+                guard let snapshot, !snapshot.uid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    self.presentSessionRestoreFailure(error)
+                    return
+                }
+                self.installPOSHost(session: AdminSession(source: snapshot))
+            }
+        }
+    }
+
+    private func installPOSHost(session: AdminSession) {
+        guard !hasInstalledPOSHost else { return }
+        hasInstalledPOSHost = true
+        sessionActivityIndicator.stopAnimating()
+        sessionActivityIndicator.removeFromSuperview()
+
         let host = UIHostingController(rootView: AdminPOSFastSellView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
@@ -200,6 +239,24 @@ import SwiftUI
             host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
         host.didMove(toParent: self)
+    }
+
+    private func presentSessionRestoreFailure(_ error: Error?) {
+        sessionActivityIndicator.stopAnimating()
+        let message = error?.localizedDescription ?? Language.get("StatusUserDocError", alter: nil)
+        let alert = UIAlertController(
+            title: Language.get("Error", alter: nil),
+            message: message,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: Language.get("OK", alter: nil), style: .default) { [weak self] _ in
+            guard let self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        present(alert, animated: true)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -398,7 +455,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminPetsHotelHubView())
+        let host = UIHostingController(rootView: AdminPetsHotelHubView { [weak self] in
+            guard let self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -416,5 +479,4 @@ import SwiftUI
         navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 }
-
 

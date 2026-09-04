@@ -11,8 +11,7 @@
 @import FirebaseAuth;
 @import FirebaseMessaging;
 @import FirebaseAuth;
-#import "SDImageCache.h"
-#import "SDWebImageManager.h"
+#import "PurePetsAdmin-Swift.h"
 
 @implementation SubKindModel
 
@@ -197,50 +196,23 @@
         return;
     }
 
-    // 2️⃣ Try SDWebImage cache by URL
+    // 2️⃣ Resolve through the shared Kingfisher cache and persist the result locally.
     if (self.subKindIconUrl.length) {
-        NSURL *url = [NSURL URLWithString:self.subKindIconUrl];
-
-        UIImage *cached = [[SDImageCache sharedImageCache] imageFromCacheForKey:url.absoluteString];
+        UIImage *cached = [PPAdminImageLoader cachedImageForURLString:self.subKindIconUrl];
         if (cached) {
-            
-            if (self.cachedIconImage) {
-                NSLog(@"[SubKindIcon] Memory cache hit | subKindID=%ld", (long)self.ID);
-                if (completion) completion(self.cachedIconImage);
-                return;
-            }
-            
             self.cachedIconImage = cached;
             if (completion) completion(cached);
             return;
         }
 
-        // 3️⃣ Download & cache
-        [[SDWebImageManager sharedManager] loadImageWithURL:url
-                                                    options:SDWebImageRetryFailed | SDWebImageScaleDownLargeImages
-                                                   progress:nil
-                                                  completed:^(UIImage * _Nullable image,
-                                                              NSData * _Nullable data,
-                                                              NSError * _Nullable error,
-                                                              SDImageCacheType cacheType,
-                                                              BOOL finished,
-                                                              NSURL * _Nullable imageURL)
-        {
+        [PPAdminImageLoader loadImageWithURLString:self.subKindIconUrl completion:^(UIImage * _Nullable image, NSError * _Nullable error, __unused BOOL fromCache) {
             if (image) {
-                NSLog(@"[SubKindIcon] Downloaded | subKindID=%ld | size=%@",
-                      (long)self.ID,
-                      NSStringFromCGSize(image.size));
-
+                NSLog(@"[SubKindIcon] Loaded | subKindID=%ld | size=%@", (long)self.ID, NSStringFromCGSize(image.size));
                 self.cachedIconImage = image;
-
-                // 🔥 BlurHash backfill
                 [self pp_generateAndSaveBlurHashIfNeededWithImage:image];
-
                 if (completion) completion(image);
             } else {
-                NSLog(@"[SubKindIcon] Download failed | subKindID=%ld | error=%@",
-                      (long)self.ID,
-                      error.localizedDescription);
+                NSLog(@"[SubKindIcon] Load failed | subKindID=%ld | error=%@", (long)self.ID, error.localizedDescription);
                 [self loadFallbackIcon:completion];
             }
         }];

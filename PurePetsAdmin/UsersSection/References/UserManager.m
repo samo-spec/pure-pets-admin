@@ -9,8 +9,8 @@
 @import FirebaseAuth;
 #import "PPRolePermission.h"
 #import "Lottie.h"
-#import "UIImageView+WebCache.h"
 #import "AppDelegate.h"
+#import "PurePetsAdmin-Swift.h"
 @import Firebase;
 @import FirebaseAuth;
 
@@ -913,18 +913,15 @@ NSString * const LanguageDidChangeNotification = @"LanguageDidChangeNotification
     
     // ✅ Load from cache or Firebase URL
     DLog(@"[ProfileImage] Start loading from URL: %@", cachedUrl);
-    [imageView sd_setImageWithURL:[NSURL URLWithString:cachedUrl]
-                 placeholderImage:nil
-                          options:SDWebImageHighPriority
-                        completed:^(UIImage * _Nullable image,
-                                    NSError * _Nullable error,
-                                    SDImageCacheType cacheType,
-                                    NSURL * _Nullable imageURL) {
+    [PPAdminImageLoader setImageWithURLString:cachedUrl
+                                       onImageView:imageView
+                                       placeholder:nil
+                                       completion:^(UIImage * _Nullable image) {
         // Remove shimmer/blur overlay
         [[imageView viewWithTag:9999] removeFromSuperview];
-        DLog(@"[ProfileImage] Finished loading. CacheType=%ld Error=%@", (long)cacheType, error);
-        
-        if (!error && image) {
+        DLog(@"[ProfileImage] Finished loading. Error=%@", image ? @"none" : @"image unavailable");
+
+        if (image) {
             DLog(@"[ProfileImage] ✅ Image loaded successfully.");
             if (completion) completion(image);
         } else {

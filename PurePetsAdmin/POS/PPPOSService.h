@@ -91,11 +91,87 @@ NS_ASSUME_NONNULL_BEGIN
                   posCustomerID:(nullable NSString *)posCustomerID
                      completion:(void(^)(PPPOSSubmitResult * _Nullable result,
                                          NSError * _Nullable error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(nullable NSString *)customerName
+                  customerPhone:(nullable NSString *)customerPhone
+                  posCustomerID:(nullable NSString *)posCustomerID
+                       branchID:(nullable NSString *)branchID
+                     completion:(void(^)(PPPOSSubmitResult * _Nullable result,
+                                         NSError * _Nullable error))completion;
 - (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts,
                                                 NSError * _Nullable error))completion;
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
                              completion:(void(^)(PPPOSReceipt * _Nullable receipt,
                                                  NSError * _Nullable error))completion;
+@end
+
+// MARK: - POS Deep Diagnostic Logging
+
+typedef NS_ENUM(NSInteger, PPPOSLogLevel) {
+    PPPOSLogLevelDebug = 0,
+    PPPOSLogLevelInfo = 1,
+    PPPOSLogLevelWarning = 2,
+    PPPOSLogLevelError = 3
+};
+
+@interface PPPOSLogEntry : NSObject
+@property (nonatomic, copy, readonly) NSString *entryID;
+@property (nonatomic, copy, readonly) NSDate *timestamp;
+@property (nonatomic, assign, readonly) PPPOSLogLevel level;
+@property (nonatomic, copy, readonly) NSString *levelString;
+@property (nonatomic, copy, readonly) NSString *category;
+@property (nonatomic, copy, readonly) NSString *event;
+@property (nonatomic, copy, readonly) NSString *message;
+@property (nonatomic, copy, readonly, nullable) NSString *traceID;
+@property (nonatomic, assign, readonly) NSInteger durationMs;
+@property (nonatomic, copy, readonly) NSDictionary<NSString *, id> *metadata;
+
+- (instancetype)initWithLevel:(PPPOSLogLevel)level
+                     category:(NSString *)category
+                        event:(NSString *)event
+                      message:(NSString *)message
+                      traceID:(nullable NSString *)traceID
+                   durationMs:(NSInteger)durationMs
+                     metadata:(nullable NSDictionary<NSString *, id> *)metadata;
+
+- (NSString *)formattedConsoleLine;
+- (NSString *)jsonString;
+@end
+
+FOUNDATION_EXPORT NSString * const PPPOSLogDidAppendNotification;
+
+@interface PPPOSLogger : NSObject
++ (instancetype)sharedLogger;
++ (NSString *)generateTraceID;
+
+@property (nonatomic, assign) BOOL consoleLoggingEnabled;
+@property (nonatomic, assign) NSInteger maxBufferSize;
+
+- (void)logLevel:(PPPOSLogLevel)level
+        category:(NSString *)category
+           event:(NSString *)event
+         message:(NSString *)message
+         traceID:(nullable NSString *)traceID
+      durationMs:(NSInteger)durationMs
+        metadata:(nullable NSDictionary<NSString *, id> *)metadata;
+
+- (void)infoWithCategory:(NSString *)category event:(NSString *)event message:(NSString *)message;
+- (void)infoWithCategory:(NSString *)category event:(NSString *)event traceID:(nullable NSString *)traceID metadata:(nullable NSDictionary<NSString *, id> *)metadata message:(NSString *)message;
+- (void)warnWithCategory:(NSString *)category event:(NSString *)event traceID:(nullable NSString *)traceID metadata:(nullable NSDictionary<NSString *, id> *)metadata message:(NSString *)message;
+- (void)errorWithCategory:(NSString *)category event:(NSString *)event traceID:(nullable NSString *)traceID durationMs:(NSInteger)durationMs error:(nullable NSError *)error metadata:(nullable NSDictionary<NSString *, id> *)metadata message:(NSString *)message;
+
+- (NSArray<PPPOSLogEntry *> *)allEntries;
+- (NSArray<PPPOSLogEntry *> *)recentEntriesWithLimit:(NSUInteger)limit;
+- (void)clearLogs;
+- (NSString *)exportLogsAsPlainText;
+- (NSString *)exportLogsAsJSON;
+- (NSDictionary<NSString *, id> *)diagnosticSummary;
 @end
 
 NS_ASSUME_NONNULL_END

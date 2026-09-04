@@ -120,6 +120,36 @@ NSString * const kStaffPermCategoriesManage = @"categories.manage";
 NSString * const kStaffPermVeterinariansView   = @"veterinarians.view";
 NSString * const kStaffPermVeterinariansManage = @"veterinarians.manage";
 
+NSString * const kStaffPermHotelView                  = @"hotel.view";
+NSString * const kStaffPermHotelReservationsManage    = @"hotel.reservations.manage";
+NSString * const kStaffPermHotelCheckIn               = @"hotel.checkin";
+NSString * const kStaffPermHotelCheckOut              = @"hotel.checkout";
+NSString * const kStaffPermHotelAccommodationsManage  = @"hotel.accommodations.manage";
+NSString * const kStaffPermHotelCareView              = @"hotel.care.view";
+NSString * const kStaffPermHotelCareManage            = @"hotel.care.manage";
+NSString * const kStaffPermHotelTaskRead               = @"hotel.task.read";
+NSString * const kStaffPermHotelTaskAssign             = @"hotel.task.assign";
+NSString * const kStaffPermHotelTaskExecute            = @"hotel.task.execute";
+NSString * const kStaffPermHotelMedicationRead         = @"hotel.medication.read";
+NSString * const kStaffPermHotelMedicationManage       = @"hotel.medication.manage";
+NSString * const kStaffPermHotelMedicationAdminister   = @"hotel.medication.administer";
+NSString * const kStaffPermHotelHealthRead             = @"hotel.health.read";
+NSString * const kStaffPermHotelHealthCreate           = @"hotel.health.create";
+NSString * const kStaffPermHotelHealthManage           = @"hotel.health.manage";
+NSString * const kStaffPermHotelIncidentsView          = @"hotel.incidents.view";
+NSString * const kStaffPermHotelIncidentsManage        = @"hotel.incidents.manage";
+NSString * const kStaffPermHotelServicesManage         = @"hotel.services.manage";
+NSString * const kStaffPermHotelMediaView              = @"hotel.media.view";
+NSString * const kStaffPermHotelMediaManage            = @"hotel.media.manage";
+NSString * const kStaffPermHotelBillingView            = @"hotel.billing.view";
+NSString * const kStaffPermHotelBillingManage          = @"hotel.billing.manage";
+NSString * const kStaffPermHotelBillingAdjust          = @"hotel.billing.adjust";
+NSString * const kStaffPermHotelTransportManage        = @"hotel.transport.manage";
+NSString * const kStaffPermHotelNotificationsManage    = @"hotel.notifications.manage";
+NSString * const kStaffPermHotelReportsView            = @"hotel.reports.view";
+NSString * const kStaffPermHotelSettingsManage         = @"hotel.settings.manage";
+NSString * const kStaffPermHotelOverride               = @"hotel.override";
+
 static NSString *PPStaffSafeString(id value) {
     if ([value isKindOfClass:NSString.class]) {
         return [(NSString *)value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -243,6 +273,20 @@ static NSArray<NSString *> *PPStaffAllPermissionKeys(void) {
             kStaffPermBannersView, kStaffPermBannersManage,
             kStaffPermCategoriesView, kStaffPermCategoriesManage,
             kStaffPermVeterinariansView, kStaffPermVeterinariansManage,
+            kStaffPermHotelView, kStaffPermHotelReservationsManage,
+            kStaffPermHotelCheckIn, kStaffPermHotelCheckOut,
+            kStaffPermHotelAccommodationsManage,
+            kStaffPermHotelCareView, kStaffPermHotelCareManage,
+            kStaffPermHotelTaskRead, kStaffPermHotelTaskAssign, kStaffPermHotelTaskExecute,
+            kStaffPermHotelMedicationRead, kStaffPermHotelMedicationManage, kStaffPermHotelMedicationAdminister,
+            kStaffPermHotelHealthRead, kStaffPermHotelHealthCreate, kStaffPermHotelHealthManage,
+            kStaffPermHotelIncidentsView, kStaffPermHotelIncidentsManage,
+            kStaffPermHotelServicesManage,
+            kStaffPermHotelMediaView, kStaffPermHotelMediaManage,
+            kStaffPermHotelBillingView, kStaffPermHotelBillingManage, kStaffPermHotelBillingAdjust,
+            kStaffPermHotelTransportManage, kStaffPermHotelNotificationsManage,
+            kStaffPermHotelReportsView, kStaffPermHotelSettingsManage,
+            kStaffPermHotelOverride,
         ];
     });
     return keys;
@@ -255,7 +299,11 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
         NSMutableArray<NSString *> *result = [NSMutableArray array];
         for (NSString *permission in PPStaffAllPermissionKeys()) {
             if ([permission hasSuffix:@".view"] &&
-                ![permission isEqualToString:kStaffPermDeliveryCODView]) {
+                ![permission isEqualToString:kStaffPermDeliveryCODView] &&
+                ![permission isEqualToString:kStaffPermHotelIncidentsView] &&
+                ![permission isEqualToString:kStaffPermHotelMediaView] &&
+                ![permission isEqualToString:kStaffPermHotelBillingView] &&
+                ![permission isEqualToString:kStaffPermHotelReportsView]) {
                 [result addObject:permission];
             }
         }
@@ -465,6 +513,9 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
                 return;
             }
             PPStaffDoc *doc = [self pp_staffDocFromSnapshot:snapshot];
+            if (doc && [[FIRAuth auth].currentUser.uid isEqualToString:uid]) {
+                self.cachedCurrentStaff = doc.canAccessStaffWorkspace ? doc : nil;
+            }
             NSLog(@"✅ [PPADMIN BACKEND] Successfully resolved staff_users/%@ | role=%@ | status=%@ | perms=%lu | active=%d",
                   uid, doc.role, doc.status, (unsigned long)doc.permissions.count, doc.isActive);
             if (completion) completion(doc, nil);
@@ -623,6 +674,9 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
             if ([permission hasPrefix:@"staff."]) continue;
             if ([permission isEqualToString:kStaffPermAuditView]) continue;
             if ([permission isEqualToString:kStaffPermDeliverySettingsManage]) continue;
+            if ([permission isEqualToString:kStaffPermHotelMedicationAdminister]) continue;
+            if ([permission isEqualToString:kStaffPermHotelBillingAdjust]) continue;
+            if ([permission isEqualToString:kStaffPermHotelOverride]) continue;
             [permissions addObject:permission];
         }
         return permissions.copy;
@@ -689,6 +743,9 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
             kStaffPermReportsView, kStaffPermReportsExport,
             kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
             kStaffPermNotificationsView,
+            kStaffPermHotelView,
+            kStaffPermHotelBillingView, kStaffPermHotelBillingManage, kStaffPermHotelBillingAdjust,
+            kStaffPermHotelReportsView,
         ];
     }
 
@@ -700,6 +757,7 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
             kStaffPermUsersFeaturesView,
             kStaffPermUsersRestrictionsView,
             kStaffPermNotificationsView,
+            kStaffPermHotelView, kStaffPermHotelCareView,
         ];
     }
 

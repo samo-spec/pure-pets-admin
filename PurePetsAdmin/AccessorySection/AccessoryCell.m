@@ -7,7 +7,6 @@
 
 #import "AccessoryCell.h"
 #import "PetAccessory.h"
-#import "UIImageView+WebCache.h"
 
 // Self-contained padded label for badges
 @interface PPCellBadgeLabel : UILabel

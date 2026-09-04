@@ -794,15 +794,8 @@ public struct PPListingsCommandCenterScreen: View {
                 // High-Res Media Thumbnail Slot with Channel Badge
                 ZStack(alignment: .bottomLeading) {
                     if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
-                        AsyncImage(url: url) { phase in
-                            if let img = phase.image {
-                                img.resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 86, height: 86)
-                                    .clipped()
-                            } else {
-                                thumbnailPlaceholder(item)
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 86, height: 86)) {
+                            thumbnailPlaceholder(item)
                         }
                         .frame(width: 86, height: 86)
                         .clipped()
@@ -994,12 +987,8 @@ public struct PPListingDetailDossierSheet: View {
                     VStack(spacing: 18) {
                         // Hero Image Slot
                         if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
-                            AsyncImage(url: url) { phase in
-                                if let img = phase.image {
-                                    img.resizable().aspectRatio(contentMode: .fill)
-                                } else {
-                                    heroImagePlaceholder
-                                }
+                            AdminRemoteImage(url: url, contentMode: .fill) {
+                                heroImagePlaceholder
                             }
                             .frame(height: 220)
                             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

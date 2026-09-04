@@ -16,6 +16,7 @@
 //
 
 import Foundation
+import FirebaseAuth
 import FirebaseFirestore
 import FirebaseFunctions
 
@@ -26,6 +27,7 @@ public enum AdminPetsHotelError: LocalizedError {
     case permissionDenied
     case stayNotFound
     case blockers([String])
+    case transport(String)
 
     public var errorDescription: String? {
         switch self {
@@ -41,6 +43,8 @@ public enum AdminPetsHotelError: LocalizedError {
             return Language.get("Hotel_Err_StayNotFound", alter: "سجل الإقامة المطلوب غير موجود.")
         case .blockers(let list):
             return list.joined(separator: "\n")
+        case .transport(let reason):
+            return reason
         }
     }
 }
@@ -50,6 +54,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
 
     private let functions: Functions
     private let timeoutInterval: TimeInterval = 30.0
+    private let commandStore = UserDefaults.standard
 
     private init() {
         self.functions = Functions.functions()
@@ -61,6 +66,42 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         let uuid = UUID().uuidString.lowercased()
         let raw = "hotel-\(cleanScope)-\(uuid)"
         return String(raw.prefix(128))
+    }
+
+    private func commandFingerprint(name: String, action: String, payload: [String: Any]) -> String {
+        var canonicalPayload = payload
+        // These instants are generated when a button is pressed. They must not
+        // turn a retry of the same logical check-in/out into a new command.
+        canonicalPayload.removeValue(forKey: "actualArrivalAt")
+        canonicalPayload.removeValue(forKey: "actualDepartureAt")
+
+        let envelope: [String: Any] = [
+            "uid": Auth.auth().currentUser?.uid ?? "",
+            "name": name,
+            "action": action,
+            "payload": canonicalPayload
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: envelope, options: [.sortedKeys])) ?? Data()
+        var hash: UInt64 = 14_695_981_039_346_656_037
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        return String(hash, radix: 16)
+    }
+
+    private func commandStoreKey(fingerprint: String) -> String {
+        "pp.hotel.command.\(fingerprint)"
+    }
+
+    private func shouldRetainCommandId(after error: Error) -> Bool {
+        guard let hotelError = error as? AdminPetsHotelError else { return false }
+        switch hotelError {
+        case .transport, .invalidResponse:
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Core Callable Execution
@@ -80,10 +121,14 @@ public final class AdminPetsHotelService: @unchecked Sendable {
                 throw AdminPetsHotelError.invalidResponse
             }
             if let ok = dict["ok"] as? Bool, !ok {
-                let msg = dict["message"] as? String ?? dict["error"] as? String ?? "Command failed"
+                let msg = dict["message"] as? String
+                    ?? dict["error"] as? String
+                    ?? Language.get("Hotel_Err_CommandFailed", alter: "تعذر تنفيذ أمر الفندق.")
                 throw AdminPetsHotelError.operationFailed(msg)
             }
             return dict
+        } catch let error as AdminPetsHotelError {
+            throw error
         } catch let err as NSError {
             // Parse Cloud Function details
             if err.domain == FunctionsErrorDomain {
@@ -95,6 +140,8 @@ public final class AdminPetsHotelService: @unchecked Sendable {
                     throw AdminPetsHotelError.unauthenticated
                 case .notFound:
                     throw AdminPetsHotelError.stayNotFound
+                case .cancelled, .unknown, .deadlineExceeded, .internal, .unavailable, .dataLoss:
+                    throw AdminPetsHotelError.transport(err.localizedDescription)
                 default:
                     break
                 }
@@ -107,7 +154,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
                     throw AdminPetsHotelError.operationFailed(domainCode)
                 }
             }
-            throw AdminPetsHotelError.operationFailed(err.localizedDescription)
+            throw AdminPetsHotelError.transport(err.localizedDescription)
         }
     }
 
@@ -115,10 +162,27 @@ public final class AdminPetsHotelService: @unchecked Sendable {
     private func callHotelCommand(name: String, action: String, payload: [String: Any]) async throws -> [String: Any] {
         var body = payload
         body["action"] = action
-        if body["commandId"] == nil {
-            body["commandId"] = Self.generateCommandId(scope: action)
+        let suppliedCommandId = body["commandId"] as? String
+        let fingerprint = commandFingerprint(name: name, action: action, payload: payload)
+        let storeKey = commandStoreKey(fingerprint: fingerprint)
+        if suppliedCommandId == nil {
+            let durableCommandId = commandStore.string(forKey: storeKey) ?? Self.generateCommandId(scope: action)
+            body["commandId"] = durableCommandId
+            commandStore.set(durableCommandId, forKey: storeKey)
         }
-        return try await executeCallable(name: name, payload: body)
+
+        do {
+            let result = try await executeCallable(name: name, payload: body)
+            if suppliedCommandId == nil {
+                commandStore.removeObject(forKey: storeKey)
+            }
+            return result
+        } catch {
+            if suppliedCommandId == nil && !shouldRetainCommandId(after: error) {
+                commandStore.removeObject(forKey: storeKey)
+            }
+            throw error
+        }
     }
 
     @MainActor
@@ -126,6 +190,33 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         var body = payload
         body["view"] = view
         return try await executeCallable(name: "hotelReadOperations", payload: body)
+    }
+
+    // MARK: - Safe direct reads
+    public func listenAccommodations(
+        branchId: String,
+        onChange: @escaping ([QueryDocumentSnapshot]?, Error?) -> Void
+    ) -> ListenerRegistration {
+        Firestore.firestore()
+            .collection(HotelFirestoreCollections.accommodations)
+            .whereField("branchId", isEqualTo: branchId)
+            .limit(to: 200)
+            .addSnapshotListener { snapshot, error in
+                onChange(snapshot?.documents, error)
+            }
+    }
+
+    public func listenAccommodationTypes(
+        branchId: String,
+        onChange: @escaping ([QueryDocumentSnapshot]?, Error?) -> Void
+    ) -> ListenerRegistration {
+        Firestore.firestore()
+            .collection(HotelFirestoreCollections.accommodationTypes)
+            .whereField("branchId", isEqualTo: branchId)
+            .limit(to: 100)
+            .addSnapshotListener { snapshot, error in
+                onChange(snapshot?.documents, error)
+            }
     }
 
     // MARK: - Stay Commands (hotelStayCommand)
@@ -293,6 +384,84 @@ public final class AdminPetsHotelService: @unchecked Sendable {
 
     // MARK: - Accommodation Commands (hotelAccommodationCommand)
     @MainActor
+    public func saveAccommodation(
+        branchId: String,
+        accommodationId: String? = nil,
+        accommodationTypeId: String,
+        code: String,
+        name: String,
+        wing: String,
+        allowedSpecies: [String],
+        maxCapacity: Int = 1,
+        allowSharedOccupancy: Bool = false,
+        status: String? = nil,
+        notes: String? = nil,
+        active: Bool = true
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "branchId": branchId,
+            "accommodationTypeId": accommodationTypeId,
+            "code": code.uppercased(),
+            "name": name,
+            "wing": wing,
+            "allowedSpecies": allowedSpecies,
+            "maxCapacity": maxCapacity,
+            "allowSharedOccupancy": allowSharedOccupancy,
+            "active": active
+        ]
+        if let id = accommodationId, !id.isEmpty {
+            payload["accommodationId"] = id
+        }
+        if let status, !status.isEmpty {
+            payload["status"] = status
+        }
+        if let notes, !notes.isEmpty {
+            payload["notes"] = notes
+        }
+        return try await callHotelCommand(name: "hotelAccommodationCommand", action: "save_accommodation", payload: payload)
+    }
+
+    @MainActor
+    public func saveAccommodationType(
+        branchId: String,
+        accommodationTypeId: String? = nil,
+        code: String,
+        nameAr: String,
+        nameEn: String,
+        wing: String,
+        allowedSpecies: [String],
+        defaultCapacity: Int = 1,
+        nightlyRateMinor: Int,
+        allowSharedOccupancy: Bool = false,
+        sortOrder: Int = 0,
+        active: Bool = true,
+        description: String? = nil,
+        currency: String = "QAR"
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "branchId": branchId,
+            "code": code.uppercased(),
+            "nameAr": nameAr,
+            "nameEn": nameEn,
+            "wing": wing,
+            "allowedSpecies": allowedSpecies,
+            "defaultCapacity": defaultCapacity,
+            "nightlyRateMinor": nightlyRateMinor,
+            "allowSharedOccupancy": allowSharedOccupancy,
+            "sortOrder": sortOrder,
+            "active": active,
+            "currency": currency
+        ]
+        if let id = accommodationTypeId, !id.isEmpty {
+            payload["accommodationTypeId"] = id
+        }
+        if let description, !description.isEmpty {
+            payload["description"] = description
+        }
+        return try await callHotelCommand(name: "hotelAccommodationCommand", action: "save_accommodation_type", payload: payload)
+    }
+
+    @MainActor
     public func setAccommodationStatus(
         accommodationId: String,
         status: String,
@@ -329,6 +498,104 @@ public final class AdminPetsHotelService: @unchecked Sendable {
     }
 
     // MARK: - Reservation Commands (hotelReservationCommand)
+    @MainActor
+    public func createReservation(
+        branchId: String,
+        customerUid: String,
+        customerSnapshot: [String: Any],
+        arrivalAt: Date,
+        departureAt: Date,
+        pets: [[String: Any]],
+        emergencyContact: [String: String]? = nil,
+        arrivalTransport: String = "customer_dropoff",
+        departureTransport: String = "customer_pickup",
+        depositMinor: Int = 0,
+        notes: String? = nil,
+        initialStatus: String = "confirmed"
+    ) async throws -> [String: Any] {
+        let formatter = ISO8601DateFormatter()
+        var payload: [String: Any] = [
+            "branchId": branchId,
+            "customerUid": customerUid,
+            "customerSnapshot": customerSnapshot,
+            "arrivalAt": formatter.string(from: arrivalAt),
+            "departureAt": formatter.string(from: departureAt),
+            "pets": pets,
+            "arrivalTransport": arrivalTransport,
+            "departureTransport": departureTransport,
+            "depositMinor": depositMinor,
+            "initialStatus": initialStatus
+        ]
+        if let contact = emergencyContact {
+            payload["emergencyContact"] = contact
+        }
+        if let notes, !notes.isEmpty {
+            payload["notes"] = notes
+        }
+        return try await callHotelCommand(name: "hotelReservationCommand", action: "create_reservation", payload: payload)
+    }
+
+    @MainActor
+    public func extendReservation(
+        reservationId: String,
+        newDepartureAt: Date,
+        reasonCode: String = "operator_request",
+        note: String? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "reservationId": reservationId,
+            "newDepartureAt": ISO8601DateFormatter().string(from: newDepartureAt),
+            "reasonCode": reasonCode
+        ]
+        if let note, !note.isEmpty {
+            payload["note"] = note
+        }
+        return try await callHotelCommand(name: "hotelReservationCommand", action: "extend_reservation", payload: payload)
+    }
+
+    @MainActor
+    public func transitionReservation(
+        action: String,
+        reservationId: String,
+        reasonCode: String? = nil,
+        note: String? = nil,
+        overrideReason: String? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = ["reservationId": reservationId]
+        if let reasonCode, !reasonCode.isEmpty {
+            payload["reasonCode"] = reasonCode
+        }
+        if let note, !note.isEmpty {
+            payload["note"] = note
+        }
+        if let overrideReason, !overrideReason.isEmpty {
+            payload["overrideReason"] = overrideReason
+        }
+        return try await callHotelCommand(name: "hotelReservationCommand", action: action, payload: payload)
+    }
+
+    @MainActor
+    public func createCustomerPetProfile(
+        customerUid: String,
+        name: String,
+        categoryId: Int,
+        categoryName: String,
+        breed: String? = nil,
+        ageInMonths: Int = 0
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [
+            "customerUid": customerUid,
+            "name": name,
+            "categoryId": categoryId,
+            "categoryName": categoryName,
+            "ageInMonths": ageInMonths
+        ]
+        if let breed, !breed.isEmpty {
+            payload["breed"] = breed
+        }
+        return try await callHotelCommand(name: "hotelReservationCommand", action: "create_customer_pet", payload: payload)
+    }
+
     @MainActor
     public func confirmReservation(reservationId: String, overrideReason: String? = nil) async throws -> [String: Any] {
         var payload: [String: Any] = ["reservationId": reservationId]
@@ -468,6 +735,27 @@ public final class AdminPetsHotelService: @unchecked Sendable {
             "now": ISO8601DateFormatter().string(from: now)
         ]
         return try await callHotelRead(view: "command_center", payload: payload)
+    }
+
+    @MainActor
+    public func fetchAvailability(
+        branchId: String,
+        arrivalAt: Date,
+        departureAt: Date,
+        species: String,
+        accommodationTypeId: String? = nil
+    ) async throws -> [[String: Any]] {
+        var payload: [String: Any] = [
+            "branchId": branchId,
+            "arrivalAt": ISO8601DateFormatter().string(from: arrivalAt),
+            "departureAt": ISO8601DateFormatter().string(from: departureAt),
+            "species": species
+        ]
+        if let accommodationTypeId, !accommodationTypeId.isEmpty {
+            payload["accommodationTypeId"] = accommodationTypeId
+        }
+        let result = try await callHotelRead(view: "availability", payload: payload)
+        return result["units"] as? [[String: Any]] ?? []
     }
 
     @MainActor

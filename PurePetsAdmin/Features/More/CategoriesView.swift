@@ -970,15 +970,10 @@ struct AdminCategoriesView: View {
 
                                         // SubKind Icon
                                         if !sub.iconUrl.isEmpty, let url = URL(string: sub.iconUrl) {
-                                            AsyncImage(url: url) { phase in
-                                                switch phase {
-                                                case .success(let image):
-                                                    image.resizable().scaledToFit()
-                                                default:
-                                                    Image(systemName: "pawprint")
-                                                        .font(.system(size: 12))
-                                                        .foregroundColor(category.accentColor)
-                                                }
+                                            AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 26, height: 26)) {
+                                                Image(systemName: "pawprint")
+                                                    .font(.system(size: 12))
+                                                    .foregroundColor(category.accentColor)
                                             }
                                             .frame(width: 26, height: 26)
                                             .background(category.accentColor.opacity(0.12), in: Circle())
@@ -1108,13 +1103,8 @@ struct AdminCategoriesView: View {
                 )
 
             if !category.imageUrl.isEmpty, let url = URL(string: category.imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFit()
-                    default:
-                        glyphIcon(category.iconName, size: size * 0.48, tint: category.accentColor)
-                    }
+                AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: size, height: size)) {
+                    glyphIcon(category.iconName, size: size * 0.48, tint: category.accentColor)
                 }
                 .padding(3)
             } else {
@@ -1314,16 +1304,10 @@ struct AdminCategoryCardView: View {
                 )
 
             if !category.imageUrl.isEmpty, let url = URL(string: category.imageUrl) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable()
-                            .scaledToFit()
-                            .rotationEffect(.degrees(category.professionalAngle))
-                    default:
-                        fallbackGlyph
-                    }
+                AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 58, height: 58)) {
+                    fallbackGlyph
                 }
+                .rotationEffect(.degrees(category.professionalAngle))
                 .padding(6)
             } else {
                 fallbackGlyph
@@ -1522,18 +1506,12 @@ struct AdminCategoryEditorSheet: View {
                         .fill(builtDraft.accentColor.opacity(draftLighten > 0 ? draftLighten : 0.20))
 
                     if !draftImageUrl.isEmpty, let url = URL(string: draftImageUrl) {
-                        AsyncImage(url: url) { phase in
-                            switch phase {
-                            case .success(let img):
-                                img.resizable()
-                                    .scaledToFit()
-                                    .rotationEffect(.degrees(draftAngle))
-                            default:
-                                Image(systemName: draftIconName)
-                                    .font(.system(size: 28))
-                                    .foregroundColor(builtDraft.accentColor)
-                            }
+                        AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 64, height: 64)) {
+                            Image(systemName: draftIconName)
+                                .font(.system(size: 28))
+                                .foregroundColor(builtDraft.accentColor)
                         }
+                        .rotationEffect(.degrees(draftAngle))
                         .padding(4)
                     } else {
                         Image(systemName: draftIconName)

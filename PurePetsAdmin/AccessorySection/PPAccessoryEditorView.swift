@@ -181,8 +181,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var priceText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var discountPercentText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var discountAmountText: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var costPriceText: String = "" { didSet { updateUnsavedChanges() } }
     
-    // Inventory & Stock
+    // Inventory, SKU & Stock
+    @Published var sku: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var barcode: String = "" { didSet { updateUnsavedChanges() } }
     @Published var quantity: Int = 1 { didSet { updateUnsavedChanges() } }
     @Published var condition: AccessConditions = .new { didSet { updateUnsavedChanges() } }
     @Published var weightText: String = "" { didSet { updateUnsavedChanges() } }
@@ -282,10 +285,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         name = acc.name ?? ""
         desc = acc.desc ?? ""
+        sku = acc.sku ?? ""
+        barcode = acc.barcode ?? ""
         
         let price = acc.price
         if price.doubleValue > 0 {
             priceText = String(format: "%g", price.doubleValue)
+        }
+        if let cost = acc.costPrice, cost.doubleValue > 0 {
+            costPriceText = String(format: "%g", cost.doubleValue)
         }
         if let discPercent = acc.discountPercent, discPercent.doubleValue > 0 {
             discountPercentText = String(format: "%g", discPercent.doubleValue)
@@ -1246,6 +1254,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let accessory = editingAccessory.map { PetAccessory.deepCopy(from: $0) } ?? PetAccessory()
         accessory.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.desc = desc.trimmingCharacters(in: .whitespacesAndNewlines)
+        accessory.sku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
+        accessory.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedCost = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedCost.isEmpty, let costVal = decimalValue(normalizedCost) {
+            accessory.costPrice = NSNumber(value: costVal)
+        } else {
+            accessory.costPrice = nil
+        }
         accessory.price = NSNumber(value: basePrice)
         accessory.discountPercent = discountPercent > 0 ? NSNumber(value: discountPercent) : nil
         accessory.discountAmount = discountAmount > 0 ? NSNumber(value: discountAmount) : nil
@@ -1474,6 +1490,18 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
                 self.commitSavedAccessory(accessory)
 
+                if let branchId = accessory.branchID, !branchId.isEmpty, accessory.quantity > 0 {
+                    PPBranchInventoryService.shared.adjustStock(
+                        productId: accessory.accessoryID ?? "",
+                        branchId: branchId,
+                        newQuantity: accessory.quantity,
+                        type: "purchase",
+                        referenceId: "catalog_init",
+                        reason: "catalog_product_init",
+                        notes: "Initialized during product catalog creation"
+                    ) { _ in }
+                }
+
                 // Clean up removed old images from Storage (best-effort)
                 let newSet = Set(accessory.imageURLsArray ?? [])
                 for oldURL in oldImageURLs {
@@ -1497,6 +1525,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.accessoryID = saved.accessoryID
         original.name = saved.name
         original.desc = saved.desc
+        original.sku = saved.sku
+        original.barcode = saved.barcode
+        original.costPrice = saved.costPrice
         original.price = saved.price
         original.discountPercent = saved.discountPercent
         original.discountAmount = saved.discountAmount
@@ -1514,6 +1545,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.createdAt = saved.createdAt
         original.storeID = saved.storeID
         original.storeName = saved.storeName
+        original.branchID = saved.branchID
+        original.branchCode = saved.branchCode
         original.quantity = saved.quantity
         original.noStock = saved.noStock
         original.active = saved.active
@@ -2367,15 +2400,8 @@ struct PPAccessoryEditorScreen: View {
                         .frame(width: 82, height: 82)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
-                    AsyncImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 82, height: 82)
-                                .clipped()
-                        } else {
-                            Image(systemName: "photo.fill").foregroundStyle(AdminCommandInk.tertiary)
-                        }
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 82, height: 82)) {
+                        Image(systemName: "photo.fill").foregroundStyle(AdminCommandInk.tertiary)
                     }
                     .frame(width: 82, height: 82)
                     .clipped()
@@ -2688,15 +2714,8 @@ struct PPAccessoryEditorScreen: View {
                     ForEach(Array(viewModel.existingImageURLs.enumerated()), id: \.offset) { index, urlString in
                         ZStack(alignment: .topTrailing) {
                             if let url = URL(string: urlString) {
-                                AsyncImage(url: url) { phase in
-                                    if let img = phase.image {
-                                        img.resizable()
-                                            .aspectRatio(contentMode: .fill)
-                                            .frame(width: 92, height: 92)
-                                            .clipped()
-                                    } else {
-                                        Color.gray.opacity(0.2)
-                                    }
+                                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 92, height: 92)) {
+                                    Color.gray.opacity(0.2)
                                 }
                                 .frame(width: 92, height: 92)
                                 .clipped()
@@ -4867,17 +4886,10 @@ private struct PPLivePetIntakeJourney: View {
     private var primaryMediaHero: some View {
         ZStack(alignment: .bottomLeading) {
             if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
-                        mediaPlaceholder(symbol: "exclamationmark.icloud.fill")
-                    default:
-                        ZStack {
-                            AdminSurface.control
-                            ProgressView().tint(AdminSurface.primary)
-                        }
+                AdminRemoteImage(url: url, contentMode: .fill) {
+                    ZStack {
+                        AdminSurface.control
+                        ProgressView().tint(AdminSurface.primary)
                     }
                 }
                 .onTapGesture {
@@ -4970,15 +4982,8 @@ private struct PPLivePetIntakeJourney: View {
                     previewMedia = PPLivePetPreviewMedia(source: .remote(url))
                 }
             } label: {
-                AsyncImage(url: URL(string: urlString)) { phase in
-                    if let image = phase.image {
-                        image.resizable()
-                            .scaledToFill()
-                            .frame(width: 82, height: 82)
-                            .clipped()
-                    } else {
-                        mediaPlaceholder(symbol: "photo")
-                    }
+                AdminRemoteImage(url: URL(string: urlString), contentMode: .fill, targetSize: CGSize(width: 82, height: 82)) {
+                    mediaPlaceholder(symbol: "photo")
                 }
                 .frame(width: 82, height: 82)
                 .clipped()
@@ -7018,15 +7023,8 @@ private struct PPLivePetIntakeJourney: View {
     private var snapshotImage: some View {
         Group {
             if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable()
-                            .scaledToFill()
-                            .frame(width: 88, height: 88)
-                            .clipped()
-                    } else {
-                        mediaPlaceholder(symbol: "pawprint.fill")
-                    }
+                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 88, height: 88)) {
+                    mediaPlaceholder(symbol: "pawprint.fill")
                 }
                 .frame(width: 88, height: 88)
                 .clipped()
@@ -8078,21 +8076,14 @@ private struct PPLivePetMediaPreview: View {
         case .local(let image):
             Image(uiImage: image).resizable()
         case .remote(let url):
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable()
-                case .failure:
-                    VStack(spacing: AdminSpacing.md) {
-                        Image(systemName: "exclamationmark.icloud.fill")
-                            .font(.system(size: 42))
-                        Text(Language.get("CatalogIntake_PhotoLoadFailed", alter: "تعذر تحميل الصورة"))
-                            .font(AdminType.headline)
-                    }
-                    .foregroundStyle(.white)
-                default:
-                    ProgressView().tint(.white)
+            AdminRemoteImage(url: url, contentMode: .fit) {
+                VStack(spacing: AdminSpacing.md) {
+                    Image(systemName: "exclamationmark.icloud.fill")
+                        .font(.system(size: 42))
+                    Text(Language.get("CatalogIntake_PhotoLoadFailed", alter: "تعذر تحميل الصورة"))
+                        .font(AdminType.headline)
                 }
+                .foregroundStyle(.white)
             }
         }
     }
@@ -8293,8 +8284,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private enum FocusedField: Hashable {
         case name
         case description
+        case sku
+        case barcode
         case weight
         case price
+        case costPrice
         case discountPercent
         case discountAmount
     }
@@ -8702,6 +8696,33 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     .overlay(fieldFocusBorder(focusedField == .description))
                     .accessibilityLabel(tr("CatalogIntake_DescriptionLabel", "الوصف"))
                 }
+
+                HStack(spacing: AdminSpacing.md) {
+                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                        fieldLabel(tr("CatalogIntake_SKULabel", "رمز المنتج (SKU)"), required: false)
+                        TextField(tr("CatalogIntake_SKUPlaceholder", "مثال: PP-10023"), text: $viewModel.sku)
+                            .font(AdminType.body)
+                            .focused($focusedField, equals: .sku)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .padding(.horizontal, AdminSpacing.md)
+                            .frame(minHeight: AdminTouchTarget.expanded)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                            .overlay(fieldFocusBorder(focusedField == .sku))
+                    }
+
+                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                        fieldLabel(tr("CatalogIntake_BarcodeLabel", "الباركود"), required: false)
+                        TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
+                            .font(AdminType.body)
+                            .keyboardType(.asciiCapableNumberPad)
+                            .focused($focusedField, equals: .barcode)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .padding(.horizontal, AdminSpacing.md)
+                            .frame(minHeight: AdminTouchTarget.expanded)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                            .overlay(fieldFocusBorder(focusedField == .barcode))
+                    }
+                }
             }
         }
     }
@@ -8780,17 +8801,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 guard let url = URL(string: urlString) else { return }
                 previewMedia = PPLivePetPreviewMedia(source: .remote(url))
             } label: {
-                AsyncImage(url: URL(string: urlString)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().scaledToFill()
-                    case .failure:
-                        Image(systemName: "exclamationmark.icloud")
-                            .font(.system(size: 24))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    default:
-                        ProgressView().tint(AdminSurface.primary)
-                    }
+                AdminRemoteImage(url: URL(string: urlString), contentMode: .fill, targetSize: CGSize(width: 126, height: 126)) {
+                    ProgressView().tint(AdminSurface.primary)
                 }
                 .frame(width: 126, height: 126)
                 .background(AdminSurface.control)
@@ -9093,6 +9105,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     required: true
                 )
 
+                moneyField(
+                    title: tr("CatalogIntake_CostPrice", "سعر التكلفة (ر.ق)"),
+                    text: $viewModel.costPriceText,
+                    focus: .costPrice,
+                    required: false
+                )
+
                 Group {
                     if dynamicTypeSize.isAccessibilitySize {
                         VStack(spacing: AdminSpacing.md) {
@@ -9279,6 +9298,22 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             ? tr("CatalogIntake_NotSet", "غير محدد")
                             : viewModel.name
                     )
+                    if !viewModel.sku.isEmpty {
+                        reviewRow(
+                            symbol: "barcode",
+                            title: tr("CatalogIntake_ReviewSKU", "رمز SKU"),
+                            value: viewModel.sku,
+                            forceLTR: true
+                        )
+                    }
+                    if !viewModel.barcode.isEmpty {
+                        reviewRow(
+                            symbol: "barcode.viewfinder",
+                            title: tr("CatalogIntake_ReviewBarcode", "الباركود"),
+                            value: viewModel.barcode,
+                            forceLTR: true
+                        )
+                    }
                     reviewRow(
                         symbol: "square.grid.2x2.fill",
                         title: tr("CatalogIntake_ReviewCategory", "الفئة"),

@@ -357,8 +357,8 @@ struct PPVetsListView: View {
     @ViewBuilder
     private func vetAvatarContent(for logoURL: String?) -> some View {
         if let logoURL, !logoURL.isEmpty, let url = URL(string: logoURL) {
-            AsyncImage(url: url) { phase in
-                vetAsyncImageContent(for: phase)
+            AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
+                vetPlaceholderImage
             }
         } else {
             vetPlaceholderImage

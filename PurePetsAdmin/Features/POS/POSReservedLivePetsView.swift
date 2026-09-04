@@ -1225,13 +1225,8 @@ private struct PetAvatarView: View {
     var body: some View {
         ZStack {
             if let imageURL = URL(string: url), !url.isEmpty {
-                AsyncImage(url: imageURL) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                    default:
-                        placeholderView
-                    }
+                AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: size, height: size)) {
+                    placeholderView
                 }
             } else {
                 placeholderView
@@ -1446,17 +1441,12 @@ struct POSReservedPetDossierSheet: View {
     private var heroImage: some View {
         ZStack {
             if let url = URL(string: item.photoURL), !item.photoURL.isEmpty {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let img):
-                        img.resizable().scaledToFill()
-                            .scaleEffect(heroScale)
-                            .onAppear {
-                                withAnimation(.easeOut(duration: 1.2)) { heroScale = 1.0 }
-                            }
-                    default:
-                        heroPlaeholder
-                    }
+                AdminRemoteImage(url: url, contentMode: .fill) {
+                    heroPlaeholder
+                }
+                .scaleEffect(heroScale)
+                .onAppear {
+                    withAnimation(.easeOut(duration: 1.2)) { heroScale = 1.0 }
                 }
             } else {
                 heroPlaeholder

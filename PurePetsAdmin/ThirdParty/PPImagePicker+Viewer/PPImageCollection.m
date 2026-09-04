@@ -520,16 +520,9 @@
         if (!url) continue;
         
         dispatch_group_enter(group);
-        
-        // Using system URLSession for simplicity
-        NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-            UIImage *image = nil;
-            if (data && !error) {
-                image = [UIImage imageWithData:data];
-            }
-            
+        [PPAdminImageLoader loadImageWithURLString:urlStr completion:^(UIImage * _Nullable image, __unused NSError * _Nullable error, __unused BOOL fromCache) {
             UIImage *finalImage = image ?: [UIImage new];
-            
+
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self.arrayLock lock];
                 if (i < self.mediaOutputArray.count) {
@@ -539,11 +532,10 @@
                     [self.imageManager.selectedImages replaceObjectAtIndex:i withObject:finalImage];
                 }
                 [self.arrayLock unlock];
-                
+
                 dispatch_group_leave(group);
             });
         }];
-        [task resume];
     }
     
     dispatch_group_notify(group, dispatch_get_main_queue(), ^{

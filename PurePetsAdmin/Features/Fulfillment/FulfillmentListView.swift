@@ -1380,15 +1380,10 @@ private struct FulfillmentHeroCard: View {
                             ForEach(record.items.prefix(4)) { item in
                                 HStack(spacing: 6) {
                                     if let url = item.imageURL {
-                                        AsyncImage(url: url) { phase in
-                                            switch phase {
-                                            case .success(let image):
-                                                image.resizable().scaledToFill()
-                                            default:
-                                                Image(systemName: "shippingbox")
-                                                    .font(.system(size: 11))
-                                                    .foregroundStyle(FulfillmentTokens.inkTertiary)
-                                            }
+                                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 28, height: 28)) {
+                                            Image(systemName: "shippingbox")
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(FulfillmentTokens.inkTertiary)
                                         }
                                         .frame(width: 28, height: 28)
                                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
@@ -1881,15 +1876,10 @@ struct FulfillmentDossierView: View {
                 ForEach(record.items) { item in
                     HStack(spacing: 12) {
                         if let url = item.imageURL {
-                            AsyncImage(url: url) { phase in
-                                switch phase {
-                                case .success(let img):
-                                    img.resizable().scaledToFill()
-                                default:
-                                    Image(systemName: "shippingbox")
-                                        .font(.system(size: 16))
-                                        .foregroundStyle(FulfillmentTokens.inkTertiary)
-                                }
+                            AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 44, height: 44)) {
+                                Image(systemName: "shippingbox")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(FulfillmentTokens.inkTertiary)
                             }
                             .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))

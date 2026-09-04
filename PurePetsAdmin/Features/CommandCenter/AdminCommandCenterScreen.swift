@@ -111,6 +111,7 @@ final class AdminCommandCenterStore: ObservableObject {
     @Published var snapshot: AdminCommandOrbitSnapshot = .empty
     @Published var readiness: AdminCommandOrbitReadiness = .init(loadingAreas: [], failedAreas: [], updatedAt: nil)
     @Published var localeCode: String = Language.currentLanguageCode()
+    @Published private(set) var canAccessHotel = false
     @Published private(set) var revision: Int = 0
 
     var onRoute: ((String) -> Void)?
@@ -169,6 +170,12 @@ final class AdminCommandCenterStore: ObservableObject {
                 change()
             }
         }
+    }
+
+    func applyHotelAccess(_ allowed: Bool) {
+        guard canAccessHotel != allowed else { return }
+        canAccessHotel = allowed
+        revision += 1
     }
 }
 
@@ -234,6 +241,10 @@ public final class AdminCommandOrbitHostingController: UIViewController {
 
     public func applyReadinessWithLoadingAreas(_ loadingAreas: [String], failedAreas: [String], updatedAt: Date?) {
         store.applyReadiness(loadingAreas: loadingAreas, failedAreas: failedAreas, updatedAt: updatedAt)
+    }
+
+    public func applyHotelAccess(_ allowed: Bool) {
+        store.applyHotelAccess(allowed)
     }
 
 }
@@ -392,8 +403,8 @@ struct AdminCommandCenterScreenView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
-                        // ── Active Working Branch Horizon Hero Banner ───
-                        PPAdminBranchSwitcherBar(style: .prominentHero)
+                        // ── Active Working Branch Horizon Capsule Pill ───
+                        PPAdminBranchSwitcherBar(style: .compact)
                             .padding(.bottom, 2)
 
                         CommandEscalationHero(
@@ -422,6 +433,9 @@ struct AdminCommandCenterScreenView: View {
                 .environment(\.layoutDirection, direction)
                 .environment(\.locale, locale)
         }
+        .onAppear {
+            refresh()
+        }
         .onReceive(
             NotificationCenter.default
                 .publisher(for: Notification.Name("LanguageDidChangeNotification"))
@@ -432,6 +446,13 @@ struct AdminCommandCenterScreenView: View {
         .onReceive(
             NotificationCenter.default
                 .publisher(for: NSNotification.Name.PPActiveBranchDidChange)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            refresh()
+        }
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"))
                 .receive(on: RunLoop.main)
         ) { _ in
             refresh()
@@ -528,9 +549,11 @@ struct AdminCommandCenterScreenView: View {
                 onRoute: { route("accounting") }
             )
 
-            CommandHotelSovereignCard(
-                onRoute: { route("hotel") }
-            )
+            if store.canAccessHotel {
+                CommandHotelSovereignCard(
+                    onRoute: { route("hotel") }
+                )
+            }
 
             CommandPriorityRunway(
                 title: runwayTitle,
@@ -1000,12 +1023,12 @@ private struct CommandCenterChrome: View {
                     }
             }
         }
-        .overlay(alignment: Language.isRTL() ? .topLeading : .topTrailing) {
+        .overlay(alignment: .topTrailing) {
             if isMoreMenuPresented {
                 customHomeMoreActionsMenuCard
                     .offset(y: 52)
                     .transition(.asymmetric(
-                        insertion: .scale(scale: 0.88, anchor: Language.isRTL() ? .topLeading : .topTrailing).combined(with: .opacity),
+                        insertion: .scale(scale: 0.88, anchor: .topTrailing).combined(with: .opacity),
                         removal: .opacity
                     ))
                     .zIndex(300)

@@ -5,6 +5,7 @@
 #import "Language.h"
 #import "PPAlertHelper.h"
 #import "PPFunc+Haptics.h"
+#import "PurePetsAdmin-Swift.h"
 
 static NSString * const PPFeatureEntitlementCellID = @"PPFeatureEntitlementCellID";
 
@@ -68,6 +69,8 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
 
 @interface PPFeatureDetailViewController : UIViewController
 @property (nonatomic, strong) NSDictionary *feature;
+@property (nonatomic, strong) UIView *customNavBar;
+@property (nonatomic, strong) UIButton *backButton;
 @end
 
 @implementation PPFeatureDetailViewController
@@ -77,27 +80,92 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     self.title = kLang(@"Providers_Features_Detail_Title") ?: @"تفاصيل الصلاحية والميزة";
     self.view.backgroundColor = PPProviderCanvasColor();
     self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self pp_setupCustomNavBar];
     [self pp_setupUI];
 }
 
-- (void)viewWillAppear:(BOOL)animated {
-    [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:NO animated:animated];
-    if (@available(iOS 13.0, *)) {
-        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithTransparentBackground];
-        appearance.backgroundColor = UIColor.clearColor;
-        appearance.titleTextAttributes = @{
-            NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
-            NSFontAttributeName: PPAppFontBold(18.0)
-        };
-        appearance.shadowColor = UIColor.clearColor;
-        appearance.shadowImage = [[UIImage alloc] init];
-        self.navigationItem.standardAppearance = appearance;
-        self.navigationItem.scrollEdgeAppearance = appearance;
-        self.navigationItem.compactAppearance = appearance;
+- (void)pp_setupCustomNavBar {
+    self.customNavBar = [UIView new];
+    self.customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.customNavBar.backgroundColor = PPProviderSurfaceColor();
+    self.customNavBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.customNavBar.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.04].CGColor;
+    self.customNavBar.layer.shadowOffset = CGSizeMake(0, 3);
+    self.customNavBar.layer.shadowRadius = 8.0;
+    self.customNavBar.layer.shadowOpacity = 1.0;
+    [self.view addSubview:self.customNavBar];
+
+    UIView *navBorder = [UIView new];
+    navBorder.translatesAutoresizingMaskIntoConstraints = NO;
+    navBorder.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.6];
+    [self.customNavBar addSubview:navBorder];
+
+    UIView *navContentRow = [UIView new];
+    navContentRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navContentRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.customNavBar addSubview:navContentRow];
+
+    self.backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_handleBackAction)];
+    [navContentRow addSubview:self.backButton];
+
+    UIStackView *titleStack = [UIStackView new];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.axis = UILayoutConstraintAxisVertical;
+    titleStack.alignment = [Language isRTL] ? UIStackViewAlignmentTrailing : UIStackViewAlignmentLeading;
+    titleStack.spacing = 1.0;
+    [navContentRow addSubview:titleStack];
+
+    UILabel *titleLabel = [UILabel new];
+    titleLabel.font = PPAppFontBold(17.5);
+    titleLabel.textColor = PPProviderPrimaryTextColor();
+    titleLabel.text = kLang(@"Providers_Features_Detail_Title") ?: @"تفاصيل الصلاحية والميزة";
+    titleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    titleLabel.adjustsFontForContentSizeCategory = YES;
+    [titleStack addArrangedSubview:titleLabel];
+
+    NSString *featureKey = [self.feature[@"featureKey"] isKindOfClass:NSString.class] ? self.feature[@"featureKey"] : @"";
+    UILabel *subLabel = [UILabel new];
+    subLabel.font = PPAppFontRegular(11.5);
+    subLabel.textColor = PPProviderSecondaryTextColor();
+    subLabel.text = featureKey;
+    subLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    subLabel.adjustsFontForContentSizeCategory = YES;
+    [titleStack addArrangedSubview:subLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.customNavBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.customNavBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.customNavBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.customNavBar.bottomAnchor constraintEqualToAnchor:navContentRow.bottomAnchor constant:10.0],
+
+        [navContentRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4.0],
+        [navContentRow.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor constant:16.0],
+        [navContentRow.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor constant:-16.0],
+        [navContentRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:navContentRow.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [titleStack.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:12.0],
+        [titleStack.trailingAnchor constraintEqualToAnchor:navContentRow.trailingAnchor constant:-12.0],
+        [titleStack.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+
+        [navBorder.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor],
+        [navBorder.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor],
+        [navBorder.bottomAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
+        [navBorder.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+    ]];
+}
+
+- (void)pp_handleBackAction {
+    [PPFunc pp_playSelectionEffect];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
     }
-    self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
 }
 
 - (void)pp_setupUI {
@@ -264,7 +332,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     [detailsStack addArrangedSubview:limitRow];
 
     UIView *planStatusRow = [self pp_buildInfoRowWithTitle:(kLang(@"Providers_Plan_Status") ?: @"حالة الخطة")
-                                                     value:planStatus.uppercaseString
+                                                     value:PPProviderLocalizedStatus(planStatus)
                                                     isMono:NO
                                                 copyAction:nil];
     [detailsStack addArrangedSubview:planStatusRow];
@@ -287,7 +355,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     [contentView addSubview:copyMainBtn];
 
     [NSLayoutConstraint activateConstraints:@[
-        [scrollView.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [scrollView.topAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
         [scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
@@ -511,7 +579,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     _chevronView.contentMode = UIViewContentModeScaleAspectFit;
     BOOL isRTL = [[Language currentLanguageCode] isEqualToString:@"ar"];
     UIImageSymbolConfiguration *chvConf = [UIImageSymbolConfiguration configurationWithPointSize:12 weight:UIImageSymbolWeightBold];
-    _chevronView.image = [[UIImage systemImageNamed:(isRTL ? @"chevron.backward" : @"chevron.forward") withConfiguration:chvConf]
+    _chevronView.image = [[UIImage systemImageNamed:(isRTL ? @"chevron.left" : @"chevron.right") withConfiguration:chvConf]
                           imageWithTintColor:[PPProviderSecondaryTextColor() colorWithAlphaComponent:0.4] renderingMode:UIImageRenderingModeAlwaysOriginal];
     [_cardView addSubview:_chevronView];
 
@@ -624,12 +692,19 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
 
 #pragma mark - Main View Controller
 
-@interface PPProviderFeatureAccessViewController () <UISearchBarDelegate>
+@interface PPProviderFeatureAccessViewController () <UISearchBarDelegate, UITableViewDataSource, UITableViewDelegate>
 @property (nonatomic, strong) NSArray<NSDictionary *> *allFeatures;
 @property (nonatomic, strong) NSArray<NSDictionary *> *filteredFeatures;
 @property (nonatomic, strong) NSArray<NSString *> *availableProviderTypes;
 @property (nonatomic, copy, nullable) NSString *selectedProviderType;
 @property (nonatomic, copy, nullable) NSString *searchQuery;
+
+@property (nonatomic, strong) UIView *customNavBar;
+@property (nonatomic, strong) UIButton *backButton;
+@property (nonatomic, strong) UILabel *navTitleLabel;
+@property (nonatomic, strong) UILabel *navSubtitleLabel;
+@property (nonatomic, strong) UIButton *refreshNavButton;
+@property (nonatomic, strong) UIRefreshControl *refreshControl;
 
 @property (nonatomic, strong) UIView *headerContainer;
 @property (nonatomic, strong) UILabel *totalMetricValue;
@@ -654,8 +729,10 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     self.allFeatures = @[];
     self.filteredFeatures = @[];
     self.availableProviderTypes = @[];
+    self.view.backgroundColor = PPProviderCanvasColor();
+    self.view.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     [self pp_evaluatePermissions];
-    [self pp_configureNavigation];
+    [self pp_setupCustomNavBar];
     [self pp_configureTableView];
     [self pp_buildHeader];
     [self loadData];
@@ -663,27 +740,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [self.navigationController setNavigationBarHidden:NO animated:animated];
-
-    if (@available(iOS 13.0, *)) {
-        UINavigationBarAppearance *appearance = [[UINavigationBarAppearance alloc] init];
-        [appearance configureWithTransparentBackground];
-        appearance.backgroundColor = UIColor.clearColor;
-        appearance.titleTextAttributes = @{
-            NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
-            NSFontAttributeName: PPAppFontBold(18.0)
-        };
-        appearance.largeTitleTextAttributes = @{
-            NSForegroundColorAttributeName: PPProviderPrimaryTextColor(),
-            NSFontAttributeName: PPAppFontBold(28.0)
-        };
-        appearance.shadowColor = UIColor.clearColor;
-        appearance.shadowImage = [[UIImage alloc] init];
-        self.navigationItem.standardAppearance = appearance;
-        self.navigationItem.scrollEdgeAppearance = appearance;
-        self.navigationItem.compactAppearance = appearance;
-    }
-    self.navigationController.navigationBar.tintColor = PPProviderBrandColor();
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
 }
 
 - (void)viewDidLayoutSubviews {
@@ -700,19 +757,116 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     }
 }
 
-- (void)pp_configureNavigation {
-    self.title = kLang(@"Providers_Features_HeroTitle") ?: @"دليل الصلاحيات والميزات";
-    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
-    UIBarButtonItem *refresh = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh
-                                                                              target:self
-                                                                              action:@selector(loadData)];
-    refresh.accessibilityLabel = kLang(@"DC_Refresh");
-    self.navigationItem.rightBarButtonItem = refresh;
-    PPCommandCenterNavigationItemsDidChange(self);
+- (void)pp_setupCustomNavBar {
+    self.customNavBar = [UIView new];
+    self.customNavBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.customNavBar.backgroundColor = PPProviderSurfaceColor();
+    self.customNavBar.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    self.customNavBar.layer.shadowColor = [UIColor.blackColor colorWithAlphaComponent:0.04].CGColor;
+    self.customNavBar.layer.shadowOffset = CGSizeMake(0, 3);
+    self.customNavBar.layer.shadowRadius = 8.0;
+    self.customNavBar.layer.shadowOpacity = 1.0;
+    [self.view addSubview:self.customNavBar];
+
+    UIView *navBorder = [UIView new];
+    navBorder.translatesAutoresizingMaskIntoConstraints = NO;
+    navBorder.backgroundColor = [[UIColor ppSurfaceBorder] colorWithAlphaComponent:0.6];
+    [self.customNavBar addSubview:navBorder];
+
+    UIView *navContentRow = [UIView new];
+    navContentRow.translatesAutoresizingMaskIntoConstraints = NO;
+    navContentRow.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+    [self.customNavBar addSubview:navContentRow];
+
+    self.backButton = [self pp_BackButtonWithSystemName:PPNavBackSymbolName() action:@selector(pp_handleBackAction)];
+    [navContentRow addSubview:self.backButton];
+
+    UIStackView *titleStack = [UIStackView new];
+    titleStack.translatesAutoresizingMaskIntoConstraints = NO;
+    titleStack.axis = UILayoutConstraintAxisVertical;
+    titleStack.alignment = [Language isRTL] ? UIStackViewAlignmentTrailing : UIStackViewAlignmentLeading;
+    titleStack.spacing = 1.0;
+    [navContentRow addSubview:titleStack];
+
+    self.navTitleLabel = [UILabel new];
+    self.navTitleLabel.font = PPAppFontBold(17.5);
+    self.navTitleLabel.textColor = PPProviderPrimaryTextColor();
+    self.navTitleLabel.text = kLang(@"Providers_Features_HeroTitle") ?: @"دليل الصلاحيات والميزات";
+    self.navTitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.navTitleLabel.adjustsFontForContentSizeCategory = YES;
+    [titleStack addArrangedSubview:self.navTitleLabel];
+
+    self.navSubtitleLabel = [UILabel new];
+    self.navSubtitleLabel.font = PPAppFontRegular(11.5);
+    self.navSubtitleLabel.textColor = PPProviderSecondaryTextColor();
+    self.navSubtitleLabel.text = kLang(@"Providers_Features_HeroSubtitle") ?: @"تراخيص وميزات المزودين";
+    self.navSubtitleLabel.textAlignment = [Language alignmentForCurrentLanguage];
+    self.navSubtitleLabel.adjustsFontForContentSizeCategory = YES;
+    [titleStack addArrangedSubview:self.navSubtitleLabel];
+
+    self.refreshNavButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    self.refreshNavButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.refreshNavButton.backgroundColor = [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *tc) {
+        return tc.userInterfaceStyle == UIUserInterfaceStyleDark
+            ? [[UIColor whiteColor] colorWithAlphaComponent:0.08]
+            : [[UIColor blackColor] colorWithAlphaComponent:0.04];
+    }];
+    self.refreshNavButton.tintColor = PPProviderBrandColor();
+    self.refreshNavButton.layer.cornerRadius = 18.0;
+    UIImageSymbolConfiguration *refConf = [UIImageSymbolConfiguration configurationWithPointSize:15 weight:UIImageSymbolWeightMedium];
+    [self.refreshNavButton setImage:[UIImage systemImageNamed:@"arrow.clockwise" withConfiguration:refConf] forState:UIControlStateNormal];
+    [self.refreshNavButton addTarget:self action:@selector(loadData) forControlEvents:UIControlEventTouchUpInside];
+    [navContentRow addSubview:self.refreshNavButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.customNavBar.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [self.customNavBar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.customNavBar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.customNavBar.bottomAnchor constraintEqualToAnchor:navContentRow.bottomAnchor constant:10.0],
+
+        [navContentRow.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:4.0],
+        [navContentRow.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor constant:16.0],
+        [navContentRow.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor constant:-16.0],
+        [navContentRow.heightAnchor constraintEqualToConstant:44.0],
+
+        [self.backButton.leadingAnchor constraintEqualToAnchor:navContentRow.leadingAnchor],
+        [self.backButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [self.backButton.widthAnchor constraintEqualToConstant:44.0],
+        [self.backButton.heightAnchor constraintEqualToConstant:44.0],
+
+        [titleStack.leadingAnchor constraintEqualToAnchor:self.backButton.trailingAnchor constant:12.0],
+        [titleStack.trailingAnchor constraintLessThanOrEqualToAnchor:self.refreshNavButton.leadingAnchor constant:-12.0],
+        [titleStack.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+
+        [self.refreshNavButton.trailingAnchor constraintEqualToAnchor:navContentRow.trailingAnchor],
+        [self.refreshNavButton.centerYAnchor constraintEqualToAnchor:navContentRow.centerYAnchor],
+        [self.refreshNavButton.widthAnchor constraintEqualToConstant:36.0],
+        [self.refreshNavButton.heightAnchor constraintEqualToConstant:36.0],
+
+        [navBorder.leadingAnchor constraintEqualToAnchor:self.customNavBar.leadingAnchor],
+        [navBorder.trailingAnchor constraintEqualToAnchor:self.customNavBar.trailingAnchor],
+        [navBorder.bottomAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
+        [navBorder.heightAnchor constraintEqualToConstant:1.0 / UIScreen.mainScreen.scale],
+    ]];
+}
+
+- (void)pp_handleBackAction {
+    [PPFunc pp_playSelectionEffect];
+    if ([self respondsToSelector:@selector(pp_dismissWorkflowRouteIfPossible)]) {
+        if ([self pp_dismissWorkflowRouteIfPossible]) {
+            return;
+        }
+    }
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    }
 }
 
 - (void)pp_configureTableView {
-    self.view.backgroundColor = PPProviderCanvasColor();
+    self.tableView = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStylePlain];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableView.backgroundColor = PPProviderCanvasColor();
     self.tableView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
     self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
@@ -720,17 +874,28 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     self.tableView.estimatedRowHeight = 110.0;
     self.tableView.showsVerticalScrollIndicator = NO;
     self.tableView.contentInset = UIEdgeInsetsMake(PPSpaceXS, 0.0, PPSpaceXXL, 0.0);
+    self.tableView.dataSource = self;
+    self.tableView.delegate = self;
     [self.tableView registerClass:PPFeatureEntitlementCardCell.class forCellReuseIdentifier:PPFeatureEntitlementCellID];
+    [self.view addSubview:self.tableView];
 
     UIRefreshControl *refresh = [UIRefreshControl new];
     refresh.tintColor = PPProviderBrandColor();
     [refresh addTarget:self action:@selector(loadData) forControlEvents:UIControlEventValueChanged];
     self.refreshControl = refresh;
+    self.tableView.refreshControl = refresh;
 
     self.stateView = [PPProviderStateView new];
     __weak typeof(self) weakSelf = self;
     self.stateView.retryHandler = ^{ [weakSelf loadData]; };
     self.tableView.backgroundView = self.stateView;
+
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tableView.topAnchor constraintEqualToAnchor:self.customNavBar.bottomAnchor],
+        [self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+    ]];
 }
 
 #pragma mark - Header Building
@@ -998,6 +1163,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
     self.isLoading = YES;
     self.currentError = nil;
     self.navigationItem.rightBarButtonItem.enabled = NO;
+    self.refreshNavButton.enabled = NO;
     [self pp_updateState];
 
     __weak typeof(self) weakSelf = self;
@@ -1007,6 +1173,7 @@ static NSString *PPSymbolForProviderType(NSString *providerType) {
             if (!self) return;
             self.isLoading = NO;
             self.navigationItem.rightBarButtonItem.enabled = YES;
+            self.refreshNavButton.enabled = YES;
             [self.refreshControl endRefreshing];
             self.currentError = error;
             if (!error) {

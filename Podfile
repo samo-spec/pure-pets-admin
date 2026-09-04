@@ -8,7 +8,6 @@ target 'PurePetsAdmin' do
  
   
   # ===== UI & Media =====
-  pod 'SDWebImage'
   pod 'lottie-ios', '~> 2.5.3'
   pod 'XLForm'
   pod 'IQKeyboardManager'
@@ -34,9 +33,6 @@ post_install do |installer|
     '${PODS_ROOT}/YYKit/YYKit/**',
     '${PODS_ROOT}/SSZipArchive/SSZipArchive',
     '${PODS_ROOT}/SSZipArchive/SSZipArchive/**',
-    '${PODS_ROOT}/SDWebImage/SDWebImage/Core',
-    '${PODS_ROOT}/SDWebImage/SDWebImage/Core/**',
-    '${PODS_ROOT}/SDWebImage/WebImage',
     '${PODS_ROOT}/lottie-ios/lottie-ios/Classes/PublicHeaders',
     '${PODS_ROOT}/lottie-ios/lottie-ios/Classes/PublicHeaders/**',
     '${PODS_ROOT}/FirebaseCore/FirebaseCore/Sources/Public/FirebaseCore',

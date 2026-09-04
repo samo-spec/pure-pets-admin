@@ -6,7 +6,7 @@
 //
 
 #import "UserManagementController.h"
-#import "UIImageView+WebCache.h"
+#import "PurePetsAdmin-Swift.h"
 #import "Language.h"
 #import "Styling.h"
 #import "UserModel.h"
@@ -867,7 +867,10 @@ static UIColor *PPColorForIndex(NSUInteger idx) {
 
     NSURL *imageURL = self.user.UserImageUrl ?: PPURLOrNil(self.user.photoURL);
     if (imageURL) {
-        [avatar sd_setImageWithURL:imageURL placeholderImage:[UIImage systemImageNamed:@"person.crop.circle.fill"]];
+        [PPAdminImageLoader setImageWithURLString:imageURL.absoluteString
+                                       onImageView:avatar
+                                       placeholder:[UIImage systemImageNamed:@"person.crop.circle.fill"]
+                                       completion:nil];
     } else {
         UIImageSymbolConfiguration *sym = [UIImageSymbolConfiguration configurationWithPointSize:28 weight:UIImageSymbolWeightMedium];
         avatar.image = [[UIImage systemImageNamed:@"person.crop.circle.fill" withConfiguration:sym] imageWithTintColor:PPProviderBrandColor() renderingMode:UIImageRenderingModeAlwaysOriginal];

@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import Combine
 
 // MARK: - Inventory Kind
 
@@ -62,20 +63,29 @@ final class InventoryViewModel: ObservableObject {
 
     let kind: InventoryKind
     private var listener: AnyObject?
+    private var cancellables = Set<AnyCancellable>()
 
     var filteredItems: [PetAccessory] {
         var result = items
         if showInStockOnly {
-            result = result.filter { $0.quantity > 0 && !$0.noStock }
+            result = result.filter {
+                let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
+                return stock > 0 && !$0.noStock
+            }
         }
         if showLowStockOnly {
-            result = result.filter { $0.quantity <= 3 || $0.noStock }
+            result = result.filter {
+                let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
+                return stock <= 3 || $0.noStock
+            }
         }
         if !searchText.isEmpty {
             let q = searchText.lowercased()
             result = result.filter {
                 $0.name.lowercased().contains(q) ||
-                ($0.accessoryCategoryID ?? "").lowercased().contains(q)
+                ($0.accessoryCategoryID ?? "").lowercased().contains(q) ||
+                ($0.sku ?? "").lowercased().contains(q) ||
+                ($0.barcode ?? "").lowercased().contains(q)
             }
         }
         result.sort { a, b in
@@ -90,8 +100,18 @@ final class InventoryViewModel: ObservableObject {
     }
 
     var totalCount: Int { items.count }
-    var inStockCount: Int { items.filter { $0.quantity > 0 && !$0.noStock }.count }
-    var lowStockCount: Int { items.filter { $0.quantity <= 3 || $0.noStock }.count }
+    var inStockCount: Int {
+        items.filter {
+            let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
+            return stock > 0 && !$0.noStock
+        }.count
+    }
+    var lowStockCount: Int {
+        items.filter {
+            let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
+            return stock <= 3 || $0.noStock
+        }.count
+    }
 
     var navigationTitle: String {
         let title = Language.get(kind.titleKey, alter: nil)
@@ -105,6 +125,22 @@ final class InventoryViewModel: ObservableObject {
     func startListening() {
         isLoading = true
         errorMessage = nil
+
+        PPBranchInventoryService.shared.startListeningIfNeeded()
+        PPBranchInventoryService.shared.$inventoryMap
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
+        PPBranchInventoryService.shared.$settingsMap
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.objectWillChange.send()
+            }
+            .store(in: &cancellables)
+
         listener = AccessoryManager.shared().observeAccessories(
             of: kind.accessKind
         ) { [weak self] items, error in
@@ -132,6 +168,7 @@ final class InventoryViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(reg)
         }
         listener = nil
+        cancellables.removeAll()
     }
 
     func deleteItem(_ accessory: PetAccessory) {
@@ -146,19 +183,63 @@ final class InventoryViewModel: ObservableObject {
     }
 
     func updateQuantity(_ qty: Int, for accessory: PetAccessory) {
-        let docID = accessory.accessoryID
-        AccessoryManager.shared().updateQuantity(qty, forAccessoryID: docID) { [weak self] error in
-            Task { @MainActor in
-                if let error { self?.errorMessage = error.localizedDescription }
+        let current = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+        let delta = qty - current
+        guard delta != 0 else { return }
+
+        if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
+            PPBranchInventoryService.shared.adjustStock(
+                productId: accessory.accessoryID,
+                branchId: branchId,
+                delta: delta,
+                type: delta > 0 ? "purchase" : "adjustment",
+                referenceId: "admin_inventory_view",
+                reason: "manual_adjustment",
+                notes: "Adjusted from admin inventory view"
+            ) { [weak self] result in
+                Task { @MainActor in
+                    if case .failure(let error) = result {
+                        self?.errorMessage = error.localizedDescription
+                    }
+                }
+            }
+        } else {
+            let docID = accessory.accessoryID
+            AccessoryManager.shared().updateQuantity(qty, forAccessoryID: docID) { [weak self] error in
+                Task { @MainActor in
+                    if let error { self?.errorMessage = error.localizedDescription }
+                }
             }
         }
     }
 
     func toggleNoStock(for accessory: PetAccessory) {
         let docID = accessory.accessoryID
-        AccessoryManager.shared().setNoStock(!accessory.noStock, forAccessoryID: docID) { [weak self] error in
+        let newNoStock = !accessory.noStock
+        AccessoryManager.shared().setNoStock(newNoStock, forAccessoryID: docID) { [weak self] error in
             Task { @MainActor in
                 if let error { self?.errorMessage = error.localizedDescription }
+            }
+        }
+
+        if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
+            let currentBranchStock = PPBranchInventoryService.shared.availableStock(for: docID, fallback: accessory.quantity)
+            if newNoStock && currentBranchStock > 0 {
+                PPBranchInventoryService.shared.adjustStock(
+                    productId: docID,
+                    branchId: branchId,
+                    delta: -currentBranchStock,
+                    type: "adjustment",
+                    referenceId: "admin_toggle_stock",
+                    reason: "marked_no_stock",
+                    notes: "Marked out of stock from inventory view"
+                ) { [weak self] result in
+                    Task { @MainActor in
+                        if case .failure(let error) = result {
+                            self?.errorMessage = error.localizedDescription
+                        }
+                    }
+                }
             }
         }
     }
@@ -189,6 +270,9 @@ struct AdminInventoryView: View {
 
             VStack(spacing: 0) {
                 dossierHeaderView
+                PPAdminBranchSwitcherBar(style: .compact)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 4)
                 statsRow
                 searchAndFilters
                 Divider().background(AdminSurface.hairline)
@@ -430,6 +514,14 @@ private struct InventoryItemRow: View {
     let item: PetAccessory
     let kind: InventoryKind
 
+    private var availableStock: Int {
+        PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+    }
+
+    private var displayPrice: Double {
+        PPBranchInventoryService.shared.effectiveSellingPrice(for: item.accessoryID, fallbackPrice: item.finalPrice.doubleValue)
+    }
+
     var body: some View {
         HStack(spacing: AdminSpacing.md) {
             thumbnailView
@@ -442,25 +534,36 @@ private struct InventoryItemRow: View {
                     .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
 
-                if let category = item.accessoryCategoryID, !category.isEmpty {
-                    Text(category)
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
+                HStack(spacing: 6) {
+                    if let category = item.accessoryCategoryID, !category.isEmpty {
+                        Text(category)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    if let sku = item.sku, !sku.isEmpty {
+                        Text("SKU: \(sku)")
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
+                    }
                 }
 
                 HStack(spacing: AdminSpacing.sm) {
                     Label(
-                        "\(item.quantity)",
+                        "\(availableStock)",
                         systemImage: "cube.box.fill"
                     )
                     .font(AdminType.caption2Bold)
                     .foregroundColor(
-                        item.noStock || item.quantity <= 0 ? .red :
-                        item.quantity <= 3 ? .orange : AdminSurface.secondaryText
+                        item.noStock || availableStock <= 0 ? .red :
+                        availableStock <= 3 ? .orange : AdminSurface.secondaryText
                     )
 
-                    if item.noStock {
-                        Text(Language.get("Inventory_No_Stock", alter: "\u{0646}\u{0641}\u{0627}\u{062f}"))
+                    if item.noStock || availableStock <= 0 {
+                        Text(Language.get("Inventory_No_Stock", alter: "نفاد"))
                             .font(AdminType.caption2Bold)
                             .foregroundColor(.red)
                             .padding(.horizontal, 6)
@@ -473,11 +576,11 @@ private struct InventoryItemRow: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(formatPrice(item.finalPrice.doubleValue))
+                Text(formatPrice(displayPrice))
                     .font(AdminType.calloutBold)
                     .foregroundColor(AdminSurface.primaryText)
 
-                if item.finalPrice != item.price {
+                if displayPrice != item.price.doubleValue {
                     Text(formatPrice(item.price.doubleValue))
                         .font(AdminType.caption2)
                         .foregroundColor(.green)
@@ -496,21 +599,8 @@ private struct InventoryItemRow: View {
         Group {
             if let urlString = item.imageURLsArray.first,
                let url = URL(string: urlString) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 56, height: 56)
-                            .clipped()
-                    case .failure:
-                        placeholderIcon
-                    case .empty:
-                        ProgressView().tint(AdminSurface.primary)
-                    @unknown default:
-                        placeholderIcon
-                    }
+                AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 56, height: 56)) {
+                    placeholderIcon
                 }
                 .frame(width: 56, height: 56)
                 .clipped()

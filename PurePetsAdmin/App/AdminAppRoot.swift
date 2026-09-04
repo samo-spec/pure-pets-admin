@@ -122,7 +122,18 @@ final class AdminSessionStore: ObservableObject {
                 self.state = .authenticated(session)
                 self.startStaffObservation(for: session.uid)
                 PPStaffAuth.shared().fetchStaffDoc(session.uid) { staffDoc, _ in
-                    PPBranchContextManager.shared().configure(withStaff: staffDoc, completion: nil)
+                    PPBranchContextManager.shared().configure(withStaff: staffDoc) {
+                        DispatchQueue.main.async {
+                            NotificationCenter.default.post(
+                                name: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"),
+                                object: nil
+                            )
+                            NotificationCenter.default.post(
+                                name: Notification.Name.PPActiveBranchDidChange,
+                                object: nil
+                            )
+                        }
+                    }
                 }
             }
         }

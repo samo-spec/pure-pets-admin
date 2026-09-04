@@ -37,15 +37,17 @@ public struct AdminPetsHotelStayDetailSheet: View {
                     roomAndHorizonPillars
 
                     // Financial Ledger Pill (if available)
-                    if activeStay.grandTotalMinor > 0 {
+                    if viewModel.canViewBilling && activeStay.grandTotalMinor > 0 {
                         financialLedgerCard
                     }
 
                     // Care Schedule & Daily Tasks
-                    careTasksSection
+                    if viewModel.canViewCare {
+                        careTasksSection
 
-                    // Belongings Inventory Checklist
-                    belongingsSection
+                        // Belongings Inventory Checklist
+                        belongingsSection
+                    }
 
                     // Owner Contact Flight Deck
                     ownerContactSection
@@ -72,7 +74,9 @@ public struct AdminPetsHotelStayDetailSheet: View {
                 }
             }
             .task {
-                await viewModel.loadStayDossier(stayId: stay.id)
+                if viewModel.canViewCare {
+                    await viewModel.loadStayDossier(stayId: stay.id, updatePresentedDetail: true)
+                }
             }
         }
     }
@@ -335,6 +339,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(PlainButtonStyle())
+                        .disabled(!viewModel.canTransitionCareTask(task))
                     }
                 }
                 .padding(14)
@@ -470,6 +475,8 @@ public struct AdminPetsHotelStayDetailSheet: View {
             .shadow(color: Color(red: 0.82, green: 0.15, blue: 0.35).opacity(0.3), radius: 10, y: 4)
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(!viewModel.canCheckOut)
+        .opacity(viewModel.canCheckOut ? 1 : 0.45)
     }
 
     private func formatDateRange(from: Date, to: Date) -> String {

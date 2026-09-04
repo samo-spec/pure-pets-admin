@@ -13,19 +13,28 @@ public struct AdminPetsHotelHubView: View {
     @StateObject private var viewModel = AdminPetsHotelViewModel.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    private let onDismiss: (() -> Void)?
 
-    public init() {}
+    public init(onDismiss: (() -> Void)? = nil) {
+        self.onDismiss = onDismiss
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
             // Top Navigation Bar
             topNavigationBar
 
+            if viewModel.isLoading || viewModel.requiresBranchSelection || viewModel.errorMessage != nil {
+                hotelStateBanner
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 8)
+            }
+
             // Flight Mode Tab Picker
             flightTabPicker
 
             // Search & Wing Filters (Visible on relevant tabs)
-            if viewModel.selectedTab != .overview {
+            if viewModel.selectedTab == .guests || viewModel.selectedTab == .care {
                 filterDeck
             }
 
@@ -54,6 +63,24 @@ public struct AdminPetsHotelHubView: View {
         .sheet(item: $viewModel.selectedStayDetail) { stay in
             AdminPetsHotelStayDetailSheet(stay: stay, viewModel: viewModel)
         }
+        .sheet(item: $viewModel.selectedReservationDetail) { res in
+            AdminPetsHotelReservationDetailSheet(reservation: res, viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.newReservationModalOpen) {
+            AdminPetsHotelCreateReservationSheet(viewModel: viewModel)
+        }
+        .sheet(item: $viewModel.suiteEditorModalAccommodation) { acc in
+            AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isCreatingNewSuite) {
+            AdminPetsHotelSuiteEditorSheet(accommodation: nil, viewModel: viewModel)
+        }
+        .sheet(item: $viewModel.typeEditorModalType) { type in
+            AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: type, viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isCreatingNewType) {
+            AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
+        }
         .sheet(item: $viewModel.checkInModalReservation) { res in
             AdminPetsHotelCheckInSheet(reservation: res, viewModel: viewModel)
         }
@@ -63,13 +90,20 @@ public struct AdminPetsHotelHubView: View {
         .sheet(item: $viewModel.roomStatusModalAccommodation) { room in
             AdminPetsHotelRoomStatusSheet(room: room, viewModel: viewModel)
         }
+        .onAppear {
+            viewModel.loadHotelOperations()
+        }
     }
 
     // MARK: - Top Navigation Bar
     private var topNavigationBar: some View {
         HStack(spacing: 12) {
             Button {
-                dismiss()
+                if let onDismiss {
+                    onDismiss()
+                } else {
+                    dismiss()
+                }
             } label: {
                 ZStack {
                     Circle()
@@ -83,6 +117,7 @@ public struct AdminPetsHotelHubView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -130,17 +165,63 @@ public struct AdminPetsHotelHubView: View {
                 }
             }
             .buttonStyle(PlainButtonStyle())
+            .disabled(viewModel.isLoading)
         }
         .padding(.horizontal, 18)
         .padding(.top, 10)
         .padding(.bottom, 8)
     }
 
+    private var hotelStateBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            if viewModel.isLoading && viewModel.errorMessage == nil {
+                ProgressView()
+                    .tint(AdminSurface.primary)
+            } else {
+                Image(systemName: viewModel.requiresBranchSelection ? "building.2.crop.circle" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(viewModel.requiresBranchSelection ? AdminSurface.primary : Color.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(viewModel.requiresBranchSelection
+                     ? Language.get("Hotel_BranchRequired_Title", alter: "اختر فرع الفندق")
+                     : viewModel.isLoading
+                        ? Language.get("Hotel_Loading_Title", alter: "جاري مزامنة عمليات الفندق")
+                        : Language.get("Hotel_LoadError_Title", alter: "تعذر تحديث بعض بيانات الفندق"))
+                    .font(Font.custom("Beiruti-Bold", size: 14))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                if let message = viewModel.errorMessage {
+                    Text(message)
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Spacer()
+
+            if !viewModel.requiresBranchSelection && !viewModel.isLoading {
+                Button(Language.get("Retry", alter: "إعادة المحاولة")) {
+                    viewModel.loadHotelOperations()
+                }
+                .font(Font.custom("Beiruti-Bold", size: 13))
+                .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
+        )
+    }
+
     // MARK: - Flight Mode Tab Picker
     private var flightTabPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(HotelHubTab.allCases) { tab in
+                ForEach(viewModel.visibleTabs) { tab in
                     let isSelected = viewModel.selectedTab == tab
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -280,7 +361,11 @@ public struct AdminPetsHotelHubView: View {
                         .font(.system(size: 38, weight: .heavy, design: .rounded))
                         .foregroundStyle(AdminSurface.primaryText)
 
-                    Text("\(viewModel.occupiedRoomsCount) من أصل \(viewModel.totalRoomsCount) أجنحة مشغولة")
+                    Text(String.localizedStringWithFormat(
+                        Language.get("Hotel_OccupancySummary_Format", alter: "%ld من أصل %ld أجنحة مشغولة"),
+                        viewModel.occupiedRoomsCount,
+                        viewModel.totalRoomsCount
+                    ))
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
@@ -627,6 +712,8 @@ public struct AdminPetsHotelHubView: View {
                             .background(Color(red: 0.82, green: 0.15, blue: 0.35), in: Capsule())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .disabled(!viewModel.canCheckOut)
+                    .opacity(viewModel.canCheckOut ? 1 : 0.45)
                 }
             }
             .padding(14)
@@ -639,162 +726,14 @@ public struct AdminPetsHotelHubView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
-    // MARK: - Tab 3: Reservations
+    // MARK: - Tab 3: Sovereign Reservations Management
     private var reservationsListView: some View {
-        VStack(spacing: 12) {
-            if viewModel.filteredReservations.isEmpty {
-                emptyStateCard(
-                    title: Language.get("Hotel_NoReservations", alter: "لا توجد حجوزات مسجلة"),
-                    symbol: "calendar.badge.clock"
-                )
-            } else {
-                ForEach(viewModel.filteredReservations) { res in
-                    reservationCard(reservation: res)
-                }
-            }
-        }
+        AdminPetsHotelReservationsManagementView(viewModel: viewModel)
     }
 
-    private func reservationCard(reservation: AdminHotelReservation) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(reservation.wing.tint.opacity(0.15))
-                        .frame(width: 48, height: 48)
-                    Image(systemName: reservation.wing.icon)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(reservation.wing.tint)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(reservation.petName)
-                            .font(Font.custom("Beiruti-Bold", size: 17))
-                            .foregroundStyle(AdminSurface.primaryText)
-
-                        Text(reservation.status.title)
-                            .font(Font.custom("Beiruti-Bold", size: 11))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(reservation.status.color.opacity(0.15), in: Capsule())
-                            .foregroundStyle(reservation.status.color)
-                    }
-
-                    Text("\(reservation.petBreed) • \(reservation.customerName)")
-                        .font(Font.custom("Beiruti-Medium", size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(reservation.formattedTotal)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text("\(reservation.numberOfNights) ليالي")
-                        .font(Font.custom("Beiruti-Medium", size: 11))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-            }
-
-            // Dates horizon & Check-in trigger
-            HStack {
-                Label("\(formatDate(reservation.checkInDate)) → \(formatDate(reservation.checkOutDate))", systemImage: "calendar")
-                    .font(Font.custom("Beiruti-Medium", size: 12))
-                    .foregroundStyle(AdminSurface.secondaryText)
-
-                Spacer()
-
-                if reservation.status != .checkedIn && reservation.status != .completed && reservation.status != .cancelled {
-                    Button {
-                        viewModel.checkInModalReservation = reservation
-                    } label: {
-                        Text(Language.get("Hotel_CheckInNow", alter: "تسجيل الدخول الآن"))
-                            .font(Font.custom("Beiruti-Bold", size: 13))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color(red: 0.16, green: 0.72, blue: 0.44), in: Capsule())
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-        }
-        .padding(14)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
-        )
-    }
-
-    // MARK: - Tab 4: Rooms & Suites Spatial Grid
+    // MARK: - Tab 4: Sovereign Rooms & Suites Management
     private var roomsGridView: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: 12),
-            GridItem(.flexible(), spacing: 12)
-        ]
-
-        return LazyVGrid(columns: columns, spacing: 12) {
-            ForEach(viewModel.filteredAccommodations) { room in
-                Button {
-                    viewModel.roomStatusModalAccommodation = room
-                } label: {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text(room.accommodationNumber)
-                                .font(Font.custom("Beiruti-Bold", size: 17))
-                                .foregroundStyle(AdminSurface.primaryText)
-                            Spacer()
-                            Image(systemName: room.wing.icon)
-                                .font(.system(size: 14))
-                                .foregroundStyle(room.wing.tint)
-                        }
-
-                        Text(room.name)
-                            .font(Font.custom("Beiruti-Medium", size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .lineLimit(1)
-
-                        if let guest = room.currentGuestName {
-                            HStack(spacing: 4) {
-                                Image(systemName: "pawprint.fill")
-                                    .font(.system(size: 10))
-                                Text(guest)
-                                    .font(Font.custom("Beiruti-Bold", size: 12))
-                            }
-                            .foregroundStyle(AdminSurface.primary)
-                        } else {
-                            Text(room.formattedRate)
-                                .font(.system(size: 12, weight: .bold, design: .rounded))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-
-                        // Status Pill
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(room.status.color)
-                                .frame(width: 5, height: 5)
-                            Text(room.status.title)
-                                .font(Font.custom("Beiruti-Bold", size: 11))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(room.status.color.opacity(0.12), in: Capsule())
-                        .foregroundStyle(room.status.color)
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(room.status == .occupied ? AdminSurface.primary.opacity(0.3) : Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.75)
-                    )
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-        }
+        AdminPetsHotelSuitesManagementView(viewModel: viewModel)
     }
 
     // MARK: - Tab 5: Care Operations & Tasks
@@ -854,6 +793,7 @@ public struct AdminPetsHotelHubView: View {
                                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
                             .buttonStyle(PlainButtonStyle())
+                            .disabled(!viewModel.canTransitionCareTask(task))
                         }
                     }
                 }

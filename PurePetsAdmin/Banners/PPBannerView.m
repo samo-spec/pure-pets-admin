@@ -12,7 +12,7 @@
 
 #import "PPBannerView.h"
 // #import "PPBannerViewModel.h"              // Uncomment if you want direct property access
- #import "UIImageView+WebCache.h"
+#import "UIImageView.h"
 
 #pragma mark - Private Interface
 
@@ -251,26 +251,6 @@
         _badgeImageView.image = nil;
     }
     
-    /* If using SDWebImage, uncomment to load remote images:
-    [_backgroundImageView sd_setImageWithURL:_bgURL
-                            placeholderImage:bgPlaceholder
-                                     options:SDWebImageHighPriority
-                                   completed:nil];
-
-    [_sampleImageView sd_setImageWithURL:_sampleURL
-                        placeholderImage:samplePlaceholder
-                                 options:SDWebImageHighPriority
-                               completed:nil];
-
-    if (_badgeURL) {
-        _badgeImageView.hidden = NO;
-        [_badgeImageView sd_setImageWithURL:_badgeURL placeholderImage:nil options:0 completed:nil];
-    } else {
-        _badgeImageView.hidden = YES;
-        _badgeImageView.image = nil;
-    }
-    */
-
     // If not using a loader, ensure we at least show a placeholder
     if (!_backgroundImageView.image) _backgroundImageView.image = bgPlaceholder;
     if (!_sampleImageView.image)     _sampleImageView.image     = nil;

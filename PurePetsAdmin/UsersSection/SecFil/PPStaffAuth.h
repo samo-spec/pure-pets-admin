@@ -146,6 +146,37 @@ extern NSString * const kStaffPermCategoriesManage;
 extern NSString * const kStaffPermVeterinariansView;
 extern NSString * const kStaffPermVeterinariansManage;
 
+// Pets Hotel (matches Infra's fine-grained hotel permission module)
+extern NSString * const kStaffPermHotelView;
+extern NSString * const kStaffPermHotelReservationsManage;
+extern NSString * const kStaffPermHotelCheckIn;
+extern NSString * const kStaffPermHotelCheckOut;
+extern NSString * const kStaffPermHotelAccommodationsManage;
+extern NSString * const kStaffPermHotelCareView;
+extern NSString * const kStaffPermHotelCareManage;
+extern NSString * const kStaffPermHotelTaskRead;
+extern NSString * const kStaffPermHotelTaskAssign;
+extern NSString * const kStaffPermHotelTaskExecute;
+extern NSString * const kStaffPermHotelMedicationRead;
+extern NSString * const kStaffPermHotelMedicationManage;
+extern NSString * const kStaffPermHotelMedicationAdminister;
+extern NSString * const kStaffPermHotelHealthRead;
+extern NSString * const kStaffPermHotelHealthCreate;
+extern NSString * const kStaffPermHotelHealthManage;
+extern NSString * const kStaffPermHotelIncidentsView;
+extern NSString * const kStaffPermHotelIncidentsManage;
+extern NSString * const kStaffPermHotelServicesManage;
+extern NSString * const kStaffPermHotelMediaView;
+extern NSString * const kStaffPermHotelMediaManage;
+extern NSString * const kStaffPermHotelBillingView;
+extern NSString * const kStaffPermHotelBillingManage;
+extern NSString * const kStaffPermHotelBillingAdjust;
+extern NSString * const kStaffPermHotelTransportManage;
+extern NSString * const kStaffPermHotelNotificationsManage;
+extern NSString * const kStaffPermHotelReportsView;
+extern NSString * const kStaffPermHotelSettingsManage;
+extern NSString * const kStaffPermHotelOverride;
+
 #pragma mark - Staff Document Model
 
 @interface PPStaffDoc : NSObject
