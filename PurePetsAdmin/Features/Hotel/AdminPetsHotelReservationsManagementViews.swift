@@ -492,9 +492,11 @@ public struct AdminPetsHotelReservationDetailSheet: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $isExtending) {
             AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $isShowingReasonSheet) {
             AdminPetsHotelReasonSheet(reservation: reservation, action: pendingAction, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
     }
 
@@ -502,20 +504,21 @@ public struct AdminPetsHotelReservationDetailSheet: View {
         AdminSovereignNavigationBar(
             title: reservation.reservationNumber.isEmpty ? Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز") : reservation.reservationNumber,
             subtitle: "\(reservation.petName) • \(reservation.wing.title)",
-            statusDotColor: reservation.status.tint,
+            statusDotColor: reservation.status.color,
             isModal: true,
             onBack: { dismiss() }
         ) {
             HStack(spacing: 4) {
-                Image(systemName: reservation.status.icon)
-                    .font(.system(size: 10, weight: .bold))
+                Circle()
+                    .fill(reservation.status.color)
+                    .frame(width: 6, height: 6)
                 Text(reservation.status.title)
                     .font(Font.custom("Beiruti-Bold", size: 12))
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(reservation.status.tint.opacity(0.12), in: Capsule())
-            .foregroundStyle(reservation.status.tint)
+            .background(reservation.status.color.opacity(0.12), in: Capsule())
+            .foregroundStyle(reservation.status.color)
         }
     }
 
@@ -544,7 +547,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                         .foregroundStyle(reservation.status.color)
                 }
 
-                Text("\(reservation.petBreed) • \(reservation.wing.title)")
+                Text(reservation.petBreed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? reservation.wing.title : "\(reservation.petBreed) • \(reservation.wing.title)")
                     .font(Font.custom("Beiruti-Medium", size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
@@ -937,8 +940,9 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         Text(error)
                             .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundStyle(Color.red)
+                            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
                             .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
                             .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
@@ -979,38 +983,69 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var sheetNavBar: some View {
-        AdminSovereignNavigationBar(
-            title: Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"),
-            subtitle: Language.get("Hotel_Res_NewReservationSub", alter: "فندق بيور بيتس • حجز إقامة"),
-            statusDotColor: Color(uiColor: .ppSuccess),
-            isModal: true,
-            onBack: { dismiss() }
-        )
+        HStack(spacing: 12) {
+            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 3) {
+                Text(Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"))
+                    .font(Font.custom("Beiruti-Bold", size: 20))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("Hotel_Res_NewReservationSub", alter: "فندق بيور بيتس • حجز إقامة"))
+                        .font(Font.custom("Beiruti-Medium", size: 12))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .lineLimit(1)
+                }
+            }
+            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+
+            Spacer(minLength: 8)
+
+            AdminSquircleCloseButton(action: { dismiss() })
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 16)
+        .padding(.bottom, 12)
     }
 
     private var customerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Customer", alter: "بيانات العميل"), systemImage: "person.fill")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Customer_Details", alter: "بيانات العميل"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 10) {
                 TextField(Language.get("Customer_Name_Placeholder", alter: "اسم العميل بالكامل *"), text: $customerName)
                     .font(Font.custom("Beiruti-Medium", size: 14))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 TextField(Language.get("Customer_Phone_Placeholder", alter: "رقم هاتف العميل للتواصل *"), text: $customerPhone)
                     .keyboardType(.phonePad)
-                    .font(.system(size: 14, weight: .semibold, design: .monospaced))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(Font.custom("Beiruti-SemiBold", size: 14))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 TextField(Language.get("Email_Optional", alter: "البريد الإلكتروني (اختياري)"), text: $customerEmail)
                     .keyboardType(.emailAddress)
-                    .font(.system(size: 14))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(Font.custom("Beiruti-Regular", size: 14))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
             }
             .padding(14)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1018,10 +1053,16 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var petSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Pet_Details", alter: "بيانات الحيوان الأليف والنزيل"), systemImage: "pawprint.fill")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Pet_Details", alter: "بيانات الحيوان الأليف والنزيل"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 12) {
                 // Pet Species Picker
@@ -1034,18 +1075,23 @@ public struct AdminPetsHotelCreateReservationSheet: View {
 
                 TextField(Language.get("Pet_Name_Placeholder", alter: "اسم الحيوان الأليف *"), text: $petName)
                     .font(Font.custom("Beiruti-Medium", size: 14))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 TextField(Language.get("Breed_Optional", alter: "السلالة / النوع"), text: $petBreed)
                     .font(Font.custom("Beiruti-Medium", size: 14))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 Toggle(isOn: $requiresMedication) {
                     Text(Language.get("Hotel_MedicationPlanToggle", alter: "يتطلب جدول أو خطة أدوية أثناء الإقامة"))
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
                 }
                 .tint(AdminSurface.primary)
             }
@@ -1070,18 +1116,25 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                     .font(Font.custom("Beiruti-Bold", size: 12))
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)
-            .background(isSelected ? AdminSurface.primary : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.vertical, 8)
+            .background(isSelected ? AdminSurface.primary : Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(isSelected ? Color.clear : AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
             .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
         }
         .buttonStyle(PlainButtonStyle())
     }
 
     private var tierSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Hotel_WingAndTier", alter: "الجناح والفئة الفندقية"), systemImage: "bed.double.fill")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "bed.double.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Hotel_WingAndTier", alter: "الجناح والفئة الفندقية"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 10) {
                 if !viewModel.accommodationTypes.isEmpty {
@@ -1091,6 +1144,7 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                                 selectedTypeId = type.id
                             } label: {
                                 Text("\(type.displayName) (\(type.formattedRate))")
+                                    .font(Font.custom("Beiruti-Medium", size: 13))
                             }
                         }
                     } label: {
@@ -1110,12 +1164,15 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
                         .padding(12)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
                     }
                 } else {
                     Text(Language.get("Hotel_NoAccommodationTypesWarning", alter: "لم يتم إنشاء فئات بعد. سيتم استخدام السعر القياسي."))
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(Color.orange)
+                        .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                        .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
                 }
             }
             .padding(14)
@@ -1124,25 +1181,39 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var datesSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Hotel_StayPeriod", alter: "تواريخ الإقامة الفندقية"), systemImage: "calendar")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Hotel_StayPeriod", alter: "فترة الإقامة"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 12) {
-                DatePicker(Language.get("Hotel_ArrivalDate", alter: "تاريخ الوصول:"), selection: $arrivalDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                    .font(Font.custom("Beiruti-Medium", size: 14))
+                DatePicker(selection: $arrivalDate, in: Date()..., displayedComponents: [.date, .hourAndMinute]) {
+                    Text(Language.get("Hotel_ArrivalDate", alter: "تاريخ الوصول:"))
+                        .font(Font.custom("Beiruti-Medium", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .font(Font.custom("Beiruti-Medium", size: 14))
 
-                DatePicker(Language.get("Hotel_DepartureDate", alter: "تاريخ المغادرة:"), selection: $departureDate, in: arrivalDate..., displayedComponents: [.date, .hourAndMinute])
-                    .font(Font.custom("Beiruti-Medium", size: 14))
+                DatePicker(selection: $departureDate, in: arrivalDate..., displayedComponents: [.date, .hourAndMinute]) {
+                    Text(Language.get("Hotel_DepartureDate", alter: "تاريخ المغادرة:"))
+                        .font(Font.custom("Beiruti-Medium", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .font(Font.custom("Beiruti-Medium", size: 14))
 
                 HStack {
-                    Text(Language.get("Hotel_TotalNights", alter: "إجمالي الليالي:"))
+                    Text(Language.get("Hotel_TotalNights", alter: "إجمالي عدد الليالي:"))
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Spacer()
                     Text("\(numberOfNights) \(Language.get("Hotel_Nights_Short", alter: "ليالي"))")
-                        .font(.system(size: 16, weight: .heavy, design: .rounded))
+                        .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primary)
                 }
             }
@@ -1152,10 +1223,16 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var financialSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("Hotel_FinancialEstimation", alter: "الحساب التقديري والعربون"), systemImage: "banknote.fill")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "banknote.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("Hotel_FinancialEstimation", alter: "الحساب التقديري والعربون"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 12) {
                 HStack {
@@ -1164,28 +1241,29 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                         .foregroundStyle(AdminSurface.secondaryText)
                     Spacer()
                     Text("\(calculatedEstimatedTotal) \(Language.get("Currency_QAR", alter: "ر.ق"))")
-                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .font(Font.custom("Beiruti-Bold", size: 18))
                         .foregroundStyle(AdminSurface.primaryText)
                 }
 
                 HStack {
-                    Text(Language.get("Hotel_DepositPaidNow", alter: "العربون المدفوع مقدماً:"))
+                    Text(Language.get("Hotel_DepositPaidNow", alter: "العربون المدفوع مقدماً (ر.ق):"))
                         .font(Font.custom("Beiruti-Medium", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Spacer()
-                    HStack {
+                    HStack(spacing: 4) {
                         TextField("0", text: $depositPaidQAR)
                             .keyboardType(.numberPad)
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .multilineTextAlignment(.trailing)
+                            .font(Font.custom("Beiruti-Bold", size: 15))
+                            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
                             .frame(width: 80)
                         Text(Language.get("Currency_QAR", alter: "ر.ق"))
                             .font(Font.custom("Beiruti-Bold", size: 13))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
                 }
             }
             .padding(14)
@@ -1194,27 +1272,39 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var emergencySection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(Language.get("EmergencyContact", alter: "جهة اتصال الطوارئ والملاحظات"), systemImage: "cross.fill")
-                .font(Font.custom("Beiruti-Bold", size: 15))
-                .foregroundStyle(AdminSurface.primaryText)
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "cross.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("EmergencyContact", alter: "جهة اتصال الطوارئ والملاحظات"))
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: Language.isRTL() ? .trailing : .leading)
 
             VStack(spacing: 10) {
                 TextField(Language.get("Emergency_Name", alter: "اسم شخص للطوارئ (اختياري)"), text: $emergencyName)
                     .font(Font.custom("Beiruti-Medium", size: 13))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 TextField(Language.get("Emergency_Phone", alter: "هاتف الطوارئ (اختياري)"), text: $emergencyPhone)
                     .keyboardType(.phonePad)
-                    .font(.system(size: 13))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .font(Font.custom("Beiruti-SemiBold", size: 13))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
 
                 TextField(Language.get("SpecialInstructions", alter: "أي تعليمات أو متطلبات خاصة بالنزيل..."), text: $notes)
                     .font(Font.custom("Beiruti-Medium", size: 13))
-                    .padding(10)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
+                    .padding(12)
+                    .background(Color(uiColor: .ppForeground), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.75))
             }
             .padding(14)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -1224,14 +1314,15 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     private var submitSection: some View {
         VStack(spacing: 12) {
             Toggle(isOn: $confirmImmediately) {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
                     Text(Language.get("Hotel_ConfirmImmediately", alter: "تأكيد فوري للحجز"))
                         .font(Font.custom("Beiruti-Bold", size: 14))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(Language.get("Hotel_ConfirmImmediatelyHint", alter: "ينشئ ملف إقامة جاهز لتسجيل الدخول مباشرة"))
-                        .font(Font.custom("Beiruti-Medium", size: 11))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
+                .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
             }
             .tint(Color(red: 0.16, green: 0.72, blue: 0.44))
             .padding(14)

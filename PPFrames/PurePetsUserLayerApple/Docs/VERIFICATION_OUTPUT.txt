@@ -1,0 +1,106 @@
+
+[1/7] Format lint
+
+[2/7] Swift 6 core build
+Building for debugging...
+[0/2] Write sources
+[1/2] Write swift-version--1BA0962812E73E12.txt
+[3/11] Compiling PurePetsUserKit PPUserAccess.swift
+[4/11] Compiling PurePetsUserKit PPMemoryUserCache.swift
+[5/11] Emitting module PurePetsUserKit
+[6/11] Compiling PurePetsUserKit PPUserRepository.swift
+[7/11] Compiling PurePetsUserKit PPUserSession.swift
+[8/12] Compiling PurePetsUserKit PPUserProfilePatch.swift
+[9/12] Compiling PurePetsUserKit PPRemoteUserRepository.swift
+[10/12] Compiling PurePetsUserKit PPUser.swift
+[11/12] Compiling PurePetsUserKit PPUserMapper.swift
+[12/12] Compiling PurePetsUserKit PPDocument.swift
+Build complete! (4.51s)
+
+[3/7] Core tests
+[0/1] Planning build
+Building for debugging...
+[0/11] Write sources
+[1/12] Write swift-version--1BA0962812E73E12.txt
+[2/12] Wrapping AST for PurePetsUserKit for debugging
+[4/17] Compiling PurePetsUserKitTests PPUserMapperTests.swift
+[5/17] Compiling PurePetsUserKitTests PPUserSessionTests.swift
+[6/18] Compiling PurePetsUserKitTests PPRemoteUserRepositoryTests.swift
+[7/18] Compiling PurePetsUserKitTests PPUserAccessTests.swift
+[8/18] Emitting module PurePetsUserKitTests
+[9/18] Compiling PurePetsUserKitTests TestSupport.swift
+[10/19] /mnt/data/PurePetsUserLayerApple/.build/x86_64-unknown-linux-gnu/debug/PurePetsUserKitPackageDiscoveredTests.derived/all-discovered-tests.swift
+[11/19] Write sources
+[12/19] Wrapping AST for PurePetsUserKitTests for debugging
+[14/22] Compiling PurePetsUserKitPackageDiscoveredTests all-discovered-tests.swift
+[15/22] Emitting module PurePetsUserKitPackageDiscoveredTests
+[16/22] Compiling PurePetsUserKitPackageDiscoveredTests PurePetsUserKitTests.swift
+[17/23] /mnt/data/PurePetsUserLayerApple/.build/x86_64-unknown-linux-gnu/debug/PurePetsUserKitPackageTests.derived/runner.swift
+[18/23] Write sources
+[19/23] Wrapping AST for PurePetsUserKitPackageDiscoveredTests for debugging
+[21/25] Emitting module PurePetsUserKitPackageTests
+[22/25] Compiling PurePetsUserKitPackageTests runner.swift
+[23/26] Wrapping AST for PurePetsUserKitPackageTests for debugging
+[24/26] Write Objects.LinkFileList
+[25/26] Linking PurePetsUserKitPackageTests.xctest
+Build complete! (3.83s)
+[1/16] Testing PurePetsUserKitTests.PPUserAccessTests/testCachedSnapshotCannotGrantAdminOrPermissions
+[2/16] Testing PurePetsUserKitTests.PPUserAccessTests/testEveryCapabilityHasAnExplicitRule
+[3/16] Testing PurePetsUserKitTests.PPUserAccessTests/testExpiredAccessFailsClosed
+[4/16] Testing PurePetsUserKitTests.PPUserAccessTests/testUnknownAccessFailsClosed
+[5/16] Testing PurePetsUserKitTests.PPUserMapperTests/testAuthIdentityOverridesProfileIdentity
+[6/16] Testing PurePetsUserKitTests.PPUserMapperTests/testCanonicalChatBlockWinsOverLegacyAllow
+[7/16] Testing PurePetsUserKitTests.PPUserMapperTests/testExplicitPermissionDenialWinsOverFeatureFallback
+[8/16] Testing PurePetsUserKitTests.PPUserMapperTests/testLegacyChatIsUsedOnlyWhenCanonicalFieldsAreAbsent
+[9/16] Testing PurePetsUserKitTests.PPUserMapperTests/testProfileClaimsCanNeverGrantPrivilegedRole
+[10/16] Testing PurePetsUserKitTests.PPUserMapperTests/testRootLevelBlockIsDenyOnlyCompatibility
+[11/16] Testing PurePetsUserKitTests.PPUserSessionTests/testSessionForwardsCapabilityDecisions
+[12/16] Testing PurePetsUserKitTests.PPUserSessionTests/testSessionPublishesOneSourceOfTruth
+[13/16] Testing PurePetsUserKitTests.PPRemoteUserRepositoryTests/testIDTokenEventRefreshesClaimsForSameUser
+[14/16] Testing PurePetsUserKitTests.PPRemoteUserRepositoryTests/testVerifiedSnapshotIsPublishedFromAuthTokenAndRemoteState
+[15/16] Testing PurePetsUserKitTests.PPRemoteUserRepositoryTests/testSignOutClearsSessionAndEmitsSignedOut
+[16/16] Testing PurePetsUserKitTests.PPRemoteUserRepositoryTests/testCrossAccountStaleTokenCannotPublishOldUser
+◇ Test run started.
+↳ Testing Library Version: 6.2.1 (c9d57c83568b06d)
+↳ Target Platform: x86_64-unknown-linux-gnu
+✔ Test run with 0 tests in 0 suites passed after 0.001 seconds.
+
+[4/7] Parse every integration source
+
+[5/7] Firebase adapter contract type-check
+
+[6/7] SwiftUI and Objective-C bridge type-check
+
+[7/7] Architecture invariants
+PASS: Legacy God Object is absent from production sources
+PASS: Core transport contains no Any dictionaries
+PASS: Access construction is package-scoped
+PASS: Unknown capability rules fail closed
+PASS: Canonical chat values guard legacy fallback
+PASS: Profile claims never enter access mapping
+PASS: Repository is actor-isolated
+PASS: Cross-account generation checks exist
+PASS: Session is MainActor-isolated
+PASS: Firebase observes ID-token changes
+PASS: Profile writes verify authenticated UID
+PASS: Cache is downgraded before use
+PASS: Objective-C bridge exposes decisions, not mutable permission mirrors
+PASS: Core files remain bounded below 300 lines
+
+14/14 architecture checks passed
+
+All local verification gates passed.
+
+[secret scan]
+No secret-like material found.
+
+[file size boundary]
+ 236 Sources/PurePetsUserKit/Access/PPUserAccess.swift
+  19 Sources/PurePetsUserKit/Cache/PPMemoryUserCache.swift
+ 120 Sources/PurePetsUserKit/Domain/PPUser.swift
+ 281 Sources/PurePetsUserKit/Mapping/PPUserMapper.swift
+  58 Sources/PurePetsUserKit/Profile/PPUserProfilePatch.swift
+ 243 Sources/PurePetsUserKit/Repository/PPRemoteUserRepository.swift
+ 114 Sources/PurePetsUserKit/Repository/PPUserRepository.swift
+ 119 Sources/PurePetsUserKit/Session/PPUserSession.swift
+ 104 Sources/PurePetsUserKit/Transport/PPDocument.swift

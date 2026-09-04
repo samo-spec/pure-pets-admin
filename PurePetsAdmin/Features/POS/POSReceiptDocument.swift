@@ -648,7 +648,13 @@ enum POSReceiptFormat {
     static func paymentMethod(_ value: String) -> String {
         switch value.lowercased() {
         case "cash": return Language.get("POS_Cash", alter: "نقدي")
-        case "card": return Language.get("POS_Card", alter: "بطاقة")
+        case "card", "qib": return Language.get("POS_Card", alter: "بطاقة")
+        case "cheque": return Language.get("POS_Cheque", alter: "شيك")
+        case "fawry": return Language.get("POS_Fawry", alter: "فوري")
+        case "bank_transfer": return Language.get("POS_BankTransfer", alter: "تحويل بنكي")
+        case "naps": return Language.get("POS_Naps", alter: "NAPS")
+        case "apple_pay": return "Apple Pay"
+        case "ooredoo_money": return "Ooredoo Money"
         default: return value.isEmpty ? Language.get("POS_Receipt_NotAvailable", alter: "غير متاح") : value
         }
     }

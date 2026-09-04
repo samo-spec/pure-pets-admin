@@ -2769,8 +2769,9 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
     } else if ([currentUser.UserImageUrl isKindOfClass:NSString.class] && [(NSString *)currentUser.UserImageUrl length] > 0) {
         avatarString = (NSString *)currentUser.UserImageUrl;
     }
-    if ((!avatarString || avatarString.length == 0) && PPStaffAuth.sharedAuth.cachedCurrentStaff.photoURL.length > 0) {
-        avatarString = PPStaffAuth.sharedAuth.cachedCurrentStaff.photoURL;
+    PPStaffDoc *cachedStaff = [PPStaffAuth shared].cachedCurrentStaff;
+    if ((!avatarString || avatarString.length == 0) && cachedStaff.photoURL.length > 0) {
+        avatarString = cachedStaff.photoURL;
     }
     if ((!avatarString || avatarString.length == 0) && [FIRAuth auth].currentUser.photoURL.absoluteString.length > 0) {
         avatarString = [FIRAuth auth].currentUser.photoURL.absoluteString;
@@ -3565,7 +3566,7 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
         return [PPProviderFeatureAccessViewController new];
     }
     if ([tag isEqualToString:@"providerAccounting"]) {
-        return [PPProviderAccountingViewController new];
+        return [AdminProviderAccountingHostingController new];
     }
     if ([tag isEqualToString:@"pos"]) {
         UIViewController *vc = [AdminPOSFastSellHostingController new];

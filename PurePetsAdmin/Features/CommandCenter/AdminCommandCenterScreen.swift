@@ -416,6 +416,8 @@ struct AdminCommandCenterScreenView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isShowingSourceIssueDetails = false
     @State private var isReplacingBranchData = false
+    @State private var isMoreMenuPresented = false
+    @State private var moreMenuAnchorRect: CGRect = .zero
 
     private var locale: Locale {
         Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA")
@@ -446,37 +448,65 @@ struct AdminCommandCenterScreenView: View {
         GeometryReader { geometry in
             let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 44)
             let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+            let heroInset = AdminCommandMetric.pageMargin
+            let contentAvailableWidth = max(min(geometry.size.width, isRegular ? 980 : geometry.size.width) - 2 * heroInset, 320)
 
-            VStack(spacing: 0) {
-                fixedNavBar(safeTop: safeTop, isRegular: isRegular)
+            ZStack(alignment: .top) {
+                VStack(spacing: 0) {
+                    fixedNavBar(safeTop: safeTop, isRegular: isRegular)
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
-                        // ── Active Working Branch Horizon Capsule Pill ───
-                        PPAdminBranchSwitcherBar(style: .compact)
-                            .padding(.bottom, 2)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
+                            CommandEscalationHero(
+                                model: heroModel,
+                                isRegular: isRegular,
+                                onPrimary: { signal in route(signal.id) }
+                            )
+                            .transition(reduceMotion ? .identity : .opacity)
 
-                        CommandEscalationHero(
-                            model: heroModel,
-                            isRegular: isRegular,
-                            onPrimary: { signal in route(signal.id) }
-                        )
-                        .transition(reduceMotion ? .identity : .opacity)
-
-                        phaseContent
+                            phaseContent(isRegular: isRegular, containerWidth: contentAvailableWidth)
+                        }
+                        .padding(.horizontal, AdminCommandMetric.pageMargin)
+                        .padding(.top, 18)
+                        .padding(.bottom, 112)
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, AdminCommandMetric.pageMargin)
-                    .padding(.top, 12)
-                    .padding(.bottom, 112)
-                    .frame(maxWidth: isRegular ? 980 : .infinity)
-                    .frame(maxWidth: .infinity)
+                }
+                .background(AdminSurface.background.ignoresSafeArea())
+
+                // ── FRONT OF ALL VIEWS: Sovereign Actions Menu Modal Layer ──
+                if isMoreMenuPresented {
+                    // Full-screen dismiss touch interceptor
+                    Color.black.opacity(0.14)
+                        .ignoresSafeArea()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                                isMoreMenuPresented = false
+                            }
+                        }
+                        .transition(.opacity)
+                        .zIndex(9998)
+
+                    // Menu Card anchored directly at the top action button
+                    topActionsMenuContainer(safeTop: safeTop, isRegular: isRegular, screenWidth: geometry.size.width)
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.88, anchor: direction == .rightToLeft ? .topLeading : .topTrailing).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                        .zIndex(9999)
                 }
             }
-            .background(AdminSurface.background.ignoresSafeArea())
         }
         .ignoresSafeArea()
         .environment(\.layoutDirection, direction)
         .environment(\.locale, locale)
+        .onPreferenceChange(ActionMenuAnchorPreferenceKey.self) { rect in
+            if rect != .zero {
+                moreMenuAnchorRect = rect
+            }
+        }
         .sheet(isPresented: $isShowingSourceIssueDetails) {
             sourceIssueSheet
                 .environment(\.layoutDirection, direction)
@@ -523,7 +553,9 @@ struct AdminCommandCenterScreenView: View {
             onAccount: { route("editMyAccount") },
             onRefresh: { refresh() },
             onLanguage: { store.onToggleLanguage?() },
-            onLogout: { store.onRequestLogout?() }
+            onLogout: { store.onRequestLogout?() },
+            isRegular: isRegular,
+            isMoreMenuPresented: $isMoreMenuPresented
         )
         .padding(.horizontal, AdminCommandMetric.pageMargin)
         .padding(.top, safeTop + 4)
@@ -552,14 +584,14 @@ struct AdminCommandCenterScreenView: View {
     }
 
     @ViewBuilder
-    private var phaseContent: some View {
+    private func phaseContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
         switch phase {
         case .connecting:
             EmptyView()
         case .loading:
             EmptyView()
         case .ready:
-            readyContent
+            readyContent(isRegular: isRegular, containerWidth: containerWidth)
         case .allClear:
             EmptyView()
         case .degradedEmpty:
@@ -577,7 +609,7 @@ struct AdminCommandCenterScreenView: View {
         }
     }
 
-    private var readyContent: some View {
+    private func readyContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
             // Temporarily hidden per user directive
             /*
@@ -593,6 +625,8 @@ struct AdminCommandCenterScreenView: View {
 
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
+                isRegular: isRegular,
+                containerWidth: containerWidth,
                 onRoute: { route($0) }
             )
 
@@ -909,6 +943,159 @@ struct AdminCommandCenterScreenView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         store.onRefresh?()
     }
+
+    // MARK: - Sovereign Actions Menu Layer (Front of All Views)
+
+    @ViewBuilder
+    private func topActionsMenuContainer(safeTop: CGFloat, isRegular: Bool, screenWidth: CGFloat) -> some View {
+        let deckMargin: CGFloat = isRegular ? max(AdminCommandMetric.pageMargin, (screenWidth - 980) / 2) : AdminCommandMetric.pageMargin
+        let horizontalTrailingInset: CGFloat = deckMargin + 13
+        let menuTopY: CGFloat = moreMenuAnchorRect != .zero ? (moreMenuAnchorRect.maxY + 6) : (safeTop + 54)
+
+        HStack {
+            Spacer()
+            customHomeMoreActionsMenuCard
+                .padding(.trailing, horizontalTrailingInset)
+                .padding(.top, menuTopY)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private var customHomeMoreActionsMenuCard: some View {
+        VStack(spacing: 0) {
+            // 1. Live Refresh Action
+            menuActionRow(
+                icon: "arrow.clockwise",
+                title: Language.get("AdminCommandCenter_Refresh", alter: "تحديث العمليات"),
+                subtitle: Language.get("AdminCommandCenter_Refresh_Hint", alter: "مزامنة مباشرة مع السحابة"),
+                accentColor: AdminSurface.primary,
+                isDestructive: false
+            ) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                refresh()
+            }
+
+            menuSeparator
+
+            // 2. Operator Profile Action
+            menuActionRow(
+                icon: "person.crop.circle.badge.checkmark",
+                title: Language.get("EditMyAccount_Title", alter: "تعديل حسابي"),
+                subtitle: Language.get("AdminCommandCenter_Account_Hint", alter: "الملف الشخصي والترخيص"),
+                accentColor: AdminSurface.primary,
+                isDestructive: false
+            ) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                route("editMyAccount")
+            }
+
+            menuSeparator
+
+            // 3. Language Interface Action
+            menuActionRow(
+                icon: "globe",
+                title: Language.get("Confirm_LanguageChange_Title", alter: "تغيير اللغة"),
+                subtitle: languageToggleTitle,
+                accentColor: AdminSurface.primary,
+                isDestructive: false
+            ) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                store.onToggleLanguage?()
+            }
+
+            menuSeparator
+
+            // 4. Secure Sign Out Action (Destructive)
+            menuActionRow(
+                icon: "rectangle.portrait.and.arrow.right",
+                title: Language.get("Logout", alter: "تسجيل الخروج"),
+                subtitle: Language.get("AdminCommandCenter_Logout_Hint", alter: "إنهاء الجلسة الحالية"),
+                accentColor: Color(uiColor: .systemRed),
+                isDestructive: true
+            ) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                    isMoreMenuPresented = false
+                }
+                store.onRequestLogout?()
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(width: 236)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 24, y: 12)
+    }
+
+    private var menuSeparator: some View {
+        Rectangle()
+            .fill(AdminSurface.hairline.opacity(0.65))
+            .frame(height: 0.75)
+            .padding(.horizontal, 12)
+    }
+
+    private func menuActionRow(
+        icon: String,
+        title: String,
+        subtitle: String,
+        accentColor: Color,
+        isDestructive: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 11) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(accentColor.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 13.5, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 0.5) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(isDestructive ? Color(uiColor: .systemRed) : AdminSurface.primaryText)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(isDestructive ? Color(uiColor: .systemRed).opacity(0.7) : AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CommandPressStyle())
+    }
+}
+
+// MARK: - Action Menu Anchor Preference Key
+
+struct ActionMenuAnchorPreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if next != .zero {
+            value = next
+        }
+    }
 }
 
 // MARK: - Chrome
@@ -926,113 +1113,694 @@ private struct CommandCenterChrome: View {
     let onRefresh: () -> Void
     let onLanguage: () -> Void
     let onLogout: () -> Void
+    var isRegular: Bool = false
+    @Binding var isMoreMenuPresented: Bool
+
+    @ObservedObject private var branchContextStore = BranchContextStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var isMoreMenuPresented: Bool = false
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    @State private var refreshAngle: Double = 0
+    @State private var isBeaconPulsing: Bool = false
+    @State private var showingBranchGateSheet: Bool = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            identityAndControls
-            CommandStatusLine(
-                text: readinessText,
-                tone: readinessTone,
-                action: onReadinessTap
-            )
+        VStack(spacing: 0) {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibleCockpitReflow
+            } else {
+                sovereignCommandHorizonDeck
+            }
+
+            // High-urgency alert filament (only appears when operations are degraded or failing)
+            if shouldShowCriticalFilament {
+                criticalFilamentBanner
+                    .padding(.top, 6)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
+            }
         }
         .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
-    private var identityAndControls: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 12) {
-                identityButton
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                quickControls
-            }
-        } else {
-            HStack(alignment: .center, spacing: 14) {
-                identityButton
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .layoutPriority(1)
-                quickControls
-            }
+        .sheet(isPresented: $showingBranchGateSheet) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, layoutDirection)
+        }
+        .onAppear {
+            configureMotion()
+        }
+        .onChange(of: accessibilityReduceMotion) { _ in
+            configureMotion()
         }
     }
 
-    private var identityButton: some View {
+    private var shouldShowCriticalFilament: Bool {
+        onReadinessTap != nil && (readinessTone == .critical || readinessTone == .elevated)
+    }
+
+    // MARK: - Sovereign Command Horizon Deck (Unified Monolith)
+
+    private var sovereignCommandHorizonDeck: some View {
+        VStack(spacing: 0) {
+            // ── Tier 1: Apex Flight Rail ──
+            apexFlightRail
+                .padding(.horizontal, 13)
+                .padding(.top, 9)
+                .padding(.bottom, 7)
+
+            // ── Micro-Etched Luminous Divider ──
+            deckHorizonDivider
+
+            // ── Tier 2: Active Working Branch Orbit ──
+            activeBranchOrbitRail
+                .padding(.horizontal, 13)
+                .padding(.vertical, 7.5)
+        }
+        .background(deckHullBackground)
+        .overlay(deckHullBorder)
+        .shadow(
+            color: AdminSurface.primary.opacity(0.08),
+            radius: 16,
+            x: 0,
+            y: 5
+        )
+        .shadow(
+            color: Color.black.opacity(0.04),
+            radius: 4,
+            x: 0,
+            y: 1
+        )
+    }
+
+    // MARK: - Apex Flight Rail (Identity + Liquid Actions)
+
+    private var apexFlightRail: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // 1. Biometric Operator Pod
+            operatorIdentityPod
+                .layoutPriority(1)
+
+            Spacer(minLength: 4)
+
+            // 2. Panoramic Readiness Readout (Widescreen iPad mode)
+            if isRegular {
+                panoramicReadinessReadout
+                    .layoutPriority(0.8)
+                Spacer(minLength: 4)
+            }
+
+            // 3. Liquid Action Console Capsule
+            liquidActionConsoleCapsule
+        }
+    }
+
+    // MARK: - Operator Identity Pod (Zero Truncation)
+
+    private var operatorIdentityPod: some View {
         Button(action: onAccount) {
-            HStack(spacing: 12) {
-                identityAvatar
+            HStack(spacing: 10) {
+                biometricAvatarSquircle
 
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        Text(Language.get("CommandCenter_Eyebrow", alter: "Pure Pets Operations"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                            .lineLimit(1)
-
-                        Circle()
-                            .fill(AdminSurface.primary)
-                            .frame(width: 4, height: 4)
-
-                        Text(capabilityText)
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminSurface.primary)
-                            .lineLimit(1)
-                    }
-
+                    // Operator / Brand Title
                     Text(resolvedDisplayName)
-                        .font(AdminType.title3)
+                        .font(Font.custom("Beiruti-Bold", size: 17.5))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
-                        .fixedSize(horizontal: false, vertical: true)
 
-                    Text(roleName)
-                        .font(AdminType.caption2)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(1)
+                    // Executive Authority Ribbon (Role Badge + Telemetry Gem)
+                    executiveAuthorityRibbon
                 }
             }
         }
         .buttonStyle(CommandPressStyle())
         .accessibilityLabel("\(resolvedDisplayName), \(roleName)")
-        .accessibilityValue(capabilityText)
         .accessibilityHint(Language.get("AdminCommandCenter_AccountHint", alter: nil))
     }
 
-    private var identityAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AdminSurface.primary.opacity(0.18),
-                            AdminSurface.primary.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+    // MARK: - Executive Authority Ribbon
 
-            AdminRemoteImage(
-                url: resolvedAvatarURL,
-                contentMode: .fill,
-                targetSize: CGSize(width: 44, height: 44)
-            ) {
-                Text(monogram)
-                    .font(AdminType.caption2Bold)
+    private var executiveAuthorityRibbon: some View {
+        HStack(spacing: 5) {
+            // Executive Role Clearance Pill (Prioritized to prevent truncation)
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 8.5, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                Text(roleName)
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(AdminSurface.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(AdminSurface.primary.opacity(0.09), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.6)
+            )
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
+
+            // Inline Live Telemetry Badge (Compact mode with adaptive fallback)
+            if !isRegular {
+                ViewThatFits(in: .horizontal) {
+                    inlineReadinessBadge
+                    compactInlineGem
+                }
+            }
+        }
+    }
+
+    // MARK: - Biometric Avatar Squircle with Quantum Core Pearl
+
+    private var biometricAvatarSquircle: some View {
+        ZStack(alignment: .bottomTrailing) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.16),
+                                AdminSurface.control
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                AdminRemoteImage(
+                    url: resolvedAvatarURL,
+                    contentMode: .fill,
+                    targetSize: CGSize(width: 44, height: 44)
+                ) {
+                    Text(monogram)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .strokeBorder(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.40),
+                                AdminSurface.primary.opacity(0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 0.85
+                    )
             }
             .frame(width: 44, height: 44)
-            .clipShape(Circle())
 
-            Circle()
-                .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.0)
+            // Live status beacon jewel
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.surface)
+                    .frame(width: 12, height: 12)
+
+                Circle()
+                    .fill(readinessTone.accent)
+                    .frame(width: 8, height: 8)
+            }
+            .offset(x: 2, y: 2)
         }
         .frame(width: 44, height: 44)
         .accessibilityHidden(true)
     }
+
+    // MARK: - Inline Readiness Badge
+
+    @ViewBuilder
+    private var inlineReadinessBadge: some View {
+        if let onReadinessTap {
+            Button(action: onReadinessTap) {
+                HStack(spacing: 3.5) {
+                    Circle()
+                        .fill(readinessTone.accent)
+                        .frame(width: 5, height: 5)
+                    Text(readinessText)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .foregroundStyle(readinessTone.accent)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.80)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1.5)
+                .background(readinessTone.accent.opacity(0.12), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(readinessTone.accent.opacity(0.32), lineWidth: 0.6)
+                )
+            }
+            .buttonStyle(CommandPressStyle())
+        } else {
+            HStack(spacing: 3.5) {
+                Circle()
+                    .fill(readinessTone.accent)
+                    .frame(width: 5, height: 5)
+                Text(readinessText)
+                    .font(Font.custom("Beiruti-SemiBold", size: 11))
+                    .foregroundStyle(readinessTone.color)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.80)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(readinessTone.accent.opacity(0.08), in: Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private var compactInlineGem: some View {
+        if let onReadinessTap {
+            Button(action: onReadinessTap) {
+                Circle()
+                    .fill(readinessTone.accent)
+                    .frame(width: 6, height: 6)
+                    .padding(3)
+                    .background(readinessTone.accent.opacity(0.12), in: Circle())
+            }
+            .buttonStyle(CommandPressStyle())
+        } else {
+            Circle()
+                .fill(readinessTone.accent)
+                .frame(width: 5, height: 5)
+        }
+    }
+
+    // MARK: - Panoramic Readiness Readout (iPad)
+
+    private var panoramicReadinessReadout: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(readinessTone.accent.opacity(0.15))
+                    .frame(width: 22, height: 22)
+                Image(systemName: readinessTone.symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(readinessTone.accent)
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(Language.get("CommandCenter_Readiness_Label", alter: "حالة النظام التشغيلي"))
+                    .font(Font.custom("Beiruti-Regular", size: 10.5))
+                    .foregroundStyle(AdminCommandInk.tertiary)
+                    .lineLimit(1)
+                Text(readinessText)
+                    .font(Font.custom("Beiruti-Bold", size: 12.5))
+                    .foregroundStyle(readinessTone.color)
+                    .lineLimit(1)
+            }
+
+            if let onReadinessTap {
+                Button(action: onReadinessTap) {
+                    Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(readinessTone.accent)
+                        .padding(4)
+                        .background(readinessTone.accent.opacity(0.12), in: Circle())
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Liquid Action Console Capsule
+
+    private var liquidActionConsoleCapsule: some View {
+        HStack(spacing: 0) {
+            // Segment 1: Language Toggle
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onLanguage()
+            }) {
+                HStack(spacing: 3.5) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    Text(languageTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 12.5))
+                        .foregroundStyle(AdminSurface.primary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 35)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+            .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: "تغيير اللغة"))
+            .accessibilityValue(languageTitle)
+
+            // Vertical Hairline Separator
+            capsuleSegmentSeparator
+
+            // Segment 2: Kinetic Cloud Sync Refresh
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
+                    refreshAngle += 360
+                }
+                onRefresh()
+            }) {
+                ZStack {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                        .rotationEffect(.degrees(refreshAngle))
+                }
+                .frame(width: 32, height: 35)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(CommandPressStyle())
+            .accessibilityLabel(Language.get("AdminCommandCenter_Refresh", alter: "تحديث العمليات"))
+
+            // Vertical Hairline Separator
+            capsuleSegmentSeparator
+
+            // Segment 3: Sovereign Actions Menu Trigger
+            moreActionsMenuTrigger
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.85),
+                            AdminSurface.hairline.opacity(0.55)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 0.8
+                )
+        )
+    }
+
+    private var capsuleSegmentSeparator: some View {
+        Rectangle()
+            .fill(AdminSurface.hairline.opacity(0.75))
+            .frame(width: 0.75, height: 16)
+    }
+
+    // MARK: - Micro-Etched Horizon Divider
+
+    private var deckHorizonDivider: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        AdminSurface.hairline.opacity(0.85),
+                        Color.clear
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 0.85)
+            .padding(.horizontal, 8)
+    }
+
+    // MARK: - Active Working Branch Orbit Rail (Integrated Deck)
+
+    private var activeBranchOrbitRail: some View {
+        Button(action: triggerBranchSwitch) {
+            HStack(spacing: 9) {
+                // 1. Technical Branch Node Glyph
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(0.14),
+                                    AdminSurface.primarySoft.opacity(0.55)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 30, height: 30)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75)
+                        )
+
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    // Micro beacon dot
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 5.5, height: 5.5)
+                        .overlay(
+                            Circle()
+                                .strokeBorder(Color.white, lineWidth: 1.0)
+                        )
+                        .offset(x: 9, y: 9)
+                }
+
+                // 2. Branch Context Information (Simplified & Adaptive Height)
+                Text(currentBranchDisplayName)
+                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 4)
+
+                // 3. Tactile Switch Pill
+                if canSwitchBranch {
+                    HStack(spacing: 3.5) {
+                        Text(Language.get("AdminCommandCenter_Switch_Action", alter: "تبديل"))
+                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                    .padding(.horizontal, 7.5)
+                    .padding(.vertical, 3.5)
+                    .background(AdminSurface.control, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
+                    )
+                } else {
+                    HStack(spacing: 3) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 7.5, weight: .bold))
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        Text(Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد"))
+                            .font(Font.custom("Beiruti-Medium", size: 10))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control.opacity(0.5), in: Capsule())
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CommandPressStyle())
+        .disabled(!canSwitchBranch)
+        .accessibilityLabel("\(Language.get("BranchContext_Switcher_Title", alter: "تبديل فرع العمل")): \(currentBranchDisplayName)")
+        .accessibilityHint(canSwitchBranch ? Language.get("BranchContext_Switcher_Message", alter: "اختر الفرع لتفعيل سياق العمليات") : "")
+    }
+
+    private var branchCode: String? {
+        guard let code = branchContextStore.activeBranch?.code
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !code.isEmpty else {
+            return nil
+        }
+        return code
+    }
+
+    private var currentBranchDisplayName: String {
+        let name = branchContextStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع") : name
+    }
+
+    private var canSwitchBranch: Bool {
+        branchContextStore.availableBranches.count > 1
+    }
+
+    private func triggerBranchSwitch() {
+        guard canSwitchBranch else { return }
+        let feedback = UIImpactFeedbackGenerator(style: .soft)
+        feedback.prepare()
+        feedback.impactOccurred(intensity: 0.82)
+        showingBranchGateSheet = true
+    }
+
+    // MARK: - More Actions Menu Trigger
+
+    private var moreActionsMenuTrigger: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                isMoreMenuPresented.toggle()
+            }
+        } label: {
+            ZStack {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(isMoreMenuPresented ? AdminSurface.primary : AdminSurface.primaryText)
+            }
+            .frame(width: 32, height: 35)
+            .background(isMoreMenuPresented ? AdminSurface.primary.opacity(0.12) : Color.clear)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CommandPressStyle())
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(
+                    key: ActionMenuAnchorPreferenceKey.self,
+                    value: geo.frame(in: .global)
+                )
+            }
+        )
+        .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
+    }
+
+    // MARK: - Critical Filament Banner
+
+    private var criticalFilamentBanner: some View {
+        Group {
+            if let onReadinessTap {
+                Button(action: onReadinessTap) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(readinessTone.accent)
+
+                        Text(readinessText)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(readinessTone.color)
+                            .lineLimit(1)
+
+                        Spacer(minLength: 4)
+
+                        Text(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: "فحص المشكلة"))
+                            .font(Font.custom("Beiruti-Medium", size: 11.5))
+                            .foregroundStyle(readinessTone.accent)
+
+                        Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(readinessTone.accent)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(
+                        readinessTone.accent.opacity(0.12),
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(readinessTone.accent.opacity(0.35), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(CommandPressStyle())
+            }
+        }
+    }
+
+    // MARK: - Deck Hull Styling
+
+    private var deckHullBackground: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        AdminSurface.surface,
+                        AdminSurface.surface.opacity(0.97)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                readinessTone.accent.opacity(0.04),
+                                Color.clear
+                            ],
+                            center: .topLeading,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
+                    )
+            )
+    }
+
+    private var deckHullBorder: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.90),
+                        AdminSurface.primary.opacity(0.16),
+                        AdminSurface.hairline.opacity(0.60)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.0
+            )
+    }
+
+    // MARK: - Motion Configuration
+
+    private func configureMotion() {
+        guard !accessibilityReduceMotion else {
+            isBeaconPulsing = false
+            return
+        }
+        withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+            isBeaconPulsing = true
+        }
+    }
+
+    // MARK: - Accessible Reflow
+
+    private var accessibleCockpitReflow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            operatorIdentityPod
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            liquidActionConsoleCapsule
+
+            deckHorizonDivider
+
+            activeBranchOrbitRail
+        }
+        .padding(12)
+        .background(deckHullBackground)
+        .overlay(deckHullBorder)
+    }
+
+    // MARK: - Identity Helpers
 
     private var resolvedDisplayName: String {
         let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1068,202 +1836,6 @@ private struct CommandCenterChrome: View {
         let parts = resolvedDisplayName.split(separator: " ").prefix(2)
         let letters = parts.compactMap(\.first).map(String.init).joined()
         return letters.isEmpty ? "PP" : letters.uppercased()
-    }
-
-    private var quickControls: some View {
-        HStack(alignment: .center, spacing: 10) {
-            Button(action: onLanguage) {
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            Circle()
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                        )
-
-                    Label(languageTitle, systemImage: "globe")
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-                }
-            }
-            .buttonStyle(CommandPressStyle())
-            .accessibilityLabel(Language.get("Confirm_LanguageChange_Title", alter: nil))
-            .accessibilityValue(languageTitle)
-
-            moreActionsMenuTrigger
-        }
-    }
-
-    private var moreActionsMenuTrigger: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
-                isMoreMenuPresented.toggle()
-            }
-        } label: {
-            ZStack {
-                Circle()
-                    .fill(isMoreMenuPresented ? AdminSurface.primary.opacity(0.12) : AdminSurface.control)
-                    .frame(width: 44, height: 44)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(isMoreMenuPresented ? AdminSurface.primary.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: isMoreMenuPresented ? 1 : 0.75)
-                    )
-
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(isMoreMenuPresented ? AdminSurface.primary : AdminSurface.primaryText)
-            }
-        }
-        .buttonStyle(CommandPressStyle())
-        .accessibilityLabel(Language.get("CommandCenter_Tab_More", alter: nil))
-        .background {
-            if isMoreMenuPresented {
-                Color.black.opacity(0.001)
-                    .frame(width: 2500, height: 2500)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                            isMoreMenuPresented = false
-                        }
-                    }
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if isMoreMenuPresented {
-                customHomeMoreActionsMenuCard
-                    .offset(y: 52)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.88, anchor: .topTrailing).combined(with: .opacity),
-                        removal: .opacity
-                    ))
-                    .zIndex(300)
-            }
-        }
-    }
-
-    private var customHomeMoreActionsMenuCard: some View {
-        VStack(spacing: 0) {
-            // 1. Refresh
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                onRefresh()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(Language.get("AdminCommandCenter_Refresh", alter: "تحديث العمليات"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandPressStyle())
-
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.75)
-                .padding(.horizontal, 12)
-
-            // 2. Account
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                onAccount()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(Language.get("EditMyAccount_Title", alter: "تعديل حسابي"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandPressStyle())
-
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.75)
-                .padding(.horizontal, 12)
-
-            // 3. Language
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                onLanguage()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(Language.get("Confirm_LanguageChange_Title", alter: "تغيير اللغة"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "globe")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandPressStyle())
-
-            Rectangle()
-                .fill(AdminSurface.hairline)
-                .frame(height: 0.75)
-                .padding(.horizontal, 12)
-
-            // 4. Logout (Destructive)
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-                    isMoreMenuPresented = false
-                }
-                onLogout()
-            } label: {
-                HStack(spacing: 12) {
-                    Text(Language.get("Logout", alter: "تسجيل الخروج"))
-                        .font(Font.custom("Beiruti-Bold", size: 16))
-                        .foregroundColor(Color(uiColor: .systemRed))
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color(uiColor: .systemRed))
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(CommandPressStyle())
-        }
-        .frame(width: 220)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(AdminSurface.hairline, lineWidth: 1)
-        )
-        .shadow(color: Color.black.opacity(0.14), radius: 18, y: 8)
     }
 }
 
@@ -1545,33 +2117,41 @@ private struct CommandEscalationHero: View {
     @ViewBuilder
     private var telemetryHorizon: some View {
         if isAccessibilityMode {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    liveStatusBadge
-                    if let stateClass = model.stateClassLabel {
-                        stateClassTag(stateClass)
+            telemetryHorizonVertical
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 8) {
+                    HStack(spacing: 6) {
+                        liveStatusBadge
+                        if let stateClass = model.stateClassLabel {
+                            stateClassTag(stateClass)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    HStack(spacing: 6) {
+                        freshnessTag
+                        scopeTag
                     }
                 }
-                HStack(spacing: 6) {
-                    freshnessTag
-                    scopeTag
+
+                telemetryHorizonVertical
+            }
+        }
+    }
+
+    private var telemetryHorizonVertical: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                liveStatusBadge
+                if let stateClass = model.stateClassLabel {
+                    stateClassTag(stateClass)
                 }
             }
-        } else {
-            HStack(alignment: .center, spacing: 8) {
-                HStack(spacing: 6) {
-                    liveStatusBadge
-                    if let stateClass = model.stateClassLabel {
-                        stateClassTag(stateClass)
-                    }
-                }
-
-                Spacer(minLength: 4)
-
-                HStack(spacing: 6) {
-                    freshnessTag
-                    scopeTag
-                }
+            HStack(spacing: 6) {
+                freshnessTag
+                scopeTag
             }
         }
     }
@@ -2053,25 +2633,16 @@ private struct CommandQuickActionItem: Identifiable, Hashable {
     let isLive: Bool
 }
 
-private struct DeckWidthPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat { 0 }
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        let next = nextValue()
-        if next > 0 {
-            value = next
-        }
-    }
-}
-
 private struct CommandQuickActionsDeck: View {
     let signals: [AdminCommandOrbitSignal]
+    var isRegular: Bool = false
+    var containerWidth: CGFloat = 0
     let onRoute: (String) -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.layoutDirection) private var layoutDirection
 
-    @State private var deckWidth: CGFloat = 0
     private let spacing: CGFloat = 11
 
     // Temporarily hide payments action per user directive
@@ -2084,7 +2655,7 @@ private struct CommandQuickActionsDeck: View {
         let stockSignal = signals.first { $0.id.contains("accessor") || $0.id.contains("stock") }
 
         var deckItems: [CommandQuickActionItem] = [
-            // Index 0: POS (2 columns width)
+            // Index 0: POS
             CommandQuickActionItem(
                 id: "pos",
                 tag: "pos",
@@ -2095,7 +2666,7 @@ private struct CommandQuickActionsDeck: View {
                 badgeCount: nil,
                 isLive: true
             ),
-            // Index 1: Stock & Items (1 column width)
+            // Index 1: Stock & Items
             CommandQuickActionItem(
                 id: "accessories",
                 tag: "accessories",
@@ -2162,14 +2733,6 @@ private struct CommandQuickActionsDeck: View {
         return deckItems
     }
 
-    private func computeWidths(in totalWidth: CGFloat) -> (oneCol: CGFloat, twoCol: CGFloat) {
-        let heroInset = AdminCommandMetric.pageMargin
-        let available = totalWidth > 0 ? totalWidth : (UIScreen.main.bounds.width - 2 * heroInset)
-        let oneCol = max((available - 2 * spacing) / 3, 70)
-        let twoCol = 2 * oneCol + spacing
-        return (oneCol, twoCol)
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 13) {
             headerRow
@@ -2177,68 +2740,93 @@ private struct CommandQuickActionsDeck: View {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(spacing: spacing) {
                     ForEach(items) { item in
-                        CommandQuickActionCard(item: item, isTwoColumn: false) {
+                        CommandQuickActionCard(item: item, isTwoColumn: false, isRegular: isRegular) {
                             onRoute(item.tag)
                         }
                     }
                 }
+            } else if isRegular {
+                // MARK: - iPad / Regular Panoramic Launchpad
+                // Balanced, equal-width cards in a single cockpit row without voids or overflow
+                if items.count <= 5 {
+                    HStack(spacing: spacing) {
+                        ForEach(items) { item in
+                            CommandQuickActionCard(item: item, isTwoColumn: false, isRegular: true) {
+                                onRoute(item.tag)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                } else {
+                    let columns = Array(repeating: GridItem(.flexible(), spacing: spacing), count: 3)
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(items) { item in
+                            CommandQuickActionCard(item: item, isTwoColumn: false, isRegular: true) {
+                                onRoute(item.tag)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
             } else {
-                let heroInset = AdminCommandMetric.pageMargin
-                let availableWidth = deckWidth > 0 ? deckWidth : (UIScreen.main.bounds.width - 2 * heroInset)
-                let widths = computeWidths(in: availableWidth)
+                // MARK: - iPhone / Compact High-Velocity Deck
+                let effectiveWidth = containerWidth > 0 ? containerWidth : max(UIScreen.main.bounds.width - 2 * AdminCommandMetric.pageMargin, 320)
+                let oneCol = max((effectiveWidth - 2 * spacing) / 3, 70)
+                let twoCol = 2 * oneCol + spacing
 
                 VStack(spacing: spacing) {
                     if showPaymentsAction && items.count >= 6 {
                         // Row 1: POS (2 columns) + Stock & Items (1 column)
                         HStack(spacing: spacing) {
-                            CommandQuickActionCard(item: items[0], isTwoColumn: true) {
+                            CommandQuickActionCard(item: items[0], isTwoColumn: true, isRegular: false) {
                                 onRoute(items[0].tag)
                             }
-                            .frame(width: widths.twoCol)
+                            .frame(width: twoCol)
 
-                            CommandQuickActionCard(item: items[1], isTwoColumn: false) {
+                            CommandQuickActionCard(item: items[1], isTwoColumn: false, isRegular: false) {
                                 onRoute(items[1].tag)
                             }
-                            .frame(width: widths.oneCol)
+                            .frame(width: oneCol)
                         }
 
                         // Row 2: Payments (2 columns) + Delivery Fleet (1 column)
                         HStack(spacing: spacing) {
-                            CommandQuickActionCard(item: items[2], isTwoColumn: true) {
+                            CommandQuickActionCard(item: items[2], isTwoColumn: true, isRegular: false) {
                                 onRoute(items[2].tag)
                             }
-                            .frame(width: widths.twoCol)
+                            .frame(width: twoCol)
 
-                            CommandQuickActionCard(item: items[3], isTwoColumn: false) {
+                            CommandQuickActionCard(item: items[3], isTwoColumn: false, isRegular: false) {
                                 onRoute(items[3].tag)
                             }
-                            .frame(width: widths.oneCol)
+                            .frame(width: oneCol)
                         }
 
                         // Row 3: Fulfillment (2 columns) + Broadcast (1 column)
                         HStack(spacing: spacing) {
-                            CommandQuickActionCard(item: items[4], isTwoColumn: true) {
+                            CommandQuickActionCard(item: items[4], isTwoColumn: true, isRegular: false) {
                                 onRoute(items[4].tag)
                             }
-                            .frame(width: widths.twoCol)
+                            .frame(width: twoCol)
 
-                            CommandQuickActionCard(item: items[5], isTwoColumn: false) {
+                            CommandQuickActionCard(item: items[5], isTwoColumn: false, isRegular: false) {
                                 onRoute(items[5].tag)
                             }
-                            .frame(width: widths.oneCol)
+                            .frame(width: oneCol)
                         }
                     } else if items.count >= 5 {
                         // Row 1: POS (2 columns) + Stock & Items (1 column)
                         HStack(spacing: spacing) {
-                            CommandQuickActionCard(item: items[0], isTwoColumn: true) {
+                            CommandQuickActionCard(item: items[0], isTwoColumn: true, isRegular: false) {
                                 onRoute(items[0].tag)
                             }
-                            .frame(width: widths.twoCol)
+                            .frame(width: twoCol)
 
-                            CommandQuickActionCard(item: items[1], isTwoColumn: false) {
+                            CommandQuickActionCard(item: items[1], isTwoColumn: false, isRegular: false) {
                                 onRoute(items[1].tag)
                             }
-                            .frame(width: widths.oneCol)
+                            .frame(width: oneCol)
                         }
 
                         // Row 2: Fulfillment + Delivery Fleet + Notifications in ONE unified 3-column row
@@ -2246,20 +2834,20 @@ private struct CommandQuickActionsDeck: View {
                            let delivery = items.first(where: { $0.id == "delivery" }),
                            let broadcast = items.first(where: { $0.id == "notificationsCompose" }) {
                             HStack(spacing: spacing) {
-                                CommandQuickActionCard(item: fulfillment, isTwoColumn: false) {
+                                CommandQuickActionCard(item: fulfillment, isTwoColumn: false, isRegular: false) {
                                     onRoute(fulfillment.tag)
                                 }
-                                .frame(width: widths.oneCol)
+                                .frame(width: oneCol)
 
-                                CommandQuickActionCard(item: delivery, isTwoColumn: false) {
+                                CommandQuickActionCard(item: delivery, isTwoColumn: false, isRegular: false) {
                                     onRoute(delivery.tag)
                                 }
-                                .frame(width: widths.oneCol)
+                                .frame(width: oneCol)
 
-                                CommandQuickActionCard(item: broadcast, isTwoColumn: false) {
+                                CommandQuickActionCard(item: broadcast, isTwoColumn: false, isRegular: false) {
                                     onRoute(broadcast.tag)
                                 }
-                                .frame(width: widths.oneCol)
+                                .frame(width: oneCol)
                             }
                         }
                     }
@@ -2268,17 +2856,6 @@ private struct CommandQuickActionsDeck: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .background(
-            GeometryReader { proxy in
-                Color.clear
-                    .preference(key: DeckWidthPreferenceKey.self, value: proxy.size.width)
-            }
-        )
-        .onPreferenceChange(DeckWidthPreferenceKey.self) { newWidth in
-            if newWidth > 0 && abs(deckWidth - newWidth) > 0.5 {
-                deckWidth = newWidth
-            }
-        }
         .accessibilityElement(children: .contain)
     }
 
@@ -2320,6 +2897,7 @@ private struct CommandQuickActionsDeck: View {
 private struct CommandQuickActionCard: View {
     let item: CommandQuickActionItem
     var isTwoColumn: Bool = false
+    var isRegular: Bool = false
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -2402,6 +2980,26 @@ private struct CommandQuickActionCard: View {
                             Capsule(style: .continuous)
                                 .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
                         )
+                    } else if item.isLive {
+                        HStack(spacing: 3) {
+                            Circle()
+                                .fill(item.accent)
+                                .frame(width: 5, height: 5)
+                                .scaleEffect(isPulsing ? 1.25 : 0.85)
+                            Text(Language.get("AdminQuickActions_Live", alter: "Live"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(item.accent)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(
+                            Capsule(style: .continuous)
+                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                        )
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                        )
                     } else {
                         Image(systemName: Language.isRTL() ? "chevron.backward" : "chevron.forward")
                             .font(.system(size: 9.5, weight: .bold))
@@ -2415,33 +3013,33 @@ private struct CommandQuickActionCard: View {
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.82)
+                        .minimumScaleFactor(0.76)
 
                     Text(item.subtitle)
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.80)
+                        .minimumScaleFactor(0.74)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, isRegular ? 10 : 12)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: 104)
+            .frame(minHeight: 104)
             .background(
                 ZStack {
                     // Base canvas to prevent transparency bleed
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
 
-                    // Subtle refined accent gradient wash
+                    // Subtle refined accent gradient wash (decreased opacity for a calmer, softer aesthetic)
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    item.accent.opacity(colorScheme == .dark ? 0.10 : 0.05),
-                                    item.accent.opacity(colorScheme == .dark ? 0.05 : 0.02)
+                                    item.accent.opacity(colorScheme == .dark ? 0.06 : 0.025),
+                                    item.accent.opacity(colorScheme == .dark ? 0.03 : 0.010)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -2451,7 +3049,7 @@ private struct CommandQuickActionCard: View {
                     // Optical radial glow from the leading corner
                     RadialGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.08 : 0.035),
+                            item.accent.opacity(colorScheme == .dark ? 0.045 : 0.018),
                             .clear
                         ],
                         center: .topLeading,
@@ -2463,13 +3061,13 @@ private struct CommandQuickActionCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.45 : 0.28), lineWidth: 0.85)
+                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.38 : 0.22), lineWidth: 0.85)
             )
             .shadow(
-                color: item.accent.opacity(colorScheme == .dark ? 0.22 : 0.10),
-                radius: 6,
+                color: item.accent.opacity(colorScheme == .dark ? 0.16 : 0.06),
+                radius: 5,
                 x: 0,
-                y: 2.5
+                y: 2
             )
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
@@ -3101,24 +3699,85 @@ private final class CommandAccountingCardViewModel: ObservableObject {
                 self?.sync()
             }
         }
-        listeners = [wsReg]
+        let orderReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                self?.sync()
+            }
+        }
+        let expenseReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                self?.sync()
+            }
+        }
+        let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                self?.sync()
+            }
+        }
+        listeners = [wsReg, orderReg, expenseReg, txnReg]
         sync()
     }
 
     private func sync() {
-        guard let workspace = service.currentWorkspace,
-              let dashboard = workspace.primaryDashboard else {
+        let workspace = service.currentWorkspace
+        let dashboard = workspace?.primaryDashboard
+
+        // Multi-tier revenue derivation
+        if let dashboard, dashboard.income > 0 {
+            grossRevenue = dashboard.income
+            paidOrderCount = workspace?.incomeCount ?? 0
+        } else if let docs = workspace?.documents, !docs.isEmpty {
+            let docIncome = docs.filter { $0.kind == "income" }.reduce(0.0) { $0 + $1.total }
+            let docCount = docs.filter { $0.kind == "income" }.count
+            if docIncome > 0 || docCount > 0 {
+                grossRevenue = docIncome
+                paidOrderCount = docCount
+            } else if service.orderRevenue > 0 || service.orderCount > 0 {
+                grossRevenue = service.orderRevenue
+                paidOrderCount = service.orderCount
+            } else if service.liveTransactionRevenue > 0 || service.liveTransactionCount > 0 {
+                grossRevenue = service.liveTransactionRevenue
+                paidOrderCount = service.liveTransactionCount
+            } else {
+                grossRevenue = 0
+                paidOrderCount = 0
+            }
+        } else if service.orderRevenue > 0 || service.orderCount > 0 {
+            grossRevenue = service.orderRevenue
+            paidOrderCount = service.orderCount
+        } else if service.liveTransactionRevenue > 0 || service.liveTransactionCount > 0 {
+            grossRevenue = service.liveTransactionRevenue
+            paidOrderCount = service.liveTransactionCount
+        } else {
             grossRevenue = 0
-            totalExpenses = 0
             paidOrderCount = 0
-            expenseCount = 0
-            isLoading = false
-            return
         }
-        grossRevenue = dashboard.income
-        totalExpenses = dashboard.expenses
-        paidOrderCount = workspace.incomeCount
-        expenseCount = workspace.expenseCount
+
+        // Multi-tier expense derivation
+        if let dashboard, dashboard.expenses > 0 {
+            totalExpenses = dashboard.expenses
+            expenseCount = workspace?.expenseCount ?? 0
+        } else if let docs = workspace?.documents, !docs.isEmpty {
+            let docExpenses = docs.filter { $0.kind == "expense" }.reduce(0.0) { $0 + $1.total }
+            let docCount = docs.filter { $0.kind == "expense" }.count
+            if docExpenses > 0 || docCount > 0 {
+                totalExpenses = docExpenses
+                expenseCount = docCount
+            } else if service.liveTotalExpenses > 0 || service.liveExpenseCount > 0 {
+                totalExpenses = service.liveTotalExpenses
+                expenseCount = service.liveExpenseCount
+            } else {
+                totalExpenses = 0
+                expenseCount = 0
+            }
+        } else if service.liveTotalExpenses > 0 || service.liveExpenseCount > 0 {
+            totalExpenses = service.liveTotalExpenses
+            expenseCount = service.liveExpenseCount
+        } else {
+            totalExpenses = 0
+            expenseCount = 0
+        }
+
         isLoading = false
     }
 
@@ -3220,6 +3879,8 @@ private struct CommandAccountingSovereignCard: View {
                     Text(Language.get("Accounting_Title", alter: "الخزينة والمالية"))
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     // Live Telemetry Pulse Dot
                     HStack(spacing: 3.5) {
@@ -3244,6 +3905,8 @@ private struct CommandAccountingSovereignCard: View {
                 Text(Language.isRTL() ? "الأداء التشغيلي والخزينة • هذا الشهر" : "Operational Performance & Treasury • This Month")
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.80)
             }
 
             Spacer(minLength: 4)
@@ -3343,6 +4006,8 @@ private struct CommandAccountingSovereignCard: View {
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
                     Text(Language.isRTL() ? "ر.ق" : "QAR")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(AdminCommandInk.secondary)
@@ -3351,6 +4016,8 @@ private struct CommandAccountingSovereignCard: View {
                 Text(subtitle)
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }

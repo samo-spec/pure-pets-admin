@@ -11,6 +11,7 @@ import Combine
 import UIKit
 import FirebaseFirestore
 import FirebaseFunctions
+import FirebaseAuth
 
 // MARK: - Sendable Conformance
 
@@ -384,6 +385,13 @@ enum PPLivePetInventoryService {
         default:
             break
         }
+        let isUnauth = nsError.code == 16 ||
+            nsError.code == FunctionsErrorCode.unauthenticated.rawValue ||
+            nsError.localizedDescription.lowercased() == "unauthenticated" ||
+            domainCode.lowercased() == "unauthenticated"
+        if isUnauth {
+            return Language.get("LivePet_Error_Unauthenticated", alter: "انتهت صلاحية جلسة الموظف أو تعذر التحقق من المصادقة. أعد فتح التطبيق وسجّل الدخول مجدداً.")
+        }
         let backendMsg = string(details["message"] ?? details["error"] ?? nsError.userInfo[NSLocalizedDescriptionKey])
         if !backendMsg.isEmpty && !backendMsg.contains("com.firebase.functions") && !backendMsg.lowercased().contains("the operation couldn") {
             return backendMsg
@@ -617,17 +625,184 @@ enum PPLivePetInventoryService {
     static func updateCatalogPresentation(productID: String, values: [String: Any]) async throws {
         let boxed = PPSendableDictionary(dict: values)
         try await Firestore.firestore().collection("petAccessories").document(productID).updateData(boxed.dict)
+
+        // Strict: ONLY in live pets case each pet showing in ios consumer app as a separate and independent ad
+        let isLive = (values["accessKindType"] as? Int == 3) ||
+                     (values["product_type"] as? String == "live") ||
+                     (values["category"] as? String == "Live Pets")
+        guard isLive else { return }
+
+        let showInAppMarket = values["showInAppMarket"] as? Bool ?? false
+        let active = values["active"] as? Bool ?? true
+        let shouldBeVisible = showInAppMarket && active
+
+        let db = Firestore.firestore()
+        let name = values["name"] as? String ?? ""
+        let desc = values["desc"] as? String ?? ""
+        let category = values["petMainCategoryID"] as? Int ?? 1
+        let subcategory = values["petSubCategoryID"] as? Int ?? 0
+        let storeID = values["storeID"] as? String ?? ""
+        let storeName = values["storeName"] as? String ?? "Pure Pets"
+        let ownerID = values["ownerID"] as? String ?? Auth.auth().currentUser?.uid ?? ""
+        let catalogImages = values["imageURLsArray"] as? [String] ?? []
+        let basePrice = (values["price"] as? Double) ?? (values["finalPrice"] as? Double) ?? 0.0
+
+        do {
+            let unitsSnapshot = try await db.collection("petAccessories")
+                .document(productID)
+                .collection("inventoryUnits")
+                .getDocuments()
+
+            if !unitsSnapshot.isEmpty {
+                for unitDoc in unitsSnapshot.documents {
+                    let unitData = unitDoc.data()
+                    let unitID = unitDoc.documentID
+                    let unitStatus = (unitData["status"] as? String ?? "AVAILABLE").uppercased()
+                    let adDocID = "ad_unit_\(unitID)"
+                    let adRef = db.collection("pet_ads").document(adDocID)
+
+                    if shouldBeVisible && unitStatus == "AVAILABLE" {
+                        let ringTag = (unitData["ringTag"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let adTitle = ringTag.isEmpty ? name : "\(name) (\(ringTag))"
+                        let unitPrice = (unitData["sellingPrice"] as? Double) ?? basePrice
+                        let gender = unitData["gender"] as? String ?? "undefined"
+                        let unitImages = (unitData["mediaURLs"] as? [String])?.filter { !$0.isEmpty }
+                        let images = (unitImages != nil && !unitImages!.isEmpty) ? unitImages! : catalogImages
+
+                        var adPayload: [String: Any] = [
+                            "adID": adDocID,
+                            "adTitle": adTitle,
+                            "name_lowercase": adTitle.lowercased(),
+                            "desc": (unitData["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? desc,
+                            "adDescription": (unitData["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? desc,
+                            "price": unitPrice,
+                            "finalPrice": unitPrice,
+                            "category": category,
+                            "mainKindID": category,
+                            "subcategory": subcategory,
+                            "kindID": subcategory,
+                            "gender": gender,
+                            "isFemale": gender == "female",
+                            "imageURLs": images,
+                            "images": images,
+                            "imageItems": images.map { ["url": $0, "media_type": "image"] },
+                            "status": 1, // PetAdStatusActive
+                            "visibility": 0, // PetAdVisibilityPublic
+                            "isApproved": true,
+                            "isDeleted": false,
+                            "isBlocked": false,
+                            "isSold": false,
+                            "ownerID": ownerID,
+                            "ownerName": storeName,
+                            "storeID": storeID,
+                            "branchId": storeID,
+                            "catalogItemId": productID,
+                            "unitId": unitID,
+                            "ringTag": ringTag,
+                            "isLivePet": true,
+                            "isFromCatalog": true,
+                            "latitude": 25.2854,
+                            "longitude": 51.5310,
+                            "geohash": "tky60",
+                            "adLocation": 1,
+                            "locationName": "Doha",
+                            "updatedAt": FieldValue.serverTimestamp(),
+                        ]
+                        try await adRef.setData(adPayload, merge: true)
+                    } else {
+                        try await adRef.setData([
+                            "status": 0,
+                            "visibility": 1,
+                            "isDeleted": !shouldBeVisible,
+                            "isSold": unitStatus == "SOLD",
+                            "updatedAt": FieldValue.serverTimestamp(),
+                        ], merge: true)
+                    }
+                }
+            } else {
+                let adDocID = "ad_live_\(productID)"
+                let adRef = db.collection("pet_ads").document(adDocID)
+                if shouldBeVisible {
+                    var adPayload: [String: Any] = [
+                        "adID": adDocID,
+                        "adTitle": name,
+                        "name_lowercase": name.lowercased(),
+                        "desc": desc,
+                        "adDescription": desc,
+                        "price": basePrice,
+                        "finalPrice": basePrice,
+                        "category": category,
+                        "mainKindID": category,
+                        "subcategory": subcategory,
+                        "kindID": subcategory,
+                        "gender": "undefined",
+                        "isFemale": false,
+                        "imageURLs": catalogImages,
+                        "images": catalogImages,
+                        "imageItems": catalogImages.map { ["url": $0, "media_type": "image"] },
+                        "status": 1,
+                        "visibility": 0,
+                        "isApproved": true,
+                        "isDeleted": false,
+                        "isBlocked": false,
+                        "isSold": false,
+                        "ownerID": ownerID,
+                        "ownerName": storeName,
+                        "storeID": storeID,
+                        "branchId": storeID,
+                        "catalogItemId": productID,
+                        "isLivePet": true,
+                        "isFromCatalog": true,
+                        "latitude": 25.2854,
+                        "longitude": 51.5310,
+                        "geohash": "tky60",
+                        "adLocation": 1,
+                        "locationName": "Doha",
+                        "updatedAt": FieldValue.serverTimestamp(),
+                    ]
+                    try await adRef.setData(adPayload, merge: true)
+                } else {
+                    try await adRef.setData([
+                        "status": 0,
+                        "visibility": 1,
+                        "isDeleted": true,
+                        "updatedAt": FieldValue.serverTimestamp(),
+                    ], merge: true)
+                }
+            }
+        } catch {
+            print("⚠️ [PPLivePetInventoryService] syncLivePetAds error: \(error.localizedDescription)")
+        }
     }
 
     private static func call(_ name: String, payload: [String: Any]) async throws -> [String: Any] {
         let boxed = PPSendableDictionary(dict: payload)
+        guard let currentUser = Auth.auth().currentUser else {
+            throw PPLivePetServiceError.notAuthenticated
+        }
+        _ = try? await currentUser.getIDTokenResult(forcingRefresh: false)
         let callable = Functions.functions().httpsCallable(name)
         callable.timeoutInterval = callableTimeout
-        let result = try await callable.call(boxed.dict)
-        guard let data = result.data as? [String: Any], data["ok"] as? Bool != false else {
-            throw PPLivePetServiceError.invalidResponse
+        do {
+            let result = try await callable.call(boxed.dict)
+            guard let data = result.data as? [String: Any], data["ok"] as? Bool != false else {
+                throw PPLivePetServiceError.invalidResponse
+            }
+            return data
+        } catch {
+            let nsError = error as NSError
+            let isUnauth = (nsError.code == 16 || nsError.code == FunctionsErrorCode.unauthenticated.rawValue) ||
+                nsError.localizedDescription.lowercased().contains("unauthenticated")
+            if isUnauth, let currentUser = Auth.auth().currentUser {
+                _ = try? await currentUser.getIDTokenResult(forcingRefresh: true)
+                let retryResult = try await callable.call(boxed.dict)
+                guard let data = retryResult.data as? [String: Any], data["ok"] as? Bool != false else {
+                    throw PPLivePetServiceError.invalidResponse
+                }
+                return data
+            }
+            throw error
         }
-        return data
     }
 }
 
@@ -639,6 +814,7 @@ enum PPLivePetServiceError: LocalizedError {
     case invalidResponse
     case truncatedReservations
     case missingSellingPrice
+    case notAuthenticated
 
     var errorDescription: String? {
         switch self {
@@ -648,6 +824,8 @@ enum PPLivePetServiceError: LocalizedError {
             return Language.get("LivePet_Error_ReservationLimit", alter: "تعذر تحميل جميع الحجوزات بأمان. استخدم نقطة البيع لمراجعة القائمة الكاملة.")
         case .missingSellingPrice:
             return Language.get("LivePet_Error_MissingUnitPrice", alter: "حدد سعر بيع صالحاً للحيوان قبل حجزه أو بيعه.")
+        case .notAuthenticated:
+            return Language.get("LivePet_Error_NotAuthenticated", alter: "يجب تسجيل الدخول بحساب موظف معتمد لإجراء هذه العملية.")
         }
     }
 }
@@ -816,10 +994,12 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     func migrate(mode: PPLivePetInventoryMode, units: [PPLivePetUnitDraft], standardSellingPrice: Double) async -> Bool {
         await perform({
             let unitPayloads = try self.validatedUnitPayloads(units, allowEmpty: true)
+            let branchId = BranchContextStore.shared.activeBranch?.branchID ?? self.item.storeID ?? ""
             var payload: [String: Any] = [
                 "inventoryMode": mode.rawValue,
                 "units": mode == .individual ? unitPayloads : [],
             ]
+            if !branchId.isEmpty { payload["branchId"] = branchId }
             if mode == .individual { payload["standardSellingPrice"] = standardSellingPrice }
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "migrate_inventory",
@@ -832,8 +1012,9 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         }, successKey: "LivePet_Migration_Success", successFallback: "تم اعتماد نمط تتبع المخزون الحي.")
     }
 
-    func intake(mode: PPLivePetInventoryMode, unit: PPLivePetUnitDraft, quantity: Int, cost: Double, supplier: String, notes: String) async -> Bool {
+    func intake(mode: PPLivePetInventoryMode, unit: PPLivePetUnitDraft, quantity: Int, cost: Double, supplier: String, notes: String, branchID: String? = nil) async -> Bool {
         await perform({
+            let targetBranch = branchID ?? BranchContextStore.shared.activeBranch?.branchID ?? self.item.storeID ?? ""
             var payload: [String: Any] = [
                 "quantity": max(1, quantity),
                 "costPrice": max(0, cost),
@@ -841,6 +1022,9 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                 "arrivalDate": ISO8601DateFormatter().string(from: unit.acquisitionDate),
                 "notes": notes,
             ]
+            if !targetBranch.isEmpty {
+                payload["branchId"] = targetBranch
+            }
             if mode == .individual { payload["units"] = try self.validatedUnitPayloads([unit]) }
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "intake",
@@ -1141,7 +1325,17 @@ final class PPInventoryListViewModel: ObservableObject {
     private var pendingDebounceWorkItems: [String: DispatchWorkItem] = [:]
 
     func effectiveStock(for item: PetAccessory) -> Int {
-        PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        if item.isLivePet {
+            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+            if let activeBranch, !activeBranch.isEmpty {
+                let itemBranch = item.storeID ?? item.branchID ?? ""
+                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                    return 0
+                }
+            }
+            return item.quantity
+        }
+        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
 
     var totalCount: Int { allItems.count }
@@ -1494,35 +1688,49 @@ public struct PPInventoryListView: View {
     }
 
     public var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+        GeometryReader { geometry in
+            let isRegular = geometry.size.width >= 760
 
-            VStack(spacing: 0) {
-                sovereignHeaderBar
-                PPAdminBranchSwitcherBar(style: .compact)
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.vertical, 4)
-                catalogHorizonSwitcher
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 16) {
-                        apexTelemetryRadar
-                        searchAndFilterMatrix
+                VStack(spacing: 0) {
+                    sovereignHeaderBar
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
 
-                        if viewModel.isLoading && viewModel.allItems.isEmpty {
-                            loadingSkeletonView
-                        } else if viewModel.filteredItems.isEmpty {
-                            emptyStateView
-                        } else {
-                            itemsListSection
+                    PPAdminBranchSwitcherBar(style: .compact)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.vertical, 4)
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
+
+                    catalogHorizonSwitcher
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
+
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: 16) {
+                            apexTelemetryRadar
+                            searchAndFilterMatrix
+
+                            if viewModel.isLoading && viewModel.allItems.isEmpty {
+                                loadingSkeletonView
+                            } else if viewModel.filteredItems.isEmpty {
+                                emptyStateView
+                            } else {
+                                itemsListSection
+                            }
                         }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, 10)
+                        .padding(.bottom, 64)
+                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 10)
-                    .padding(.bottom, 64)
-                }
-                .refreshable {
-                    await viewModel.refresh()
+                    .refreshable {
+                        await viewModel.refresh()
+                    }
                 }
             }
         }
@@ -1613,6 +1821,8 @@ public struct PPInventoryListView: View {
                             .font(.system(size: 13, weight: isSelected ? .bold : .medium))
                         Text(tab.shortTitle)
                             .font(isSelected ? AdminType.captionBold : AdminType.caption1)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
                     }
                     .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
                     .frame(maxWidth: .infinity, minHeight: 40)
@@ -1715,32 +1925,67 @@ public struct PPInventoryListView: View {
                 .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
 
-            // 4-Tile Telemetry Deck
-            HStack(spacing: 8) {
-                telemetryTile(
-                    title: Language.get("InStock", alter: "متوفر"),
-                    count: viewModel.inStockCount,
-                    color: Color(uiColor: .ppSuccess),
-                    icon: "checkmark.circle.fill"
-                )
-                telemetryTile(
-                    title: Language.get("LowStock", alter: "مخزون حرج"),
-                    count: viewModel.lowStockCount,
-                    color: Color(uiColor: .ppWarning),
-                    icon: "exclamationmark.triangle.fill"
-                )
-                telemetryTile(
-                    title: Language.get("OutOfStock", alter: "نفذ"),
-                    count: viewModel.outOfStockCount,
-                    color: Color(uiColor: .ppError),
-                    icon: "xmark.octagon.fill"
-                )
-                telemetryTile(
-                    title: Language.get("Offers", alter: "تخفيضات"),
-                    count: viewModel.offersCount,
-                    color: Color(red: 0.65, green: 0.35, blue: 0.95),
-                    icon: "tag.fill"
-                )
+            // 4-Tile Telemetry Deck (Adaptive with ViewThatFits for small screens)
+            ViewThatFits(in: .horizontal) {
+                // Primary: 4-tile single row (Standard iPhone & iPad)
+                HStack(spacing: 8) {
+                    telemetryTile(
+                        title: Language.get("InStock", alter: "متوفر"),
+                        count: viewModel.inStockCount,
+                        color: Color(uiColor: .ppSuccess),
+                        icon: "checkmark.circle.fill"
+                    )
+                    telemetryTile(
+                        title: Language.get("LowStock", alter: "مخزون حرج"),
+                        count: viewModel.lowStockCount,
+                        color: Color(uiColor: .ppWarning),
+                        icon: "exclamationmark.triangle.fill"
+                    )
+                    telemetryTile(
+                        title: Language.get("OutOfStock", alter: "نفذ"),
+                        count: viewModel.outOfStockCount,
+                        color: Color(uiColor: .ppError),
+                        icon: "xmark.octagon.fill"
+                    )
+                    telemetryTile(
+                        title: Language.get("Offers", alter: "تخفيضات"),
+                        count: viewModel.offersCount,
+                        color: Color(red: 0.65, green: 0.35, blue: 0.95),
+                        icon: "tag.fill"
+                    )
+                }
+
+                // Fallback: 2x2 grid for compact widths / high dynamic type
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        telemetryTile(
+                            title: Language.get("InStock", alter: "متوفر"),
+                            count: viewModel.inStockCount,
+                            color: Color(uiColor: .ppSuccess),
+                            icon: "checkmark.circle.fill"
+                        )
+                        telemetryTile(
+                            title: Language.get("LowStock", alter: "مخزون حرج"),
+                            count: viewModel.lowStockCount,
+                            color: Color(uiColor: .ppWarning),
+                            icon: "exclamationmark.triangle.fill"
+                        )
+                    }
+                    HStack(spacing: 8) {
+                        telemetryTile(
+                            title: Language.get("OutOfStock", alter: "نفذ"),
+                            count: viewModel.outOfStockCount,
+                            color: Color(uiColor: .ppError),
+                            icon: "xmark.octagon.fill"
+                        )
+                        telemetryTile(
+                            title: Language.get("Offers", alter: "تخفيضات"),
+                            count: viewModel.offersCount,
+                            color: Color(red: 0.65, green: 0.35, blue: 0.95),
+                            icon: "tag.fill"
+                        )
+                    }
+                }
             }
 
             // Proportional Health Spectrum
@@ -1770,11 +2015,13 @@ public struct PPInventoryListView: View {
                 Text("\(count)")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
+                    .minimumScaleFactor(0.80)
             }
             Text(title)
                 .font(AdminType.caption2Bold)
                 .foregroundStyle(AdminCommandInk.secondary)
                 .lineLimit(1)
+                .minimumScaleFactor(0.72)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2104,6 +2351,9 @@ private struct FlagshipInventoryCard: View {
     let onToggleStock: () -> Void
     let onDelete: () -> Void
 
+    @State private var showQuantityAlert: Bool = false
+    @State private var inputQuantityText: String = ""
+
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
     }
@@ -2128,12 +2378,22 @@ private struct FlagshipInventoryCard: View {
     }
 
     private var displayQuantity: Int {
-        PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        if item.isLivePet {
+            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+            if let activeBranch, !activeBranch.isEmpty {
+                let itemBranch = item.storeID ?? item.branchID ?? ""
+                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                    return 0
+                }
+            }
+            return item.quantity
+        }
+        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
 
     private var stockTone: Color {
         let qty = displayQuantity
-        if qty <= 0 || item.noStock {
+        if qty <= 0 || (item.noStock && !item.isLivePet) {
             return Color(uiColor: .ppError)
         } else if qty <= 3 {
             return Color(uiColor: .ppWarning)
@@ -2144,7 +2404,7 @@ private struct FlagshipInventoryCard: View {
 
     private var stockStatusText: String {
         let qty = displayQuantity
-        if qty <= 0 || item.noStock {
+        if (item.noStock && !item.isLivePet) || qty <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if qty <= 3 {
             return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%d)"), qty)
@@ -2179,64 +2439,25 @@ private struct FlagshipInventoryCard: View {
 
                     // Identity, Lineage & Valuation Track
                     VStack(alignment: .leading, spacing: 6) {
-                        // Top Meta Runway: Origin + Condition + Weight + Vitality Pill
-                        HStack(alignment: .center, spacing: 6) {
-                            let branchDisplayName = item.resolvedBranchName()
-                            if !branchDisplayName.isEmpty {
-                                Text(branchDisplayName)
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundColor(AdminSurface.primary)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
-                                    .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                        // Top Meta Runway: Origin + Condition + Weight + Vitality Pill (Adaptive)
+                        ViewThatFits(in: .horizontal) {
+                            HStack(alignment: .center, spacing: 6) {
+                                topMetaChipsLeading
+                                Spacer(minLength: 4)
+                                stockVitalityPill
                             }
 
-                            if let sku = item.sku, !sku.isEmpty {
-                                Text("SKU: \(sku)")
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundColor(AdminCommandInk.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2.5)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                            }
-
-                            let condText = PetAccessory.conditionText(for: item)
-                            if !condText.isEmpty {
-                                Text(condText)
-                                    .font(AdminType.caption2)
-                                    .foregroundColor(AdminCommandInk.secondary)
-                            }
-
-                            if let weight = item.weightText, !weight.isEmpty {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "scalemass.fill")
-                                        .font(.system(size: 8))
-                                    Text(weight)
-                                        .font(AdminType.caption2)
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .center, spacing: 6) {
+                                    topMetaChipsLeading
+                                    Spacer(minLength: 4)
                                 }
-                                .foregroundColor(AdminCommandInk.tertiary)
+                                HStack(alignment: .center, spacing: 6) {
+                                    topMetaChipsTrailing
+                                    Spacer(minLength: 4)
+                                    stockVitalityPill
+                                }
                             }
-
-                            Spacer(minLength: 4)
-
-                            // Stock Vitality Pill
-                            HStack(spacing: 4) {
-                                Image(systemName: stockStatusIcon)
-                                    .font(.system(size: 8, weight: .bold))
-                                Text(stockStatusText)
-                                    .font(AdminType.caption2Bold)
-                            }
-                            .foregroundColor(stockTone)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3.5)
-                            .background(
-                                stockTone.opacity(0.10),
-                                in: Capsule(style: .continuous)
-                            )
-                            .overlay(
-                                Capsule(style: .continuous)
-                                    .strokeBorder(stockTone.opacity(0.25), lineWidth: 0.5)
-                            )
                         }
 
                         // Specimen Nomenclature (Title)
@@ -2284,6 +2505,8 @@ private struct FlagshipInventoryCard: View {
 
                             Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
                                 .font(AdminType.caption2Bold)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                         .padding(.horizontal, 10)
@@ -2376,6 +2599,96 @@ private struct FlagshipInventoryCard: View {
                 Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
             }
         }
+        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityAlert) {
+            TextField(Language.get("Quantity", alter: "الكمية"), text: $inputQuantityText)
+                .englishNumericInput(text: $inputQuantityText, allowsDecimal: false)
+            Button(Language.get("Save", alter: "حفظ")) {
+                if let val = Int(inputQuantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    let sanitized = max(0, val)
+                    let delta = sanitized - displayQuantity
+                    if delta != 0 {
+                        onAdjustQuantity(delta)
+                    }
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
+        }
+    }
+
+    // MARK: - Runway Meta Chips
+
+    @ViewBuilder
+    private var topMetaChipsLeading: some View {
+        let branchDisplayName = item.resolvedBranchName()
+        if !branchDisplayName.isEmpty {
+            Text(branchDisplayName)
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminSurface.primary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                .lineLimit(1)
+        }
+
+        if let sku = item.sku, !sku.isEmpty {
+            Text("SKU: \(sku)")
+                .font(AdminType.caption2Bold)
+                .foregroundColor(AdminCommandInk.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .minimumScaleFactor(0.85)
+        }
+
+        let condText = PetAccessory.conditionText(for: item)
+        if !condText.isEmpty {
+            Text(condText)
+                .font(AdminType.caption2)
+                .foregroundColor(AdminCommandInk.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    @ViewBuilder
+    private var topMetaChipsTrailing: some View {
+        if let weight = item.weightText, !weight.isEmpty {
+            HStack(spacing: 2) {
+                Image(systemName: "scalemass.fill")
+                    .font(.system(size: 8))
+                Text(weight)
+                    .font(AdminType.caption2)
+            }
+            .foregroundColor(AdminCommandInk.tertiary)
+            .lineLimit(1)
+        }
+    }
+
+    private var stockVitalityPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: stockStatusIcon)
+                .font(.system(size: 8, weight: .bold))
+            Text(stockStatusText)
+                .font(AdminType.caption2Bold)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+        }
+        .foregroundColor(stockTone)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3.5)
+        .background(
+            stockTone.opacity(0.10),
+            in: Capsule(style: .continuous)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(stockTone.opacity(0.25), lineWidth: 0.5)
+        )
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
     }
 
     // MARK: - Specimen Visual Showcase (92x92)
@@ -2441,6 +2754,11 @@ private struct FlagshipInventoryCard: View {
                 .frame(minWidth: 32)
                 .multilineTextAlignment(.center)
                 .contentTransition(.numericText())
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    inputQuantityText = "\(displayQuantity)"
+                    showQuantityAlert = true
+                }
 
             // Increment (+)
             Button {
@@ -2524,6 +2842,9 @@ public struct PPInventoryItemDetailView: View {
     @State private var copiedTask: Task<Void, Never>? = nil
     @State private var hasAppeared: Bool = false
     @State private var isLightboxPresented: Bool = false
+    @State private var currentQuantity: Int = 0
+    @State private var showQuantityInputAlert: Bool = false
+    @State private var quantityInputText: String = ""
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -2546,6 +2867,10 @@ public struct PPInventoryItemDetailView: View {
         self.onToggleStock = onToggleStock
         self.onDelete = onDelete
         _liveModel = StateObject(wrappedValue: PPLivePetOperationsViewModel(item: item))
+        let initialStock = item.isLivePet && item.quantity > 0
+            ? item.quantity
+            : PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        _currentQuantity = State(initialValue: initialStock)
     }
 
     public var body: some View {
@@ -2594,6 +2919,11 @@ public struct PPInventoryItemDetailView: View {
         }
         .environment(\.layoutDirection, .rightToLeft)
         .onAppear {
+            if item.isLivePet && item.quantity > 0 {
+                currentQuantity = item.quantity
+            } else {
+                currentQuantity = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+            }
             if accessibilityReduceMotion {
                 hasAppeared = true
             } else {
@@ -2605,6 +2935,20 @@ public struct PPInventoryItemDetailView: View {
         .task {
             if item.isLivePet {
                 await liveModel.load()
+                if liveModel.mode == .individual {
+                    let count = effectiveAvailableUnitsCount
+                    currentQuantity = count
+                    item.quantity = count
+                    item.noStock = (count <= 0)
+                }
+            }
+        }
+        .onChange(of: liveModel.units) { _ in
+            if item.isLivePet && liveModel.mode == .individual {
+                let count = effectiveAvailableUnitsCount
+                currentQuantity = count
+                item.quantity = count
+                item.noStock = (count <= 0)
             }
         }
         .sheet(item: $liveModel.operation) { operation in
@@ -2620,6 +2964,18 @@ public struct PPInventoryItemDetailView: View {
             }
         } message: {
             Text(Language.get("DeleteConfirm_Message", alter: "هل أنت متأكد من حذف هذا الصنف من المخزون نهائياً؟"))
+        }
+        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityInputAlert) {
+            TextField(Language.get("Quantity", alter: "الكمية"), text: $quantityInputText)
+                .englishNumericInput(text: $quantityInputText, allowsDecimal: false)
+            Button(Language.get("Save", alter: "حفظ")) {
+                if let val = Int(quantityInputText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    setExactQuantity(val)
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -2661,7 +3017,7 @@ public struct PPInventoryItemDetailView: View {
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(item.noStock || item.quantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .fill(item.noStock || currentQuantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                         .frame(width: 6, height: 6)
                     Text(item.name)
                         .font(AdminType.caption2)
@@ -2754,7 +3110,7 @@ public struct PPInventoryItemDetailView: View {
 
                     // Live Availability Beacon Dot
                     Circle()
-                        .fill(item.noStock || item.quantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .fill(item.noStock || currentQuantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                         .frame(width: 10, height: 10)
                         .overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
                         .padding(6)
@@ -2969,20 +3325,35 @@ public struct PPInventoryItemDetailView: View {
             // Stock Health & Live Velocity Pod (Trailing / Left in RTL)
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 6) {
-                    Image(systemName: "shippingbox.fill")
+                    Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundStyle(stockTone)
                     Text(Language.get("Quantity", alter: "الكمية"))
                         .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
+                    if let activeBranch = BranchContextStore.shared.activeBranch {
+                        Text(activeBranch.code.isEmpty ? activeBranch.localizedName() : activeBranch.code)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                    }
                     Spacer()
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(item.quantity)")
+                    Text("\(displayedQuantity)")
                         .font(.system(size: 24, weight: .bold, design: .monospaced))
                         .foregroundStyle(stockTone)
                         .lineLimit(1)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if !item.isLivePet {
+                                quantityInputText = "\(currentQuantity)"
+                                showQuantityInputAlert = true
+                            }
+                        }
 
                     Text(stockStatusText)
                         .font(Font.custom("Beiruti-Regular", size: 11))
@@ -2998,18 +3369,23 @@ public struct PPInventoryItemDetailView: View {
                         } label: {
                             Image(systemName: "minus")
                                 .font(.system(size: 11, weight: .black))
-                                .foregroundStyle(item.quantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
+                                .foregroundStyle(currentQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
                                 .frame(width: 32, height: 28)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(CatalogPressStyle())
-                        .disabled(item.quantity <= 0)
+                        .disabled(currentQuantity <= 0)
 
-                        Text("\(item.quantity)")
+                        Text("\(currentQuantity)")
                             .font(.system(size: 12, weight: .bold, design: .monospaced))
                             .foregroundStyle(AdminSurface.primaryText)
                             .frame(minWidth: 26)
                             .multilineTextAlignment(.center)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                quantityInputText = "\(currentQuantity)"
+                                showQuantityInputAlert = true
+                            }
 
                         Button {
                             adjustQuantity(1)
@@ -3226,10 +3602,36 @@ public struct PPInventoryItemDetailView: View {
         return PetAccessory.formatCurrency(item.price)
     }
 
+    private var effectiveAvailableUnitsCount: Int {
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+        return liveModel.units.filter { unit in
+            guard unit.status == "AVAILABLE" else { return false }
+            if let activeBranch, !activeBranch.isEmpty {
+                return unit.currentBranchID.isEmpty || unit.currentBranchID == activeBranch
+            }
+            return true
+        }.count
+    }
+
+    private var displayedQuantity: Int {
+        if item.isLivePet {
+            if liveModel.mode == .individual {
+                if !liveModel.units.isEmpty || !liveModel.isLoading {
+                    return effectiveAvailableUnitsCount
+                }
+                return max(currentQuantity, item.quantity)
+            } else {
+                return currentQuantity
+            }
+        }
+        return currentQuantity
+    }
+
     private var stockTone: Color {
-        if item.quantity <= 0 || item.noStock {
+        let qty = displayedQuantity
+        if qty <= 0 || (item.noStock && !item.isLivePet) {
             return Color(uiColor: .ppError)
-        } else if item.quantity <= 3 {
+        } else if qty <= 3 {
             return Color(uiColor: .ppWarning)
         } else {
             return Color(uiColor: .ppSuccess)
@@ -3237,11 +3639,12 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private var stockStatusText: String {
-        if item.noStock {
+        let qty = displayedQuantity
+        if item.noStock && !item.isLivePet {
             return Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً")
-        } else if item.quantity <= 0 {
+        } else if qty <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
-        } else if item.quantity <= 3 {
+        } else if qty <= 3 {
             return Language.get("LowStock", alter: "وشك النفاذ")
         } else {
             return Language.get("InStock", alter: "متوفر بالمخزون")
@@ -3266,16 +3669,51 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private func adjustQuantity(_ delta: Int) {
-        let newQty = max(0, item.quantity + delta)
-        guard newQty != item.quantity else { return }
+        let newQty = max(0, currentQuantity + delta)
+        guard newQty != currentQuantity else { return }
+        let effectiveDelta = newQty - currentQuantity
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        currentQuantity = newQty
         item.quantity = newQty
-        if item.quantity == 0 {
+        if newQty == 0 {
             item.noStock = true
-        } else if item.noStock && delta > 0 {
+        } else if item.noStock && effectiveDelta > 0 {
             item.noStock = false
         }
-        onAdjustQuantity?(delta)
+        if let onAdjust = onAdjustQuantity {
+            onAdjust(effectiveDelta)
+        } else if let vm = viewModel {
+            vm.adjustQuantity(by: effectiveDelta, for: item)
+        } else {
+            if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
+                PPBranchInventoryService.shared.adjustStock(
+                    productId: item.accessoryID,
+                    branchId: branchId,
+                    delta: effectiveDelta,
+                    type: effectiveDelta > 0 ? "purchase" : "adjustment",
+                    referenceId: "admin_item_detail",
+                    reason: "detail_view_stepper",
+                    notes: "Adjusted from detail view stepper"
+                ) { result in
+                    if case .failure(let error) = result {
+                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                    }
+                }
+            } else {
+                AccessoryManager.shared().adjustQuantity(by: effectiveDelta, forAccessoryID: item.accessoryID) { error in
+                    if let error = error {
+                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+
+    private func setExactQuantity(_ targetQty: Int) {
+        let sanitized = max(0, targetQty)
+        let delta = sanitized - currentQuantity
+        guard delta != 0 else { return }
+        adjustQuantity(delta)
     }
 
     private func toggleStockVisibility() {
@@ -4193,6 +4631,8 @@ private struct PPLivePetOperationSheet: View {
             _customerPhone = State(initialValue: reservation.customerPhone)
             _cashReceivedText = State(initialValue: String(format: "%.2f", reservation.total))
         case .intake:
+            let defaultBranch = BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? ""
+            _selectedBranchID = State(initialValue: defaultBranch)
             _selectedMode = State(initialValue: model.mode ?? .individual)
         default:
             break
@@ -4334,6 +4774,7 @@ private struct PPLivePetOperationSheet: View {
                 }
 
             case .intake:
+                branchPicker(excluding: nil)
                 if model.mode == .individual {
                     unitDraftFields($unitDrafts[0], showRemove: false)
                 } else {
@@ -4833,9 +5274,8 @@ private struct PPLivePetOperationSheet: View {
             }
             HStack(spacing: 8) {
                 TextField(title, text: text)
-                    .keyboardType(.decimalPad)
+                    .englishNumericInput(text: text, allowsDecimal: true)
                     .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .environment(\.layoutDirection, .leftToRight)
                 Text("ر.ق")
                     .font(Font.custom("Beiruti-Bold", size: 13))
                     .foregroundStyle(AdminSurface.primary)
@@ -4864,9 +5304,8 @@ private struct PPLivePetOperationSheet: View {
                     .foregroundStyle(AdminSurface.secondaryText)
             }
             TextField(title, text: text)
-                .keyboardType(.numberPad)
+                .englishNumericInput(text: text, allowsDecimal: false)
                 .font(.system(size: 16, weight: .bold, design: .monospaced))
-                .environment(\.layoutDirection, .leftToRight)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -5120,6 +5559,8 @@ private struct PPLivePetOperationSheet: View {
                 if let next = model.branches.first(where: { $0.id != currentBranch })?.id {
                     selectedBranchID = next
                 }
+            } else if let active = BranchContextStore.shared.activeBranch?.branchID, !active.isEmpty {
+                selectedBranchID = active
             } else if let first = model.branches.first?.id {
                 selectedBranchID = first
             }
@@ -5139,6 +5580,7 @@ private struct PPLivePetOperationSheet: View {
                     standardSellingPrice: price
                 )
             case .intake:
+                let targetBranch = selectedBranchID.isEmpty ? (BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? "") : selectedBranchID
                 if model.mode == .individual {
                     let cost = Double(unitDrafts[0].purchaseCostText) ?? 0
                     ok = await model.intake(
@@ -5147,7 +5589,8 @@ private struct PPLivePetOperationSheet: View {
                         quantity: 1,
                         cost: cost,
                         supplier: unitDrafts[0].supplier,
-                        notes: unitDrafts[0].notes
+                        notes: unitDrafts[0].notes,
+                        branchID: targetBranch
                     )
                 } else {
                     let qty = Int(quantityText) ?? 0
@@ -5162,7 +5605,8 @@ private struct PPLivePetOperationSheet: View {
                         quantity: qty,
                         cost: cost,
                         supplier: supplier,
-                        notes: notes
+                        notes: notes,
+                        branchID: targetBranch
                     )
                 }
             case .reserve(let unit):

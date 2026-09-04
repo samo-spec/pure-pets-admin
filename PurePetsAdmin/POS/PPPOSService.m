@@ -5,6 +5,7 @@
 @import Firebase;
 @import FirebaseFirestore;
 @import FirebaseFunctions;
+@import FirebaseAuth;
 
 NSString * const PPPOSLogDidAppendNotification = @"PPPOSLogDidAppendNotification";
 
@@ -441,6 +442,41 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     return [details isKindOfClass:NSDictionary.class] ? (NSDictionary<NSString *, id> *)details : @{};
 }
 
+- (void)pp_invokeCallable:(NSString *)name
+                  payload:(id)payload
+               completion:(void (^ _Nullable)(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error))completion {
+    FIRUser *currentUser = [FIRAuth auth].currentUser;
+    void (^executeCall)(void) = ^{
+        FIRHTTPSCallable *callable = [[FIRFunctions functions] HTTPSCallableWithName:name];
+        callable.timeoutInterval = 30.0;
+        [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+            if (error && error.code == FIRFunctionsErrorCodeUnauthenticated) {
+                FIRUser *userToRefresh = [FIRAuth auth].currentUser;
+                if (userToRefresh) {
+                    NSLog(@"[PPPOSService] Callable %@ failed with unauthenticated. Forcing token refresh and retrying...", name);
+                    [userToRefresh getIDTokenResultForcingRefresh:YES completion:^(FIRAuthTokenResult * _Nullable tokenResult, NSError * _Nullable refreshError) {
+                        if (!refreshError) {
+                            [callable callWithObject:payload completion:completion];
+                            return;
+                        }
+                        if (completion) completion(result, error);
+                    }];
+                    return;
+                }
+            }
+            if (completion) completion(result, error);
+        }];
+    };
+
+    if (currentUser) {
+        [currentUser getIDTokenResultWithCompletion:^(FIRAuthTokenResult * _Nullable tokenResult, NSError * _Nullable error) {
+            executeCall();
+        }];
+    } else {
+        executeCall();
+    }
+}
+
 - (void)listAvailableUnitsForProductID:(NSString *)productID
                                 cursor:(NSString *)cursor
                             completion:(void(^)(NSArray<PPPOSInventoryUnit *> *, NSString *, BOOL, NSError *))completion {
@@ -474,9 +510,9 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     } mutableCopy];
     if (cursor.length > 0) payload[@"cursor"] = cursor;
 
-    [[[FIRFunctions functions] HTTPSCallableWithName:@"listLivePetInventoryUnits"]
-     callWithObject:payload
-     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+    [self pp_invokeCallable:@"listLivePetInventoryUnits"
+                    payload:payload
+                 completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
         if (error) {
             [[PPPOSLogger sharedLogger] errorWithCategory:@"unit"
@@ -708,9 +744,9 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         @"payload": salePayload,
     };
 
-    [[[FIRFunctions functions] HTTPSCallableWithName:@"processTransaction"]
-     callWithObject:data
-     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+    [self pp_invokeCallable:@"processTransaction"
+                    payload:data
+                 completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
         if (error) {
             BOOL isConflict = [PPPOSService isExactUnitSelectionConflictError:error];
@@ -797,6 +833,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                                         metadata:@{ @"branchId": safeBranchID }
                                          message:@"Fetching selected-branch POS transaction history"];
 
+    NSLog(@"[FIRE] 🔍 [POS] Fetching 'transactions' for branch: %@ (orderBy: createdAt DESC, limit: 250)", safeBranchID);
     FIRCollectionReference *transactions = [[FIRFirestore firestore] collectionWithPath:@"transactions"];
     FIRQuery *query = [[transactions queryWhereField:@"branchId" isEqualTo:safeBranchID]
                        queryOrderedByField:@"createdAt" descending:YES];
@@ -804,6 +841,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         dispatch_async(dispatch_get_main_queue(), ^{
             NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
             if (error) {
+                NSLog(@"[FIRE] ❌ [POS] Fetch failed: %@", error.localizedDescription);
+                if ([error.localizedDescription localizedCaseInsensitiveContainsString:@"index"] || error.code == 9) {
+                    NSLog(@"[FIRE] 🚨🚨🚨 [POS] INDEX REQUIRED! 🚨🚨🚨\n[FIRE] %@", error.localizedDescription);
+                }
                 [[PPPOSLogger sharedLogger] errorWithCategory:@"history"
                                                         event:@"history.fetch.error"
                                                       traceID:traceID

@@ -152,7 +152,7 @@ enum CustomerFilterTab: Int, CaseIterable, Identifiable {
         switch self {
         case .all: return "square.grid.2x2.fill"
         case .active: return "checkmark.seal.fill"
-        case .verified: return "shield.checkmark.fill"
+        case .verified: return "checkmark.shield.fill"
         case .needsAttention: return "exclamationmark.octagon.fill"
         case .blocked: return "nosign"
         }
@@ -770,7 +770,7 @@ struct AdminUsersListView: View {
                 bentoTile(
                     title: Language.get("MissionControl_Customers_Metric_Verified", alter: "موثّق"),
                     value: "\(viewModel.verifiedCount)",
-                    icon: "shield.checkmark.fill",
+                    icon: "checkmark.shield.fill",
                     accent: Color(red: 0.12, green: 0.50, blue: 0.90),
                     isSelected: viewModel.activeTab == .verified
                 ) {
@@ -1586,7 +1586,7 @@ struct AdminCustomerDossierView: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color(red: 0.12, green: 0.50, blue: 0.90).opacity(0.12))
                     .frame(width: 40, height: 40)
-                Image(systemName: "shield.checkmark.fill")
+                Image(systemName: "checkmark.shield.fill")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
             }
@@ -1837,7 +1837,7 @@ struct AdminAddCustomerSheet: View {
                         // Full Name
                         onboardingField(
                             title: Language.get("FullName_Field", alter: "الاسم الكامل للعميل *"),
-                            placeholder: "مثال: سالم الكواري",
+                            placeholder: Language.get("Customer_Name_Placeholder", alter: "مثال: سالم الكواري"),
                             icon: "person.fill",
                             text: $name
                         )
@@ -2232,6 +2232,7 @@ public final class PPAdminUsersListHostingController: UIViewController {
     }
 }
 
+@available(iOS 16.0, *)
 @objc(PPAdminChatsHostingController)
 public final class PPAdminChatsHostingController: UIViewController {
     public override func viewDidLoad() {

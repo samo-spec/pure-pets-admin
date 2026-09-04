@@ -318,6 +318,7 @@ public struct AdminSquircleCloseButton: View {
 public struct AdminSquircleActionButton: View {
     public let systemImage: String
     public var isLoading: Bool
+    public var isPrimary: Bool
     public var accessibilityLabel: String?
     public var tintColor: Color?
     public var action: () -> Void
@@ -325,12 +326,14 @@ public struct AdminSquircleActionButton: View {
     public init(
         systemImage: String,
         isLoading: Bool = false,
+        isPrimary: Bool = false,
         accessibilityLabel: String? = nil,
         tintColor: Color? = nil,
         action: @escaping () -> Void
     ) {
         self.systemImage = systemImage
         self.isLoading = isLoading
+        self.isPrimary = isPrimary
         self.accessibilityLabel = accessibilityLabel
         self.tintColor = tintColor
         self.action = action
@@ -338,28 +341,43 @@ public struct AdminSquircleActionButton: View {
 
     public var body: some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UIImpactFeedbackGenerator(style: isPrimary ? .medium : .light).impactOccurred()
             action()
         } label: {
             ZStack {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AdminSurface.surface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                    )
+                if isPrimary {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.primary)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+                        )
+                } else {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                }
+
                 if isLoading {
                     ProgressView()
-                        .tint(tintColor ?? AdminSurface.primary)
+                        .tint(isPrimary ? .white : (tintColor ?? AdminSurface.primary))
                         .scaleEffect(0.85)
                 } else {
                     Image(systemName: systemImage)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(tintColor ?? AdminSurface.primaryText)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(isPrimary ? Color.white : (tintColor ?? AdminSurface.primaryText))
                 }
             }
             .frame(width: 44, height: 44)
-            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            .shadow(
+                color: isPrimary ? AdminSurface.primary.opacity(0.32) : Color.black.opacity(0.04),
+                radius: 6,
+                x: 0,
+                y: isPrimary ? 3 : 2
+            )
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
@@ -498,5 +516,71 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
             onBack: onBack,
             trailingContent: { EmptyView() }
         )
+    }
+}
+
+// MARK: - Sovereign English Numeric Input & Normalization
+
+extension String {
+    /// Normalizes Arabic-Indic (٠-٩) and Eastern Arabic (۰-۹) numerals into ASCII English digits (0-9).
+    /// If `allowsDecimal` is true, replaces Arabic decimal separators (٫, ،, ,) with `.`, ensuring at most one decimal point.
+    /// If `allowsDecimal` is false, discards any non-digit character.
+    public func normalizedEnglishDigits(allowsDecimal: Bool = true) -> String {
+        let arabicToEnglishMap: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9"
+        ]
+        var result = ""
+        var hasDecimalPoint = false
+        for ch in self {
+            if let mapped = arabicToEnglishMap[ch] {
+                result.append(mapped)
+            } else if ch >= "0" && ch <= "9" {
+                result.append(ch)
+            } else if allowsDecimal && (ch == "." || ch == "٫" || ch == "،" || ch == ",") {
+                if !hasDecimalPoint {
+                    result.append(".")
+                    hasDecimalPoint = true
+                }
+            }
+        }
+        return result
+    }
+
+    /// Convenience getter for decimal-tolerant English numeric normalization.
+    public var normalizedEnglishDigits: String {
+        normalizedEnglishDigits(allowsDecimal: true)
+    }
+}
+
+public struct PPEnglishNumericInputModifier: ViewModifier {
+    @Binding var text: String
+    let allowsDecimal: Bool
+
+    public init(text: Binding<String>, allowsDecimal: Bool = true) {
+        self._text = text
+        self.allowsDecimal = allowsDecimal
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .keyboardType(allowsDecimal ? .decimalPad : .asciiCapableNumberPad)
+            .environment(\.layoutDirection, .leftToRight)
+            .onChange(of: text) { newValue in
+                let normalized = newValue.normalizedEnglishDigits(allowsDecimal: allowsDecimal)
+                if normalized != newValue {
+                    text = normalized
+                }
+            }
+    }
+}
+
+extension View {
+    /// Ensures that numeric and decimal inputs show only English numbers on keyboard, format LTR,
+    /// and automatically normalize any typed or pasted Arabic-Indic numerals to standard ASCII English digits.
+    public func englishNumericInput(text: Binding<String>, allowsDecimal: Bool = true) -> some View {
+        modifier(PPEnglishNumericInputModifier(text: text, allowsDecimal: allowsDecimal))
     }
 }

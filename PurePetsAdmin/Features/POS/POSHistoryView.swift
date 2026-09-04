@@ -278,12 +278,24 @@ private struct ReceiptCard: View {
     }
 
     private var paymentMethodBadge: some View {
-        let isCash = receipt.paymentMethod.lowercased() == "cash"
+        let method = receipt.paymentMethod.lowercased()
+        let text = POSReceiptFormat.paymentMethod(receipt.paymentMethod)
+        let status: AdminStatusBadge.Status
+        switch method {
+        case "cash":
+            status = .success
+        case "card", "qib":
+            status = .info
+        case "cheque", "fawry":
+            status = .warning
+        case "bank_transfer":
+            status = .info
+        default:
+            status = .neutral
+        }
         return AdminStatusBadge(
-            text: isCash
-                ? Language.get("POS_Cash", alter: "\u{0646}\u{0642}\u{062f}\u{064a}")
-                : Language.get("POS_Card", alter: "\u{0628}\u{0637}\u{0627}\u{0642}\u{0629}"),
-            status: isCash ? .success : .info
+            text: text,
+            status: status
         )
     }
 

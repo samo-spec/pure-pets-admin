@@ -40,7 +40,7 @@
     if ([identifier isEqualToString:@"providerApplications"]) return [PPProviderApplicationsHostingController new];
     if ([identifier isEqualToString:@"providerPlans"]) return [PPProviderPlansViewController new];
     if ([identifier isEqualToString:@"providerFeatures"]) return [PPProviderFeatureAccessViewController new];
-    if ([identifier isEqualToString:@"providerAccounting"]) return [PPProviderAccountingViewController new];
+    if ([identifier isEqualToString:@"providerAccounting"]) return [AdminProviderAccountingHostingController new];
     if ([identifier isEqualToString:@"pos"]) return [AdminPOSFastSellHostingController new];
     if ([identifier isEqualToString:@"posHistory"]) return [AdminPOSHistoryHostingController new];
     if ([identifier isEqualToString:@"users"]) return [PPAdminUsersListHostingController new];

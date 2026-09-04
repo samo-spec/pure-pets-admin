@@ -8,8 +8,159 @@
 #import "UsersSection/SecFil/PPStaffAuth.h"
 
 #import <os/log.h>
+#import <objc/runtime.h>
 
 @import FirebaseFirestore;
+
+#pragma mark - Universal Firestore Query Index Logger
+
+static NSString *PPFireCallerDescription(void) {
+    NSArray<NSString *> *symbols = [NSThread callStackSymbols];
+    for (NSString *symbol in symbols) {
+        if ([symbol containsString:@"PurePetsAdmin"] &&
+            ![symbol containsString:@"pp_fire_"] &&
+            ![symbol containsString:@"PPFireLog"]) {
+            NSRange bracketRange = [symbol rangeOfString:@"[-+][a-zA-Z0-9_() ]+" options:NSRegularExpressionSearch];
+            if (bracketRange.location != NSNotFound) {
+                return [symbol substringWithRange:bracketRange];
+            }
+            NSArray<NSString *> *parts = [symbol componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            NSMutableArray<NSString *> *nonEmpty = [NSMutableArray array];
+            for (NSString *p in parts) {
+                if (p.length > 0) [nonEmpty addObject:p];
+            }
+            if (nonEmpty.count >= 4) {
+                return [[nonEmpty subarrayWithRange:NSMakeRange(3, nonEmpty.count - 3)] componentsJoinedByString:@" "];
+            }
+            return symbol;
+        }
+    }
+    return @"UnknownCaller";
+}
+
+static NSString *PPFireQueryDescription(id query) {
+    if (!query) return @"";
+    if ([query respondsToSelector:@selector(path)]) {
+        NSString *path = [query valueForKey:@"path"];
+        if (path.length > 0) {
+            return [NSString stringWithFormat:@"collection='%@'", path];
+        }
+    }
+    return @"";
+}
+
+static void PPFireLogQueryOutcome(NSString *opType, id query, NSString *caller, NSError * _Nullable error, NSUInteger docCount) {
+    NSString *queryInfo = PPFireQueryDescription(query);
+    if (error) {
+        NSString *desc = error.localizedDescription ?: @"Unknown error";
+        BOOL isIndexNeeded = [desc localizedCaseInsensitiveContainsString:@"index"] ||
+                             [desc containsString:@"create_composite="] ||
+                             (error.code == 9 && [error.domain isEqualToString:@"FIRFirestoreErrorDomain"]);
+        if (isIndexNeeded) {
+            NSLog(@"[FIRE] 🚨🚨🚨 FIRESTORE INDEX REQUIRED! 🚨🚨🚨");
+            NSLog(@"[FIRE] 📍 Operation: %@", opType);
+            if (queryInfo.length > 0) NSLog(@"[FIRE] 📍 Target: %@", queryInfo);
+            NSLog(@"[FIRE] 📍 Caller: %@", caller);
+            NSLog(@"[FIRE] ⚠️ Message: %@", desc);
+            NSRange range = [desc rangeOfString:@"https://console.firebase.google.com[^ \n\t\r]+" options:NSRegularExpressionSearch];
+            if (range.location != NSNotFound) {
+                NSLog(@"[FIRE] 🔗 Create Index URL:\n%@", [desc substringWithRange:range]);
+            }
+        } else {
+            NSLog(@"[FIRE] ❌ %@ Error in %@: %@ (%@)", opType, caller, desc, queryInfo);
+        }
+    } else {
+        if (queryInfo.length > 0) {
+            NSLog(@"[FIRE] ✅ %@ Success (%lu docs) [%@] in %@", opType, (unsigned long)docCount, queryInfo, caller);
+        } else {
+            NSLog(@"[FIRE] ✅ %@ Success (%lu docs) in %@", opType, (unsigned long)docCount, caller);
+        }
+    }
+}
+
+@interface FIRQuery (PPFireIndexLogging)
+@end
+
+@implementation FIRQuery (PPFireIndexLogging)
+
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        Class cls = [FIRQuery class];
+
+        SEL s1 = @selector(getDocumentsWithCompletion:);
+        SEL s2 = @selector(pp_fire_getDocumentsWithCompletion:);
+        Method m1 = class_getInstanceMethod(cls, s1);
+        Method m2 = class_getInstanceMethod(cls, s2);
+        if (m1 && m2) method_exchangeImplementations(m1, m2);
+
+        SEL s3 = @selector(getDocumentsWithSource:completion:);
+        SEL s4 = @selector(pp_fire_getDocumentsWithSource:completion:);
+        Method m3 = class_getInstanceMethod(cls, s3);
+        Method m4 = class_getInstanceMethod(cls, s4);
+        if (m3 && m4) method_exchangeImplementations(m3, m4);
+
+        SEL s5 = @selector(addSnapshotListenerWithIncludeMetadataChanges:listener:);
+        SEL s6 = @selector(pp_fire_addSnapshotListenerWithIncludeMetadataChanges:listener:);
+        Method m5 = class_getInstanceMethod(cls, s5);
+        Method m6 = class_getInstanceMethod(cls, s6);
+        if (m5 && m6) method_exchangeImplementations(m5, m6);
+
+        NSLog(@"[FIRE] 🔥 Firebase Firestore query index detection installed successfully.");
+    });
+}
+
+- (void)pp_fire_getDocumentsWithCompletion:(void (^)(FIRQuerySnapshot * _Nullable, NSError * _Nullable))completion {
+    NSString *caller = PPFireCallerDescription();
+    NSString *queryInfo = PPFireQueryDescription(self);
+    if (queryInfo.length > 0) {
+        NSLog(@"[FIRE] 🔍 Query START [%@] in %@", queryInfo, caller);
+    } else {
+        NSLog(@"[FIRE] 🔍 Query START in %@", caller);
+    }
+    [self pp_fire_getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        PPFireLogQueryOutcome(@"getDocuments", self, caller, error, snapshot.documents.count);
+        if (completion) {
+            completion(snapshot, error);
+        }
+    }];
+}
+
+- (void)pp_fire_getDocumentsWithSource:(FIRFirestoreSource)source
+                            completion:(void (^)(FIRQuerySnapshot * _Nullable, NSError * _Nullable))completion {
+    NSString *caller = PPFireCallerDescription();
+    NSString *queryInfo = PPFireQueryDescription(self);
+    if (queryInfo.length > 0) {
+        NSLog(@"[FIRE] 🔍 Query (source=%ld) START [%@] in %@", (long)source, queryInfo, caller);
+    } else {
+        NSLog(@"[FIRE] 🔍 Query (source=%ld) START in %@", (long)source, caller);
+    }
+    [self pp_fire_getDocumentsWithSource:source completion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        PPFireLogQueryOutcome(@"getDocumentsWithSource", self, caller, error, snapshot.documents.count);
+        if (completion) {
+            completion(snapshot, error);
+        }
+    }];
+}
+
+- (id<FIRListenerRegistration>)pp_fire_addSnapshotListenerWithIncludeMetadataChanges:(BOOL)includeMetadataChanges
+                                                                            listener:(void (^)(FIRQuerySnapshot * _Nullable, NSError * _Nullable))listener {
+    NSString *caller = PPFireCallerDescription();
+    NSString *queryInfo = PPFireQueryDescription(self);
+    if (queryInfo.length > 0) {
+        NSLog(@"[FIRE] 📡 SnapshotListener START [%@] in %@", queryInfo, caller);
+    } else {
+        NSLog(@"[FIRE] 📡 SnapshotListener START in %@", caller);
+    }
+    return [self pp_fire_addSnapshotListenerWithIncludeMetadataChanges:includeMetadataChanges listener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        PPFireLogQueryOutcome(@"snapshotListener", self, caller, error, snapshot.documents.count);
+        if (listener) {
+            listener(snapshot, error);
+        }
+    }];
+}
+
+@end
 
 #pragma mark - Privacy-safe source diagnostics
 
@@ -205,6 +356,9 @@ static void PPAdminCommandCenterLogSourceError(NSString *traceID,
                      (unsigned long)PPAdminCommandCenterScopeCount(cachedStaff.scope, @"regionIds"),
                      canViewPayments, canViewFulfillment, canViewDelivery, canViewProviders,
                      canViewListings, canViewUsers, canViewStock);
+
+    NSLog(@"[FIRE] ⚡ CommandCenter loadSnapshot started (traceID: %@, payments:%d, fulfillment:%d, delivery:%d, providers:%d, listings:%d, users:%d, stock:%d)",
+          traceID, canViewPayments, canViewFulfillment, canViewDelivery, canViewProviders, canViewListings, canViewUsers, canViewStock);
 
     if (canViewPayments) {
         [requestedAreas addObject:@"payments"];
@@ -414,6 +568,7 @@ static void PPAdminCommandCenterLogSourceError(NSString *traceID,
                             traceID:(NSString *)traceID
                          assignment:(void (^)(NSInteger count))assignment {
     if (!allowed) return;
+    NSLog(@"[FIRE] 🔍 CommandCenter querying count for collection: %@", collection);
     PPAdminCommandCenterLogSourceStart(traceID, key,
                                        [NSString stringWithFormat:@"firestore:%@ unfiltered count", collection]);
     NSDate *sourceStartedAt = [NSDate date];
@@ -421,9 +576,11 @@ static void PPAdminCommandCenterLogSourceError(NSString *traceID,
     [[db collectionWithPath:collection] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable result,
                                                                       NSError * _Nullable error) {
         if (error) {
+            NSLog(@"[FIRE] ❌ CommandCenter collection '%@' query failed: %@", collection, error.localizedDescription);
             @synchronized (failedAreas) { [failedAreas addObject:key]; }
             PPAdminCommandCenterLogSourceError(traceID, key, @"firestore_collection_read_failure", sourceStartedAt, error);
         } else if (assignment) {
+            NSLog(@"[FIRE] ✅ CommandCenter collection '%@' count: %lu", collection, (unsigned long)result.documents.count);
             assignment(result.documents.count);
             PPAdminCommandCenterLogSourceResult(traceID, key, @"success", sourceStartedAt,
                                                  result.documents.count, result.documents.count,

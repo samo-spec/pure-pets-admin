@@ -228,10 +228,6 @@ final class POSCustomerPickerViewModel: ObservableObject {
         let phone = newPhone.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalized = normalizePhone(phone)
 
-        guard name.count >= 2 else {
-            errorMessage = Language.get("POS_Customer_NameTooShort", alter: "يرجى كتابة اسم العميل بالكامل (حرفين على الأقل).")
-            return
-        }
         guard normalized.count >= 6 else {
             errorMessage = Language.get("POS_Customer_PhoneTooShort", alter: "يرجى إدخال رقم هاتف صحيح (٦ أرقام على الأقل).")
             return
@@ -240,13 +236,16 @@ final class POSCustomerPickerViewModel: ObservableObject {
         isSubmitting = true
         errorMessage = nil
 
+        let defaultName = Language.get("POS_Customer_DefaultName", alter: "عميل نقطة بيع")
+        let finalName = name.isEmpty ? defaultName : name
+
         Task { [weak self] in
             guard let self else { return }
             do {
                 let callable = Functions.functions().httpsCallable("posCustomerCommand")
                 callable.timeoutInterval = 25
                 var payload: [String: Any] = [
-                    "name": name,
+                    "name": finalName,
                     "phone": phone
                 ]
                 if !self.newEmail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -315,8 +314,9 @@ final class POSCustomerPickerViewModel: ObservableObject {
         guard let list = UserDefaults.standard.array(forKey: Self.recentsStorageKey) as? [[String: String]] else { return }
         recentCustomers = list.compactMap { d -> POSCustomerRecord? in
             guard let id = d["id"], !id.isEmpty,
-                  let name = d["name"], !name.isEmpty,
                   let phone = d["phone"], !phone.isEmpty else { return nil }
+            let nameRaw = (d["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = nameRaw.isEmpty ? Language.get("POS_Customer_DefaultName", alter: "عميل نقطة بيع") : nameRaw
             return POSCustomerRecord(
                 id: id,
                 source: "directory",
@@ -379,9 +379,11 @@ final class POSCustomerPickerViewModel: ObservableObject {
 
     private func parseCustomer(_ dict: [String: Any]) -> POSCustomerRecord? {
         let id = (dict["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let name = (dict["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rawName = (dict["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let phone = (dict["phone"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !id.isEmpty, !name.isEmpty else { return nil }
+        guard !id.isEmpty else { return nil }
+
+        let name = rawName.isEmpty ? Language.get("POS_Customer_DefaultName", alter: "عميل نقطة بيع") : rawName
 
         return POSCustomerRecord(
             id: id,
@@ -472,8 +474,15 @@ struct POSCustomerPickerSheet: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
                         viewModel.activeTab = tab
-                        if tab == .create && viewModel.newName.isEmpty && !viewModel.searchText.isEmpty {
-                            viewModel.newName = viewModel.searchText
+                        if tab == .create && !viewModel.searchText.isEmpty {
+                            let trimmedSearch = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            let isDigitsOnly = !trimmedSearch.isEmpty && trimmedSearch.allSatisfy({ $0.isNumber || $0 == "+" || $0.isWhitespace || $0 == "-" })
+                            if isDigitsOnly && viewModel.newPhone.isEmpty {
+                                viewModel.newPhone = trimmedSearch
+                                viewModel.checkDuplicatePhone(trimmedSearch)
+                            } else if !isDigitsOnly && viewModel.newName.isEmpty {
+                                viewModel.newName = trimmedSearch
+                            }
                         }
                     }
                 } label: {
@@ -738,13 +747,20 @@ struct POSCustomerPickerSheet: View {
 
             if canCreateCustomer && !viewModel.searchText.isEmpty {
                 Button {
-                    viewModel.newName = viewModel.searchText
+                    let trimmedSearch = viewModel.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let isDigitsOnly = !trimmedSearch.isEmpty && trimmedSearch.allSatisfy({ $0.isNumber || $0 == "+" || $0.isWhitespace || $0 == "-" })
+                    if isDigitsOnly {
+                        viewModel.newPhone = trimmedSearch
+                        viewModel.checkDuplicatePhone(trimmedSearch)
+                    } else {
+                        viewModel.newName = trimmedSearch
+                    }
                     viewModel.activeTab = .create
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle.fill")
                             .font(.system(size: 13, weight: .semibold))
-                        Text(String(format: Language.get("POS_Customer_CreateInstantCTA", alter: "إضافة '%@' كعميل جديد"), viewModel.searchText))
+                        Text(String(format: Language.get("POS_Customer_CreateInstantCTA", alter: "إضافة «%@» كعميل جديد"), viewModel.searchText))
                             .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
                     }
                     .foregroundColor(.white)
@@ -767,12 +783,18 @@ struct POSCustomerPickerSheet: View {
                 // Live Monogram Hero Preview
                 ZStack {
                     Circle()
-                        .fill(viewModel.newName.isEmpty ? Color.gray.opacity(0.15) : AdminSurface.primary.opacity(0.15))
+                        .fill(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Color.gray.opacity(0.12) : AdminSurface.primary.opacity(0.15))
                         .frame(width: 68, height: 68)
 
-                    Text(viewModel.newName.isEmpty ? "؟" : String(viewModel.newName.prefix(2)).uppercased())
-                        .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title))
-                        .foregroundColor(viewModel.newName.isEmpty ? AdminSurface.secondaryText : AdminSurface.primary)
+                    if viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    } else {
+                        Text(String(viewModel.newName.trimmingCharacters(in: .whitespacesAndNewlines).prefix(2)).uppercased())
+                            .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title))
+                            .foregroundColor(AdminSurface.primary)
+                    }
                 }
                 .padding(.top, 8)
 
@@ -805,9 +827,9 @@ struct POSCustomerPickerSheet: View {
 
                 // Form Container
                 VStack(spacing: 12) {
-                    // Name Field
+                    // Name Field (Optional)
                     formField(
-                        title: Language.get("POS_Customer_NameField", alter: "اسم العميل بالكامل *"),
+                        title: Language.get("POS_Customer_NameField", alter: "اسم العميل (اختياري)"),
                         placeholder: Language.get("POS_Customer_NamePlaceholder", alter: "مثال: سالم الكواري"),
                         icon: "person.fill",
                         text: $viewModel.newName

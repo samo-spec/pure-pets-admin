@@ -94,6 +94,16 @@ extension PetAccessory {
     @MainActor
     var pos_isSellable: Bool {
         guard active && !isBlocked && !isDeleted && !isDisabled && !isArchived else { return false }
+        if isLivePet {
+            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+            if let activeBranch, !activeBranch.isEmpty {
+                let itemBranch = storeID ?? branchID ?? ""
+                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                    return false
+                }
+            }
+            return quantity > 0 && !noStock
+        }
         let branchStock = PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
         return branchStock > 0 && !noStock
     }
@@ -459,6 +469,7 @@ final class POSFastSellViewModel: ObservableObject {
             }
     }
     @Published private(set) var selectedPaymentMethod: String = "cash"
+    @Published var attachedCheque: PPScannedCheque? = nil
     @Published private(set) var isSubmitting = false
     @Published private(set) var isPreparingReceipt = false
     @Published var submitError: String?
@@ -583,7 +594,10 @@ final class POSFastSellViewModel: ObservableObject {
 
     let paymentMethods: [(key: String, title: String, icon: String)] = [
         ("cash", "POS_Cash", "banknote.fill"),
-        ("card", "POS_Card", "creditcard.fill")
+        ("card", "POS_Card", "creditcard.fill"),
+        ("cheque", "POS_Cheque", "doc.text.fill"),
+        ("fawry", "POS_Fawry", "wallet.pass.fill"),
+        ("bank_transfer", "POS_BankTransfer", "arrow.up.forward.app.fill")
     ]
 
     func startListening() {
@@ -735,6 +749,7 @@ final class POSFastSellViewModel: ObservableObject {
         let total = cartTotal
         cartItems = []
         appliedDiscount = nil
+        attachedCheque = nil
         POSLogger.info("cart.cleared", category: "cart", message: "Cleared cart (\(count) items, previously \(total) QAR)")
         invalidateSubmissionCommand()
     }
@@ -919,7 +934,7 @@ final class POSFastSellViewModel: ObservableObject {
         let posCustomerID = selectedCustomer?.id
         let activeBranchId = BranchContextStore.shared.activeBranch?.branchID
 
-        POSLogger.info("checkout.initiated", category: "checkout", traceID: commandID, message: "Initiating checkout: \(items.count) line items (Total: \(cartTotal) QAR via \(selectedPaymentMethod))", metadata: [
+        var checkoutMetadata: [String: Any] = [
             "commandId": commandID,
             "itemsCount": items.count,
             "subtotal": cartSubtotal,
@@ -928,7 +943,16 @@ final class POSFastSellViewModel: ObservableObject {
             "paymentMethod": selectedPaymentMethod,
             "acceptedCash": acceptedCash,
             "branchId": activeBranchId ?? "none"
-        ])
+        ]
+        if selectedPaymentMethod == "cheque", let cheque = attachedCheque {
+            checkoutMetadata["chequeNumber"] = cheque.chequeNumber
+            checkoutMetadata["chequeBank"] = cheque.bankName
+            if let amount = cheque.amount {
+                checkoutMetadata["chequeAmount"] = amount
+            }
+        }
+
+        POSLogger.info("checkout.initiated", category: "checkout", traceID: commandID, message: "Initiating checkout: \(items.count) line items (Total: \(cartTotal) QAR via \(selectedPaymentMethod))", metadata: checkoutMetadata)
 
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
@@ -1054,6 +1078,7 @@ final class POSFastSellViewModel: ObservableObject {
         receiptNotice = nil
         cartItems = []
         searchText = ""
+        attachedCheque = nil
     }
 
     /// Server rejected specific animals — drop those lines so the operator reselects.
@@ -1138,6 +1163,8 @@ struct AdminPOSFastSellView: View {
     @FocusState private var isSearchFocused: Bool
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @State private var isBranchPickerVisible = false
     @State private var showsReservedLivePets = false
     @State private var showsDeepLogInspector = false
     @State private var showsCustomerPicker = false
@@ -1339,7 +1366,13 @@ struct AdminPOSFastSellView: View {
         VStack(spacing: AdminSpacing.sm) {
             commandHeaderView
             VStack(spacing: AdminSpacing.sm) {
-                PPAdminBranchSwitcherBar(style: .compact)
+                if isBranchPickerVisible {
+                    PPAdminBranchSwitcherBar(style: .compact)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity.combined(with: .move(edge: .top))
+                        ))
+                }
                 customerBarView
                 omniSearchAndFilterBar
                 commandStatusView
@@ -1360,7 +1393,7 @@ struct AdminPOSFastSellView: View {
     private var commandHeaderView: some View {
         AdminSovereignNavigationBar(
             title: Language.get("POS_Title", alter: "بيع سريع"),
-            subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات • كاشير نقطة البيع"),
+            subtitle: headerBranchSubtitle,
             statusDotColor: Color(uiColor: .ppSuccess),
             isModal: true,
             onBack: {
@@ -1373,46 +1406,80 @@ struct AdminPOSFastSellView: View {
             }
         ) {
             HStack(spacing: 8) {
+                // Show / hide branch picker pill toggle button (replaces deep pos diagnostics)
                 Button {
                     dismissKeyboard()
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showsDeepLogInspector = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                        isBranchPickerVisible.toggle()
+                    }
                 } label: {
-                    ZStack(alignment: .topTrailing) {
+                    ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AdminSurface.surface)
+                            .fill(isBranchPickerVisible ? Color(uiColor: .ppPrimary).opacity(0.12) : AdminSurface.surface)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                    .strokeBorder(
+                                        isBranchPickerVisible
+                                            ? Color(uiColor: .ppPrimary).opacity(0.4)
+                                            : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                        lineWidth: 0.8
+                                    )
                             )
-                        Image(systemName: "terminal")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-
-                        let errCount = (PPPOSLogger.shared().diagnosticSummary()["errorCount"] as? Int) ?? 0
-                        if errCount > 0 {
-                            Circle()
-                                .fill(Color.red)
-                                .frame(width: 8, height: 8)
-                                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                                .offset(x: -2, y: 2)
-                        }
+                        Image(systemName: isBranchPickerVisible ? "building.2.fill" : "building.2")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isBranchPickerVisible ? Color(uiColor: .ppPrimary) : AdminSurface.primaryText)
                     }
                     .frame(width: 44, height: 44)
                     .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("POS_DeepLog_Title", alter: "سجل التشخيص المباشر"))
+                .accessibilityLabel(Language.get("POS_Toggle_Branch_Picker", alter: "إظهار أو إخفاء فرع العمل"))
+                .accessibilityHint(Language.get("POS_Toggle_Branch_Picker_Hint", alter: "انقر للتبديل بين إظهار وإخفاء محدد الفرع."))
 
-                AdminPrimaryPillButton(
-                    title: Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"),
-                    systemImage: "pawprint.fill"
-                ) {
+                Button {
                     dismissKeyboard()
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     showsReservedLivePets = true
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(showsReservedLivePets ? Color(uiColor: .ppPrimary).opacity(0.12) : AdminSurface.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(
+                                        showsReservedLivePets
+                                            ? Color(uiColor: .ppPrimary).opacity(0.4)
+                                            : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                        lineWidth: 0.8
+                                    )
+                            )
+                        Image("reservedFilled")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 20, height: 20)
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                    }
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
             }
+        }
+    }
+
+    private var headerBranchSubtitle: String {
+        let branchName = branchStore.currentBranchDisplayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let branchCode = branchStore.activeBranch?.code.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let codeBadge = branchCode.isEmpty ? "" : " (\(branchCode))"
+        let workspace = Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات")
+
+        if !branchName.isEmpty {
+            return "\(branchName)\(codeBadge) • \(workspace)"
+        } else {
+            return "\(workspace) • \(Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع"))"
         }
     }
 
@@ -1810,11 +1877,6 @@ struct AdminPOSFastSellView: View {
                         dismissKeyboard()
                     }
             )
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    dismissKeyboard()
-                }
-            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -1949,10 +2011,28 @@ private struct POSApexFlightDeck: View {
     @State private var tenderedAmount: Double? = nil
     @State private var isCustomTender: Bool = false
     @State private var showsCustomCashSheet: Bool = false
+    @State private var isShowingScanner: Bool = false
 
     private var hasItems: Bool { !viewModel.cartItems.isEmpty }
     private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
     private var sapphireColor: Color { Color(red: 0.14, green: 0.54, blue: 0.98) }
+
+    private func methodAccentColor(_ methodKey: String) -> Color {
+        switch methodKey {
+        case "cash":
+            return emeraldColor
+        case "card":
+            return sapphireColor
+        case "cheque":
+            return Color(red: 0.85, green: 0.47, blue: 0.02)
+        case "fawry":
+            return Color(red: 0.96, green: 0.62, blue: 0.04)
+        case "bank_transfer":
+            return Color(red: 0.14, green: 0.54, blue: 0.92)
+        default:
+            return sapphireColor
+        }
+    }
 
     private var tenderSuggestions: [Double] {
         let total = viewModel.cartTotal
@@ -1977,14 +2057,18 @@ private struct POSApexFlightDeck: View {
             }
 
             VStack(spacing: 9) {
-                // 1. Fluid Segmented Payment Selector
+                // 1. Fluid Segmented Payment Selector Rail
                 paymentMethodSelector
 
-                // 2. Dynamic Cash Tender Assist or Card Wave Status
+                // 2. Dynamic Operational Status / Assistant Strip
                 if viewModel.selectedPaymentMethod == "cash" && hasItems {
                     cashTenderAssistantStrip
                 } else if viewModel.selectedPaymentMethod == "card" && hasItems {
                     cardTerminalStatusStrip
+                } else if viewModel.selectedPaymentMethod == "cheque" && hasItems {
+                    chequeAttachmentStrip
+                } else if hasItems {
+                    externalPaymentStatusStrip(for: viewModel.selectedPaymentMethod)
                 }
 
                 // 3. The Apex Charge Kinetic Button
@@ -1999,7 +2083,7 @@ private struct POSApexFlightDeck: View {
                 AdminSurface.surface
                 RadialGradient(
                     colors: [
-                        (viewModel.selectedPaymentMethod == "cash" ? emeraldColor : AdminSurface.primary)
+                        methodAccentColor(viewModel.selectedPaymentMethod)
                             .opacity(colorScheme == .dark ? 0.10 : 0.04),
                         .clear
                     ],
@@ -2040,6 +2124,18 @@ private struct POSApexFlightDeck: View {
                 },
                 onDismiss: {
                     showsCustomCashSheet = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $isShowingScanner) {
+            PPScannerView(
+                cartTotal: viewModel.cartTotal,
+                onAttach: { scannedCheque in
+                    viewModel.attachedCheque = scannedCheque
+                    isShowingScanner = false
+                },
+                onDismiss: {
+                    isShowingScanner = false
                 }
             )
         }
@@ -2171,54 +2267,74 @@ private struct POSApexFlightDeck: View {
         }
     }
 
-    // MARK: - Payment Selector
+    // MARK: - Payment Selector Horizontal Rail
 
     private var paymentMethodSelector: some View {
-        HStack(spacing: 8) {
-            ForEach(viewModel.paymentMethods, id: \.key) { method in
-                let isSelected = viewModel.selectedPaymentMethod == method.key
-                Button {
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.75)) {
-                        viewModel.selectPaymentMethod(method.key)
-                        tenderedAmount = nil
-                        isCustomTender = false
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: method.icon)
-                            .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-                            .foregroundColor(
-                                isSelected
-                                    ? (method.key == "cash" ? emeraldColor : sapphireColor)
-                                    : AdminSurface.secondaryText
-                            )
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(viewModel.paymentMethods, id: \.key) { method in
+                        let isSelected = viewModel.selectedPaymentMethod == method.key
+                        let accent = methodAccentColor(method.key)
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.26, dampingFraction: 0.75)) {
+                                viewModel.selectPaymentMethod(method.key)
+                                tenderedAmount = nil
+                                isCustomTender = false
+                                proxy.scrollTo(method.key, anchor: .center)
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: method.icon)
+                                    .font(.system(size: 13, weight: isSelected ? .bold : .medium))
+                                    .foregroundColor(
+                                        isSelected
+                                            ? accent
+                                            : AdminSurface.secondaryText
+                                    )
 
-                        Text(Language.get(method.title, alter: method.key))
-                            .font(AdminType.calloutBold)
-                            .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                Text(Language.get(method.title, alter: method.key))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+
+                                if isSelected {
+                                    Circle()
+                                        .fill(accent)
+                                        .frame(width: 5, height: 5)
+                                }
+                            }
+                            .padding(.horizontal, 13)
+                            .frame(minHeight: 40)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(
+                                        isSelected
+                                            ? accent.opacity(colorScheme == .dark ? 0.22 : 0.12)
+                                            : AdminSurface.control
+                                    )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(
+                                        isSelected
+                                            ? accent.opacity(0.55)
+                                            : Color(uiColor: .separator).opacity(0.12),
+                                        lineWidth: 1.2
+                                    )
+                            )
+                        }
+                        .buttonStyle(POSTilePressStyle())
+                        .id(method.key)
                     }
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: 40)
-                    .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(
-                                isSelected
-                                    ? (method.key == "cash" ? emeraldColor : sapphireColor).opacity(colorScheme == .dark ? 0.22 : 0.12)
-                                    : AdminSurface.control
-                            )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(
-                                isSelected
-                                    ? (method.key == "cash" ? emeraldColor : sapphireColor).opacity(0.50)
-                                    : Color.clear,
-                                lineWidth: 1.2
-                            )
-                    )
                 }
-                .buttonStyle(POSTilePressStyle())
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+            }
+            .onAppear {
+                proxy.scrollTo(viewModel.selectedPaymentMethod, anchor: .center)
             }
         }
     }
@@ -2327,16 +2443,213 @@ private struct POSApexFlightDeck: View {
         .padding(.vertical, 3)
     }
 
+    // MARK: - External Payment Status Strip
+
+    private func externalPaymentStatusStrip(for methodKey: String) -> some View {
+        let accent = methodAccentColor(methodKey)
+        let icon: String
+        let hint: String
+        switch methodKey {
+        case "cheque":
+            icon = "doc.text.fill"
+            hint = Language.get("POS_ChequeHint", alter: "تأكد من استلام الشيك وصحة بيانات الساحب والتاريخ")
+        case "fawry":
+            icon = "wallet.pass.fill"
+            hint = Language.get("POS_FawryHint", alter: "تأكد من تأكيد العملية عبر فوري ورقم المرجع")
+        case "bank_transfer":
+            icon = "arrow.up.forward.app.fill"
+            hint = Language.get("POS_BankTransferHint", alter: "تأكد من وصول الحوالة البنكية لحساب المتجر")
+        default:
+            icon = "checkmark.shield.fill"
+            hint = Language.get("POS_ExternalPaymentHint", alter: "أكد استلام المبلغ عبر المزود قبل إتمام البيع")
+        }
+
+        return HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(accent)
+            Text(hint)
+                .font(AdminType.caption2)
+                .foregroundColor(AdminSurface.secondaryText)
+                .lineLimit(1)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+    }
+
+    // MARK: - Cheque Attachment Strip
+
+    private var chequeAttachmentStrip: some View {
+        let accent = methodAccentColor("cheque")
+        return Group {
+            if let cheque = viewModel.attachedCheque {
+                // Attached Cheque Dossier Card
+                HStack(spacing: 8) {
+                    // Mini Cheque Snapshot
+                    Image(uiImage: cheque.image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 26)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.75)
+                        )
+                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.12), radius: 3, x: 0, y: 1)
+
+                    // Cheque metadata
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text(cheque.bankName.isEmpty ? Language.get("PPScanner_Title", alter: "شيك بنكي") : cheque.bankName)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            if let amount = cheque.amount, amount > 0 {
+                                Text("• " + currency(amount))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(accent)
+                                    .monospacedDigit()
+                            }
+                        }
+
+                        HStack(spacing: 4) {
+                            Text(String(format: Language.get("PPScanner_AttachedChequeNumber", alter: "شيك رقم %@"), cheque.chequeNumber))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    Spacer(minLength: 4)
+
+                    // Green [✓ تم الإرفاق] verified badge
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(emeraldColor)
+                        Text(Language.get("PPScanner_ChequeAttached", alter: "تم الإرفاق"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(emeraldColor)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(emeraldColor.opacity(colorScheme == .dark ? 0.20 : 0.12), in: Capsule(style: .continuous))
+
+                    // Change / Re-scan action button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        isShowingScanner = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.system(size: 10, weight: .semibold))
+                            Text(Language.get("PPScanner_ReplaceCheque", alter: "تغيير"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(AdminSurface.primaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        .overlay(
+                            Capsule(style: .continuous)
+                                .strokeBorder(Color(uiColor: .separator).opacity(0.20), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(POSTilePressStyle())
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.control.opacity(colorScheme == .dark ? 0.6 : 0.4))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(accent.opacity(0.35), lineWidth: 0.75)
+                )
+            } else {
+                // Tactile Pill to Scan & Attach Cheque
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    isShowingScanner = true
+                } label: {
+                    HStack(spacing: 8) {
+                        ZStack {
+                            Circle()
+                                .fill(accent.opacity(colorScheme == .dark ? 0.25 : 0.15))
+                                .frame(width: 26, height: 26)
+
+                            Image(systemName: "camera.viewfinder")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(accent)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(Language.get("PPScanner_ScanCheque", alter: "مسح وإرفاق الشيك"))
+                                    .font(AdminType.captionBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Text("•")
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(accent)
+
+                                Text(Language.get("PPScanner_ChequeRequired", alter: "مطلوب لإتمام البيع"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(accent)
+                            }
+                        }
+
+                        Spacer(minLength: 4)
+
+                        HStack(spacing: 4) {
+                            Text(Language.get("PPScanner_ManualCapture", alter: "مسح ضوئي"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(accent)
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(accent)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(accent.opacity(colorScheme == .dark ? 0.22 : 0.12), in: Capsule(style: .continuous))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(accent.opacity(colorScheme == .dark ? 0.14 : 0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(accent.opacity(0.40), lineWidth: 1.0)
+                    )
+                }
+                .buttonStyle(POSTilePressStyle())
+            }
+        }
+        .padding(.horizontal, 2)
+    }
+
     // MARK: - Apex Charge Kinetic Button (Slide to Sale)
 
     private var apexChargeButton: some View {
-        POSSlideToSaleButton(
+        let isChequeMissing = viewModel.selectedPaymentMethod == "cheque" && viewModel.attachedCheque == nil
+        return POSSlideToSaleButton(
             hasItems: hasItems,
             isCheckoutBusy: viewModel.isCheckoutBusy,
             totalAmountText: currency(viewModel.cartTotal),
-            accentColor: viewModel.selectedPaymentMethod == "cash" ? emeraldColor : AdminSurface.primary,
+            accentColor: methodAccentColor(viewModel.selectedPaymentMethod),
             onSlideComplete: {
-                viewModel.submitOrder(cashReceived: tenderedAmount)
+                if isChequeMissing {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    isShowingScanner = true
+                } else {
+                    viewModel.submitOrder(cashReceived: tenderedAmount)
+                }
             }
         )
     }
@@ -3640,6 +3953,7 @@ private struct POSCatalogThumbnail: View {
             .frame(width: w, height: h)
             .clipped()
         }
+        .allowsHitTesting(false)
     }
 
     private var glyph: some View {
@@ -3666,6 +3980,16 @@ private struct POSCatalogTile: View {
     private var totalStock: Int {
         if accessory.noStock || accessory.isBlocked || accessory.isDeleted || accessory.isDisabled || accessory.isArchived {
             return 0
+        }
+        if accessory.isLivePet {
+            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+            if let activeBranch, !activeBranch.isEmpty {
+                let itemBranch = accessory.storeID ?? accessory.branchID ?? ""
+                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                    return 0
+                }
+            }
+            return accessory.quantity
         }
         return PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
     }
@@ -3765,6 +4089,7 @@ private struct POSCatalogTile: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .layoutPriority(1)
                 }
+                .allowsHitTesting(false)
                 .padding(6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -3772,8 +4097,11 @@ private struct POSCatalogTile: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(inCart > 0 ? AdminSurface.primary.opacity(0.5) : AdminSurface.hairline, lineWidth: inCart > 0 ? 1.5 : 0.75)
                 )
+                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .buttonStyle(POSTilePressStyle())
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             .accessibilityLabel("\(accessory.name), \(currency(accessory.pos_canonicalUnitPrice)), \(stockText)")
             .accessibilityHint(
                 accessory.pos_isIndividuallyTrackedLivePet
@@ -3782,6 +4110,7 @@ private struct POSCatalogTile: View {
             )
         }
         .frame(height: tileHeight)
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 }
 
@@ -4959,6 +5288,7 @@ final class POSDeepLogViewModel: ObservableObject {
         refresh()
     }
 
+    @MainActor
     func copyAllLogs() {
         let text = PPPOSLogger.shared().exportLogsAsPlainText()
         UIPasteboard.general.string = text
@@ -4966,7 +5296,9 @@ final class POSDeepLogViewModel: ObservableObject {
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
             showCopiedToast = true
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.2)) {
                 self?.showCopiedToast = false
             }
@@ -5018,7 +5350,10 @@ struct POSDeepLogInspectorView: View {
             }
             .navigationBarHidden(true)
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-            .onReceive(NotificationCenter.default.publisher(for: PPPOSLogDidAppendNotification)) { _ in
+            .onReceive(
+                NotificationCenter.default
+                    .publisher(for: NSNotification.Name.PPPOSLogDidAppend)
+            ) { _ in
                 viewModel.refresh()
             }
             .alert(isPresented: $showsClearAlert) {
@@ -5546,4 +5881,3 @@ struct POSDeepLogActivityShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
-

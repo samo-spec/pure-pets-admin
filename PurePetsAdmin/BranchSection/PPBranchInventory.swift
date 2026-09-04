@@ -315,11 +315,17 @@ public final class PPBranchInventoryService: ObservableObject {
         inventoryMap[productId]
     }
 
-    /// Returns available stock only from the active branch projection.
-    /// Missing branch inventory is unavailable, never a fallback to the company-wide catalog quantity.
+    /// Returns available stock from the active branch projection.
+    /// If an explicit branch record exists in `inventoryMap`, its available quantity is authoritative.
+    /// If no branch-specific record exists, falls back to the catalog quantity for unsegmented stock.
     public func availableStock(for productId: String, fallback: Int = 0) -> Int {
-        guard currentBranchId?.isEmpty == false else { return 0 }
-        return inventoryMap[productId]?.availableQuantity ?? 0
+        guard let currentBranchId = currentBranchId?.trimmingCharacters(in: .whitespacesAndNewlines), !currentBranchId.isEmpty else {
+            return fallback
+        }
+        if let record = inventoryMap[productId] {
+            return record.availableQuantity
+        }
+        return max(0, fallback)
     }
 
     /// Resolves the effective selling price for a product, honoring branch overrides when present
@@ -343,7 +349,7 @@ public final class PPBranchInventoryService: ObservableObject {
         referenceId: String = "",
         reason: String = "manual_adjustment",
         notes: String = "",
-        completion: @escaping (Result<[String: Any], Error>) -> Void
+        completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
         var payload: [String: Any] = [
             "productId": productId,
@@ -364,11 +370,11 @@ public final class PPBranchInventoryService: ObservableObject {
         let callable = Functions.functions().httpsCallable("adjustBranchStock")
         callable.call(["payload": payload]) { result, error in
             if let error = error {
-                completion(.failure(error))
+                completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
-            completion(.success(data))
+            completion?(.success(data))
         }
     }
 
@@ -380,7 +386,7 @@ public final class PPBranchInventoryService: ObservableObject {
         quantity: Int,
         reason: String = "branch_transfer",
         notes: String = "",
-        completion: @escaping (Result<[String: Any], Error>) -> Void
+        completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
         let payload: [String: Any] = [
             "productId": productId,
@@ -395,11 +401,11 @@ public final class PPBranchInventoryService: ObservableObject {
         let callable = Functions.functions().httpsCallable("transferBranchStock")
         callable.call(["payload": payload]) { result, error in
             if let error = error {
-                completion(.failure(error))
+                completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
-            completion(.success(data))
+            completion?(.success(data))
         }
     }
 }

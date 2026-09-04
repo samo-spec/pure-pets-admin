@@ -146,26 +146,13 @@ public struct PPAdminBranchSwitcherBar: View {
         HStack(spacing: AdminSpacing.sm) {
             branchIdentityEmblem
 
-            VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                HStack(spacing: 6) {
-                    Text(branchContextLabel)
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(branchContextColor)
-                        .lineLimit(1)
-
-                    if let branchCode {
-                        branchCodeBadge(branchCode)
-                    }
-                }
-
-                Text(contextStore.currentBranchDisplayName)
-                    .font(AdminType.subheadlineBold)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(0.84)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .layoutPriority(1)
+            Text(contextStore.currentBranchDisplayName)
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.84)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
 
             Spacer(minLength: AdminSpacing.xs)
 
@@ -173,8 +160,8 @@ public struct PPAdminBranchSwitcherBar: View {
         }
         .padding(.leading, 8)
         .padding(.trailing, AdminSpacing.sm)
-        .padding(.vertical, 8)
-        .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(compactCapsuleSurface)
         .overlay(compactCapsuleBorder)
         .shadow(
@@ -272,18 +259,39 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchSwitchAffordance: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(AdminSurface.control.opacity(0.92))
+        Group {
+            if canSwitchBranch {
+                HStack(spacing: 4) {
+                    Text(Language.get("AdminCommandCenter_Switch_Action", alter: "تبديل"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(AdminSurface.primary)
 
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(AdminSurface.hairline.opacity(0.86), lineWidth: AdminStroke.hairline)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
+                )
+            } else {
+                HStack(spacing: 3.5) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 8.5, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.secondary)
 
-            Image(systemName: canSwitchBranch ? "chevron.up.chevron.down" : "lock.fill")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(canSwitchBranch ? AdminSurface.primary : AdminSurface.secondaryText)
+                    Text(Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد"))
+                        .font(Font.custom("Beiruti-Medium", size: 10.5))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+                .padding(.horizontal, 7)
+                .padding(.vertical, 3.5)
+                .background(AdminSurface.control.opacity(0.5), in: Capsule())
+            }
         }
-        .frame(width: 34, height: 38)
         .accessibilityHidden(true)
     }
 

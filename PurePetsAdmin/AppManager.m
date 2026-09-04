@@ -26,6 +26,7 @@
 @property (nonatomic, strong, nullable, readwrite) PPStaffDoc *cachedCurrentStaff;
 @end
 #import <TargetConditionals.h>
+#import <DeviceCheck/DeviceCheck.h>
 
 static BOOL PPAppCheckTruthyString(NSString *value) {
     NSString *trimmed = [value isKindOfClass:NSString.class]
@@ -61,7 +62,7 @@ static BOOL PPAdminSafeClaimBoolValue(id value)
 }
 
 static BOOL PPShouldUseDebugAppCheckProvider(void) {
-#if TARGET_OS_SIMULATOR || DEBUG
+#if TARGET_OS_SIMULATOR
     return YES;
 #else
     NSProcessInfo *processInfo = [NSProcessInfo processInfo];
@@ -121,12 +122,58 @@ static void PPFetchAppCheckTokenFromProvider(id<FIRAppCheckProvider> provider,
     }
 }
 
+static BOOL PPAppCheckTextLooksLikeAppAttestFailure(NSString *text) {
+    if (![text isKindOfClass:NSString.class] || text.length == 0) {
+        return NO;
+    }
+
+    NSString *lower = text.lowercaseString;
+    return [lower containsString:@"appattest"] ||
+           [lower containsString:@"app attest"] ||
+           [lower containsString:@"app_attest"] ||
+           [lower containsString:@"app attestation"] ||
+           [lower containsString:@"exchangeappattestattestation"] ||
+           [lower containsString:@"attestation"] ||
+           [lower containsString:@"dc"] ||
+           [lower containsString:@"devicecheck"] ||
+           [lower containsString:@"attestkey"] ||
+           [lower containsString:@"keyid"] ||
+           [lower containsString:@"invalidkey"] ||
+           [lower containsString:@"unsupported"] ||
+           [lower containsString:@"featureunsupported"];
+}
+
+static BOOL PPAppCheckTokenIsNilOrEmpty(FIRAppCheckToken *token) {
+    if (!token) return YES;
+    if (![token isKindOfClass:FIRAppCheckToken.class]) return YES;
+    if (![token.token isKindOfClass:NSString.class]) return YES;
+    if (token.token.length == 0) return YES;
+    return NO;
+}
+
 static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
     if (!error) return NO;
-    NSString *domain = error.domain ?: @"";
-    if ([domain containsString:@"AppCheck"] || [domain containsString:@"AppAttest"]) {
+
+    if (PPAppCheckTextLooksLikeAppAttestFailure(error.domain) ||
+        PPAppCheckTextLooksLikeAppAttestFailure(error.localizedDescription) ||
+        PPAppCheckTextLooksLikeAppAttestFailure(error.localizedFailureReason) ||
+        PPAppCheckTextLooksLikeAppAttestFailure(error.localizedRecoverySuggestion)) {
         return YES;
     }
+
+    NSDictionary *userInfo = [error.userInfo isKindOfClass:NSDictionary.class] ? error.userInfo : nil;
+    for (id value in userInfo.allValues) {
+        if ([value isKindOfClass:NSString.class] &&
+            PPAppCheckTextLooksLikeAppAttestFailure((NSString *)value)) {
+            return YES;
+        }
+
+        if ([value isKindOfClass:NSError.class] &&
+            PPAppCheckErrorLooksLikeAppAttestFailure((NSError *)value)) {
+            return YES;
+        }
+    }
+
     return NO;
 }
 
@@ -179,23 +226,29 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
             return;
         }
 
-        if (!error || !PPAppCheckErrorLooksLikeAppAttestFailure(error)) {
+        // Valid token — use it directly
+        if (!PPAppCheckTokenIsNilOrEmpty(token)) {
             if (handler) {
-                handler(token, error);
+                handler(token, nil);
             }
             return;
         }
 
+        // Token is nil/empty or App Attest failed — fall back to DeviceCheck unconditionally
         self.usingDeviceCheckFallback = YES;
-        NSLog(@"[AppCheck] App Attest failed for Pure Pets Admin. Falling back to DeviceCheck for this launch. Error: %@",
-              error.localizedDescription ?: @"unknown error");
+        NSLog(@"[AppCheck] App Attest returned nil/empty token (error=%@). Falling back to DeviceCheck for PurePetsAdmin.",
+              error.localizedDescription ?: @"none");
         PPFetchAppCheckTokenFromProvider(deviceCheckProvider, limitedUse, ^(FIRAppCheckToken * _Nullable fallbackToken, NSError * _Nullable fallbackError) {
-            if (fallbackToken || !fallbackError) {
+            if (!PPAppCheckTokenIsNilOrEmpty(fallbackToken)) {
                 if (handler) {
                     handler(fallbackToken, nil);
                 }
                 return;
             }
+
+            NSLog(@"[AppCheck] DeviceCheck fallback also failed (error=%@). Original App Attest error=%@",
+                  fallbackError.localizedDescription ?: @"none",
+                  error.localizedDescription ?: @"none");
 
             if (handler) {
                 handler(nil, fallbackError ?: error);
@@ -217,27 +270,40 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
         return [[FIRAppCheckDebugProvider alloc] initWithApp:app];
     }
 
-    if (PPShouldUseAppAttestAppCheckProvider() && @available(iOS 14.0, *)) {
-        NSLog(@"[AppCheck] AppAttest provider forced via PP_FORCE_APPCHECK_APPACTEST_PROVIDER or PPForceAppCheckAppAttestProvider.");
-        id<FIRAppCheckProvider> attestProvider = [[FIRAppAttestProvider alloc] initWithApp:app];
-        if (attestProvider) {
-            return attestProvider;
+    BOOL isAppAttestSupported = NO;
+    if (@available(iOS 14.0, *)) {
+        if ([DCAppAttestService class]) {
+            isAppAttestSupported = [DCAppAttestService sharedService].isSupported;
         }
-        NSLog(@"[AppCheck] AppAttest provider forced but unavailable. Falling back to DeviceCheck for PurePetsAdmin.");
+    }
+
+    if (PPShouldUseAppAttestAppCheckProvider() && @available(iOS 14.0, *)) {
+        if (isAppAttestSupported) {
+            NSLog(@"[AppCheck] AppAttest provider forced via PP_FORCE_APPCHECK_APPACTEST_PROVIDER or PPForceAppCheckAppAttestProvider.");
+            id<FIRAppCheckProvider> attestProvider = [[FIRAppAttestProvider alloc] initWithApp:app];
+            if (attestProvider) {
+                return attestProvider;
+            }
+        }
+        NSLog(@"[AppCheck] AppAttest provider forced but unavailable on this device. Falling back to DeviceCheck for PurePetsAdmin.");
     }
     
     // Best practice fallback sequence for iOS:
     if (@available(iOS 14.0, *)) {
-        id<FIRAppCheckProvider> attestProvider = [[FIRAppAttestProvider alloc] initWithApp:app];
-        if (attestProvider) {
-            id<FIRAppCheckProvider> deviceCheckProvider = [[FIRDeviceCheckProvider alloc] initWithApp:app];
-            if (deviceCheckProvider) {
-                NSLog(@"[AppCheck] Using App Attest provider with DeviceCheck fallback.");
-                return [[PPResilientAppCheckProvider alloc] initWithAppAttestProvider:attestProvider
-                                                                   deviceCheckProvider:deviceCheckProvider];
+        if (isAppAttestSupported) {
+            id<FIRAppCheckProvider> attestProvider = [[FIRAppAttestProvider alloc] initWithApp:app];
+            if (attestProvider) {
+                id<FIRAppCheckProvider> deviceCheckProvider = [[FIRDeviceCheckProvider alloc] initWithApp:app];
+                if (deviceCheckProvider) {
+                    NSLog(@"[AppCheck] Using App Attest provider with DeviceCheck fallback.");
+                    return [[PPResilientAppCheckProvider alloc] initWithAppAttestProvider:attestProvider
+                                                                       deviceCheckProvider:deviceCheckProvider];
+                }
+                NSLog(@"[AppCheck] Using App Attest provider.");
+                return attestProvider;
             }
-            NSLog(@"[AppCheck] Using App Attest provider.");
-            return attestProvider;
+        } else {
+            NSLog(@"[AppCheck] DCAppAttestService is not supported on this hardware (e.g. A10/A11 or pre-A12 device). Using DeviceCheck provider directly.");
         }
     }
 

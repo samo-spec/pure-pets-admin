@@ -56,13 +56,13 @@ enum StaffRoleOption: String, CaseIterable, Identifiable {
 
     var clearanceTier: String {
         switch self {
-        case .owner: return "سلطة سيادية عليا • Tier 1"
-        case .superAdmin: return "إدارة النظام العليا • Tier 1"
-        case .operationsManager: return "قيادة العمليات • Tier 2"
-        case .inventoryManager: return "إدارة المخزون • Tier 2"
-        case .paymentsManager: return "إدارة الخزينة والمالية • Tier 2"
-        case .supportAgent: return "خدمة العملاء • Tier 3"
-        case .viewer: return "اطلاع ومراقبة • Tier 4"
+        case .owner: return Language.get("ClearanceTier_Owner", alter: "سلطة سيادية عليا • Tier 1")
+        case .superAdmin: return Language.get("ClearanceTier_SuperAdmin", alter: "إدارة النظام العليا • Tier 1")
+        case .operationsManager: return Language.get("ClearanceTier_OperationsManager", alter: "قيادة العمليات • Tier 2")
+        case .inventoryManager: return Language.get("ClearanceTier_InventoryManager", alter: "إدارة المخزون • Tier 2")
+        case .paymentsManager: return Language.get("ClearanceTier_PaymentsManager", alter: "إدارة الخزينة والمالية • Tier 2")
+        case .supportAgent: return Language.get("ClearanceTier_SupportAgent", alter: "خدمة العملاء • Tier 3")
+        case .viewer: return Language.get("ClearanceTier_Viewer", alter: "اطلاع ومراقبة • Tier 4")
         }
     }
 
@@ -264,6 +264,7 @@ struct AdminStaffManagementView: View {
     @State private var isCreatingNew = false
     @State private var toastMessage: String? = nil
     @State private var isErrorToast = false
+    @State private var isShowingRoleRankMatrix = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(onDismiss: (() -> Void)? = nil) {
@@ -343,6 +344,9 @@ struct AdminStaffManagementView: View {
                 }
             }
             .navigationBarHidden(true)
+            .sheet(isPresented: $isShowingRoleRankMatrix) {
+                AdminRoleRankSecurityLevelsView(onDismiss: { isShowingRoleRankMatrix = false })
+            }
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -518,6 +522,69 @@ struct AdminStaffManagementView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
             )
+
+            // ─── TIER 2.5: Sovereign Role Rank & Security Levels Matrix Entry Deck ───
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                isShowingRoleRankMatrix = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.82, green: 0.12, blue: 0.28),
+                                        Color(red: 0.50, green: 0.10, blue: 0.60)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.8)
+                            )
+                        Image(systemName: "shield.checkered")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(Language.get("RoleRank_Entry_Button", alter: "مصفوفة رتب الأدوار ومستويات الأمان"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundColor(AdminSurface.primaryText)
+                            Text("IAM")
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundColor(Color(red: 0.82, green: 0.12, blue: 0.28))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color(red: 0.82, green: 0.12, blue: 0.28).opacity(0.12), in: Capsule())
+                        }
+
+                        Text(Language.get("RoleRank_Entry_Subtitle", alter: "حوكمة تسلسل القيادة وحصانة الصلاحيات"))
+                            .font(Font.custom("Beiruti-Regular", size: 11.5))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(red: 0.82, green: 0.12, blue: 0.28).opacity(0.2), lineWidth: 0.8)
+                )
+                .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(StaffCockpitPressStyle())
 
             // ─── TIER 3: Precision Search & Match Radar ───
             HStack(spacing: 10) {
@@ -1437,7 +1504,7 @@ struct AdminStaffMemberEditorView: View {
                     if let phone = effectivePhone, !phone.isEmpty {
                         // WhatsApp Button
                         quickContactButton(
-                            title: Language.isRTL() ? "واتساب" : "WhatsApp",
+                            title: Language.get("WhatsApp", alter: Language.isRTL() ? "واتساب" : "WhatsApp"),
                             icon: "message.fill",
                             color: Color(red: 37/255, green: 211/255, blue: 102/255)
                         ) {
@@ -1448,7 +1515,7 @@ struct AdminStaffMemberEditorView: View {
 
                         // Phone Call Button
                         quickContactButton(
-                            title: Language.isRTL() ? "اتصال" : "Call",
+                            title: Language.get("Call", alter: Language.isRTL() ? "اتصال" : "Call"),
                             icon: "phone.fill",
                             color: AdminSurface.primary
                         ) {
@@ -1461,7 +1528,7 @@ struct AdminStaffMemberEditorView: View {
                     if let email = effectiveEmail, !email.isEmpty {
                         // Email Button
                         quickContactButton(
-                            title: Language.isRTL() ? "بريد" : "Email",
+                            title: Language.get("Email", alter: Language.isRTL() ? "بريد" : "Email"),
                             icon: "envelope.fill",
                             color: Color(red: 0.12, green: 0.50, blue: 0.90)
                         ) {
@@ -1548,7 +1615,7 @@ struct AdminStaffMemberEditorView: View {
 
     private var branchScopeBadgeText: String {
         if isGlobalScope {
-            return Language.isRTL() ? "وصول شامل" : "Global Scope"
+            return Language.get("Staff_Scope_Global", alter: Language.isRTL() ? "وصول عام" : "Global Scope")
         }
         if !defaultBranchID.isEmpty, let branch = availableBranches.first(where: { $0.branchID == defaultBranchID }) {
             return branch.localizedName()
@@ -1556,7 +1623,7 @@ struct AdminStaffMemberEditorView: View {
         if !selectedBranchIDs.isEmpty {
             return String(format: Language.get("Staff_Branches_Count", alter: "%d فروع"), selectedBranchIDs.count)
         }
-        return Language.isRTL() ? "غير محدد" : "Unset"
+        return Language.get("Staff_Scope_Unset", alter: Language.isRTL() ? "غير محدد" : "Unset")
     }
 
     private func formatMemberDate(_ date: Date) -> String {
@@ -1564,7 +1631,7 @@ struct AdminStaffMemberEditorView: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
         formatter.locale = Locale(identifier: Language.currentLanguageCode())
-        let prefix = Language.isRTL() ? "انضم: " : "Joined: "
+        let prefix = Language.get("Staff_Member_Joined_Prefix", alter: Language.isRTL() ? "انضم: " : "Joined: ")
         return prefix + formatter.string(from: date)
     }
 
@@ -1748,7 +1815,7 @@ struct AdminStaffMemberEditorView: View {
                                         .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .body))
                                         .foregroundColor(AdminSurface.primaryText)
 
-                                    Text("\(role.defaultPermissionsCount) صلاحية")
+                                    Text(String.localizedStringWithFormat(Language.get("Staff_Access_Module_Permissions_Format", alter: "%ld صلاحية"), role.defaultPermissionsCount))
                                         .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
                                         .foregroundColor(role.accentColor)
                                         .padding(.horizontal, 6)
@@ -2127,7 +2194,7 @@ struct AdminStaffMemberEditorView: View {
                         Circle()
                             .fill(Color(red: 0.12, green: 0.50, blue: 0.90).opacity(0.12))
                             .frame(width: 36, height: 36)
-                        Image(systemName: "shield.checkmark.fill")
+                        Image(systemName: "checkmark.shield.fill")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(Color(red: 0.12, green: 0.50, blue: 0.90))
                     }
@@ -2225,18 +2292,29 @@ struct AdminStaffMemberEditorView: View {
                         .frame(width: 58, height: 58)
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-                        Text(newName.isEmpty ? "معاينة هوية الموظف" : newName)
+                        Text(newName.isEmpty ? Language.get("Staff_Identity_Preview", alter: "معاينة هوية الموظف") : newName)
                             .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .headline))
                             .foregroundColor(AdminSurface.primaryText)
                     }
                     .padding(.vertical, 4)
 
-                    editorInputField(title: "الاسم الكامل *", icon: "person.fill", placeholder: "مثال: عبد الله المري", text: $newName)
-                    editorInputField(title: "البريد الإلكتروني المهني *", icon: "envelope.fill", placeholder: "staff@purepets.qa", text: $newEmail, keyboard: .emailAddress)
+                    editorInputField(
+                        title: Language.get("FullName_Staff_Field", alter: "الاسم الكامل *"),
+                        icon: "person.fill",
+                        placeholder: Language.get("FullName_Staff_Placeholder", alter: "مثال: عبد الله المري"),
+                        text: $newName
+                    )
+                    editorInputField(
+                        title: Language.get("Staff_Work_Email_Field", alter: "البريد الإلكتروني المهني *"),
+                        icon: "envelope.fill",
+                        placeholder: "staff@purepets.qa",
+                        text: $newEmail,
+                        keyboard: .emailAddress
+                    )
 
                     // Phone with Qatar Prefix
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("رقم الهاتف المهني")
+                        Text(Language.get("Staff_Work_Phone_Field", alter: "رقم الهاتف المهني"))
                             .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                             .foregroundColor(AdminSurface.primaryText)
 
@@ -2261,11 +2339,11 @@ struct AdminStaffMemberEditorView: View {
                     // Password with Generator
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("كلمة المرور *")
+                            Text(Language.get("Password_Field_Required", alter: "كلمة المرور *"))
                                 .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
                                 .foregroundColor(AdminSurface.primaryText)
                             Spacer()
-                            Button("توليد كلمة سر آمنة") {
+                            Button(Language.get("Generate_Password", alter: "توليد كلمة سر آمنة")) {
                                 newPassword = generateSecureStaffPassword()
                             }
                             .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
@@ -2487,7 +2565,7 @@ struct AdminStaffMemberEditorView: View {
                     Text(selectedRole.title)
                         .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
                         .foregroundColor(AdminSurface.primaryText)
-                    Text(isActive ? "نشط ومفوّض" : "معطّل")
+                    Text(isActive ? Language.get("Staff_Status_Active_Auth", alter: "نشط ومفوّض") : Language.get("Staff_Status_Disabled_Susp", alter: "معطّل"))
                         .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
                         .foregroundColor(AdminSurface.secondaryText)
                 }
@@ -2841,45 +2919,57 @@ private struct AdminStaffPermissionsInspectorSheet: View {
     }
 
     private var allPermissions: [PermissionItem] {
-        [
-            // Inventory & Catalog
-            PermissionItem(id: "stock.view", title: "استعراض الكتالوج والمستلزمات", domain: "المخزون والمنتجات", domainIcon: "cube.box.fill", isGranted: role != .viewer && role != .supportAgent),
-            PermissionItem(id: "stock.manage", title: "تعديل تفاصيل وأسعار المخزون", domain: "المخزون والمنتجات", domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .inventoryManager),
-            PermissionItem(id: "stock.create", title: "إضافة منتجات جديدة للكتالوج", domain: "المخزون والمنتجات", domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager),
-            PermissionItem(id: "stock.delete", title: "حذف وأرشفة المنتجات", domain: "المخزون والمنتجات", domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager),
-            PermissionItem(id: "categories.manage", title: "إدارة وتصنيف الأقسام", domain: "المخزون والمنتجات", domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager),
+        let secDomain = Language.get("Staff_Domain_Security", alter: "الأمان والنظام")
+        let ordDomain = Language.get("Staff_Domain_Orders", alter: "الطلبات والتنفيذ")
+        let usrDomain = Language.get("Staff_Domain_Customers", alter: "العملاء والدعم")
+        let payDomain = Language.get("Staff_Domain_Payments", alter: "المدفوعات والمحاسبة")
+        let invDomain = Language.get("Staff_Domain_Inventory", alter: "المخزون والمنتجات")
 
-            // Payments & Financials
-            PermissionItem(id: "payments.view", title: "استعراض سجل المعاملات المالية", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role != .viewer && role != .supportAgent),
-            PermissionItem(id: "payments.manage", title: "إدارة بوابات الدفع والمعاملات", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
-            PermissionItem(id: "payments.refund", title: "تنفيذ استرداد المبالغ للعملاء", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
-            PermissionItem(id: "pos.sell", title: "تنفيذ مبيعات الكاشير ونقاط البيع", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .paymentsManager),
-            PermissionItem(id: "delivery.cod.reconcile", title: "تحصيل ومطابقة الدفع عند الاستلام", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
-            PermissionItem(id: "accounting.view", title: "الدفاتر والقيود المحاسبية", domain: "المدفوعات والمحاسبة", domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
+        return [
+            // System Security & IAM
+            PermissionItem(id: "staff.view", title: Language.get("StaffPermTitle_staff_view", alter: "استعراض قائمة أعضاء الفريق"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "staff.manage", title: Language.get("StaffPermTitle_staff_manage", alter: "تعديل رتب وصلاحيات الموظفين"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
+            PermissionItem(id: "audit.view", title: Language.get("StaffPermTitle_audit_view", alter: "سجل التدقيق الأمني الشامل"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
+            PermissionItem(id: "notifications.manage", title: Language.get("StaffPermTitle_notifications_manage", alter: "إرسال الإشعارات الشاملة للمستخدمين"), domain: secDomain, domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
 
             // Orders & Fulfillment
-            PermissionItem(id: "orders.view", title: "استعراض طلبات الشراء والمبيعات", domain: "الطلبات والتنفيذ", domainIcon: "shippingbox.fill", isGranted: role != .viewer),
-            PermissionItem(id: "orders.manage", title: "تعديل حالات ومسارات الطلبات", domain: "الطلبات والتنفيذ", domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
-            PermissionItem(id: "fulfillment.manage", title: "توزيع وتعيين مزودي الشحن", domain: "الطلبات والتنفيذ", domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
-            PermissionItem(id: "delivery.settings.manage", title: "إعدادات شركات التوصيل", domain: "الطلبات والتنفيذ", domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin),
+            PermissionItem(id: "orders.view", title: Language.get("StaffPermTitle_orders_view", alter: "استعراض طلبات الشراء والمبيعات"), domain: ordDomain, domainIcon: "shippingbox.fill", isGranted: role != .viewer),
+            PermissionItem(id: "orders.manage", title: Language.get("StaffPermTitle_orders_manage", alter: "تعديل حالات ومسارات الطلبات"), domain: ordDomain, domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "fulfillment.manage", title: Language.get("StaffPermTitle_fulfillment_manage", alter: "توزيع وتعيين مزودي الشحن"), domain: ordDomain, domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
+            PermissionItem(id: "delivery.settings.manage", title: Language.get("StaffPermTitle_delivery_settings_manage", alter: "إعدادات شركات التوصيل"), domain: ordDomain, domainIcon: "shippingbox.fill", isGranted: role == .owner || role == .superAdmin),
 
             // Customers & Support
-            PermissionItem(id: "users.view", title: "استعراض دليل حسابات العملاء", domain: "العملاء والدعم", domainIcon: "person.2.fill", isGranted: role != .viewer),
-            PermissionItem(id: "users.manage", title: "تعديل بيانات وحسابات العملاء", domain: "العملاء والدعم", domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
-            PermissionItem(id: "users.features.manage", title: "إدارة مزايا وصلاحيات المستخدمين", domain: "العملاء والدعم", domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
-            PermissionItem(id: "users.restrictions.manage", title: "حظر وتقييد حسابات المخالفين", domain: "العملاء والدعم", domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
-            PermissionItem(id: "support.manage", title: "إدارة محادثات وتذاكر الدعم الفني", domain: "العملاء والدعم", domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .supportAgent),
+            PermissionItem(id: "users.view", title: Language.get("StaffPermTitle_users_view", alter: "استعراض دليل حسابات العملاء"), domain: usrDomain, domainIcon: "person.2.fill", isGranted: role != .viewer),
+            PermissionItem(id: "users.manage", title: Language.get("StaffPermTitle_users_manage", alter: "تعديل بيانات وحسابات العملاء"), domain: usrDomain, domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
+            PermissionItem(id: "users.features.manage", title: Language.get("StaffPermTitle_users_features_manage", alter: "إدارة مزايا وصلاحيات المستخدمين"), domain: usrDomain, domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
+            PermissionItem(id: "users.restrictions.manage", title: Language.get("StaffPermTitle_users_restrictions_manage", alter: "حظر وتقييد حسابات المخالفين"), domain: usrDomain, domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .supportAgent),
+            PermissionItem(id: "support.manage", title: Language.get("StaffPermTitle_support_manage", alter: "إدارة محادثات وتذاكر الدعم الفني"), domain: usrDomain, domainIcon: "person.2.fill", isGranted: role == .owner || role == .superAdmin || role == .supportAgent),
 
-            // System Security & IAM
-            PermissionItem(id: "staff.view", title: "استعراض قائمة أعضاء الفريق", domain: "الأمان والنظام", domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager),
-            PermissionItem(id: "staff.manage", title: "تعديل رتب وصلاحيات الموظفين", domain: "الأمان والنظام", domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
-            PermissionItem(id: "audit.view", title: "سجل التدقيق الأمني الشامل", domain: "الأمان والنظام", domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin),
-            PermissionItem(id: "notifications.manage", title: "إرسال الإشعارات الشاملة للمستخدمين", domain: "الأمان والنظام", domainIcon: "lock.shield.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager)
+            // Payments & Financials
+            PermissionItem(id: "payments.view", title: Language.get("StaffPermTitle_payments_view", alter: "استعراض سجل المعاملات المالية"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role != .viewer && role != .supportAgent),
+            PermissionItem(id: "payments.manage", title: Language.get("StaffPermTitle_payments_manage", alter: "إدارة بوابات الدفع والمعاملات"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
+            PermissionItem(id: "payments.refund", title: Language.get("StaffPermTitle_payments_refund", alter: "تنفيذ استرداد المبالغ للعملاء"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
+            PermissionItem(id: "pos.sell", title: Language.get("StaffPermTitle_pos_sell", alter: "تنفيذ مبيعات الكاشير ونقاط البيع"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .paymentsManager),
+            PermissionItem(id: "delivery.cod.reconcile", title: Language.get("StaffPermTitle_delivery_cod_reconcile", alter: "تحصيل ومطابقة الدفع عند الاستلام"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
+            PermissionItem(id: "accounting.view", title: Language.get("StaffPermTitle_accounting_view", alter: "الدفاتر والقيود المحاسبية"), domain: payDomain, domainIcon: "creditcard.fill", isGranted: role == .owner || role == .superAdmin || role == .paymentsManager),
+
+            // Inventory & Catalog
+            PermissionItem(id: "stock.view", title: Language.get("StaffPermTitle_stock_view", alter: "استعراض الكتالوج والمستلزمات"), domain: invDomain, domainIcon: "cube.box.fill", isGranted: role != .viewer && role != .supportAgent),
+            PermissionItem(id: "stock.manage", title: Language.get("StaffPermTitle_stock_manage", alter: "تعديل تفاصيل وأسعار المخزون"), domain: invDomain, domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .operationsManager || role == .inventoryManager),
+            PermissionItem(id: "stock.create", title: Language.get("StaffPermTitle_stock_create", alter: "إضافة منتجات جديدة للكتالوج"), domain: invDomain, domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager),
+            PermissionItem(id: "stock.delete", title: Language.get("StaffPermTitle_stock_delete", alter: "حذف وأرشفة المنتجات"), domain: invDomain, domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager),
+            PermissionItem(id: "categories.manage", title: Language.get("StaffPermTitle_categories_manage", alter: "إدارة وتصنيف الأقسام"), domain: invDomain, domainIcon: "cube.box.fill", isGranted: role == .owner || role == .superAdmin || role == .inventoryManager)
         ]
     }
 
     private var domains: [String] {
-        Array(Set(allPermissions.map { $0.domain })).sorted()
+        var ordered: [String] = []
+        for perm in allPermissions {
+            if !ordered.contains(perm.domain) {
+                ordered.append(perm.domain)
+            }
+        }
+        return ordered
     }
 
     var body: some View {
@@ -2961,7 +3051,7 @@ private struct AdminStaffPermissionsInspectorSheet: View {
 
                                             Spacer()
 
-                                            Text(perm.isGranted ? "مفوّض" : "محظور")
+                                            Text(perm.isGranted ? Language.get("Staff_Perm_Granted", alter: "مفوّض") : Language.get("Staff_Perm_Restricted", alter: "محظور"))
                                                 .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
                                                 .foregroundColor(perm.isGranted ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText.opacity(0.5))
                                                 .padding(.horizontal, 6)
@@ -3006,7 +3096,7 @@ private struct AdminStaffPermissionsInspectorSheet: View {
 
                 // 2. Title & Subtitle Stack
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("فحص وتدقيق الصلاحيات")
+                    Text(Language.get("Staff_Permissions_Audit_Title", alter: "فحص وتدقيق الصلاحيات"))
                         .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .title3))
                         .foregroundColor(AdminSurface.primaryText)
                         .lineLimit(1)
@@ -3015,7 +3105,7 @@ private struct AdminStaffPermissionsInspectorSheet: View {
                         Circle()
                             .fill(Color(uiColor: .ppSuccess))
                             .frame(width: 6, height: 6)
-                        Text("مصفوفة الوصول الأمني والسياسات")
+                        Text(Language.get("Staff_Permissions_Audit_Subtitle", alter: "مصفوفة الوصول الأمني والسياسات"))
                             .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
                             .foregroundColor(AdminSurface.secondaryText)
                             .lineLimit(1)

@@ -276,8 +276,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     private func populateInitialValues() {
         guard let acc = editingAccessory else {
-            selectedStoreID = "main_store"
-            selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
+            if let active = BranchContextStore.shared.activeBranch {
+                selectedStoreID = active.branchID
+                selectedStoreName = active.localizedName()
+            } else {
+                selectedStoreID = "main_store"
+                selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
+            }
             initialSetupComplete = true
             isPopulatingInitialValues = false
             return
@@ -513,7 +518,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var groupCost: Double {
-        let clean = liveGroupCostText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = liveGroupCostText.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         return max(0, Double(clean) ?? 0)
     }
 
@@ -800,7 +805,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     private func decimalValue(_ text: String) -> Double? {
-        let clean = text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = text.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, let value = Double(clean), value.isFinite else { return nil }
         return value
     }
@@ -1276,7 +1281,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.petMainCategoryID = selectedMainKind?.id ?? 0
         accessory.petSubCategoryID = selectedSubKind?.id ?? 0
         
-        let branchIdToSave = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
+        let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
+        let branchIdToSave = (selectedStoreID.isEmpty || selectedStoreID == "main_store") && defaultActiveBranch != "main_store"
+            ? defaultActiveBranch
+            : (selectedStoreID.isEmpty ? "main_store" : selectedStoreID)
         accessory.storeID = branchIdToSave
         accessory.branchID = branchIdToSave
         if let b = BranchContextStore.shared.branch(for: branchIdToSave) {
@@ -1573,7 +1581,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.accessKindType = .typeLivePets
         original.petMainCategoryID = selectedMainKind?.id ?? 0
         original.petSubCategoryID = selectedSubKind?.id ?? 0
-        let liveBranchId = selectedStoreID.isEmpty ? "main_store" : selectedStoreID
+        let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
+        let liveBranchId = (selectedStoreID.isEmpty || selectedStoreID == "main_store") && defaultActiveBranch != "main_store"
+            ? defaultActiveBranch
+            : (selectedStoreID.isEmpty ? "main_store" : selectedStoreID)
         original.storeID = liveBranchId
         original.branchID = liveBranchId
         if let b = BranchContextStore.shared.branch(for: liveBranchId) {
@@ -2082,6 +2093,8 @@ struct PPAccessoryEditorScreen: View {
     @StateObject var viewModel: PPAccessoryEditorViewModel
     @FocusState private var focusedField: FormField?
     @Namespace private var stageAnimation
+    @State private var showQuantityAlert: Bool = false
+    @State private var quantityAlertText: String = ""
     
     enum FormField: Hashable {
         case name, desc, price, discountPercent, discountAmount, quantity, passport, weight
@@ -2181,6 +2194,18 @@ struct PPAccessoryEditorScreen: View {
                 viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityAlert) {
+            TextField(Language.get("Quantity", alter: "الكمية"), text: $quantityAlertText)
+                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
+            Button(Language.get("Save", alter: "حفظ")) {
+                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    viewModel.quantity = max(0, val)
+                }
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -3285,7 +3310,7 @@ struct PPAccessoryEditorScreen: View {
                         .foregroundStyle(AdminCommandInk.secondary)
                     TextField("0.0", text: $viewModel.weightText)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
+                        .englishNumericInput(text: $viewModel.weightText, allowsDecimal: true)
                         .focused($focusedField, equals: .weight)
                         .padding(12)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -3374,11 +3399,10 @@ struct PPAccessoryEditorScreen: View {
 
                     TextField("0.00", text: $viewModel.priceText)
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
+                        .englishNumericInput(text: $viewModel.priceText, allowsDecimal: true)
                         .focused($focusedField, equals: .price)
                         .padding(14)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .environment(\.layoutDirection, .leftToRight)
                 }
 
                 if !viewModel.isIndividualLivePet {
@@ -3390,11 +3414,10 @@ struct PPAccessoryEditorScreen: View {
 
                         TextField("0", text: $viewModel.discountPercentText)
                             .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .keyboardType(.numberPad)
+                            .englishNumericInput(text: $viewModel.discountPercentText, allowsDecimal: true)
                             .focused($focusedField, equals: .discountPercent)
                             .padding(14)
                             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .environment(\.layoutDirection, .leftToRight)
                     }
                 }
             }
@@ -3498,6 +3521,11 @@ struct PPAccessoryEditorScreen: View {
                     .font(.system(size: 22, weight: .bold, design: .monospaced))
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        quantityAlertText = "\(viewModel.quantity)"
+                        showQuantityAlert = true
+                    }
 
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -3654,10 +3682,9 @@ struct PPAccessoryEditorScreen: View {
                 .foregroundStyle(AdminCommandInk.secondary)
             TextField("0.00", text: text)
                 .font(.system(size: 15, weight: .bold, design: .rounded))
-                .keyboardType(.decimalPad)
+                .englishNumericInput(text: text, allowsDecimal: true)
                 .padding(12)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .environment(\.layoutDirection, .leftToRight)
         }
         .frame(maxWidth: .infinity)
     }
@@ -4195,6 +4222,8 @@ private struct PPLivePetIntakeJourney: View {
     @State private var showUnitPhotoLibrary = false
     @State private var showUnitPhotoCamera = false
     @State private var showCameraAccessAlert = false
+    @State private var showQuantityAlert = false
+    @State private var quantityAlertText = ""
     @Namespace private var genderSelectionNamespace
 
     private enum FocusedField: Hashable {
@@ -4415,6 +4444,18 @@ private struct PPLivePetIntakeJourney: View {
         .onChange(of: viewModel.saveSuccessMessage) { message in
             guard let message, !message.isEmpty else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        .alert(tr("EditQuantity", "تعديل الكمية"), isPresented: $showQuantityAlert) {
+            TextField(tr("LivePetIntake_QuantityLabel", "عدد الحيوانات في المجموعة"), text: $quantityAlertText)
+                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
+            Button(tr("Save", "حفظ")) {
+                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    viewModel.quantity = max(1, val)
+                }
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -5542,13 +5583,13 @@ private struct PPLivePetIntakeJourney: View {
     }
 
     private func isPositiveMoney(_ raw: String) -> Bool {
-        let clean = raw.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = raw.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value = Double(clean), value > 0, value <= 999_999_999.99 else { return false }
         return abs(value * 100 - (value * 100).rounded()) < 0.000_001
     }
 
     private func isNonNegativeMoney(_ raw: String) -> Bool {
-        let clean = raw.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = raw.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, let value = Double(clean), value >= 0, value <= 999_999_999.99 else { return false }
         return abs(value * 100 - (value * 100).rounded()) < 0.000_001
     }
@@ -6231,9 +6272,8 @@ private struct PPLivePetIntakeJourney: View {
         TextField("", text: text, prompt: promptText("0.00"))
             .font(.system(size: 18, weight: .bold, design: .rounded))
             .foregroundStyle(AdminSurface.primaryText)
-            .keyboardType(.decimalPad)
+            .englishNumericInput(text: text, allowsDecimal: true)
             .monospacedDigit()
-            .environment(\.layoutDirection, .leftToRight)
             .multilineTextAlignment(.leading)
             .focused($focusedField, equals: field)
             .accessibilityLabel(label)
@@ -6591,6 +6631,11 @@ private struct PPLivePetIntakeJourney: View {
                         format: tr("LivePetIntake_QuantityAccessibility", "الكمية %ld"),
                         viewModel.quantity
                     ))
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        quantityAlertText = "\(viewModel.quantity)"
+                        showQuantityAlert = true
+                    }
 
                 quantityButton(symbol: "plus", enabled: true) {
                     viewModel.quantity += 1
@@ -6604,9 +6649,8 @@ private struct PPLivePetIntakeJourney: View {
                     fieldLabel(tr("LivePetIntake_GroupCost", "تكلفة الحيوان الواحد (ر.ق)"), required: true)
                     TextField("0.00", text: $viewModel.liveGroupCostText)
                         .font(.system(size: 17, weight: .semibold, design: .rounded))
-                        .keyboardType(.decimalPad)
+                        .englishNumericInput(text: $viewModel.liveGroupCostText, allowsDecimal: true)
                         .focused($focusedField, equals: .groupCost)
-                        .environment(\.layoutDirection, .leftToRight)
                         .padding(.horizontal, AdminSpacing.md)
                         .frame(minHeight: AdminTouchTarget.expanded)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
@@ -6773,9 +6817,8 @@ private struct PPLivePetIntakeJourney: View {
                     )
                     TextField("0.00", text: $viewModel.priceText)
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .keyboardType(.decimalPad)
+                        .englishNumericInput(text: $viewModel.priceText, allowsDecimal: true)
                         .focused($focusedField, equals: .standardPrice)
-                        .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
                         .padding(.horizontal, AdminSpacing.md)
                         .frame(minHeight: 64)
@@ -6880,9 +6923,8 @@ private struct PPLivePetIntakeJourney: View {
             fieldLabel(title, required: false)
             TextField("0", text: text)
                 .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .keyboardType(.decimalPad)
+                .englishNumericInput(text: text, allowsDecimal: true)
                 .focused($focusedField, equals: focus)
-                .environment(\.layoutDirection, .leftToRight)
                 .padding(.horizontal, AdminSpacing.md)
                 .frame(minHeight: AdminTouchTarget.expanded)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
@@ -7552,10 +7594,9 @@ private struct PPLivePetIntakeJourney: View {
     }
 
     private func validMoney(_ text: String, allowsZero: Bool) -> Bool {
-        let clean = text.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = text.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value = Double(clean), value <= 999_999_999.99 else { return false }
-        guard allowsZero ? value >= 0 : value > 0 else { return false }
-        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+        return allowsZero ? value >= 0 : value > 0
     }
 
     private func move(to stage: PPEditorStage, preservingMessage: Bool = false) {
@@ -8280,6 +8321,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
     @State private var stageMessage: String?
     @State private var previewMedia: PPLivePetPreviewMedia?
+    @State private var showQuantityAlert: Bool = false
+    @State private var quantityAlertText: String = ""
 
     private enum FocusedField: Hashable {
         case name
@@ -8425,6 +8468,18 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .onChange(of: viewModel.saveSuccessMessage) { message in
             guard let message, !message.isEmpty else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        .alert(tr("EditQuantity", "تعديل الكمية"), isPresented: $showQuantityAlert) {
+            TextField(tr("CatalogIntake_Quantity", "الكمية المتاحة"), text: $quantityAlertText)
+                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
+            Button(tr("Save", "حفظ")) {
+                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    viewModel.quantity = max(0, val)
+                }
+            }
+            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -8714,9 +8769,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         fieldLabel(tr("CatalogIntake_BarcodeLabel", "الباركود"), required: false)
                         TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
                             .font(AdminType.body)
-                            .keyboardType(.asciiCapableNumberPad)
+                            .englishNumericInput(text: $viewModel.barcode, allowsDecimal: false)
                             .focused($focusedField, equals: .barcode)
-                            .environment(\.layoutDirection, .leftToRight)
                             .padding(.horizontal, AdminSpacing.md)
                             .frame(minHeight: AdminTouchTarget.expanded)
                             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
@@ -9017,9 +9071,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
             fieldLabel(tr("CatalogIntake_WeightLabel", "الوزن أو الحجم"), required: false)
             TextField("0.0", text: $viewModel.weightText)
                 .font(AdminType.headline)
-                .keyboardType(.decimalPad)
+                .englishNumericInput(text: $viewModel.weightText, allowsDecimal: true)
                 .focused($focusedField, equals: .weight)
-                .environment(\.layoutDirection, .leftToRight)
                 .padding(.horizontal, AdminSpacing.md)
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
@@ -9164,6 +9217,11 @@ private struct PPAccessoryFoodIntakeJourney: View {
                                 format: tr("CatalogIntake_QuantityAccessibility", "الكمية %ld"),
                                 viewModel.quantity
                             ))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                quantityAlertText = "\(viewModel.quantity)"
+                                showQuantityAlert = true
+                            }
                         quantityButton(symbol: "plus", enabled: true) {
                             viewModel.quantity += 1
                         }
@@ -9203,9 +9261,8 @@ private struct PPAccessoryFoodIntakeJourney: View {
             fieldLabel(title, required: required)
             TextField("0.00", text: text)
                 .font(AdminType.headline)
-                .keyboardType(.decimalPad)
+                .englishNumericInput(text: text, allowsDecimal: true)
                 .focused($focusedField, equals: focus)
-                .environment(\.layoutDirection, .leftToRight)
                 .padding(.horizontal, AdminSpacing.md)
                 .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))

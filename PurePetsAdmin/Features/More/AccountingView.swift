@@ -260,52 +260,107 @@ final class AccountingViewModel: ObservableObject {
                 self.syncFromService()
             }
         }
+        let orderReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncFromService()
+            }
+        }
+        let expReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncFromService()
+            }
+        }
+        let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
+            Task { @MainActor in
+                guard let self else { return }
+                self.syncFromService()
+            }
+        }
 
-        listeners = [wsReg]
+        listeners = [wsReg, orderReg, expReg, txnReg]
+        syncFromService()
     }
 
     private func syncFromService() {
-        guard let workspace = service.currentWorkspace else {
-            transactions = []
-            expenses = []
-            grossRevenue = 0
-            paidOrderCount = 0
-            evidenceAvailable = false
-            evidenceErrorDescription = Language.get("Accounting_BranchDataUnavailable", alter: "بيانات الفرع المحدد غير متاحة حالياً")
-            isLoading = false
-            isRefreshing = false
-            return
+        let workspace = service.currentWorkspace
+
+        // 1. Transactions Fallback
+        if let docs = workspace?.documents, !docs.isEmpty {
+            let docTxns = docs.compactMap { document -> PPAccountingTransaction? in
+                guard document.kind == "income" || document.kind == "reversal" else { return nil }
+                let transaction = PPAccountingTransaction()
+                transaction.txnID = document.documentID
+                transaction.amount = document.total
+                transaction.type = document.kind == "reversal" ? "refund" : "income"
+                transaction.desc = document.descriptionText ?? document.documentNumber
+                return transaction
+            }
+            transactions = docTxns.isEmpty ? service.transactions : docTxns
+        } else {
+            transactions = service.transactions
         }
 
-        transactions = workspace.documents.compactMap { document in
-            guard document.kind == "income" || document.kind == "reversal" else { return nil }
-            let transaction = PPAccountingTransaction()
-            transaction.txnID = document.documentID
-            transaction.amount = document.total
-            transaction.type = document.kind == "reversal" ? "refund" : "income"
-            transaction.desc = document.descriptionText ?? document.documentNumber
-            return transaction
-        }
-        expenses = workspace.documents.compactMap { document in
-            guard document.kind == "expense" else { return nil }
-            let expense = PPAccountingExpense()
-            expense.expenseID = document.documentID
-            expense.amount = document.total
-            expense.category = document.categoryId ?? "other"
-            expense.desc = document.descriptionText ?? document.documentNumber
-            expense.createdBy = ""
-            return expense
+        // 2. Expenses Fallback
+        if let docs = workspace?.documents, !docs.isEmpty {
+            let docExpenses = docs.compactMap { document -> PPAccountingExpense? in
+                guard document.kind == "expense" else { return nil }
+                let expense = PPAccountingExpense()
+                expense.expenseID = document.documentID
+                expense.amount = document.total
+                expense.category = document.categoryId ?? "other"
+                expense.desc = document.descriptionText ?? document.documentNumber
+                expense.createdBy = ""
+                return expense
+            }
+            expenses = docExpenses.isEmpty ? service.expenses : docExpenses
+        } else {
+            expenses = service.expenses
         }
 
-        if let dashboard = workspace.primaryDashboard {
+        // 3. Gross Revenue & Paid Order Count Multi-tier Derivation
+        if let dashboard = workspace?.primaryDashboard, dashboard.income > 0 {
             grossRevenue = dashboard.income
-            paidOrderCount = workspace.incomeCount
+            paidOrderCount = workspace?.incomeCount ?? 0
+        } else if !transactions.isEmpty {
+            let totalFromTxns = transactions.reduce(0.0) { $0 + ($1.type == "refund" ? -$1.amount : $1.amount) }
+            if totalFromTxns > 0 {
+                grossRevenue = totalFromTxns
+                paidOrderCount = transactions.count
+            } else if service.orderRevenue > 0 || service.orderCount > 0 {
+                grossRevenue = service.orderRevenue
+                paidOrderCount = service.orderCount
+            } else if service.liveTransactionRevenue > 0 || service.liveTransactionCount > 0 {
+                grossRevenue = service.liveTransactionRevenue
+                paidOrderCount = service.liveTransactionCount
+            } else {
+                grossRevenue = 0
+                paidOrderCount = 0
+            }
+        } else if service.orderRevenue > 0 || service.orderCount > 0 {
+            grossRevenue = service.orderRevenue
+            paidOrderCount = service.orderCount
+        } else if service.liveTransactionRevenue > 0 || service.liveTransactionCount > 0 {
+            grossRevenue = service.liveTransactionRevenue
+            paidOrderCount = service.liveTransactionCount
         } else {
             grossRevenue = 0
             paidOrderCount = 0
         }
-        evidenceAvailable = true
-        evidenceErrorDescription = nil
+
+        // 4. Evidence State
+        if workspace != nil || service.orderRevenueEvidenceAvailable || !service.expenses.isEmpty || !service.transactions.isEmpty {
+            evidenceAvailable = true
+            evidenceErrorDescription = nil
+        } else if let error = service.orderRevenueError {
+            evidenceAvailable = false
+            evidenceErrorDescription = error.localizedDescription
+        } else {
+            evidenceAvailable = true
+            evidenceErrorDescription = nil
+        }
+
         isLoading = false
         isRefreshing = false
     }
@@ -318,10 +373,14 @@ final class AccountingViewModel: ObservableObject {
     // MARK: - Computed Financial Analytics
 
     var totalExpenses: Double {
-        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
+        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard, dash.expenses > 0 {
             return dash.expenses
         }
-        return expenses.reduce(0.0) { $0 + $1.amount }
+        let listTotal = expenses.reduce(0.0) { $0 + $1.amount }
+        if listTotal > 0 {
+            return listTotal
+        }
+        return service.liveTotalExpenses
     }
 
     var netProfit: Double {
@@ -623,28 +682,19 @@ struct AdminAccountingView: View {
                 .frame(height: 38)
                 .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                // Export Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // Export Button (Matching Back Button Size & Corners: 44x44, radius 14)
+                AdminSquircleActionButton(
+                    systemImage: "square.and.arrow.up",
+                    accessibilityLabel: Language.get("Accounting_ExportSummary", alter: "تصدير الكشف")
+                ) {
                     viewModel.showsExportSheet = true
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 38, height: 38)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                        )
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("Accounting_ExportSummary", alter: "تصدير الكشف"))
 
-                // Add Expense Button
-                AdminPrimaryPillButton(
-                    title: Language.get("Accounting_RecordExpense", alter: "مصروف"),
-                    systemImage: "plus"
+                // Add Expense Button (Matching Back Button Size & Corners: 44x44, radius 14, Icon-Only)
+                AdminSquircleActionButton(
+                    systemImage: "plus",
+                    isPrimary: true,
+                    accessibilityLabel: Language.get("Accounting_RecordExpense", alter: "تسجيل مصروف")
                 ) {
                     viewModel.showsAddExpenseSheet = true
                 }

@@ -355,7 +355,7 @@ struct POSReservedLivePetsView: View {
             await vm.loadData()
         }
         .sheet(item: $vm.activeDossierItem) { item in
-            POSReservedPetDossierSheet(item: item)
+            POSReservedPetDossierSheet(item: item, viewModel: vm, onCompleteSale: onCompleteSale)
         }
         .sheet(item: $vm.extendingItem) { item in
             POSExtendReservationSheet(item: item, viewModel: vm)
@@ -889,6 +889,7 @@ private struct POSReservedPetCard: View {
             UrgencyArcBar(fraction: item.urgencyFraction, color: urgencyColor)
                 .frame(height: 3)
                 .clipShape(RoundedRectangle(cornerRadius: 99, style: .continuous))
+                .padding(.horizontal, 20)
 
             VStack(spacing: 12) {
                 // ─── Row 1: Avatar + Identity + Urgency Badge ──────────
@@ -1257,12 +1258,17 @@ private struct PressButtonStyle: ButtonStyle {
 
 // MARK: - Deep Animal Dossier Sheet (Full-Bleed Hero)
 
+// MARK: - Category-Defining Deep Animal Dossier Sheet — Spatial Flight Deck
+
 struct POSReservedPetDossierSheet: View {
     let item: POSReservedPetCardModel
+    var viewModel: POSReservedLivePetsViewModel? = nil
+    var onCompleteSale: ((POSReservedPetCardModel) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
-    @State private var heroScale: CGFloat = 1.05
+    @State private var copiedNotice: String? = nil
     @State private var appeared: Bool = false
+    @State private var pulsePill: Bool = false
 
     private var urgencyColor: Color {
         if item.isExpired      { return Color(uiColor: .ppError) }
@@ -1271,256 +1277,702 @@ struct POSReservedPetDossierSheet: View {
     }
 
     var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Full-bleed hero
-                    ZStack(alignment: .bottom) {
-                        heroImage
-                            .frame(height: 260)
-                            .clipped()
+        VStack(spacing: 0) {
+            // Spatial Sheet Drag Handle & Navigation Header
+            sheetHeader
 
-                        // Gradient scrim
-                        LinearGradient(
-                            colors: [.clear, Color(uiColor: .systemBackground).opacity(0.9)],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .frame(height: 120)
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: 18) {
+                        // Hero Studio Identity Showcase
+                        heroShowcaseCard
 
-                        // Hero identity overlay
-                        VStack(spacing: 6) {
-                            Text(item.animalName)
-                                .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title2))
-                                .foregroundColor(AdminSurface.primaryText)
-
-                            HStack(spacing: 8) {
-                                Label("#\(item.ringTag)", systemImage: "number.circle.fill")
-                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                                    .foregroundColor(AdminSurface.primary)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(.thinMaterial, in: Capsule())
-
-                                Text(item.remainingTimeDescription)
-                                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                                    .foregroundColor(urgencyColor)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(urgencyColor.opacity(0.1), in: Capsule())
-                                    .overlay(Capsule().stroke(urgencyColor.opacity(0.25), lineWidth: 1))
-                            }
-                        }
-                        .padding(.bottom, 18)
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : 8)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.1), value: appeared)
-                    }
-
-                    // Urgency bar
-                    UrgencyArcBar(fraction: item.urgencyFraction, color: urgencyColor)
-                        .frame(height: 4)
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.vertical, AdminSpacing.sm)
-
-                    // Dossier Matrix
-                    VStack(spacing: AdminSpacing.xs) {
-                        dossierSection(title: Language.get("POS_Section_Reservation", alter: "بيانات الحجز")) {
-                            dossierRow(icon: "number.circle", title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"), value: POSReceiptFormat.receiptID(item.reservationID), mono: true)
-                            if let valid = item.validUntil {
-                                dossierRow(icon: "clock.fill", title: Language.get("POS_ValidUntil", alter: "صالح حتى"), value: {
-                                    let fmt = DateFormatter()
-                                    fmt.dateStyle = .medium
-                                    fmt.timeStyle = .short
-                                    fmt.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
-                                    return fmt.string(from: valid)
-                                }())
-                            }
-                            dossierRow(icon: "tag.fill", title: Language.get("POS_UnitID", alter: "معرف الوحدة"), value: item.unitID, mono: true)
+                        // Quick Operational Action Horizon
+                        if viewModel != nil {
+                            quickActionHorizon
                         }
 
-                        dossierSection(title: Language.get("POS_Section_Customer", alter: "بيانات العميل")) {
-                            dossierRow(icon: "person.fill", title: Language.get("POS_Customer", alter: "الاسم"), value: item.customerName.isEmpty ? "—" : item.customerName)
-                            if !item.customerPhone.isEmpty {
-                                dossierRowWithActions(
-                                    icon: "phone.fill",
-                                    title: Language.get("POS_Phone", alter: "الهاتف"),
-                                    value: item.customerPhone,
-                                    phone: item.customerPhone
-                                )
-                            }
-                            if !item.branchName.isEmpty {
-                                dossierRow(icon: "building.2.fill", title: Language.get("POS_Branch", alter: "الفرع"), value: item.branchName)
-                            }
-                        }
+                        // Customer & Direct Communication Flight Deck
+                        customerFlightDeckSection
 
-                        dossierSection(title: Language.get("POS_Section_Financial", alter: "البيانات المالية")) {
-                            dossierRow(icon: "banknote.fill", title: Language.get("POS_LockedPrice", alter: "سعر الحجز المعتمد"), value: "\(String(format: "%.2f", item.sellingPrice)) ر.ق")
-                            if let cost = item.purchaseCost, cost > 0 {
-                                dossierRow(icon: "cart.fill", title: Language.get("LivePet_PurchaseCost", alter: "تكلفة الشراء"), value: "\(String(format: "%.2f", cost)) ر.ق")
-                            }
-                        }
+                        // Reservation & Forensic Transaction Data
+                        reservationTelemetrySection
 
+                        // Financial & Margin Analysis
+                        financialPricingSection
+
+                        // Additional Notes & Sourcing
                         if !item.supplier.isEmpty || !item.notes.isEmpty {
-                            dossierSection(title: Language.get("POS_Section_Notes", alter: "ملاحظات إضافية")) {
-                                if !item.supplier.isEmpty {
-                                    dossierRow(icon: "shippingbox.fill", title: Language.get("LivePet_Supplier", alter: "المورد"), value: item.supplier)
-                                }
-                                if !item.notes.isEmpty {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Label(Language.get("POS_Notes", alter: "ملاحظات"), systemImage: "note.text")
-                                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                            .foregroundColor(AdminSurface.secondaryText)
-                                        Text(item.notes)
-                                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                                            .foregroundColor(AdminSurface.primaryText)
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
+                            notesAndSourcingSection
                         }
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.bottom, AdminSpacing.xxl)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    .padding(.bottom, 32)
+                    .frame(maxWidth: 580)
+                    .frame(maxWidth: .infinity)
+                }
+
+                // Floating Copy Feedback Toast
+                if let notice = copiedNotice {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+
+                        Text(notice)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.surface, in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                    .shadow(color: Color.black.opacity(0.08), radius: 10, y: 4)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 20)
                 }
             }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(Language.get("POS_AnimalDossier_Title", alter: "ملف الحيوان المحجوز"))
-                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
-                        .foregroundColor(AdminSurface.primaryText)
+        }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                pulsePill = true
+            }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.75)) {
+                appeared = true
+            }
+        }
+    }
+
+    // MARK: - Subviews
+
+    private var sheetHeader: some View {
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 38, height: 4.5)
+                .padding(.top, 8)
+
+            HStack(alignment: .center) {
+                AdminSquircleCloseButton {
+                    dismiss()
                 }
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Done", alter: "تم")) { dismiss() }
-                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+
+                Spacer()
+
+                // Live Hold Status Badge
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(urgencyColor)
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(pulsePill ? 1.25 : 0.85)
+
+                    Text(item.isExpired ? Language.get("LivePet_Expired", alter: "منتهي الصلاحية") : Language.get("POS_Dossier_Status_ActiveHold", alter: "حجز نشط • معلق"))
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .foregroundColor(urgencyColor)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(urgencyColor.opacity(0.09), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(urgencyColor.opacity(0.2), lineWidth: 0.75)
+                )
+
+                Spacer()
+
+                // Share / Copy All Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    copyDossierSummary()
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.bottom, 4)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private var heroShowcaseCard: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                // Soft Ambient Radial Glow
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [urgencyColor.opacity(0.18), urgencyColor.opacity(0.02), .clear],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 55
+                        )
+                    )
+                    .frame(width: 110, height: 110)
+
+                PetAvatarView(url: item.photoURL, size: 84, cornerRadius: 24)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .strokeBorder(urgencyColor.opacity(0.3), lineWidth: 1.5)
+                    )
+                    .shadow(color: urgencyColor.opacity(0.2), radius: 14, y: 5)
+                    .scaleEffect(appeared ? 1.0 : 0.8)
+            }
+
+            VStack(spacing: 6) {
+                Text(item.animalName)
+                    .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+
+                // Identity Pill Horizon
+                HStack(spacing: 8) {
+                    // Ring Tag (Tap to copy)
+                    Button {
+                        copyText(item.ringTag, label: Language.get("POS_UnitID", alter: "معرف الوحدة"))
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "number")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(item.ringTag.isEmpty ? "—" : item.ringTag)
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                        }
                         .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+                        .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.2), lineWidth: 0.75))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Remaining countdown
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 10))
+                        Text(item.remainingTimeDescription)
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                    }
+                    .foregroundColor(urgencyColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(urgencyColor.opacity(0.09), in: Capsule())
+                    .overlay(Capsule().strokeBorder(urgencyColor.opacity(0.25), lineWidth: 0.75))
+
+                    // Price lock badge
+                    HStack(spacing: 3) {
+                        Text(String(format: "%.0f", item.sellingPrice))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                        Text(item.currency.isEmpty ? "ر.ق" : item.currency)
+                            .font(Font.custom("Beiruti-Bold", size: 10))
+                    }
+                    .foregroundColor(Color(uiColor: .ppError))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(uiColor: .ppError).opacity(0.08), in: Capsule())
                 }
             }
+
+            // Sleek Urgency Progress Track
+            VStack(spacing: 4) {
+                GeometryReader { geo in
+                    ZStack(alignment: Language.isRTL() ? .trailing : .leading) {
+                        Capsule()
+                            .fill(Color(uiColor: .secondarySystemBackground))
+                            .frame(height: 5)
+
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [urgencyColor, urgencyColor.opacity(0.75)],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(8, geo.size.width * CGFloat(min(1.0, max(0.05, item.urgencyFraction)))), height: 5)
+                    }
+                }
+                .frame(height: 5)
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 4)
         }
-        .navigationViewStyle(.stack)
-        .onAppear { appeared = true }
+        .padding(18)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 10, x: 0, y: 4)
     }
 
-    private var heroImage: some View {
-        ZStack {
-            if let url = URL(string: item.photoURL), !item.photoURL.isEmpty {
-                AdminRemoteImage(url: url, contentMode: .fill) {
-                    heroPlaeholder
+    private var quickActionHorizon: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                Text(Language.get("POS_Dossier_QuickActions", alter: "الإجراءات التشغيلية السريعة"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+
+            // Primary Checkout Action
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                dismiss()
+                onCompleteSale?(item)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("POS_Dossier_CompleteCheckout", alter: "إتمام البيع في الكاشير"))
+                        .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                    Spacer()
+                    Text(String(format: "%.0f %@", item.sellingPrice, item.currency.isEmpty ? "ر.ق" : item.currency))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2.5)
+                        .background(Color.white.opacity(0.2), in: Capsule())
                 }
-                .scaleEffect(heroScale)
-                .onAppear {
-                    withAnimation(.easeOut(duration: 1.2)) { heroScale = 1.0 }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .frame(height: 50)
+                .background(
+                    LinearGradient(
+                        colors: [Color(uiColor: .ppSuccess), Color(uiColor: .ppSuccess).opacity(0.88)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .shadow(color: Color(uiColor: .ppSuccess).opacity(0.25), radius: 10, y: 4)
+            }
+            .buttonStyle(.plain)
+
+            // Secondary Actions: Extend & Release
+            HStack(spacing: 10) {
+                // Extend Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                    viewModel?.extendingItem = item
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(Language.get("POS_Action_Extend", alter: "تمديد الحجز"))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.8)
+                    )
                 }
-            } else {
-                heroPlaeholder
+                .buttonStyle(.plain)
+
+                // Release Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                    viewModel?.releasingItem = item
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.open.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(Language.get("POS_Action_Release", alter: "إلغاء الحجز"))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                    }
+                    .foregroundColor(Color(uiColor: .ppError))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppError).opacity(0.25), lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(.plain)
             }
         }
     }
 
-    private var heroPlaeholder: some View {
-        ZStack {
-            LinearGradient(
-                colors: [AdminSurface.primary.opacity(0.15), AdminSurface.primary.opacity(0.04)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
+    private var customerFlightDeckSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(Language.get("POS_Section_Customer", alter: "بيانات العميل والتواصل"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 12) {
+                // Customer Name & Source Row
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.1))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "عميل بدون اسم") : item.customerName)
+                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(item.customerSource == "directory" ? "سجل منصة معتمد" : "حساب نقطة البيع")
+                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if !item.branchName.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "building.2.fill")
+                                .font(.system(size: 11))
+                            Text(item.branchName)
+                                .font(Font.custom("Beiruti-Regular", size: 12))
+                        }
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+                    }
+                }
+
+                if !item.customerPhone.isEmpty {
+                    Divider()
+                        .overlay(AdminSurface.hairline)
+
+                    // Phone & Direct Comms Row
+                    HStack(spacing: 10) {
+                        Button {
+                            copyText(item.customerPhone, label: Language.get("POS_Phone", alter: "الهاتف"))
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                Text(item.customerPhone)
+                                    .font(Font.custom("Beiruti-Bold", size: 14))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Image(systemName: "doc.on.doc")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        // WhatsApp Action
+                        Button {
+                            let digits = item.customerPhone.filter { "0123456789".contains($0) }
+                            guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+                            UIApplication.shared.open(url)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get("POS_Dossier_WhatsApp", alter: "واتساب"))
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                            }
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+
+                        // Call Action
+                        Button {
+                            guard let url = URL(string: "tel://\(item.customerPhone.filter { "0123456789+".contains($0) })") else { return }
+                            UIApplication.shared.open(url)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get("POS_Dossier_CallCustomer", alter: "اتصال"))
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
             )
-            Image(systemName: "pawprint.fill")
-                .font(.system(size: 56, weight: .light))
-                .foregroundColor(AdminSurface.primary.opacity(0.25))
         }
     }
 
-    private func dossierSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            Text(title)
-                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.leading, 4)
-                .padding(.top, AdminSpacing.md)
+    private var reservationTelemetrySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "doc.plaintext.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(Language.get("POS_Section_Reservation", alter: "بيانات الحجز والمعاملة"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
-                content()
+                // Receipt Ref Row
+                copyableTelemetryRow(
+                    icon: "number.circle.fill",
+                    title: Language.get("POS_TransactionRef", alter: "رقم المعاملة"),
+                    value: POSReceiptFormat.receiptID(item.reservationID),
+                    copyPayload: item.reservationID
+                )
+
+                Divider().overlay(AdminSurface.hairline)
+
+                // Valid Until Row
+                if let valid = item.validUntil {
+                    telemetryRow(
+                        icon: "calendar.badge.clock",
+                        title: Language.get("POS_ValidUntil", alter: "صالح حتى"),
+                        value: {
+                            let fmt = DateFormatter()
+                            fmt.dateStyle = .medium
+                            fmt.timeStyle = .short
+                            fmt.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+                            return fmt.string(from: valid)
+                        }()
+                    )
+                    Divider().overlay(AdminSurface.hairline)
+                }
+
+                // Unit ID Row
+                copyableTelemetryRow(
+                    icon: "tag.fill",
+                    title: Language.get("POS_UnitID", alter: "معرف الوحدة"),
+                    value: item.unitID,
+                    copyPayload: item.unitID
+                )
             }
-            .background(Color(uiColor: .systemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
             )
         }
     }
 
-    private func dossierRow(icon: String, title: String, value: String, mono: Bool = false) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .font(.system(size: 13))
-                .foregroundColor(AdminSurface.primary.opacity(0.6))
-                .frame(width: 22)
+    private var financialPricingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "banknote.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(Language.get("POS_Section_Financial", alter: "البيانات المالية والتسعير"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 4)
 
-            Text(title)
-                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                .foregroundColor(AdminSurface.secondaryText)
-            Spacer()
-            Text(value)
-                .font(mono
-                      ? Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
-                      : Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
-                .foregroundColor(AdminSurface.primaryText)
-                .lineLimit(1)
-                .multilineTextAlignment(.trailing)
+            VStack(spacing: 0) {
+                // Locked Price
+                telemetryRow(
+                    icon: "lock.fill",
+                    title: Language.get("POS_LockedPrice", alter: "سعر الحجز المعتمد"),
+                    value: String(format: "%.2f %@", item.sellingPrice, item.currency.isEmpty ? "ر.ق" : item.currency),
+                    highlightColor: Color(uiColor: .ppError)
+                )
+
+                // Purchase Cost & Margin (if available)
+                if let cost = item.purchaseCost, cost > 0 {
+                    Divider().overlay(AdminSurface.hairline)
+
+                    telemetryRow(
+                        icon: "cart.fill",
+                        title: Language.get("LivePet_PurchaseCost", alter: "تكلفة الشراء"),
+                        value: String(format: "%.2f %@", cost, item.currency.isEmpty ? "ر.ق" : item.currency)
+                    )
+
+                    Divider().overlay(AdminSurface.hairline)
+
+                    let margin = item.sellingPrice - cost
+                    let marginPct = cost > 0 ? (margin / item.sellingPrice) * 100 : 0
+                    telemetryRow(
+                        icon: "chart.line.uptrend.xyaxis",
+                        title: Language.get("POS_Dossier_Margin", alter: "هامش الربح التقديري"),
+                        value: String(format: "+%.2f (%d%%)", margin, Int(marginPct)),
+                        highlightColor: Color(uiColor: .ppSuccess)
+                    )
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
         }
-        .padding(.horizontal, AdminSpacing.md)
-        .padding(.vertical, 12)
-        .overlay(Rectangle().fill(AdminSurface.hairline).frame(height: AdminStroke.thin), alignment: .bottom)
     }
 
-    private func dossierRowWithActions(icon: String, title: String, value: String, phone: String) -> some View {
+    private var notesAndSourcingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                Text(Language.get("POS_Section_Notes", alter: "ملاحظات إضافية ومصدر التوريد"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 0) {
+                if !item.supplier.isEmpty {
+                    telemetryRow(
+                        icon: "building.columns.fill",
+                        title: Language.get("LivePet_Supplier", alter: "المورد"),
+                        value: item.supplier
+                    )
+                }
+
+                if !item.notes.isEmpty {
+                    if !item.supplier.isEmpty { Divider().overlay(AdminSurface.hairline) }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label(Language.get("POS_Notes", alter: "ملاحظات"), systemImage: "note.text")
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(item.notes)
+                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        }
+    }
+
+    // MARK: - Telemetry Row Helpers
+
+    private func telemetryRow(icon: String, title: String, value: String, highlightColor: Color? = nil) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 13))
-                .foregroundColor(AdminSurface.primary.opacity(0.6))
+                .foregroundColor(AdminSurface.primary.opacity(0.7))
                 .frame(width: 22)
 
             Text(title)
                 .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
                 .foregroundColor(AdminSurface.secondaryText)
+
             Spacer()
-            HStack(spacing: 6) {
-                Text(value)
-                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                    .foregroundColor(AdminSurface.primaryText)
 
-                // Call
-                Button {
-                    guard let url = URL(string: "tel://\(phone.filter { "0123456789+".contains($0) })") else { return }
-                    UIApplication.shared.open(url)
-                } label: {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(uiColor: .ppSuccess))
-                        .padding(5)
-                        .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
+            Text(value)
+                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .body))
+                .foregroundColor(highlightColor ?? AdminSurface.primaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+    }
+
+    private func copyableTelemetryRow(icon: String, title: String, value: String, copyPayload: String) -> some View {
+        Button {
+            copyText(copyPayload, label: title)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundColor(AdminSurface.primary.opacity(0.7))
+                    .frame(width: 22)
+
+                Text(title)
+                    .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Text(value)
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 11))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
                 }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+        }
+        .buttonStyle(.plain)
+    }
 
-                // WhatsApp
-                Button {
-                    let digits = phone.filter { "0123456789".contains($0) }
-                    guard let url = URL(string: "https://wa.me/\(digits)") else { return }
-                    UIApplication.shared.open(url)
-                } label: {
-                    Image(systemName: "message.fill")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(uiColor: .ppSuccess))
-                        .padding(5)
-                        .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
+    private func copyText(_ text: String, label: String) {
+        UIPasteboard.general.string = text
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            copiedNotice = "\(Language.get("POS_Dossier_Copied", alter: "تم النسخ للحافظة")): \(text)"
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            withAnimation(.easeOut(duration: 0.25)) {
+                if copiedNotice?.contains(text) == true {
+                    copiedNotice = nil
                 }
             }
         }
-        .padding(.horizontal, AdminSpacing.md)
-        .padding(.vertical, 12)
-        .overlay(Rectangle().fill(AdminSurface.hairline).frame(height: AdminStroke.thin), alignment: .bottom)
+    }
+
+    private func copyDossierSummary() {
+        let summary = """
+        \(item.animalName) (#\(item.ringTag))
+        \(Language.get("POS_TransactionRef", alter: "رقم المعاملة")): \(item.reservationID)
+        \(Language.get("POS_Customer", alter: "العميل")): \(item.customerName) (\(item.customerPhone))
+        \(Language.get("POS_LockedPrice", alter: "السعر")): \(String(format: "%.2f %@", item.sellingPrice, item.currency))
+        \(Language.get("POS_Branch", alter: "الفرع")): \(item.branchName)
+        """
+        copyText(summary, label: item.animalName)
     }
 }
+
 
 // MARK: - Extend Hold Sheet
 
@@ -1673,133 +2125,557 @@ struct POSExtendReservationSheet: View {
 
 // MARK: - Release Hold Sheet
 
+// MARK: - Category-Defining Release Hold Sheet — Spatial Operational Horizon
+
 struct POSReleaseReservationSheet: View {
     let item: POSReservedPetCardModel
     @ObservedObject var viewModel: POSReservedLivePetsViewModel
     @Environment(\.dismiss) private var dismiss
 
     @State private var reason: String = ""
+    @State private var selectedChip: String? = nil
     @State private var isSubmitting: Bool = false
     @State private var confirmed: Bool = false
+    @State private var pulseWarning: Bool = false
+    @State private var hasAppeared: Bool = false
+
+    private struct QuickReasonOption: Identifiable {
+        let id: String
+        let key: String
+        let fallback: String
+        let icon: String
+    }
+
+    private let quickReasons: [QuickReasonOption] = [
+        .init(id: "no_show", key: "POS_Release_Chip_NoShow", fallback: "عدم حضور العميل", icon: "person.fill.xmark"),
+        .init(id: "customer_request", key: "POS_Release_Chip_CustomerRequest", fallback: "طلب العميل الإلغاء", icon: "phone.down.fill"),
+        .init(id: "expired", key: "POS_Release_Chip_Expired", fallback: "انتهاء مهلة الحجز", icon: "clock.badge.xmark.fill"),
+        .init(id: "swapped", key: "POS_Release_Chip_Swapped", fallback: "استبدال بحيوان آخر", icon: "arrow.triangle.2.circlepath"),
+        .init(id: "clerical_error", key: "POS_Release_Chip_ClericalError", fallback: "خطأ في تسجيل الحجز", icon: "pencil.and.outline")
+    ]
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            // Spatial Sheet Drag Handle & Navigation Header
+            sheetNavigationHeader
+
             ScrollView {
-                VStack(spacing: AdminSpacing.lg) {
-                    // Warning illustration
-                    VStack(spacing: AdminSpacing.sm) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(uiColor: .ppError).opacity(0.1))
-                                .frame(width: 80, height: 80)
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 36, weight: .light))
-                                .foregroundColor(Color(uiColor: .ppError))
-                        }
-                        .padding(.top, AdminSpacing.lg)
+                VStack(spacing: 20) {
+                    // Hero Spatial Warning Shield
+                    heroWarningSection
 
-                        Text(Language.get("POS_Release_Title", alter: "إلغاء الحجز"))
-                            .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                            .foregroundColor(AdminSurface.primaryText)
+                    // Live Animal & Customer Dossier Card
+                    liveAnimalIdentityCard
 
-                        Text(Language.get("POS_Release_Warning",
-                                          alter: "سيتم إلغاء الحجز فوراً وإعادة الحيوان إلى المخزون المتاح لجميع العملاء."))
-                            .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, AdminSpacing.xl)
-                    }
+                    // 3-Pillar Consequence Blueprint
+                    consequenceHorizonSection
 
-                    // Pet identity reminder
-                    HStack(spacing: AdminSpacing.sm) {
-                        PetAvatarView(url: item.photoURL, size: 44, cornerRadius: 12)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.animalName)
-                                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                                .foregroundColor(AdminSurface.primaryText)
-                            Text("#\(item.ringTag) · \(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم") : item.customerName)")
-                                .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.secondaryText)
-                        }
-                        Spacer()
-                        Text("\(String(format: "%.0f", item.sellingPrice)) ر.ق")
-                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
-                            .foregroundColor(Color(uiColor: .ppError))
-                    }
-                    .padding(AdminSpacing.md)
-                    .background(Color(uiColor: .ppError).opacity(0.05), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                            .stroke(Color(uiColor: .ppError).opacity(0.15), lineWidth: AdminStroke.thin)
-                    )
-                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    // Quick-Tap Reasons & Custom Text Input
+                    reasonSelectorSection
 
-                    // Reason
-                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-                        Text(Language.get("POS_Release_Reason", alter: "سبب الإلغاء"))
-                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .padding(.horizontal, AdminSpacing.xs)
-
-                        TextField(
-                            Language.get("POS_Release_Reason_Placeholder", alter: "عدم حضور العميل، طلب الإلغاء..."),
-                            text: $reason
-                        )
-                        .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .body))
-                        .padding(AdminSpacing.md)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                    }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-
-                    // Confirmation toggle
-                    HStack(spacing: AdminSpacing.sm) {
-                        Toggle("", isOn: $confirmed)
-                            .labelsHidden()
-                            .tint(Color(uiColor: .ppError))
-                        Text(Language.get("POS_Release_Confirm_Label", alter: "أتحمل مسؤولية إلغاء هذا الحجز نيابةً عن إدارة المتجر"))
-                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                            .foregroundColor(AdminSurface.secondaryText)
-                    }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    // Operator Governance & Responsibility Card
+                    responsibilityAgreementCard
                 }
+                .padding(.horizontal, 20)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+                .frame(maxWidth: 580)
+                .frame(maxWidth: .infinity)
             }
-            .safeAreaInset(edge: .bottom) {
-                Button {
-                    isSubmitting = true
-                    Task {
-                        let ok = await viewModel.releaseHold(for: item, reason: reason)
-                        isSubmitting = false
-                        if ok { dismiss() }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        if isSubmitting { ProgressView().tint(.white) }
-                        else { Image(systemName: "lock.open.fill") }
-                        Text(Language.get("POS_Confirm_Release", alter: "تأكيد إلغاء الحجز"))
-                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(
-                        confirmed ? Color(uiColor: .ppError) : Color(uiColor: .ppError).opacity(0.4),
-                        in: RoundedRectangle(cornerRadius: AdminRadius.large, style: .continuous)
-                    )
-                    .shadow(color: confirmed ? Color(uiColor: .ppError).opacity(0.3) : .clear, radius: 10, y: 4)
-                }
-                .disabled(isSubmitting || !confirmed)
-                .animation(.spring(response: 0.25, dampingFraction: 0.7), value: confirmed)
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.vertical, AdminSpacing.md)
-                .background(.thinMaterial)
+
+            // Flagship Sticky Bottom Dock
+            stickyActionDock
+        }
+        .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                pulseWarning = true
             }
-            .background(Color(uiColor: .systemBackground).ignoresSafeArea())
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "تراجع")) { dismiss() }
-                        .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                }
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.7)) {
+                hasAppeared = true
             }
         }
     }
+
+    // MARK: - Subviews
+
+    private var sheetNavigationHeader: some View {
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Color.secondary.opacity(0.25))
+                .frame(width: 38, height: 4.5)
+                .padding(.top, 8)
+
+            HStack(alignment: .center) {
+                AdminSquircleCloseButton {
+                    dismiss()
+                }
+
+                Spacer()
+
+                // Sensitive Operational Badge
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppError))
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(pulseWarning ? 1.3 : 0.85)
+
+                    Text(Language.get("POS_Release_Sensitive_Action", alter: "إجراء تشغيلي حساس"))
+                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        .foregroundColor(Color(uiColor: .ppError))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .ppError).opacity(0.08), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(uiColor: .ppError).opacity(0.18), lineWidth: 0.75)
+                )
+
+                Spacer()
+
+                // Balance Box
+                Color.clear
+                    .frame(width: 44, height: 44)
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.bottom, 4)
+        .background(Color(uiColor: .systemGroupedBackground))
+    }
+
+    private var heroWarningSection: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color(uiColor: .ppError).opacity(0.20), Color(uiColor: .ppError).opacity(0.03), .clear],
+                            center: .center,
+                            startRadius: 15,
+                            endRadius: 54
+                        )
+                    )
+                    .frame(width: 108, height: 108)
+
+                Circle()
+                    .strokeBorder(Color(uiColor: .ppError).opacity(0.20), lineWidth: 1)
+                    .frame(width: 84, height: 84)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(uiColor: .ppError).opacity(0.15), Color(uiColor: .ppError).opacity(0.07)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 72, height: 72)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.35), lineWidth: 0.8)
+                    )
+                    .shadow(color: Color(uiColor: .ppError).opacity(0.25), radius: 14, y: 5)
+
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 32, weight: .semibold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(uiColor: .ppError), Color(uiColor: .ppError).opacity(0.85)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .scaleEffect(hasAppeared ? 1.0 : 0.75)
+            }
+
+            VStack(spacing: 6) {
+                Text(Language.get("POS_Release_Title", alter: "إلغاء حجز الحيوان"))
+                    .font(Font.custom("Beiruti-Bold", size: 23, relativeTo: .title2))
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(Language.get("POS_Release_Warning", alter: "سيتم تحرير الحيوان فوراً من عهدة الحجز وإعادته للمخزون المتاح للبيع في المتجر."))
+                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .subheadline))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineSpacing(3)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private var liveAnimalIdentityCard: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                PetAvatarView(url: item.photoURL, size: 60, cornerRadius: 18)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppError).opacity(0.22), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(item.animalName)
+                            .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        // Locked Price Pill
+                        HStack(spacing: 3) {
+                            Text(String(format: "%.0f", item.sellingPrice))
+                                .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .callout))
+                            Text(item.currency.isEmpty ? "ر.ق" : item.currency)
+                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption2))
+                        }
+                        .foregroundColor(Color(uiColor: .ppError))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Color(uiColor: .ppError).opacity(0.09), in: Capsule())
+                    }
+
+                    HStack(spacing: 8) {
+                        // Ring Tag Pill
+                        HStack(spacing: 3) {
+                            Image(systemName: "number")
+                                .font(.system(size: 10, weight: .bold))
+                            Text(item.ringTag.isEmpty ? "—" : item.ringTag)
+                                .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                        }
+                        .foregroundColor(AdminSurface.primaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2.5)
+                        .background(Color(uiColor: .secondarySystemBackground), in: Capsule())
+
+                        if !item.branchName.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.2.fill")
+                                    .font(.system(size: 10))
+                                Text(item.branchName)
+                                    .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                                    .lineLimit(1)
+                            }
+                            .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+                .overlay(AdminSurface.hairline)
+
+            // Customer & Expiry Sub-Row
+            HStack(alignment: .center, spacing: 10) {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Text(item.customerName.isEmpty ? Language.get("POS_UnnamedCustomer", alter: "بدون اسم") : item.customerName)
+                        .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    if !item.customerPhone.isEmpty {
+                        Text("· \(item.customerPhone)")
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                // Expiry Countdown Badge
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(item.isExpired ? Color(uiColor: .ppError) : (item.isExpiringSoon ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess)))
+                        .frame(width: 6, height: 6)
+
+                    Text(item.remainingTimeDescription)
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                        .foregroundColor(item.isExpired ? Color(uiColor: .ppError) : (item.isExpiringSoon ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess)))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(
+                    (item.isExpired ? Color(uiColor: .ppError) : (item.isExpiringSoon ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))).opacity(0.1),
+                    in: Capsule()
+                )
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppError).opacity(0.18), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+    }
+
+    private var consequenceHorizonSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.swap")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                Text(Language.get("POS_Release_Consequence_Title", alter: "الأثر التشغيلي للإلغاء الفوري"))
+                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 4)
+
+            VStack(spacing: 8) {
+                consequenceRow(
+                    icon: "arrow.uturn.backward.circle.fill",
+                    color: Color(uiColor: .ppSuccess),
+                    text: Language.get("POS_Release_Consequence_Stock", alter: "إعادة فورية للحيوان إلى المخزون المتاح للبيع")
+                )
+                consequenceRow(
+                    icon: "creditcard.trianglebadge.exclamationmark.fill",
+                    color: Color(uiColor: .ppWarning),
+                    text: Language.get("POS_Release_Consequence_Hold", alter: "فك الحجز المالي وتحرير رقم حلقة التعريف")
+                )
+                consequenceRow(
+                    icon: "shield.checkered",
+                    color: Color(uiColor: .ppInfo),
+                    text: Language.get("POS_Release_Consequence_Audit", alter: "توثيق حركة الإلغاء في سجل التدقيق باسم الموظف")
+                )
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+            )
+        }
+    }
+
+    private func consequenceRow(icon: String, color: Color, text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(color)
+                .frame(width: 24)
+
+            Text(text)
+                .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                .foregroundColor(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var reasonSelectorSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Release_Reason", alter: "سبب الإلغاء والتحرير"))
+                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(.horizontal, 4)
+
+            // Dynamic Preset Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(quickReasons) { chip in
+                        let isSelected = selectedChip == chip.id
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                                if isSelected {
+                                    selectedChip = nil
+                                    reason = ""
+                                } else {
+                                    selectedChip = chip.id
+                                    reason = Language.get(chip.key, alter: chip.fallback)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: chip.icon)
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get(chip.key, alter: chip.fallback))
+                                    .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Regular", size: 13))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                isSelected ? Color(uiColor: .ppError) : AdminSurface.surface,
+                                in: Capsule()
+                            )
+                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(
+                                        isSelected ? Color.clear : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                        lineWidth: 0.8
+                                    )
+                            )
+                            .shadow(color: isSelected ? Color(uiColor: .ppError).opacity(0.25) : Color.black.opacity(0.02), radius: 6, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+
+            // Custom Text Field with Clear Action
+            HStack(spacing: 10) {
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 14))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                TextField(
+                    Language.get("POS_Release_Reason_Placeholder", alter: "اختر سبباً سريعاً أو اكتب توضيحاً مخصصاً..."),
+                    text: $reason
+                )
+                .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
+                .foregroundColor(AdminSurface.primaryText)
+
+                if !reason.isEmpty {
+                    Button {
+                        reason = ""
+                        selectedChip = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(reason.isEmpty ? AdminSurface.hairline : Color(uiColor: .ppError).opacity(0.4), lineWidth: 1)
+            )
+        }
+    }
+
+    private var responsibilityAgreementCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                confirmed.toggle()
+            }
+        } label: {
+            HStack(alignment: .center, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(confirmed ? Color(uiColor: .ppError) : Color(uiColor: .secondarySystemBackground))
+                        .frame(width: 26, height: 26)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .strokeBorder(confirmed ? Color.clear : AdminSurface.secondaryText.opacity(0.35), lineWidth: 1)
+                        )
+
+                    if confirmed {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("POS_Release_Confirm_Label", alter: "أقر بمسؤوليتي التشغيلية عن تحرير هذا الحيوان وإعادته للمخزون نيابةً عن إدارة المتجر"))
+                        .font(Font.custom(confirmed ? "Beiruti-Bold" : "Beiruti-Regular", size: 13, relativeTo: .subheadline))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(14)
+            .background(
+                confirmed ? Color(uiColor: .ppError).opacity(0.07) : AdminSurface.surface,
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        confirmed ? Color(uiColor: .ppError).opacity(0.4) : AdminSurface.hairline,
+                        lineWidth: confirmed ? 1.25 : 0.75
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var stickyActionDock: some View {
+        VStack(spacing: 8) {
+            Button {
+                guard confirmed, !isSubmitting else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    return
+                }
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                isSubmitting = true
+                Task {
+                    let ok = await viewModel.releaseHold(for: item, reason: reason)
+                    isSubmitting = false
+                    if ok { dismiss() }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    if isSubmitting {
+                        ProgressView().tint(.white)
+                        Text(Language.get("POS_Release_Submitting", alter: "جارٍ تحرير الحجز وتحديث المخزون..."))
+                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                    } else {
+                        Image(systemName: confirmed ? "lock.open.fill" : "lock.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(confirmed ? Language.get("POS_Confirm_Release", alter: "تأكيد إلغاء الحجز والتحرير") : Language.get("POS_Release_Acknowledge_Required", alter: "يلزم تفعيل إقرار المسؤولية أولاً للمتابعة"))
+                            .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
+                    }
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    confirmed
+                        ? LinearGradient(colors: [Color(uiColor: .ppError), Color(uiColor: .ppError).opacity(0.88)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        : LinearGradient(colors: [Color(uiColor: .ppError).opacity(0.4), Color(uiColor: .ppError).opacity(0.35)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .shadow(color: confirmed ? Color(uiColor: .ppError).opacity(0.35) : .clear, radius: 12, y: 5)
+            }
+            .disabled(isSubmitting || !confirmed)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: confirmed)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            } label: {
+                Text(Language.get("POS_Release_KeepReservation", alter: "الاحتفاظ بالحجز والرجوع"))
+                    .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .subheadline))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+            }
+            .buttonStyle(.plain)
+            .disabled(isSubmitting)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 16)
+        .background(
+            AdminSurface.surface
+                .opacity(0.95)
+                .background(.ultraThinMaterial)
+                .overlay(
+                    Rectangle()
+                        .fill(AdminSurface.hairline)
+                        .frame(height: 0.75),
+                    alignment: .top
+                )
+        )
+    }
 }
+

@@ -167,6 +167,73 @@ enum SupportStatus: Equatable, Hashable, Sendable {
     }
 }
 
+// MARK: - Chat Context Model
+
+struct SupportContextMetaItem: Sendable, Equatable, Hashable, Identifiable {
+    var id: String { "\(label)-\(value)" }
+    let label: String
+    let value: String
+}
+
+struct SupportChatContextDescriptor: Equatable, Sendable {
+    enum Category: String, Sendable {
+        case order
+        case petListing
+        case adoption
+        case hotelStay
+        case serviceBooking
+        case appScreen
+        case customerIntelligence
+
+        var iconName: String {
+            switch self {
+            case .order: return "bag.fill"
+            case .petListing: return "pawprint.fill"
+            case .adoption: return "heart.text.square.fill"
+            case .hotelStay: return "bed.double.fill"
+            case .serviceBooking: return "cross.case.fill"
+            case .appScreen: return "arrow.triangle.turn.up.right.diamond.fill"
+            case .customerIntelligence: return "person.crop.circle.badge.checkmark"
+            }
+        }
+
+        var localizedCategoryName: String {
+            switch self {
+            case .order: return supportText("SupportContext_Cat_Order", "طلب شراء")
+            case .petListing: return supportText("SupportContext_Cat_PetAd", "إعلان حيوان")
+            case .adoption: return supportText("SupportContext_Cat_Adoption", "طلب تبني")
+            case .hotelStay: return supportText("SupportContext_Cat_Hotel", "حجز فندقي")
+            case .serviceBooking: return supportText("SupportContext_Cat_Service", "خدمة بيطرية")
+            case .appScreen: return supportText("SupportContext_Cat_AppScreen", "نقطة انطلاق")
+            case .customerIntelligence: return supportText("SupportContext_Cat_CustomerRadar", "سجل العميل")
+            }
+        }
+
+        var accentColor: Color {
+            switch self {
+            case .order: return Color(red: 0.94, green: 0.44, blue: 0.28)
+            case .petListing: return Color(red: 0.25, green: 0.65, blue: 0.85)
+            case .adoption: return Color(red: 0.88, green: 0.35, blue: 0.55)
+            case .hotelStay: return Color(red: 0.60, green: 0.45, blue: 0.88)
+            case .serviceBooking: return Color(red: 0.30, green: 0.75, blue: 0.65)
+            case .appScreen: return Color(red: 0.88, green: 0.62, blue: 0.22)
+            case .customerIntelligence: return Color(uiColor: .ppPrimary)
+            }
+        }
+    }
+
+    let category: Category
+    let title: String
+    let referenceId: String
+    let primaryMetric: String
+    let statusText: String
+    let statusColor: Color
+    let originScreen: String
+    let platform: String
+    let metadataItems: [SupportContextMetaItem]
+    let rawEntityId: String
+}
+
 // MARK: - Thread Model
 
 /// Sendable projection of a `Chats` document. Every field the legacy screen read
@@ -182,6 +249,13 @@ struct SupportThread: Identifiable, Equatable, Sendable {
     let lifecycleVersion: Int
     let sourcePlatform: String
     let supportUnread: Bool
+    let customerID: String
+    let contextType: String
+    let contextID: String
+    let orderID: String
+    let sourceScreen: String
+    let sourceEntityID: String
+    let initialCustomerPhotoURL: String
 
     init(data: [String: Any], documentID: String, currentUID: String) {
         id = documentID
@@ -195,6 +269,24 @@ struct SupportThread: Identifiable, Equatable, Sendable {
         lifecycleVersion = (data["supportLifecycleVersion"] as? NSNumber)?.intValue ?? 0
         sourcePlatform = supportTrimmed(data["sourcePlatform"])
         supportUnread = (data["supportUnread"] as? NSNumber)?.boolValue ?? false
+
+        let cid = SupportThread.resolveCustomerID(data: data, currentUID: currentUID)
+        customerID = cid
+        let rawCType = supportTrimmed(data["contextType"]).isEmpty ? supportTrimmed(data["conversationType"]) : supportTrimmed(data["contextType"])
+        contextType = rawCType
+        contextID = supportTrimmed(data["contextId"]).isEmpty ? supportTrimmed(data["contextID"]) : supportTrimmed(data["contextId"])
+        let rawOrd = supportTrimmed(data["orderId"]).isEmpty ? supportTrimmed(data["orderNumber"]) : supportTrimmed(data["orderId"])
+        orderID = rawOrd.isEmpty ? supportTrimmed(data["orderID"]) : rawOrd
+        sourceScreen = supportTrimmed(data["sourceScreen"])
+        sourceEntityID = supportTrimmed(data["sourceEntityId"]).isEmpty ? supportTrimmed(data["sourceEntityID"]) : supportTrimmed(data["sourceEntityId"])
+
+        var photo = supportTrimmed(data["customerPhotoURL"])
+        if photo.isEmpty { photo = supportTrimmed(data["userImage"]) }
+        if photo.isEmpty { photo = supportTrimmed(data["photoURL"]) }
+        if photo.isEmpty, let memberPhotos = data["memberPhotos"] as? [String: Any], !cid.isEmpty {
+            photo = supportTrimmed(memberPhotos[cid])
+        }
+        initialCustomerPhotoURL = photo
     }
 
     /// Fields the local search blob matches, mirroring the legacy blob exactly:
@@ -502,6 +594,7 @@ final class AdminSupportChatsViewModel: ObservableObject {
 
 // MARK: - List View
 
+@available(iOS 16.0, *)
 struct AdminChatsView: View {
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
@@ -907,6 +1000,28 @@ final class AdminSupportThreadViewModel: ObservableObject {
     let threadID: String
     let currentUID: String
     let canManage: Bool
+    let customerID: String
+    let sourcePlatform: String
+    let initialContextType: String
+    let initialContextID: String
+    let initialOrderID: String
+    let initialSourceScreen: String
+    let initialSourceEntityID: String
+
+    // Customer Live Enrichment
+    @Published private(set) var customerName: String
+    @Published private(set) var customerAvatarUrl: String
+    @Published private(set) var customerPhone: String = ""
+    @Published private(set) var customerEmail: String = ""
+    @Published private(set) var customerJoinDate: String = ""
+    @Published private(set) var isCustomerVerified: Bool = false
+
+    // Chat Context Intelligence
+    @Published private(set) var chatContext: SupportChatContextDescriptor?
+    @Published private(set) var isLoadingContext: Bool = false
+    @Published var isContextExpanded: Bool = false
+    @Published var isShowingCustomerDossier: Bool = false
+    @Published var isShowingContextDetail: Bool = false
 
     private var lastMessageID: String
     private var isMarkingRead = false
@@ -926,6 +1041,16 @@ final class AdminSupportThreadViewModel: ObservableObject {
         lifecycleVersion = thread.lifecycleVersion
         title = thread.displayName
         lastMessageID = thread.lastMessageID
+        customerID = thread.customerID
+        sourcePlatform = thread.sourcePlatform
+        initialContextType = thread.contextType
+        initialContextID = thread.contextID
+        initialOrderID = thread.orderID
+        initialSourceScreen = thread.sourceScreen
+        initialSourceEntityID = thread.sourceEntityID
+
+        customerName = thread.displayName
+        customerAvatarUrl = thread.initialCustomerPhotoURL
     }
 
     deinit {
@@ -958,6 +1083,8 @@ final class AdminSupportThreadViewModel: ObservableObject {
         listenThread()
         listenMessages()
         markRead()
+        enrichCustomerProfile()
+        resolveInitialChatContext()
     }
 
     func stop() {
@@ -977,8 +1104,9 @@ final class AdminSupportThreadViewModel: ObservableObject {
             .document(threadID)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard error == nil, let snapshot, snapshot.exists else { return }
+                let data = snapshot.data() ?? [:]
                 let projected = SupportThread(
-                    data: snapshot.data() ?? [:],
+                    data: data,
                     documentID: snapshot.documentID,
                     currentUID: uid
                 )
@@ -986,11 +1114,15 @@ final class AdminSupportThreadViewModel: ObservableObject {
                     guard let self else { return }
                     self.status = projected.status
                     self.lifecycleVersion = projected.lifecycleVersion
-                    self.title = projected.displayName
+                    if !projected.displayName.isEmpty && (self.customerName.isEmpty || self.customerName == self.threadID.prefix(8) || self.customerName == self.customerID.prefix(8)) {
+                        self.customerName = projected.displayName
+                        self.title = projected.displayName
+                    }
                     self.lastMessageID = projected.lastMessageID
                     if self.canManage && projected.supportUnread {
                         self.markRead()
                     }
+                    self.resolveInitialChatContext(threadData: data)
                 }
             }
     }
@@ -1029,6 +1161,384 @@ final class AdminSupportThreadViewModel: ObservableObject {
                     self.markRead()
                 }
             }
+    }
+
+    // MARK: Customer & Context Enrichment
+
+    private func enrichCustomerProfile() {
+        guard !customerID.isEmpty else { return }
+        let cid = customerID
+        let db = Firestore.firestore()
+
+        // 1. Fetch PublicUserProfiles for fast resolution
+        db.collection("PublicUserProfiles").document(cid).getDocument { [weak self] snapshot, _ in
+            guard let self, let data = snapshot?.data(), snapshot?.exists == true else { return }
+            let name = supportTrimmed(data["displayName"]).isEmpty ? supportTrimmed(data["name"]) : supportTrimmed(data["displayName"])
+            let photo = supportTrimmed(data["photoURL"]).isEmpty ? supportTrimmed(data["userImage"]) : supportTrimmed(data["photoURL"])
+            let phone = supportTrimmed(data["phone"]).isEmpty ? supportTrimmed(data["phoneNumber"]) : supportTrimmed(data["phone"])
+
+            Task { @MainActor in
+                if !name.isEmpty && (self.customerName.isEmpty || self.customerName == self.threadID.prefix(8) || self.customerName == cid.prefix(8)) {
+                    self.customerName = name
+                    self.title = name
+                }
+                if !photo.isEmpty && self.customerAvatarUrl.isEmpty {
+                    self.customerAvatarUrl = photo
+                }
+                if !phone.isEmpty && self.customerPhone.isEmpty {
+                    self.customerPhone = phone
+                }
+            }
+        }
+
+        // 2. Fetch UsersCol for full profile, verification, phone, email, join date
+        db.collection("UsersCol").document(cid).getDocument { [weak self] snapshot, _ in
+            guard let self, let data = snapshot?.data(), snapshot?.exists == true else { return }
+            let uName = supportTrimmed(data["UserName"]).isEmpty
+                ? (supportTrimmed(data["displayName"]).isEmpty
+                   ? (supportTrimmed(data["Name"]).isEmpty ? supportTrimmed(data["name"]) : supportTrimmed(data["Name"]))
+                   : supportTrimmed(data["displayName"]))
+                : supportTrimmed(data["UserName"])
+            let uPhoto = supportTrimmed(data["userImage"]).isEmpty
+                ? (supportTrimmed(data["photoURL"]).isEmpty ? supportTrimmed(data["avatarUrl"]) : supportTrimmed(data["photoURL"]))
+                : supportTrimmed(data["userImage"])
+            let uPhone = supportTrimmed(data["phoneNumber"]).isEmpty ? supportTrimmed(data["phone"]) : supportTrimmed(data["phoneNumber"])
+            let uEmail = supportTrimmed(data["email"])
+            let verified = (data["isVerified"] as? Bool) ?? (data["verified"] as? Bool) ?? false
+            let created = supportDate(data["createdAt"]) ?? supportDate(data["accountCreatedAt"]) ?? supportDate(data["registrationDate"])
+
+            Task { @MainActor in
+                if !uName.isEmpty {
+                    self.customerName = uName
+                    self.title = uName
+                }
+                if !uPhoto.isEmpty {
+                    self.customerAvatarUrl = uPhoto
+                }
+                if !uPhone.isEmpty {
+                    self.customerPhone = uPhone
+                }
+                if !uEmail.isEmpty {
+                    self.customerEmail = uEmail
+                }
+                self.isCustomerVerified = verified
+                if let created {
+                    let fmt = DateFormatter()
+                    fmt.dateStyle = .medium
+                    fmt.locale = Locale(identifier: Language.isRTL() ? "ar" : "en")
+                    self.customerJoinDate = fmt.string(from: created)
+                }
+            }
+        }
+    }
+
+    func resolveInitialChatContext(threadData: [String: Any]? = nil) {
+        isLoadingContext = true
+        let db = Firestore.firestore()
+        let cid = customerID
+
+        var cType = initialContextType.lowercased()
+        var cID = initialContextID
+        var ordID = initialOrderID
+        var screen = initialSourceScreen
+        var platform = sourcePlatform.isEmpty ? "iOS" : sourcePlatform
+
+        if let threadData {
+            let tType = supportTrimmed(threadData["contextType"]).lowercased()
+            if !tType.isEmpty { cType = tType }
+            let tID = supportTrimmed(threadData["contextId"]).isEmpty ? supportTrimmed(threadData["contextID"]) : supportTrimmed(threadData["contextId"])
+            if !tID.isEmpty { cID = tID }
+            let tOrd = supportTrimmed(threadData["orderId"]).isEmpty ? supportTrimmed(threadData["orderNumber"]) : supportTrimmed(threadData["orderId"])
+            if !tOrd.isEmpty { ordID = tOrd }
+            let tScreen = supportTrimmed(threadData["sourceScreen"])
+            if !tScreen.isEmpty { screen = tScreen }
+            let tPlatform = supportTrimmed(threadData["sourcePlatform"])
+            if !tPlatform.isEmpty { platform = tPlatform }
+        }
+
+        // CASE 1: Explicit Order Context
+        if !ordID.isEmpty || cType == "order" || cType == "orders" {
+            let targetID = !ordID.isEmpty ? ordID : cID
+            resolveOrderContext(orderID: targetID, screen: screen, platform: platform)
+            return
+        }
+
+        // CASE 2: Pet Ad / Adoption
+        if cType == "pet" || cType == "pet_ad" || cType == "adopt" || cType == "adopt_pets" {
+            resolvePetContext(category: cType, petID: cID, screen: screen, platform: platform)
+            return
+        }
+
+        // CASE 3: Hotel Stay
+        if cType == "hotel" || cType == "hotelreservations" || cType == "pets_hotel" {
+            resolveHotelContext(reservationID: cID, screen: screen, platform: platform)
+            return
+        }
+
+        // CASE 4: App Screen Origin
+        if !screen.isEmpty {
+            self.chatContext = SupportChatContextDescriptor(
+                category: .appScreen,
+                title: String(format: supportText("SupportContext_FromScreen_Format", "استفسار من: %@"), screen),
+                referenceId: cID.isEmpty ? cid : cID,
+                primaryMetric: supportText("SupportContext_ActiveSession", "جلسة نشطة"),
+                statusText: supportText("SupportContext_DirectInquiry", "استفسار مباشر"),
+                statusColor: Color(red: 0.88, green: 0.62, blue: 0.22),
+                originScreen: screen,
+                platform: "\(platform) App",
+                metadataItems: [
+                    SupportContextMetaItem(label: supportText("SupportContext_OriginScreen", "شاشة البدء"), value: screen),
+                    SupportContextMetaItem(label: supportText("SupportContext_Platform", "بيئة التشغيل"), value: "\(platform) App"),
+                    SupportContextMetaItem(label: supportText("SupportContext_CustomerID", "معرّف العميل"), value: cid.isEmpty ? "-" : cid)
+                ],
+                rawEntityId: cID
+            )
+            self.isLoadingContext = false
+            return
+        }
+
+        // CASE 5: Proactively check for customer's latest order
+        if !cid.isEmpty {
+            db.collection("Orders")
+                .whereField("userId", isEqualTo: cid)
+                .order(by: "createdAt", descending: true)
+                .limit(to: 1)
+                .getDocuments { [weak self] snap, _ in
+                    guard let self else { return }
+                    if let doc = snap?.documents.first, doc.exists {
+                        self.buildOrderDescriptor(docID: doc.documentID, data: doc.data(), isProactiveRecent: true, platform: platform)
+                    } else {
+                        self.buildCustomerRadarDescriptor(platform: platform)
+                    }
+                }
+        } else {
+            buildCustomerRadarDescriptor(platform: platform)
+        }
+    }
+
+    private func resolveOrderContext(orderID: String, screen: String, platform: String) {
+        let db = Firestore.firestore()
+        db.collection("Orders").document(orderID).getDocument { [weak self] snapshot, _ in
+            guard let self else { return }
+            if let data = snapshot?.data(), snapshot?.exists == true {
+                self.buildOrderDescriptor(docID: snapshot?.documentID ?? orderID, data: data, isProactiveRecent: false, platform: platform)
+            } else {
+                db.collection("Orders").whereField("orderNumber", isEqualTo: orderID).limit(to: 1).getDocuments { [weak self] querySnap, _ in
+                    guard let self else { return }
+                    if let doc = querySnap?.documents.first, doc.exists {
+                        self.buildOrderDescriptor(docID: doc.documentID, data: doc.data(), isProactiveRecent: false, platform: platform)
+                    } else {
+                        let meta = [
+                            SupportContextMetaItem(label: supportText("SupportContext_OrderNum", "رقم الطلب"), value: "#\(orderID)"),
+                            SupportContextMetaItem(label: supportText("SupportContext_Platform", "المنصة"), value: "\(platform) App")
+                        ]
+                        self.chatContext = SupportChatContextDescriptor(
+                            category: .order,
+                            title: "\(supportText("SupportContext_OrderActive", "طلب شراء")) #\(orderID)",
+                            referenceId: orderID,
+                            primaryMetric: supportText("SupportContext_OrderActive", "طلب شراء"),
+                            statusText: supportText("SupportContext_Active", "نشط"),
+                            statusColor: Color(red: 0.94, green: 0.44, blue: 0.28),
+                            originScreen: screen.isEmpty ? supportText("SupportContext_Storefront", "متجر بيور بتس") : screen,
+                            platform: "\(platform) App",
+                            metadataItems: meta,
+                            rawEntityId: orderID
+                        )
+                        self.isLoadingContext = false
+                    }
+                }
+            }
+        }
+    }
+
+    private func resolvePetContext(category: String, petID: String, screen: String, platform: String) {
+        let db = Firestore.firestore()
+        let col = (category == "adopt" || category == "adopt_pets") ? "adopt_pets" : "pet_ads"
+        let isAdopt = (category == "adopt" || category == "adopt_pets")
+
+        db.collection(col).document(petID).getDocument { [weak self] snapshot, _ in
+            guard let self else { return }
+            if let data = snapshot?.data(), snapshot?.exists == true {
+                let name = supportTrimmed(data["name"]).isEmpty ? supportTrimmed(data["title"]) : supportTrimmed(data["name"])
+                let breed = supportTrimmed(data["breed"]).isEmpty ? supportTrimmed(data["kind"]) : supportTrimmed(data["breed"])
+                let price = (data["price"] as? NSNumber)?.doubleValue ?? 0.0
+                let curr = supportTrimmed(data["currency"]).isEmpty ? "ر.ق" : supportTrimmed(data["currency"])
+                let status = supportTrimmed(data["status"])
+
+                let titleText = name.isEmpty ? (isAdopt ? supportText("SupportContext_AdoptionListing", "طلب تبني") : supportText("SupportContext_PetListing", "إعلان حيوان أليف")) : name
+                let metric = isAdopt ? supportText("SupportContext_FreeAdoption", "تبني مجاني") : (price > 0 ? String(format: "%.2f %@", price, curr) : "")
+
+                var meta: [SupportContextMetaItem] = [
+                    SupportContextMetaItem(label: supportText("SupportContext_PetName", "الاسم"), value: titleText),
+                    SupportContextMetaItem(label: supportText("SupportContext_Breed", "السلالة / النوع"), value: breed.isEmpty ? supportText("Unknown", "غير محدد") : breed)
+                ]
+                if !metric.isEmpty {
+                    meta.append(SupportContextMetaItem(label: supportText("SupportContext_Fee", "السعر / المقابل"), value: metric))
+                }
+                if !status.isEmpty {
+                    meta.append(SupportContextMetaItem(label: supportText("SupportContext_Status", "الحالة"), value: status))
+                }
+
+                self.chatContext = SupportChatContextDescriptor(
+                    category: isAdopt ? .adoption : .petListing,
+                    title: titleText,
+                    referenceId: petID,
+                    primaryMetric: metric.isEmpty ? breed : metric,
+                    statusText: status.isEmpty ? supportText("Active", "نشط") : status,
+                    statusColor: isAdopt ? Color(red: 0.88, green: 0.35, blue: 0.55) : Color(red: 0.25, green: 0.65, blue: 0.85),
+                    originScreen: screen.isEmpty ? (isAdopt ? supportText("SupportContext_Adoptions", "قسم التبني") : supportText("SupportContext_PetMarket", "سوق الحيوانات")) : screen,
+                    platform: "\(platform) App",
+                    metadataItems: meta,
+                    rawEntityId: petID
+                )
+                self.isLoadingContext = false
+            } else {
+                self.buildCustomerRadarDescriptor(platform: platform)
+            }
+        }
+    }
+
+    private func resolveHotelContext(reservationID: String, screen: String, platform: String) {
+        let db = Firestore.firestore()
+        db.collection("hotelReservations").document(reservationID).getDocument { [weak self] snapshot, _ in
+            guard let self else { return }
+            if let data = snapshot?.data(), snapshot?.exists == true {
+                let suite = supportTrimmed(data["suiteName"]).isEmpty ? supportTrimmed(data["roomName"]) : supportTrimmed(data["suiteName"])
+                let petName = supportTrimmed(data["petName"])
+                let checkIn = supportDate(data["checkInDate"])
+                let checkOut = supportDate(data["checkOutDate"])
+                let status = supportTrimmed(data["status"])
+
+                let titleText = suite.isEmpty ? supportText("SupportContext_HotelBooking", "حجز فندق الحيوانات") : suite
+                var datesStr = ""
+                if let checkIn {
+                    let fmt = DateFormatter()
+                    fmt.dateFormat = "d MMM"
+                    fmt.locale = Locale(identifier: Language.isRTL() ? "ar" : "en")
+                    datesStr = fmt.string(from: checkIn)
+                    if let checkOut {
+                        datesStr += " - \(fmt.string(from: checkOut))"
+                    }
+                }
+
+                var meta: [SupportContextMetaItem] = [
+                    SupportContextMetaItem(label: supportText("SupportContext_Suite", "الجناح"), value: titleText)
+                ]
+                if !petName.isEmpty {
+                    meta.append(SupportContextMetaItem(label: supportText("SupportContext_PetGuest", "النزيل"), value: petName))
+                }
+                if !datesStr.isEmpty {
+                    meta.append(SupportContextMetaItem(label: supportText("SupportContext_StayDates", "فترة الإقامة"), value: datesStr))
+                }
+
+                self.chatContext = SupportChatContextDescriptor(
+                    category: .hotelStay,
+                    title: titleText,
+                    referenceId: reservationID,
+                    primaryMetric: datesStr.isEmpty ? petName : datesStr,
+                    statusText: status.isEmpty ? supportText("Active", "مؤكد") : status,
+                    statusColor: Color(red: 0.60, green: 0.45, blue: 0.88),
+                    originScreen: screen.isEmpty ? supportText("SupportContext_HotelSection", "فندق بيور بتس") : screen,
+                    platform: "\(platform) App",
+                    metadataItems: meta,
+                    rawEntityId: reservationID
+                )
+                self.isLoadingContext = false
+            } else {
+                self.buildCustomerRadarDescriptor(platform: platform)
+            }
+        }
+    }
+
+    private func buildOrderDescriptor(docID: String, data: [String: Any], isProactiveRecent: Bool, platform: String) {
+        let ordNum = supportTrimmed(data["orderNumber"]).isEmpty ? docID : supportTrimmed(data["orderNumber"])
+        let total = (data["totalAmount"] as? NSNumber)?.doubleValue ?? 0.0
+        let curr = supportTrimmed(data["currency"]).isEmpty ? "ر.ق" : supportTrimmed(data["currency"])
+        let rawStatus = supportTrimmed(data["status"]).isEmpty ? supportTrimmed(data["rawStatus"]) : supportTrimmed(data["status"])
+        let deliveryStatus = supportTrimmed(data["deliveryStatus"])
+        let itemsCount = (data["items"] as? [Any])?.count ?? (data["itemCount"] as? NSNumber)?.intValue ?? 1
+
+        let statusTitle: String
+        let statusColor: Color
+        switch rawStatus.lowercased() {
+        case "pending", "awaiting_payment":
+            statusTitle = supportText("OrderStatus_Pending", "بانتظار الدفع")
+            statusColor = Color(red: 0.88, green: 0.62, blue: 0.22)
+        case "processing", "preparing":
+            statusTitle = supportText("OrderStatus_Processing", "قيد التجهيز")
+            statusColor = Color(red: 0.25, green: 0.65, blue: 0.85)
+        case "ready", "ready_for_pickup":
+            statusTitle = supportText("OrderStatus_Ready", "جاهز للتسليم")
+            statusColor = Color(red: 0.30, green: 0.75, blue: 0.65)
+        case "in_transit", "shipped", "out_for_delivery":
+            statusTitle = supportText("OrderStatus_InTransit", "في الطريق إلى العميل")
+            statusColor = Color(uiColor: .ppPrimary)
+        case "completed", "delivered":
+            statusTitle = supportText("OrderStatus_Delivered", "تم التوصيل بنجاح")
+            statusColor = Color(uiColor: .ppSuccess)
+        case "cancelled", "rejected":
+            statusTitle = supportText("OrderStatus_Cancelled", "ملغي")
+            statusColor = Color(uiColor: .ppError)
+        default:
+            statusTitle = rawStatus.isEmpty ? supportText("OrderStatus_Active", "طلب نشط") : rawStatus
+            statusColor = Color(uiColor: .ppPrimary)
+        }
+
+        let prefix = isProactiveRecent
+            ? supportText("SupportContext_OrderRecent", "آخر طلب للعميل")
+            : supportText("SupportContext_OrderActive", "طلب شراء")
+
+        var meta: [SupportContextMetaItem] = [
+            SupportContextMetaItem(label: supportText("SupportContext_OrderNum", "رقم الطلب"), value: "#\(ordNum)"),
+            SupportContextMetaItem(label: supportText("SupportContext_Total", "الإجمالي"), value: String(format: "%.2f %@", total, curr)),
+            SupportContextMetaItem(label: supportText("SupportContext_Status", "حالة الطلب"), value: statusTitle),
+            SupportContextMetaItem(label: supportText("SupportContext_ItemsCount", "عدد الأصناف"), value: "\(itemsCount)")
+        ]
+        if !deliveryStatus.isEmpty {
+            meta.append(SupportContextMetaItem(label: supportText("SupportContext_Delivery", "حالة الشحن"), value: deliveryStatus))
+        }
+
+        self.chatContext = SupportChatContextDescriptor(
+            category: .order,
+            title: "\(prefix) #\(ordNum)",
+            referenceId: docID,
+            primaryMetric: String(format: "%.2f %@", total, curr),
+            statusText: statusTitle,
+            statusColor: statusColor,
+            originScreen: supportText("SupportContext_Storefront", "متجر بيور بتس"),
+            platform: "\(platform) App",
+            metadataItems: meta,
+            rawEntityId: docID
+        )
+        self.isLoadingContext = false
+    }
+
+    private func buildCustomerRadarDescriptor(platform: String) {
+        let titleText = String(format: supportText("SupportContext_GeneralSupport_Format", "محادثة دعم مباشرة • %@"), "\(platform) App")
+        var meta: [SupportContextMetaItem] = [
+            SupportContextMetaItem(label: supportText("SupportContext_Customer", "العميل"), value: customerName.isEmpty ? customerID : customerName),
+            SupportContextMetaItem(label: supportText("SupportContext_Platform", "المنصة"), value: "\(platform) App")
+        ]
+        if !customerPhone.isEmpty {
+            meta.append(SupportContextMetaItem(label: supportText("SupportContext_Phone", "رقم الجوال"), value: customerPhone))
+        }
+        if !customerJoinDate.isEmpty {
+            meta.append(SupportContextMetaItem(label: supportText("SupportContext_MemberSince", "عضو منذ"), value: customerJoinDate))
+        }
+
+        self.chatContext = SupportChatContextDescriptor(
+            category: .customerIntelligence,
+            title: titleText,
+            referenceId: customerID,
+            primaryMetric: isCustomerVerified ? supportText("SupportContext_Verified", "عميل موثق") : supportText("SupportContext_Registered", "عميل مسجل"),
+            statusText: supportText("SupportContext_LiveChat", "دعم مباشر"),
+            statusColor: Color(uiColor: .ppSuccess),
+            originScreen: supportText("SupportContext_AppHome", "التطبيق الرئيسي"),
+            platform: "\(platform) App",
+            metadataItems: meta,
+            rawEntityId: customerID
+        )
+        self.isLoadingContext = false
     }
 
     // MARK: Mutations
@@ -1114,72 +1624,136 @@ final class AdminSupportThreadViewModel: ObservableObject {
     }
 }
 
-// MARK: - Thread View
+// MARK: - Redesigned Top Bar (Customer Name & Luxury Avatar)
 
-struct SupportThreadView: View {
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @StateObject private var viewModel: AdminSupportThreadViewModel
-    @FocusState private var composerFocused: Bool
-
-    init(thread: SupportThread, currentUID: String, canManage: Bool) {
-        _viewModel = StateObject(wrappedValue: AdminSupportThreadViewModel(
-            thread: thread,
-            currentUID: currentUID,
-            canManage: canManage
-        ))
-    }
+private struct SupportThreadTopBar: View {
+    @ObservedObject var viewModel: AdminSupportThreadViewModel
+    let onBack: () -> Void
 
     var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+        HStack(spacing: 10) {
+            // 1. Sovereign Circular Back Button
+            AdminSquircleBackButton(action: onBack)
 
-            VStack(spacing: 0) {
-                threadHeader
-                Divider().background(AdminSurface.hairline)
-                timeline
+            // 2. Customer Avatar & Name Group (Interactive Dossier Trigger)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                viewModel.isShowingCustomerDossier = true
+            } label: {
+                HStack(spacing: 10) {
+                    // Avatar with Presence Dot
+                    ZStack(alignment: .bottomTrailing) {
+                        if !viewModel.customerAvatarUrl.isEmpty, let url = URL(string: viewModel.customerAvatarUrl) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .success(let image):
+                                    image.resizable()
+                                        .scaledToFill()
+                                        .frame(width: 42, height: 42)
+                                        .clipShape(Circle())
+                                case .failure, .empty:
+                                    customerMonogram
+                                @unknown default:
+                                    customerMonogram
+                                }
+                            }
+                        } else {
+                            customerMonogram
+                        }
+
+                        // Active Presence Ring Dot
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(Color(uiColor: .ppSurface), lineWidth: 2))
+                            .offset(x: 2, y: 2)
+                    }
+
+                    // Name & Identity Column
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 5) {
+                            Text(viewModel.customerName.isEmpty ? viewModel.title : viewModel.customerName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            if viewModel.isCustomerVerified {
+                                Image(systemName: "checkmark.seal.fill")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundColor(Color(uiColor: .ppInfo))
+                            }
+                        }
+
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(Color(uiColor: .ppSuccess))
+                                .frame(width: 6, height: 6)
+
+                            if !viewModel.customerPhone.isEmpty {
+                                Text(viewModel.customerPhone)
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                            } else {
+                                Text(viewModel.canManage
+                                     ? supportText("SupportChats_SupportReady", "صلاحية الرد الرسمي مفعّلة")
+                                     : supportText("SupportChats_ReadOnly", "عرض فقط"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
             }
+            .buttonStyle(PlainButtonStyle())
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(viewModel.customerName)
+            .accessibilityHint(supportText("SupportChats_ViewCustomerHint", "انقر لعرض ملف العميل."))
 
-            if viewModel.isUpdatingStatus {
-                AdminLoadingOverlay(message: supportText("SupportChats_StatusUpdating", "جارٍ تحديث حالة المحادثة…"))
-                    .background(Color.black.opacity(0.08))
-                    .accessibilityAddTraits(.isModal)
-            }
-        }
-        .safeAreaInset(edge: .bottom) { composer }
-        .onAppear { viewModel.start() }
-        .onDisappear { viewModel.stop() }
-        .alert(
-            supportText("Error_Title", "خطأ"),
-            isPresented: Binding(
-                get: { viewModel.alertMessage != nil },
-                set: { if !$0 { viewModel.alertMessage = nil } }
-            )
-        ) {
-            Button(supportText("OK", "موافق")) {}
-        } message: {
-            Text(viewModel.alertMessage ?? "")
-        }
-    }
+            Spacer(minLength: 4)
 
-    // MARK: Header
-
-    private var threadHeader: some View {
-        AdminSovereignNavigationBar(
-            title: viewModel.title,
-            subtitle: viewModel.canManage
-                ? supportText("SupportChats_SupportReady", "صلاحية الرد الرسمي مفعّلة")
-                : supportText("SupportChats_ReadOnly", "عرض فقط"),
-            statusDotColor: Color(uiColor: .ppSuccess),
-            onBack: { dismiss() }
-        ) {
+            // 3. Trailing Status Capsule Dropdown Menu
             statusMenu
         }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .background(AdminSurface.surface.opacity(0.85).background(.ultraThinMaterial))
     }
 
-    /// A menu at every text size — replaces the legacy segmented-control /
-    /// menu-button swap, and disables illegal transitions up front instead of
-    /// letting the operator pick one and silently reverting.
+    private var customerMonogram: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(uiColor: .ppPrimary).opacity(0.85),
+                            Color(red: 0.94, green: 0.44, blue: 0.28)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 42, height: 42)
+
+            Text(monogramLetters)
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(.white)
+        }
+    }
+
+    private var monogramLetters: String {
+        let name = viewModel.customerName.isEmpty ? viewModel.title : viewModel.customerName
+        let parts = name.split(separator: " ")
+        if parts.count >= 2, let first = parts.first?.first, let second = parts[1].first {
+            return "\(first)\(second)"
+        } else if let first = name.first {
+            return String(first)
+        }
+        return "P"
+    }
+
     private var statusMenu: some View {
         Menu {
             ForEach(SupportStatus.selectable, id: \.self) { candidate in
@@ -1207,8 +1781,8 @@ struct SupportThreadView: View {
                 }
             }
             .foregroundColor(viewModel.status.tint)
-            .padding(.horizontal, AdminSpacing.md)
-            .frame(minHeight: 34)
+            .padding(.horizontal, 10)
+            .frame(minHeight: 32)
             .background(viewModel.status.tint.opacity(0.12), in: Capsule())
             .overlay(Capsule().stroke(viewModel.status.tint.opacity(0.35)))
         }
@@ -1218,6 +1792,513 @@ struct SupportThreadView: View {
         .accessibilityHint(viewModel.canManage
                            ? supportText("SupportChats_StatusSelectorHint", "اختر حالة الدعم التالية.")
                            : supportText("SupportChats_ReadOnly", "عرض فقط"))
+    }
+}
+
+// MARK: - Reimagined Chat Context Flight Deck (HUD)
+
+private struct SupportChatContextFlightDeck: View {
+    @ObservedObject var viewModel: AdminSupportThreadViewModel
+    @State private var copiedNotice = false
+
+    var body: some View {
+        if let context = viewModel.chatContext {
+            VStack(spacing: 0) {
+                // Docked Compact Strip
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        viewModel.isContextExpanded.toggle()
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    HStack(spacing: 10) {
+                        // Category Icon Badge with Ambient Breathing Glow
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(context.category.accentColor.opacity(0.14))
+                                .frame(width: 34, height: 34)
+                            Image(systemName: context.category.iconName)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(context.category.accentColor)
+                        }
+
+                        // Summary Text Block
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(context.title)
+                                    .font(AdminType.captionBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                    .lineLimit(1)
+
+                                Text(context.category.localizedCategoryName)
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(context.category.accentColor)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(context.category.accentColor.opacity(0.12), in: Capsule())
+                            }
+
+                            HStack(spacing: 5) {
+                                Text(context.primaryMetric)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(context.category.accentColor)
+
+                                Text("•")
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+
+                                Text(context.statusText)
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(context.statusColor)
+
+                                if !context.platform.isEmpty {
+                                    Text("•")
+                                        .font(AdminType.caption2)
+                                        .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                                    Text(context.platform)
+                                        .font(AdminType.caption2)
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                            }
+                        }
+
+                        Spacer(minLength: 4)
+
+                        // Expand Chevron Indicator
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .rotationEffect(.degrees(viewModel.isContextExpanded ? 180 : 0))
+                            .frame(width: 24, height: 24)
+                            .background(AdminSurface.hairline.opacity(0.4), in: Circle())
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .padding(.vertical, 7)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                // Expanded Spatial Dossier Content
+                if viewModel.isContextExpanded {
+                    VStack(spacing: 12) {
+                        Divider().background(AdminSurface.hairline)
+
+                        // 2x2 Matrix of Key Data
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                            ForEach(context.metadataItems) { item in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(item.label)
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                    Text(item.value)
+                                        .font(AdminType.captionBold)
+                                        .foregroundColor(AdminSurface.primaryText)
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(AdminSurface.surface.opacity(0.7), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.hairline))
+                            }
+                        }
+
+                        // Action Toolbar
+                        HStack(spacing: 8) {
+                            // Copy Reference Button
+                            Button {
+                                UIPasteboard.general.string = context.referenceId
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                withAnimation { copiedNotice = true }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                                    withAnimation { copiedNotice = false }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: copiedNotice ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(copiedNotice ? supportText("Copied", "تم النسخ ✓") : supportText("SupportContext_CopyRef", "نسخ المرجع"))
+                                        .font(AdminType.caption2Bold)
+                                }
+                                .foregroundColor(copiedNotice ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                                .background(AdminSurface.surface, in: Capsule())
+                                .overlay(Capsule().stroke(copiedNotice ? Color(uiColor: .ppSuccess) : AdminSurface.hairline))
+                            }
+
+                            // Customer Call Button (if phone available)
+                            if !viewModel.customerPhone.isEmpty {
+                                Button {
+                                    if let url = URL(string: "tel:\(viewModel.customerPhone)"), UIApplication.shared.canOpenURL(url) {
+                                        UIApplication.shared.open(url)
+                                    }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "phone.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text(supportText("SupportContext_CallCustomer", "اتصال"))
+                                            .font(AdminType.caption2Bold)
+                                    }
+                                    .foregroundColor(Color(uiColor: .ppSuccess))
+                                    .padding(.horizontal, 12)
+                                    .frame(height: 32)
+                                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                                    .overlay(Capsule().stroke(Color(uiColor: .ppSuccess).opacity(0.3)))
+                                }
+                            }
+
+                            Spacer()
+
+                            // Full Preview Sheet Trigger
+                            Button {
+                                viewModel.isShowingContextDetail = true
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.system(size: 11, weight: .bold))
+                                    Text(supportText("SupportContext_ViewFull", "معاينة كاملة"))
+                                        .font(AdminType.caption2Bold)
+                                }
+                                .foregroundColor(context.category.accentColor)
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                                .background(context.category.accentColor.opacity(0.12), in: Capsule())
+                                .overlay(Capsule().stroke(context.category.accentColor.opacity(0.3)))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .padding(.bottom, 10)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AdminSurface.control.opacity(0.92))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        context.category.accentColor.opacity(0.35),
+                                        AdminSurface.hairline
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 3)
+            )
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, 4)
+            .padding(.bottom, 6)
+        }
+    }
+}
+
+// MARK: - Customer Quick Dossier Modal Sheet
+
+@available(iOS 16.0, *)
+private struct CustomerQuickDossierSheet: View {
+    @ObservedObject var viewModel: AdminSupportThreadViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Avatar & Hero Name
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(uiColor: .ppPrimary), Color(red: 0.94, green: 0.44, blue: 0.28)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 76, height: 76)
+                                .shadow(color: Color(uiColor: .ppPrimary).opacity(0.3), radius: 12, x: 0, y: 6)
+
+                            if !viewModel.customerAvatarUrl.isEmpty, let url = URL(string: viewModel.customerAvatarUrl) {
+                                AsyncImage(url: url) { phase in
+                                    if let image = phase.image {
+                                        image.resizable().scaledToFill().frame(width: 76, height: 76).clipShape(Circle())
+                                    } else {
+                                        monogramLarge
+                                    }
+                                }
+                            } else {
+                                monogramLarge
+                            }
+                        }
+
+                        VStack(spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(viewModel.customerName.isEmpty ? viewModel.title : viewModel.customerName)
+                                    .font(AdminType.title3)
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                if viewModel.isCustomerVerified {
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .foregroundColor(Color(uiColor: .ppInfo))
+                                }
+                            }
+
+                            Text(String(format: supportText("SupportDossier_ID_Format", "معرف العميل: %@"), viewModel.customerID))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                    .padding(.top, 16)
+
+                    // Quick Action Buttons (Call / WhatsApp / Copy ID)
+                    HStack(spacing: 12) {
+                        if !viewModel.customerPhone.isEmpty {
+                            Button {
+                                if let url = URL(string: "tel:\(viewModel.customerPhone)"), UIApplication.shared.canOpenURL(url) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                Label(supportText("Call", "اتصال"), systemImage: "phone.fill")
+                                    .font(AdminType.subheadlineBold)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: 12))
+                                    .foregroundColor(.white)
+                            }
+
+                            Button {
+                                let clean = viewModel.customerPhone.replacingOccurrences(of: "+", with: "").replacingOccurrences(of: " ", with: "")
+                                if let url = URL(string: "https://wa.me/\(clean)"), UIApplication.shared.canOpenURL(url) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                Label(supportText("WhatsApp", "واتساب"), systemImage: "message.fill")
+                                    .font(AdminType.subheadlineBold)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(Color(red: 0.15, green: 0.78, blue: 0.45), in: RoundedRectangle(cornerRadius: 12))
+                                    .foregroundColor(.white)
+                            }
+                        }
+
+                        Button {
+                            UIPasteboard.general.string = viewModel.customerID
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } label: {
+                            Label(supportText("CopyID", "نسخ المعرف"), systemImage: "doc.on.doc")
+                                .font(AdminType.subheadlineBold)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 44)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+
+                    // Profile Attributes List
+                    VStack(spacing: 1) {
+                        dossierRow(icon: "phone.circle.fill", label: supportText("Phone", "رقم الجوال"), value: viewModel.customerPhone.isEmpty ? supportText("NotAvailable", "غير متوفر") : viewModel.customerPhone)
+                        dossierRow(icon: "envelope.circle.fill", label: supportText("Email", "البريد الإلكتروني"), value: viewModel.customerEmail.isEmpty ? supportText("NotAvailable", "غير متوفر") : viewModel.customerEmail)
+                        dossierRow(icon: "calendar.circle.fill", label: supportText("Joined", "تاريخ الانضمام"), value: viewModel.customerJoinDate.isEmpty ? supportText("NotAvailable", "غير متوفر") : viewModel.customerJoinDate)
+                        dossierRow(icon: "shield.lefthalf.filled", label: supportText("Status", "حالة الحساب"), value: viewModel.isCustomerVerified ? supportText("Verified", "موثق ✓") : supportText("Active", "نشط"))
+                    }
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                }
+                .padding(.vertical, 16)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(supportText("CustomerProfile", "ملف العميل"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(supportText("Close", "إغلاق")) { dismiss() }
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var monogramLarge: some View {
+        Text(viewModel.customerName.prefix(1).uppercased())
+            .font(.system(size: 32, weight: .bold))
+            .foregroundColor(.white)
+    }
+
+    private func dossierRow(icon: String, label: String, value: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(Color(uiColor: .ppPrimary))
+                .frame(width: 28)
+            Text(label)
+                .font(AdminType.subheadline)
+                .foregroundColor(AdminSurface.secondaryText)
+            Spacer()
+            Text(value)
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+}
+
+// MARK: - Support Context Detail Modal Sheet
+
+@available(iOS 16.0, *)
+private struct SupportContextDetailSheet: View {
+    let context: SupportChatContextDescriptor
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header card
+                    VStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(context.category.accentColor.opacity(0.15))
+                                .frame(width: 64, height: 64)
+                            Image(systemName: context.category.iconName)
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundColor(context.category.accentColor)
+                        }
+
+                        Text(context.title)
+                            .font(AdminType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .multilineTextAlignment(.center)
+
+                        Text(context.category.localizedCategoryName)
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(context.category.accentColor)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(context.category.accentColor.opacity(0.12), in: Capsule())
+                    }
+                    .padding(.top, 16)
+
+                    // Metadata Matrix Table
+                    VStack(spacing: 1) {
+                        ForEach(context.metadataItems) { item in
+                            HStack {
+                                Text(item.label)
+                                    .font(AdminType.subheadline)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                Spacer()
+                                Text(item.value)
+                                    .font(AdminType.subheadlineBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                        }
+                    }
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+
+                    // Action Button
+                    VStack(spacing: 10) {
+                        Button {
+                            UIPasteboard.general.string = context.referenceId
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } label: {
+                            Label(supportText("SupportContext_CopyRef", "نسخ المعرف المرجعي"), systemImage: "doc.on.doc")
+                                .font(AdminType.subheadlineBold)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                }
+                .padding(.vertical, 16)
+            }
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(supportText("SupportContext_DetailTitle", "تفاصيل السياق"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(supportText("Close", "إغلاق")) { dismiss() }
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+}
+
+// MARK: - Thread View
+
+@available(iOS 16.0, *)
+struct SupportThreadView: View {
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @StateObject private var viewModel: AdminSupportThreadViewModel
+    @FocusState private var composerFocused: Bool
+
+    init(thread: SupportThread, currentUID: String, canManage: Bool) {
+        _viewModel = StateObject(wrappedValue: AdminSupportThreadViewModel(
+            thread: thread,
+            currentUID: currentUID,
+            canManage: canManage
+        ))
+    }
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // 1. Redesigned Top Bar with Name & Avatar
+                SupportThreadTopBar(viewModel: viewModel, onBack: { dismiss() })
+
+                // 2. Reimagined Chat Context Flight Deck HUD
+                SupportChatContextFlightDeck(viewModel: viewModel)
+
+                Divider().background(AdminSurface.hairline)
+
+                // 3. Message Timeline
+                timeline
+            }
+
+            if viewModel.isUpdatingStatus {
+                AdminLoadingOverlay(message: supportText("SupportChats_StatusUpdating", "جارٍ تحديث حالة المحادثة…"))
+                    .background(Color.black.opacity(0.08))
+                    .accessibilityAddTraits(.isModal)
+            }
+        }
+        .safeAreaInset(edge: .bottom) { composer }
+        .sheet(isPresented: $viewModel.isShowingCustomerDossier) {
+            CustomerQuickDossierSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isShowingContextDetail) {
+            if let context = viewModel.chatContext {
+                SupportContextDetailSheet(context: context)
+            }
+        }
+        .onAppear { viewModel.start() }
+        .onDisappear { viewModel.stop() }
+        .alert(
+            supportText("Error_Title", "خطأ"),
+            isPresented: Binding(
+                get: { viewModel.alertMessage != nil },
+                set: { if !$0 { viewModel.alertMessage = nil } }
+            )
+        ) {
+            Button(supportText("OK", "موافق")) {}
+        } message: {
+            Text(viewModel.alertMessage ?? "")
+        }
     }
 
     // MARK: Timeline

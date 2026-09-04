@@ -167,7 +167,7 @@ public struct AdminProvidersView: View {
         case .features:
             AdminLegacyViewControllerWrapper { PPProviderFeatureAccessViewController() }
         case .accounting:
-            AdminLegacyViewControllerWrapper { PPProviderAccountingViewController() }
+            AdminProviderAccountingView(isEmbeddedInTab: true)
         }
     }
 }
