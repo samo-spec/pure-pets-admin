@@ -12,6 +12,7 @@ import Combine
 import UIKit
 import Firebase
 @preconcurrency import FirebaseFirestore
+import FirebaseAuth
 
 // MARK: - Bridge Descriptor (Preserved Obj-C Contract)
 
@@ -59,11 +60,20 @@ struct AdminCommandOrbitReadiness: Equatable {
 
 struct AdminCommandOrbitSnapshot: Equatable {
     var signals: [AdminCommandOrbitSignal]
+    var displayName: String
+    var avatarURL: String
     var roleName: String
     var capabilityCount: Int
     var isInitialized: Bool
 
-    static let empty = AdminCommandOrbitSnapshot(signals: [], roleName: "", capabilityCount: 0, isInitialized: false)
+    static let empty = AdminCommandOrbitSnapshot(
+        signals: [],
+        displayName: "",
+        avatarURL: "",
+        roleName: "",
+        capabilityCount: 0,
+        isInitialized: false
+    )
 }
 
 enum AdminCommandOrbitPhase: Equatable {
@@ -120,7 +130,14 @@ final class AdminCommandCenterStore: ObservableObject {
     var onToggleLanguage: (() -> Void)?
     var onSelectTab: ((Int) -> Void)?
 
-    func apply(roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
+    func apply(
+        displayName: String?,
+        avatarURL: String?,
+        roleName: String?,
+        capabilityCount: Int,
+        signals: [AdminCommandOrbitSignalDescriptor],
+        animated: Bool
+    ) {
         let mapped = signals.prefix(6).map { descriptor in
             AdminCommandOrbitSignal(
                 id: descriptor.identifier,
@@ -135,6 +152,8 @@ final class AdminCommandCenterStore: ObservableObject {
         }
         let nextSnapshot = AdminCommandOrbitSnapshot(
             signals: mapped,
+            displayName: displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            avatarURL: avatarURL?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             roleName: roleName ?? "",
             capabilityCount: capabilityCount,
             isInitialized: true
@@ -235,8 +254,35 @@ public final class AdminCommandOrbitHostingController: UIViewController {
         hostingController = host
     }
 
+    public func applyIdentityDisplayName(
+        _ displayName: String?,
+        avatarURL: String?,
+        roleName: String?,
+        capabilityCount: Int,
+        signals: [AdminCommandOrbitSignalDescriptor],
+        animated: Bool
+    ) {
+        store.apply(
+            displayName: displayName,
+            avatarURL: avatarURL,
+            roleName: roleName,
+            capabilityCount: capabilityCount,
+            signals: signals,
+            animated: animated
+        )
+    }
+
+    /// Compatibility seam for existing Objective-C callers that do not supply
+    /// profile presentation data. It preserves the latest known identity.
     public func applyRoleName(_ roleName: String?, capabilityCount: Int, signals: [AdminCommandOrbitSignalDescriptor], animated: Bool) {
-        store.apply(roleName: roleName, capabilityCount: capabilityCount, signals: signals, animated: animated)
+        applyIdentityDisplayName(
+            store.snapshot.displayName,
+            avatarURL: store.snapshot.avatarURL,
+            roleName: roleName,
+            capabilityCount: capabilityCount,
+            signals: signals,
+            animated: animated
+        )
     }
 
     public func applyReadinessWithLoadingAreas(_ loadingAreas: [String], failedAreas: [String], updatedAt: Date?) {
@@ -365,9 +411,11 @@ private struct AdminCommandSituation: Equatable {
 
 struct AdminCommandCenterScreenView: View {
     @ObservedObject var store: AdminCommandCenterStore
+    @ObservedObject private var branchContext = BranchContextStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isShowingSourceIssueDetails = false
+    @State private var isReplacingBranchData = false
 
     private var locale: Locale {
         Locale(identifier: store.localeCode == "ar" ? "ar_QA" : "en_QA")
@@ -379,6 +427,7 @@ struct AdminCommandCenterScreenView: View {
 
     private var phase: AdminCommandOrbitPhase {
         let snapshot = store.snapshot
+        if isReplacingBranchData { return .loading }
         if !snapshot.isInitialized { return .connecting }
         if snapshot.roleName.isEmpty { return .denied }
         if !store.readiness.loadingAreas.isEmpty,
@@ -461,6 +510,8 @@ struct AdminCommandCenterScreenView: View {
 
     private func fixedNavBar(safeTop: CGFloat, isRegular: Bool) -> some View {
         CommandCenterChrome(
+            displayName: store.snapshot.displayName,
+            avatarURL: store.snapshot.avatarURL,
             roleName: roleDisplayName,
             capabilityText: capabilityText,
             readinessText: compactReadinessText,
@@ -863,6 +914,8 @@ struct AdminCommandCenterScreenView: View {
 // MARK: - Chrome
 
 private struct CommandCenterChrome: View {
+    let displayName: String
+    let avatarURL: String
     let roleName: String
     let capabilityText: String
     let readinessText: String
@@ -909,29 +962,9 @@ private struct CommandCenterChrome: View {
     private var identityButton: some View {
         Button(action: onAccount) {
             HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AdminSurface.primary.opacity(0.18),
-                                    AdminSurface.primary.opacity(0.08)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Circle()
-                        .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.0)
-                    Image(systemName: "person.crop.circle.badge.checkmark")
-                        .font(.system(size: 20, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
+                identityAvatar
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Text(Language.get("CommandCenter_Eyebrow", alter: "Pure Pets Operations"))
                             .font(AdminType.caption2Bold)
@@ -948,18 +981,93 @@ private struct CommandCenterChrome: View {
                             .lineLimit(1)
                     }
 
-                    Text(roleName)
+                    Text(resolvedDisplayName)
                         .font(AdminType.title3)
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
+
+                    Text(roleName)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
                 }
             }
         }
         .buttonStyle(CommandPressStyle())
-        .accessibilityLabel(roleName)
+        .accessibilityLabel("\(resolvedDisplayName), \(roleName)")
         .accessibilityValue(capabilityText)
         .accessibilityHint(Language.get("AdminCommandCenter_AccountHint", alter: nil))
+    }
+
+    private var identityAvatar: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AdminSurface.primary.opacity(0.18),
+                            AdminSurface.primary.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            AdminRemoteImage(
+                url: resolvedAvatarURL,
+                contentMode: .fill,
+                targetSize: CGSize(width: 44, height: 44)
+            ) {
+                Text(monogram)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(Circle())
+
+            Circle()
+                .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 1.0)
+        }
+        .frame(width: 44, height: 44)
+        .accessibilityHidden(true)
+    }
+
+    private var resolvedDisplayName: String {
+        let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? roleName : trimmedName
+    }
+
+    private var resolvedAvatarURL: URL? {
+        let trimmedURL = avatarURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedURL.isEmpty, let url = URL(string: trimmedURL) {
+            return url
+        }
+        if let user = UserManager.shared().currentUser {
+            if let photo = user.photoURL, let url = URL(string: photo), !photo.isEmpty {
+                return url
+            }
+            if let imgUrl = user.userImageUrl {
+                return imgUrl
+            }
+            if let name = user.userImageName, let url = URL(string: name), !name.isEmpty {
+                return url
+            }
+        }
+        if let staffPhoto = PPStaffAuth.shared().cachedCurrentStaff?.photoURL, let url = URL(string: staffPhoto), !staffPhoto.isEmpty {
+            return url
+        }
+        if let authPhoto = Auth.auth().currentUser?.photoURL {
+            return authPhoto
+        }
+        return nil
+    }
+
+    private var monogram: String {
+        let parts = resolvedDisplayName.split(separator: " ").prefix(2)
+        let letters = parts.compactMap(\.first).map(String.init).joined()
+        return letters.isEmpty ? "PP" : letters.uppercased()
     }
 
     private var quickControls: some View {
@@ -1358,6 +1466,8 @@ private struct CommandHeroModel: Equatable {
 }
 
 /// The dominant operational anchor of the command surface.
+/// Reimagined as the Sovereign Command Nucleus: high-density, low-vertical-footprint,
+/// multi-spectrum telemetry cockpit with integrated escalation catalyst.
 private struct CommandEscalationHero: View {
     let model: CommandHeroModel
     let isRegular: Bool
@@ -1368,94 +1478,114 @@ private struct CommandEscalationHero: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var livePulse = false
 
-    private var stacksColumns: Bool {
-        !isRegular || dynamicTypeSize.isAccessibilitySize
+    private var isAccessibilityMode: Bool {
+        dynamicTypeSize.isAccessibilitySize
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            trustLine
+        VStack(alignment: .leading, spacing: 12) {
+            telemetryHorizon
 
-            if stacksColumns {
-                VStack(alignment: .leading, spacing: 18) {
-                    loadColumn
-                    decisionColumn
-                }
+            if isRegular && !isAccessibilityMode {
+                panoramicIntelligenceDeck
             } else {
-                HStack(alignment: .top, spacing: 26) {
-                    loadColumn
-                        .frame(width: 288, alignment: .leading)
-                    decisionColumn
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                compactIntelligenceCluster
             }
 
-            authorityLedger
+            if model.primarySignal != nil {
+                actionCatalyst
+            } else if model.situation.tone == .stable {
+                stableStatusRibbon
+            }
         }
-        .padding(20)
-        .background(
-            ZStack {
-                AdminSurface.control
-
-                // Responsive radial ambient aura matching highest tone
-                RadialGradient(
-                    colors: [
-                        model.situation.tone.accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
-                        .clear
-                    ],
-                    center: .topLeading,
-                    startRadius: 0,
-                    endRadius: 280
-                )
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.06), radius: 16, x: 0, y: 6)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [
-                            model.situation.tone.accent.opacity(0.38),
-                            Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.65 : 0.40)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.0
-                )
-        )
+        .padding(14)
+        .background(heroAtmosphere)
+        .overlay(heroGlassBorder)
         .accessibilityElement(children: .contain)
     }
 
-    // MARK: Trust line
+    // MARK: - Atmospheric Canvas
+
+    private var heroAtmosphere: some View {
+        ZStack {
+            AdminSurface.control
+
+            // Directional chromatic bloom matching tone
+            RadialGradient(
+                colors: [
+                    model.situation.tone.accent.opacity(colorScheme == .dark ? 0.20 : 0.08),
+                    .clear
+                ],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 220
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.35 : 0.05), radius: 14, x: 0, y: 5)
+    }
+
+    private var heroGlassBorder: some View {
+        RoundedRectangle(cornerRadius: 20, style: .continuous)
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        model.situation.tone.accent.opacity(0.42),
+                        Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.60 : 0.35)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                lineWidth: 1.0
+            )
+    }
+
+    // MARK: - Telemetry Horizon (Top Filament)
 
     @ViewBuilder
-    private var trustLine: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 8) {
-                stateBadge
-                freshnessStamp
+    private var telemetryHorizon: some View {
+        if isAccessibilityMode {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    liveStatusBadge
+                    if let stateClass = model.stateClassLabel {
+                        stateClassTag(stateClass)
+                    }
+                }
+                HStack(spacing: 6) {
+                    freshnessTag
+                    scopeTag
+                }
             }
         } else {
-            HStack(alignment: .center, spacing: 12) {
-                stateBadge
-                Spacer(minLength: 8)
-                freshnessStamp
+            HStack(alignment: .center, spacing: 8) {
+                HStack(spacing: 6) {
+                    liveStatusBadge
+                    if let stateClass = model.stateClassLabel {
+                        stateClassTag(stateClass)
+                    }
+                }
+
+                Spacer(minLength: 4)
+
+                HStack(spacing: 6) {
+                    freshnessTag
+                    scopeTag
+                }
             }
         }
     }
 
-    private var stateBadge: some View {
-        HStack(spacing: 7) {
+    private var liveStatusBadge: some View {
+        HStack(spacing: 5) {
             liveIndicator
             Text(model.situation.badge)
                 .font(AdminType.captionBold)
                 .foregroundStyle(model.situation.tone.color)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 11)
-        .padding(.vertical, 6)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
         .background(model.situation.tone.softFill, in: Capsule(style: .continuous))
         .overlay(
             Capsule(style: .continuous)
@@ -1465,24 +1595,60 @@ private struct CommandEscalationHero: View {
         .accessibilityLabel(model.situation.badge)
     }
 
-    private var freshnessStamp: some View {
-        HStack(spacing: 6) {
+    private func stateClassTag(_ stateClass: String) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(model.situation.tone.accent)
+                .frame(width: 5, height: 5)
+                .shadow(color: model.situation.tone.accent.opacity(0.6), radius: 2, x: 0, y: 0)
+            Text(stateClass)
+                .font(AdminType.caption1Bold)
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.30 : 0.15), in: Capsule(style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("CommandCenter_Operational_State", alter: "Operational state"))
+        .accessibilityValue(stateClass)
+    }
+
+    private var freshnessTag: some View {
+        HStack(spacing: 4) {
             Image(systemName: "clock.badge.checkmark")
-                .font(.system(size: 11, weight: .semibold))
+                .font(.system(size: 10, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(AdminCommandInk.tertiary)
-                .accessibilityHidden(true)
             Text(model.updatedText)
-                .font(AdminType.caption1)
+                .font(AdminType.caption2)
                 .foregroundStyle(AdminCommandInk.secondary)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.25 : 0.12), in: Capsule(style: .continuous))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.20 : 0.10), in: Capsule(style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Language.get("CommandCenter_Last_Updated", alter: nil))
         .accessibilityValue(model.updatedText)
+    }
+
+    private var scopeTag: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "shield.checkered")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(AdminCommandInk.tertiary)
+            Text(model.capabilityText)
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.20 : 0.10), in: Capsule(style: .continuous))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("AdminCommandCenter_AccessScope", alter: nil))
+        .accessibilityValue(model.capabilityText)
     }
 
     @ViewBuilder
@@ -1490,29 +1656,25 @@ private struct CommandEscalationHero: View {
         if model.hasLiveSignal {
             ZStack {
                 Circle()
-                    .stroke(model.situation.tone.accent.opacity(0.4), lineWidth: 1.5)
-                    .frame(width: 14, height: 14)
-                    .scaleEffect(livePulse ? 1.35 : 1.0)
+                    .stroke(model.situation.tone.accent.opacity(0.4), lineWidth: 1.2)
+                    .frame(width: 12, height: 12)
+                    .scaleEffect(livePulse ? 1.4 : 1.0)
                     .opacity(livePulse ? 0.0 : 1.0)
 
                 Circle()
                     .fill(model.situation.tone.accent)
-                    .frame(width: 8, height: 8)
-                    .shadow(color: model.situation.tone.accent.opacity(0.6), radius: 3, x: 0, y: 0)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: model.situation.tone.accent.opacity(0.7), radius: 2.5, x: 0, y: 0)
             }
-            .frame(width: 14, height: 14)
+            .frame(width: 12, height: 12)
             .onAppear(perform: startLivePulse)
             .onChange(of: reduceMotion) { isReduced in
-                if isReduced {
-                    stopLivePulse()
-                } else {
-                    startLivePulse()
-                }
+                if isReduced { stopLivePulse() } else { startLivePulse() }
             }
             .accessibilityHidden(true)
         } else {
             Image(systemName: model.situation.symbol)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 11, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(model.situation.tone.accent)
                 .accessibilityHidden(true)
@@ -1534,177 +1696,203 @@ private struct CommandEscalationHero: View {
         }
     }
 
-    // MARK: Load column
+    // MARK: - Compact Intelligence Cluster (iPhone)
 
-    private var loadColumn: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("AdminCommandCenter_ActiveLoad", alter: "Active Workload"))
-                    .font(AdminType.caption1)
-                    .foregroundStyle(AdminCommandInk.tertiary)
-                    .lineLimit(1)
-                loadValue
+    private var compactIntelligenceCluster: some View {
+        HStack(alignment: .center, spacing: 12) {
+            workloadPod
+                .frame(width: 80)
+
+            VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(model.situation.title)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+
+                    Text(model.situation.detail)
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+
+                CommandLoadSpine(
+                    segments: model.segments,
+                    trackAccent: model.situation.tone.accent,
+                    showsPlaceholder: model.situation.showsProgress,
+                    reduceMotion: reduceMotion
+                )
+
+                tierLegendRow
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Language.get("AdminCommandCenter_ActiveLoad", alter: nil))
-            .accessibilityValue(model.loadAccessibilityValue)
-
-            CommandLoadSpine(
-                segments: model.segments,
-                trackAccent: model.situation.tone.accent,
-                showsPlaceholder: model.situation.showsProgress,
-                reduceMotion: reduceMotion
-            )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Language.get("AdminCommandCenter_Load_Distribution", alter: nil))
-            .accessibilityValue(model.distributionAccessibilityValue)
-
-            tierLegend
         }
     }
 
-    @ViewBuilder
-    private var loadValue: some View {
-        if model.situation.showsProgress {
-            ProgressView()
-                .tint(model.situation.tone.color)
-                .scaleEffect(1.1)
-                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-        } else if model.usesNumericLoad {
-            Text(model.totalCountText)
-                .font(dynamicTypeSize.isAccessibilitySize ? AdminType.title : AdminCommandTypography.loadValue)
-                .foregroundStyle(AdminSurface.primaryText)
-                .monospacedDigit()
-                .commandNumericTransition()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-        } else {
-            Image(systemName: model.situation.symbol)
-                .font(.system(size: 26, weight: .medium))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(model.situation.tone.accent)
-                .frame(width: 52, height: 52)
-                .background(model.situation.tone.softFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-    }
+    // MARK: - Panoramic Intelligence Deck (iPad)
 
-    @ViewBuilder
-    private var tierLegend: some View {
-        if !model.tierGroups.isEmpty {
-            let rows = legendRows
-            VStack(alignment: .leading, spacing: 8) {
-                ForEach(rows.indices, id: \.self) { index in
-                    HStack(spacing: 12) {
-                        ForEach(rows[index]) { group in
-                            legendChip(group)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                }
-            }
-        }
-    }
+    private var panoramicIntelligenceDeck: some View {
+        HStack(alignment: .center, spacing: 18) {
+            workloadPod
+                .frame(width: 100)
 
-    private var legendRows: [[CommandTierGroup]] {
-        let perRow = dynamicTypeSize.isAccessibilitySize ? 1 : 3
-        return stride(from: 0, to: model.tierGroups.count, by: perRow).map { start in
-            Array(model.tierGroups[start..<min(start + perRow, model.tierGroups.count)])
-        }
-    }
-
-    private func legendChip(_ group: CommandTierGroup) -> some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(group.accent)
-                .frame(width: 7, height: 7)
-                .shadow(color: group.accent.opacity(0.5), radius: 2, x: 0, y: 0)
-                .accessibilityHidden(true)
-            Text(group.label)
-                .font(AdminType.caption1)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-            if let countText = group.countText {
-                Text(countText)
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(group.label)
-        .commandAccessibilityValue(group.countText.map {
-            String(format: Language.get("AdminCommandCenter_Count_Format", alter: nil), $0)
-        })
-    }
-
-    // MARK: Decision column
-
-    private var decisionColumn: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(model.situation.title)
-                    .font(dynamicTypeSize.isAccessibilitySize ? AdminType.title2 : AdminCommandTypography.decisionTitle)
+                    .font(AdminType.title3)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(2)
-                    .lineSpacing(3)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
 
                 Text(model.situation.detail)
-                    .font(AdminType.callout)
+                    .font(AdminType.caption)
                     .foregroundStyle(AdminCommandInk.secondary)
-                    .lineLimit(3)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(2)
+
+                CommandLoadSpine(
+                    segments: model.segments,
+                    trackAccent: model.situation.tone.accent,
+                    showsPlaceholder: model.situation.showsProgress,
+                    reduceMotion: reduceMotion
+                )
+
+                tierLegendRow
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
+        }
+    }
 
-            if let primary = model.primarySignal {
-                commandBar(for: primary)
+    // MARK: - Workload Quantum Pod
+
+    private var workloadPod: some View {
+        VStack(spacing: 2) {
+            Text(Language.get("AdminCommandCenter_ActiveLoad", alter: "Active Workload"))
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.tertiary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+
+            if model.situation.showsProgress {
+                ProgressView()
+                    .tint(model.situation.tone.color)
+                    .scaleEffect(0.9)
+                    .frame(height: 34)
+            } else if model.usesNumericLoad {
+                Text(model.totalCountText)
+                    .font(Font.custom("Beiruti-Bold", size: 30, relativeTo: .title))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .monospacedDigit()
+                    .commandNumericTransition()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+            } else {
+                Image(systemName: model.situation.symbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(model.situation.tone.accent)
+                    .frame(height: 34)
+            }
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 6)
+        .frame(minHeight: 56)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            model.situation.tone.accent.opacity(colorScheme == .dark ? 0.16 : 0.07),
+                            AdminSurface.control.opacity(0.8)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(model.situation.tone.accent.opacity(0.24), lineWidth: 0.8)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("AdminCommandCenter_ActiveLoad", alter: nil))
+        .accessibilityValue(model.loadAccessibilityValue)
+    }
+
+    // MARK: - Tier Legend Row
+
+    @ViewBuilder
+    private var tierLegendRow: some View {
+        if !model.tierGroups.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(model.tierGroups) { group in
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(group.accent)
+                            .frame(width: 5, height: 5)
+                            .shadow(color: group.accent.opacity(0.5), radius: 1.5, x: 0, y: 0)
+                        Text(group.label)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(1)
+                        if let countText = group.countText {
+                            Text(countText)
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                        }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(group.label)
+                    .commandAccessibilityValue(group.countText.map {
+                        String(format: Language.get("AdminCommandCenter_Count_Format", alter: nil), $0)
+                    })
+                }
+                Spacer(minLength: 0)
             }
         }
     }
 
-    private func commandBar(for signal: AdminCommandOrbitSignal) -> some View {
+    // MARK: - Sovereign Action Catalyst
+
+    private func actionCatalyst(for signal: AdminCommandOrbitSignal) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onPrimary(signal)
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(Color.white.opacity(0.20))
                     Image(systemName: signal.symbolName)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: 32, height: 32)
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(model.primaryActionTitle)
-                        .font(AdminType.headline)
+                        .font(AdminType.subheadlineBold)
                         .lineLimit(1)
                         .fixedSize(horizontal: false, vertical: true)
                     Text(Language.get("AdminCommandCenter_Act", alter: "Act now"))
                         .font(AdminType.caption2)
-                        .foregroundStyle(Color.white.opacity(0.80))
+                        .foregroundStyle(Color.white.opacity(0.82))
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: 6)
+                Spacer(minLength: 4)
 
                 if let countText = model.primaryCountText {
                     Text(countText)
                         .font(AdminType.captionBold)
                         .monospacedDigit()
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 9)
-                        .frame(minHeight: 26)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
                         .background(Color.white.opacity(0.22), in: Capsule(style: .continuous))
                         .accessibilityHidden(true)
                 }
@@ -1712,19 +1900,19 @@ private struct CommandEscalationHero: View {
                 ZStack {
                     Circle()
                         .fill(Color.white.opacity(0.20))
-                        .frame(width: 26, height: 26)
+                        .frame(width: 22, height: 22)
                     Image(systemName: "chevron.forward")
-                        .font(.system(size: 11, weight: .black))
+                        .font(.system(size: 10, weight: .black))
                         .foregroundStyle(.white)
                 }
                 .accessibilityHidden(true)
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, minHeight: 52)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .frame(maxWidth: .infinity, minHeight: 46)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
@@ -1735,11 +1923,11 @@ private struct CommandEscalationHero: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                    .shadow(color: signal.tier.tone.accent.opacity(0.38), radius: 8, x: 0, y: 3)
+                    .shadow(color: signal.tier.tone.accent.opacity(0.32), radius: 6, x: 0, y: 2)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.28), lineWidth: 0.75)
             )
         }
         .buttonStyle(CommandPressStyle())
@@ -1750,56 +1938,32 @@ private struct CommandEscalationHero: View {
         .accessibilityHint(Language.get("AdminCommandCenter_OpenHint", alter: nil))
     }
 
-    // MARK: Authority ledger
-
-    private var authorityLedger: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Divider()
-
-            if let stateClassLabel = model.stateClassLabel {
-                ledgerRow(
-                    title: Language.get("CommandCenter_Operational_State", alter: "Operational state"),
-                    value: stateClassLabel,
-                    accent: model.situation.tone.accent
-                )
-            }
-
-            ledgerRow(
-                title: Language.get("AdminCommandCenter_AccessScope", alter: "Access scope"),
-                value: model.capabilityText,
-                accent: nil
-            )
+    @ViewBuilder
+    private var actionCatalyst: some View {
+        if let primary = model.primarySignal {
+            actionCatalyst(for: primary)
         }
     }
 
-    private func ledgerRow(title: String, value: String, accent: Color?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text(title)
-                .font(AdminType.caption1)
-                .foregroundStyle(AdminCommandInk.secondary)
+    private var stableStatusRibbon: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color(uiColor: .ppSuccess))
+
+            Text(model.situation.detail)
+                .font(AdminType.captionBold)
+                .foregroundStyle(Color(uiColor: .ppSuccess))
                 .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 6) {
-                if let accent = accent {
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 6, height: 6)
-                        .shadow(color: accent.opacity(0.5), radius: 2, x: 0, y: 0)
-                        .accessibilityHidden(true)
-                }
-                Text(value)
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .multilineTextAlignment(.trailing)
-            }
         }
-        .frame(minHeight: 20)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(value)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.25), lineWidth: 0.75)
+        )
     }
 }
 
@@ -1811,8 +1975,8 @@ private struct CommandLoadSpine: View {
     let showsPlaceholder: Bool
     let reduceMotion: Bool
 
-    private let gap: CGFloat = 3
-    private let minimumSegment: CGFloat = 14
+    private let gap: CGFloat = 2.5
+    private let minimumSegment: CGFloat = 10
 
     var body: some View {
         GeometryReader { proxy in
@@ -1826,15 +1990,15 @@ private struct CommandLoadSpine: View {
                         Capsule(style: .continuous)
                             .fill(segment.accent)
                             .frame(width: index < widths.count ? widths[index] : 0)
-                            .shadow(color: segment.accent.opacity(0.35), radius: 2, x: 0, y: 0)
+                            .shadow(color: segment.accent.opacity(0.35), radius: 1.5, x: 0, y: 0)
                     }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(reduceMotion ? nil : .spring(response: 0.46, dampingFraction: 0.88), value: layoutSignature)
         }
-        .frame(height: 8)
-        .background(AdminSurface.control.opacity(0.6), in: Capsule(style: .continuous))
+        .frame(height: 5)
+        .background(AdminSurface.control.opacity(0.5), in: Capsule(style: .continuous))
     }
 
     private var layoutSignature: String {
@@ -2883,10 +3047,8 @@ private final class CommandAccountingCardViewModel: ObservableObject {
     @Published private(set) var expenseCount: Int = 0
     @Published private(set) var isLoading: Bool = true
 
-    private var baseRevenue: Double = 0.0
-    private var baseOrderCount: Int = 0
-    private var workspaceFetchDate: Date = Date()
     private nonisolated(unsafe) var notificationToken: (any NSObjectProtocol)? = nil
+    private nonisolated(unsafe) var branchNotificationToken: (any NSObjectProtocol)? = nil
 
     private let service: PPAccountingService
     private nonisolated(unsafe) var listeners: [any ListenerRegistration] = []
@@ -2902,12 +3064,28 @@ private final class CommandAccountingCardViewModel: ObservableObject {
                 self?.sync()
             }
         }
+        self.branchNotificationToken = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.PPActiveBranchDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.grossRevenue = 0
+                self?.totalExpenses = 0
+                self?.paidOrderCount = 0
+                self?.expenseCount = 0
+                self?.subscribe()
+            }
+        }
         subscribe()
     }
 
     deinit {
         listeners.forEach { $0.remove() }
         if let token = notificationToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = branchNotificationToken {
             NotificationCenter.default.removeObserver(token)
         }
     }
@@ -2920,77 +3098,27 @@ private final class CommandAccountingCardViewModel: ObservableObject {
         let filter = "month"
         let wsReg = service.subscribeAccountingWorkspace(withFilter: filter) { [weak self] _ in
             Task { @MainActor in
-                guard let self else { return }
-                self.workspaceFetchDate = Date()
-                if let ws = self.service.currentWorkspace, let dash = ws.primaryDashboard {
-                    self.baseRevenue = dash.income
-                    self.baseOrderCount = ws.incomeCount
-                }
-                self.sync()
+                self?.sync()
             }
         }
-        let expReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.sync()
-            }
-        }
-        let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.sync()
-            }
-        }
-        let ordReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.sync()
-            }
-        }
-        listeners = [wsReg, expReg, txnReg, ordReg]
+        listeners = [wsReg]
         sync()
     }
 
     private func sync() {
-        // 1. Live authoritative expenses from real-time snapshot
-        let exps = service.expenses ?? []
-        if !exps.isEmpty {
-            totalExpenses = exps.reduce(0.0) { $0 + $1.amount }
-            expenseCount = exps.count
-        } else if let ws = service.currentWorkspace, let dash = ws.primaryDashboard, dash.expenses > 0 {
-            totalExpenses = dash.expenses
-            expenseCount = ws.expenseCount
-        } else {
-            totalExpenses = 0.0
+        guard let workspace = service.currentWorkspace,
+              let dashboard = workspace.primaryDashboard else {
+            grossRevenue = 0
+            totalExpenses = 0
+            paidOrderCount = 0
             expenseCount = 0
+            isLoading = false
+            return
         }
-
-        // 2. Live incremental revenue from transactions committed after baseline fetch
-        let txns = service.transactions ?? []
-        let newTransactions = txns.filter { txn in
-            guard let created = txn.createdAt else { return false }
-            return created > self.workspaceFetchDate
-        }
-        let newRevenue = newTransactions.reduce(0.0) { acc, txn in
-            let type = txn.type.lowercased()
-            if type == "refund" || type == "refunded" || type == "cancel" || type == "cancelled" {
-                return acc - txn.amount
-            } else if type == "expense" {
-                return acc
-            } else {
-                return acc + txn.amount
-            }
-        }
-
-        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
-            let confirmedIncome = max(dash.income, self.baseRevenue)
-            grossRevenue = confirmedIncome + newRevenue
-            paidOrderCount = max(ws.incomeCount, self.baseOrderCount) + newTransactions.count
-        } else {
-            grossRevenue = service.orderRevenue + newRevenue
-            paidOrderCount = service.orderCount + newTransactions.count
-        }
-
+        grossRevenue = dashboard.income
+        totalExpenses = dashboard.expenses
+        paidOrderCount = workspace.incomeCount
+        expenseCount = workspace.expenseCount
         isLoading = false
     }
 

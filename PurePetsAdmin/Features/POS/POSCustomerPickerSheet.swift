@@ -439,46 +439,27 @@ struct POSCustomerPickerSheet: View {
     // MARK: - Header Bar
 
     private var headerBar: some View {
-        HStack(spacing: 12) {
+        AdminSovereignNavigationBar(
+            title: Language.get("POS_Customer_Title", alter: "دليل وربط العملاء"),
+            subtitle: canCreateCustomer
+                ? Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة.")
+                : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة."),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            isModal: true,
+            onBack: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                dismiss()
+            }
+        ) {
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(AdminSurface.primary.opacity(0.12))
                     .frame(width: 44, height: 44)
                 Image(systemName: "person.2.badge.gearshape.fill")
-                    .font(.system(size: 20, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundColor(AdminSurface.primary)
             }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("POS_Customer_Title", alter: "دليل وربط العملاء"))
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
-                Text(
-                    canCreateCustomer
-                        ? Language.get("POS_Customer_Subtitle", alter: "اختر العميل المتاح أو أنشئ ملفاً جديداً فورياً للسلة.")
-                        : Language.get("POS_Customer_Subtitle_ReadOnly", alter: "اختر عميلاً موجوداً لإرفاقه بهذه السلة.")
-                )
-                    .font(Font.custom("Beiruti-Regular", size: 12.5, relativeTo: .caption))
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
-
-            Spacer(minLength: 8)
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 36, height: 36)
-                    .background(AdminSurface.control, in: Circle())
-            }
-            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 12)
-        .background(AdminSurface.surface)
     }
 
     // MARK: - Tab Switcher

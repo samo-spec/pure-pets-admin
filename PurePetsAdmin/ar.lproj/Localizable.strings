@@ -5492,3 +5492,21 @@
 "Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف العميل.";
 "Hotel_Err_PetNameRequired" = "يرجى إدخال اسم الحيوان الأليف.";
 "Hotel_MedicationRequiredBadge" = "يتطلب خطة أدوية مسجلة";
+
+/* ===================== POS Deep Diagnostics ===================== */
+"POS_DeepLog_Title" = "سجل التشخيص المباشر";
+"POS_DeepLog_Subtitle" = "مراقبة فورية لأحداث البيع، المخزون، والاتصال بالخادم";
+"POS_DeepLog_Total" = "إجمالي السجلات";
+"POS_DeepLog_Infos" = "معلومات";
+"POS_DeepLog_Warnings" = "تحذيرات";
+"POS_DeepLog_Errors" = "أخطاء";
+"POS_DeepLog_ActiveBranch" = "الفرع النشط";
+"POS_DeepLog_LastLatency" = "زمن المعاملة الأخير";
+"POS_DeepLog_SearchPlaceholder" = "بحث في الأحداث، الرموز، أو التفاصيل...";
+"POS_DeepLog_CopyAll" = "نسخ السجل بالكامل";
+"POS_DeepLog_Share" = "مشاركة";
+"POS_DeepLog_Clear" = "مسح السجل";
+"POS_DeepLog_CopiedToast" = "تم نسخ السجل إلى الحافظة";
+"POS_DeepLog_EmptyTitle" = "لا توجد سجلات بعد";
+"POS_DeepLog_EmptySubtitle" = "ستظهر أحداث وعمليات نقطة البيع هنا فور حدوثها.";
+"POS_DeepLog_Clear_Confirm" = "هل أنت متأكد من رغبتك في مسح جميع سجلات تشخيص نقاط البيع اللحظية؟";

@@ -1,5 +1,6 @@
 #import "PPAccountingService.h"
 #import "PPStaffAuth.h"
+#import "PPBranchContextManager.h"
 @import FirebaseFirestore;
 @import FirebaseAuth;
 @import FirebaseFunctions;
@@ -19,7 +20,21 @@ static NSString *PPAccountingNormalizePeriod(NSString *filter) {
 
 static NSString * const PPAccountingOrderScopeErrorDomain = @"PPAccountingOrderScope";
 static NSString * const PPAccountingPartialReadMarkerKey = @"PPAccountingPartialRead";
-static NSUInteger const PPAccountingScopeChunkLimit = 30;
+
+static NSString *PPAccountingSelectedBranchID(void) {
+    NSString *branchID = [PPBranchContextManager sharedManager].currentBranchID ?: @"";
+    return [branchID stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+}
+
+static NSString *PPAccountingWorkspaceCacheKey(NSString *period, NSString *branchID) {
+    return [NSString stringWithFormat:@"%@|%@", period ?: @"this_month", branchID ?: @""];
+}
+
+static NSError *PPAccountingBranchRequiredError(void) {
+    return [NSError errorWithDomain:PPAccountingOrderScopeErrorDomain
+                               code:414
+                           userInfo:@{NSLocalizedDescriptionKey: kLang(@"BranchContext_SelectBranch_Prompt")}];
+}
 
 @interface PPAccountingScopedOrderRegistration : NSObject <FIRListenerRegistration>
 @property (atomic, assign, getter=isActive) BOOL active;
@@ -85,18 +100,6 @@ static NSError *PPAccountingPartialReadError(NSError *underlyingError,
     return [NSError errorWithDomain:PPAccountingOrderScopeErrorDomain code:413 userInfo:userInfo];
 }
 
-static NSArray<NSString *> *PPAccountingCanonicalScopeIDs(PPStaffDoc *staff, NSString *key) {
-    id value = [staff.scope isKindOfClass:NSDictionary.class] ? staff.scope[key] : nil;
-    if (![value isKindOfClass:NSArray.class]) return @[];
-    NSMutableOrderedSet<NSString *> *ids = [NSMutableOrderedSet orderedSet];
-    for (id entry in (NSArray *)value) {
-        if (![entry isKindOfClass:NSString.class]) continue;
-        NSString *trimmed = [(NSString *)entry stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-        if (trimmed.length) [ids addObject:trimmed];
-    }
-    return [ids.array sortedArrayUsingSelector:@selector(compare:)];
-}
-
 static BOOL PPAccountingStaffSessionIsCurrent(PPStaffDoc *staff) {
     PPStaffDoc *current = [PPStaffAuth shared].cachedCurrentStaff;
     NSString *authUID = [FIRAuth auth].currentUser.uid;
@@ -105,49 +108,27 @@ static BOOL PPAccountingStaffSessionIsCurrent(PPStaffDoc *staff) {
 }
 
 static BOOL PPAccountingStaffHasReadableOrderScope(PPStaffDoc *staff) {
-    return (staff.isActive && (staff.isAdmin || staff.hasGlobalScope ||
-            PPAccountingCanonicalScopeIDs(staff, @"branchIds").count > 0 ||
-            PPAccountingCanonicalScopeIDs(staff, @"regionIds").count > 0));
+    NSString *branchID = PPAccountingSelectedBranchID();
+    return staff.isActive && branchID.length > 0 && [staff hasAccessToBranch:branchID];
 }
 
 static BOOL PPAccountingStaffCanReachOrder(PPStaffDoc *staff, NSDictionary *data) {
     if (!PPAccountingStaffSessionIsCurrent(staff) || ![data isKindOfClass:NSDictionary.class]) return NO;
-    if (staff.isAdmin || staff.hasGlobalScope) return YES;
+    NSString *selectedBranchID = PPAccountingSelectedBranchID();
     NSString *branchID = [data[@"branchId"] isKindOfClass:NSString.class]
         ? [(NSString *)data[@"branchId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
         : @"";
-    NSString *regionID = [data[@"regionId"] isKindOfClass:NSString.class]
-        ? [(NSString *)data[@"regionId"] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
-        : @"";
-    return ((branchID.length > 0 && [PPAccountingCanonicalScopeIDs(staff, @"branchIds") containsObject:branchID]) ||
-            (regionID.length > 0 && [PPAccountingCanonicalScopeIDs(staff, @"regionIds") containsObject:regionID]));
+    return selectedBranchID.length > 0 && [branchID isEqualToString:selectedBranchID] &&
+           [staff hasAccessToBranch:selectedBranchID];
 }
 
 static NSArray<FIRQuery *> *PPAccountingScopedOrderQueries(FIRFirestore *db, PPStaffDoc *staff) {
-    FIRCollectionReference *orders = [db collectionWithPath:@"Orders"];
-    NSMutableArray<FIRQuery *> *queries = [NSMutableArray array];
-    if (staff.isAdmin || staff.hasGlobalScope) {
-        [queries addObject:orders];
-    } else {
-        NSDictionary<NSString *, NSArray<NSString *> *> *scope = @{
-            @"branchId": PPAccountingCanonicalScopeIDs(staff, @"branchIds"),
-            @"regionId": PPAccountingCanonicalScopeIDs(staff, @"regionIds"),
-        };
-        for (NSString *field in @[@"branchId", @"regionId"]) {
-            NSArray<NSString *> *ids = scope[field];
-            for (NSUInteger offset = 0; offset < ids.count; offset += PPAccountingScopeChunkLimit) {
-                NSRange range = NSMakeRange(offset, MIN(PPAccountingScopeChunkLimit, ids.count - offset));
-                [queries addObject:[orders queryWhereField:field in:[ids subarrayWithRange:range]]];
-            }
-        }
-    }
-    NSMutableArray<FIRQuery *> *ordered = [NSMutableArray arrayWithCapacity:queries.count];
-    for (FIRQuery *baseQuery in queries) {
-        FIRQuery *query = [baseQuery queryOrderedByField:@"updatedAt" descending:YES];
-        query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
-        [ordered addObject:query];
-    }
-    return ordered.copy;
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0 || ![staff hasAccessToBranch:branchID]) return @[];
+    FIRQuery *query = [[[db collectionWithPath:@"Orders"] queryWhereField:@"branchId" isEqualTo:branchID]
+                       queryOrderedByField:@"updatedAt" descending:YES];
+    query = [query queryOrderedByFieldPath:[FIRFieldPath documentID] descending:YES];
+    return @[query];
 }
 
 static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<NSArray<FIRDocumentSnapshot *> *> *groups) {
@@ -381,15 +362,14 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 
 - (PPAccountingWorkspaceSnapshot *)currentWorkspace {
-    if (self.currentFilterKey && self.workspacesByFilter[self.currentFilterKey]) {
-        return self.workspacesByFilter[self.currentFilterKey];
-    }
-    return self.workspacesByFilter[@"this_month"] ?: self.workspacesByFilter.allValues.firstObject;
+    NSString *period = self.currentFilterKey ?: @"this_month";
+    NSString *key = PPAccountingWorkspaceCacheKey(period, PPAccountingSelectedBranchID());
+    return self.workspacesByFilter[key];
 }
 
 - (PPAccountingWorkspaceSnapshot *)workspaceForFilter:(NSString *)filter {
     NSString *period = PPAccountingNormalizePeriod(filter);
-    return self.workspacesByFilter[period];
+    return self.workspacesByFilter[PPAccountingWorkspaceCacheKey(period, PPAccountingSelectedBranchID())];
 }
 
 - (BOOL)currentStaffCanReadOrderRevenue {
@@ -427,14 +407,19 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 
 - (id<FIRListenerRegistration>)subscribeTransactionsWithFilter:(NSString *)filter callback:(void(^)(void))callback {
-    FIRFirestore *db = [FIRFirestore firestore];
-    FIRQuery *query = [[db collectionWithPath:@"transactions"] queryOrderedByField:@"createdAt" descending:YES];
-    FIRTimestamp *ts = [self timestampForFilter:filter];
-    if (ts) {
-        query = [[[db collectionWithPath:@"transactions"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts] queryOrderedByField:@"createdAt" descending:YES];
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        [self.internalTransactions removeAllObjects];
+        if (callback) callback();
+        return [PPAccountingScopedOrderRegistration new];
     }
+    FIRFirestore *db = [FIRFirestore firestore];
+    FIRQuery *query = [[db collectionWithPath:@"transactions"] queryWhereField:@"branchId" isEqualTo:branchID];
+    FIRTimestamp *ts = [self timestampForFilter:filter];
+    if (ts) query = [query queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts];
+    query = [query queryOrderedByField:@"createdAt" descending:YES];
     return [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
-        if (error) return;
+        if (error || ![PPAccountingSelectedBranchID() isEqualToString:branchID]) return;
         [self.internalTransactions removeAllObjects];
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
             [self.internalTransactions addObject:[[PPAccountingTransaction alloc] initWithDictionary:doc.data documentID:doc.documentID]];
@@ -444,14 +429,19 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 
 - (id<FIRListenerRegistration>)subscribeExpensesWithFilter:(NSString *)filter callback:(void(^)(void))callback {
-    FIRFirestore *db = [FIRFirestore firestore];
-    FIRQuery *query = [[db collectionWithPath:@"expenses"] queryOrderedByField:@"createdAt" descending:YES];
-    FIRTimestamp *ts = [self timestampForFilter:filter];
-    if (ts) {
-        query = [[[db collectionWithPath:@"expenses"] queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts] queryOrderedByField:@"createdAt" descending:YES];
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        [self.internalExpenses removeAllObjects];
+        if (callback) callback();
+        return [PPAccountingScopedOrderRegistration new];
     }
+    FIRFirestore *db = [FIRFirestore firestore];
+    FIRQuery *query = [[db collectionWithPath:@"expenses"] queryWhereField:@"branchId" isEqualTo:branchID];
+    FIRTimestamp *ts = [self timestampForFilter:filter];
+    if (ts) query = [query queryWhereField:@"createdAt" isGreaterThanOrEqualTo:ts];
+    query = [query queryOrderedByField:@"createdAt" descending:YES];
     return [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
-        if (error) return;
+        if (error || ![PPAccountingSelectedBranchID() isEqualToString:branchID]) return;
         [self.internalExpenses removeAllObjects];
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
             [self.internalExpenses addObject:[[PPAccountingExpense alloc] initWithDictionary:doc.data documentID:doc.documentID]];
@@ -555,17 +545,24 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 - (void)fetchAccountingWorkspaceWithFilter:(NSString *)filter
                                 completion:(void(^ _Nullable)(PPAccountingWorkspaceSnapshot * _Nullable snapshot, NSError * _Nullable error))completion {
     NSString *period = PPAccountingNormalizePeriod(filter);
+    NSString *branchID = PPAccountingSelectedBranchID();
     self.currentFilterKey = period;
+    if (branchID.length == 0) {
+        if (completion) completion(nil, PPAccountingBranchRequiredError());
+        return;
+    }
+    NSString *cacheKey = PPAccountingWorkspaceCacheKey(period, branchID);
     FIRFunctions *functions = [FIRFunctions functionsForRegion:@"us-central1"];
     FIRHTTPSCallable *callable = [functions HTTPSCallableWithName:@"getAccountingWorkspace"];
     NSDictionary *payload = @{
         @"period": period,
         @"pageSize": @100,
+        @"branchId": branchID,
     };
     __weak typeof(self) weakSelf = self;
     [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self) return;
+        if (!self || ![PPAccountingSelectedBranchID() isEqualToString:branchID]) return;
         if (error) {
             if (completion) completion(nil, error);
             return;
@@ -573,7 +570,7 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
         NSDictionary *data = [result.data isKindOfClass:NSDictionary.class] ? (NSDictionary *)result.data : @{};
         PPAccountingWorkspaceSnapshot *snapshot = [[PPAccountingWorkspaceSnapshot alloc] initWithDictionary:data];
         @synchronized (self.workspacesByFilter) {
-            self.workspacesByFilter[period] = snapshot;
+            self.workspacesByFilter[cacheKey] = snapshot;
         }
         if (snapshot.primaryDashboard) {
             self.internalOrderRevenue = snapshot.primaryDashboard.income;
@@ -589,24 +586,30 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
                                                               callback:(void(^)(PPAccountingWorkspaceSnapshot * _Nullable snapshot))callback {
     NSString *requestedFilter = [filter copy] ?: @"this_month";
     NSString *period = PPAccountingNormalizePeriod(requestedFilter);
+    NSString *branchID = PPAccountingSelectedBranchID();
     self.currentFilterKey = period;
+    if (branchID.length == 0) {
+        if (callback) callback(nil);
+        return [PPAccountingScopedOrderRegistration new];
+    }
 
     // 1. Initial fetch
     [self fetchAccountingWorkspaceWithFilter:requestedFilter completion:^(PPAccountingWorkspaceSnapshot * _Nullable snapshot, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (callback) callback(snapshot);
+            if ([PPAccountingSelectedBranchID() isEqualToString:branchID] && callback) callback(snapshot);
         });
     }];
 
-    // 2. Debounced refresh signal on AccountingDailySummaries, skipping the initial snapshot
+    // 2. Branch-bound refresh signal. The callable remains the authoritative projection.
     FIRFirestore *db = [FIRFirestore firestore];
-    FIRQuery *summaryQuery = [[[db collectionWithPath:@"AccountingDailySummaries"] queryOrderedByField:@"dateKey" descending:YES] queryLimitedTo:15];
+    FIRQuery *summaryQuery = [[db collectionWithPath:@"AccountingDailySummaries"] queryWhereField:@"branchId" isEqualTo:branchID];
+    summaryQuery = [summaryQuery queryLimitedTo:31];
     __weak typeof(self) weakSelf = self;
     __block BOOL isInitial = YES;
     __block BOOL debouncePending = NO;
     return [summaryQuery addSnapshotListener:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
         __strong typeof(weakSelf) self = weakSelf;
-        if (!self || error) return;
+        if (!self || error || ![PPAccountingSelectedBranchID() isEqualToString:branchID]) return;
         if (isInitial) {
             isInitial = NO;
             return;
@@ -615,6 +618,7 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
         debouncePending = YES;
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             debouncePending = NO;
+            if (![PPAccountingSelectedBranchID() isEqualToString:branchID]) return;
             [self fetchAccountingWorkspaceWithFilter:requestedFilter completion:^(PPAccountingWorkspaceSnapshot * _Nullable freshSnapshot, NSError * _Nullable err) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (callback) callback(freshSnapshot);
@@ -625,56 +629,77 @@ static NSArray<FIRDocumentSnapshot *> *PPAccountingMergeOrderDocuments(NSArray<N
 }
 
 - (void)addExpense:(double)amount category:(NSString *)category description:(NSString *)desc completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
-    FIRFirestore *db = [FIRFirestore firestore];
-    NSString *uid = [FIRAuth auth].currentUser.uid ?: @"unknown";
-    // Strictly adheres to firestore.rules: keys().hasOnly(['amount','category','description','createdAt','createdBy'])
-    __weak typeof(self) weakSelf = self;
-    [[db collectionWithPath:@"expenses"] addDocumentWithData:@{
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        if (completion) completion(PPAccountingBranchRequiredError());
+        return;
+    }
+    NSDictionary<NSString *, NSString *> *categoryMap = @{
+        @"salary": @"salaries", @"rent": @"rent", @"supplies": @"office_expenses",
+        @"utilities": @"utilities", @"marketing": @"marketing", @"logistics": @"transportation",
+        @"medical": @"other", @"maintenance": @"maintenance", @"inventory": @"equipment", @"other": @"other"
+    };
+    NSString *normalizedCategory = [category.lowercaseString stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *categoryID = categoryMap[normalizedCategory] ?: @"other";
+    NSDictionary *payload = @{
+        @"kind": @"expense",
         @"amount": @(amount),
-        @"category": category ?: @"other",
+        @"currency": @"QAR",
+        @"status": @"paid",
+        @"categoryId": categoryID,
         @"description": desc ?: @"",
-        @"createdBy": uid,
-        @"createdAt": [FIRTimestamp timestampWithDate:[NSDate date]]
-    } completion:^(NSError *error) {
-        if (!error && weakSelf) {
+        @"branchId": branchID,
+        @"idempotencyKey": NSUUID.UUID.UUIDString,
+    };
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"createAccountingDocument"];
+    __weak typeof(self) weakSelf = self;
+    [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult *result, NSError *error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!error && self && [PPAccountingSelectedBranchID() isEqualToString:branchID]) {
+            @synchronized (self.workspacesByFilter) {
+                [self.workspacesByFilter removeAllObjects];
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
             });
-            NSArray *activePeriods = nil;
-            @synchronized (weakSelf.workspacesByFilter) {
-                activePeriods = weakSelf.workspacesByFilter.allKeys.copy;
-            }
-            if (activePeriods.count) {
-                for (NSString *activePeriod in activePeriods) {
-                    [weakSelf fetchAccountingWorkspaceWithFilter:activePeriod completion:nil];
-                }
-            } else {
-                [weakSelf fetchAccountingWorkspaceWithFilter:@"this_month" completion:nil];
-            }
+            [self fetchAccountingWorkspaceWithFilter:self.currentFilterKey ?: @"this_month" completion:nil];
         }
         if (completion) completion(error);
     }];
 }
 
 - (void)deleteExpense:(NSString *)expenseID completion:(void(^ _Nullable)(NSError * _Nullable error))completion {
-    FIRFirestore *db = [FIRFirestore firestore];
+    NSString *branchID = PPAccountingSelectedBranchID();
+    if (branchID.length == 0) {
+        if (completion) completion(PPAccountingBranchRequiredError());
+        return;
+    }
+    NSString *documentID = [expenseID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (![documentID hasPrefix:@"expense_"]) {
+        NSError *error = [NSError errorWithDomain:PPAccountingOrderScopeErrorDomain
+                                             code:415
+                                         userInfo:@{NSLocalizedDescriptionKey: kLang(@"Accounting_LegacyExpenseReadOnly")}];
+        if (completion) completion(error);
+        return;
+    }
+    NSDictionary *payload = @{
+        @"documentId": documentID,
+        @"reason": @"Voided by authorized Admin operator",
+        @"branchId": branchID,
+        @"idempotencyKey": NSUUID.UUID.UUIDString,
+    };
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"voidAccountingDocument"];
     __weak typeof(self) weakSelf = self;
-    [[[db collectionWithPath:@"expenses"] documentWithPath:expenseID] deleteDocumentWithCompletion:^(NSError *error) {
-        if (!error && weakSelf) {
+    [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult *result, NSError *error) {
+        __strong typeof(weakSelf) self = weakSelf;
+        if (!error && self && [PPAccountingSelectedBranchID() isEqualToString:branchID]) {
+            @synchronized (self.workspacesByFilter) {
+                [self.workspacesByFilter removeAllObjects];
+            }
             dispatch_async(dispatch_get_main_queue(), ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAccountingDataDidChangeNotification" object:nil];
             });
-            NSArray *activePeriods = nil;
-            @synchronized (weakSelf.workspacesByFilter) {
-                activePeriods = weakSelf.workspacesByFilter.allKeys.copy;
-            }
-            if (activePeriods.count) {
-                for (NSString *activePeriod in activePeriods) {
-                    [weakSelf fetchAccountingWorkspaceWithFilter:activePeriod completion:nil];
-                }
-            } else {
-                [weakSelf fetchAccountingWorkspaceWithFilter:@"this_month" completion:nil];
-            }
+            [self fetchAccountingWorkspaceWithFilter:self.currentFilterKey ?: @"this_month" completion:nil];
         }
         if (completion) completion(error);
     }];

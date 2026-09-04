@@ -377,64 +377,29 @@ struct POSReservedLivePetsView: View {
 
     private var morphicHeader: some View {
         VStack(spacing: 0) {
-            // Title Bar
-            HStack(spacing: AdminSpacing.sm) {
-                Button {
+            AdminSovereignNavigationBar(
+                title: Language.get("POS_ReservedLivePets_Title", alter: "الحيوانات المحجوزة"),
+                subtitle: Language.get("POS_LivePets_Desk", alter: "نقطة البيع · حجوزات الحيوانات"),
+                statusDotColor: Color(uiColor: .ppSuccess),
+                isModal: true,
+                onBack: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(width: 36, height: 36)
-                        .background(.thinMaterial, in: Circle())
-                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
                 }
-                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
-
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Text(Language.get("POS_LivePets_Desk", alter: "نقطة البيع · حجوزات الحيوانات"))
-                            .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                            .foregroundColor(AdminSurface.secondaryText)
-                        // Live pulse dot
-                        Circle()
-                            .fill(Color(uiColor: .ppSuccess))
-                            .frame(width: 5, height: 5)
-                            .scaleEffect(isRefreshSpinning ? 1.6 : 1.0)
-                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: isRefreshSpinning)
-                    }
-                    Text(Language.get("POS_ReservedLivePets_Title", alter: "الحيوانات المحجوزة"))
-                        .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
-                        .foregroundColor(AdminSurface.primaryText)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button {
+            ) {
+                AdminSquircleActionButton(
+                    systemImage: "arrow.clockwise",
+                    isLoading: isRefreshSpinning || vm.isLoading,
+                    accessibilityLabel: Language.get("POS_Refresh", alter: "تحديث")
+                ) {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
-                        isRefreshSpinning = true
-                        refreshSpinAngle += 360
-                    }
+                    isRefreshSpinning = true
                     Task {
                         await vm.loadData()
                         isRefreshSpinning = false
                     }
-                } label: {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(AdminSurface.primary)
-                        .rotationEffect(.degrees(refreshSpinAngle))
-                        .animation(.spring(response: 0.6, dampingFraction: 0.5), value: refreshSpinAngle)
-                        .frame(width: 36, height: 36)
-                        .background(.thinMaterial, in: Circle())
-                        .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
                 }
-                .accessibilityLabel(Language.get("POS_Refresh", alter: "تحديث"))
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, AdminSpacing.md)
-            .padding(.bottom, AdminSpacing.sm)
 
             // Telemetry Orbit Strip
             if !vm.isLoading || !vm.items.isEmpty {

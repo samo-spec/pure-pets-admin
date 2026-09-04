@@ -131,12 +131,8 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
 - (nullable PPBranchModel *)branchWithID:(nullable NSString *)branchID {
     if (branchID.length == 0) return nil;
 
-    for (PPBranchModel *b in self.allBranches) {
-        if ([b.branchID isEqualToString:branchID] ||
-            [b.code caseInsensitiveCompare:branchID] == NSOrderedSame) {
-            return b;
-        }
-    }
+    // Resolution is intentionally constrained to the canonical approved list.
+    // Global/owner staff already receive all active branches in this list.
     for (PPBranchModel *b in self.availableBranches) {
         if ([b.branchID isEqualToString:branchID] ||
             [b.code caseInsensitiveCompare:branchID] == NSOrderedSame) {

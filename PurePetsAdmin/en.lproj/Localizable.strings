@@ -5431,3 +5431,21 @@
 "Hotel_Err_CustomerPhoneRequired" = "Please enter customer phone.";
 "Hotel_Err_PetNameRequired" = "Please enter pet name.";
 "Hotel_MedicationRequiredBadge" = "Requires Medication Plan";
+
+/* ===================== POS Deep Diagnostics ===================== */
+"POS_DeepLog_Title" = "POS Deep Diagnostics";
+"POS_DeepLog_Subtitle" = "Real-time telemetry for POS transactions, inventory, and callable states";
+"POS_DeepLog_Total" = "Total Logs";
+"POS_DeepLog_Infos" = "Infos";
+"POS_DeepLog_Warnings" = "Warnings";
+"POS_DeepLog_Errors" = "Errors";
+"POS_DeepLog_ActiveBranch" = "Active Branch";
+"POS_DeepLog_LastLatency" = "Last Txn Latency";
+"POS_DeepLog_SearchPlaceholder" = "Search events, traces, or messages...";
+"POS_DeepLog_CopyAll" = "Copy All Logs";
+"POS_DeepLog_Share" = "Share";
+"POS_DeepLog_Clear" = "Clear Logs";
+"POS_DeepLog_CopiedToast" = "Logs copied to clipboard";
+"POS_DeepLog_EmptyTitle" = "No POS logs recorded yet";
+"POS_DeepLog_EmptySubtitle" = "POS diagnostic events will appear here in real-time as operations occur.";
+"POS_DeepLog_Clear_Confirm" = "Are you sure you want to clear all real-time POS diagnostic logs?";

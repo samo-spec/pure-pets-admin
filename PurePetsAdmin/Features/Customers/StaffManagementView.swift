@@ -3113,7 +3113,18 @@ struct AdminUserPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("Staff_Picker_Title", alter: "اختيار حساب من المنصة"),
+                subtitle: String(format: Language.get("Staff_Picker_Subtitle_Count", alter: "%d مستخدم مسجل بالمنصة"), viewModel.allCustomers.count),
+                statusDotColor: Color(uiColor: .ppSuccess),
+                isModal: true,
+                onBack: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDismiss()
+                }
+            )
+
             ZStack {
                 AdminSurface.background.ignoresSafeArea()
 
@@ -3123,43 +3134,8 @@ struct AdminUserPickerSheet: View {
                     pickerUserList
                 }
             }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 1) {
-                        Text(Language.get("Staff_Picker_Title", alter: "اختيار حساب من المنصة"))
-                            .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .headline))
-                            .foregroundColor(AdminSurface.primaryText)
-
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(Color(uiColor: .ppSuccess))
-                                .frame(width: 5, height: 5)
-                            Text(String(format: Language.get("Staff_Picker_Subtitle_Count", alter: "%d مستخدم مسجل بالمنصة"), viewModel.allCustomers.count))
-                                .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                                .foregroundColor(AdminSurface.secondaryText)
-                                .monospacedDigit()
-                        }
-                    }
-                }
-
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onDismiss()
-                    } label: {
-                        Text(Language.get("Close", alter: "إغلاق"))
-                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(AdminSurface.control, in: Capsule())
-                    }
-                }
-            }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .navigationViewStyle(.stack)
     }
 
     // Search Bar

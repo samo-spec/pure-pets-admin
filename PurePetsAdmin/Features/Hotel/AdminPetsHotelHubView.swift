@@ -60,35 +60,46 @@ public struct AdminPetsHotelHubView: View {
             }
         }
         .background(AdminSurface.background.ignoresSafeArea())
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $viewModel.selectedStayDetail) { stay in
             AdminPetsHotelStayDetailSheet(stay: stay, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.selectedReservationDetail) { res in
             AdminPetsHotelReservationDetailSheet(reservation: res, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $viewModel.newReservationModalOpen) {
             AdminPetsHotelCreateReservationSheet(viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.suiteEditorModalAccommodation) { acc in
             AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $viewModel.isCreatingNewSuite) {
             AdminPetsHotelSuiteEditorSheet(accommodation: nil, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.typeEditorModalType) { type in
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: type, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(isPresented: $viewModel.isCreatingNewType) {
             AdminPetsHotelAccommodationTypeEditorSheet(accommodationType: nil, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.checkInModalReservation) { res in
             AdminPetsHotelCheckInSheet(reservation: res, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.checkOutModalStay) { stay in
             AdminPetsHotelCheckOutSheet(stay: stay, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.roomStatusModalAccommodation) { room in
             AdminPetsHotelRoomStatusSheet(room: room, viewModel: viewModel)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onAppear {
             viewModel.loadHotelOperations()
@@ -97,79 +108,28 @@ public struct AdminPetsHotelHubView: View {
 
     // MARK: - Top Navigation Bar
     private var topNavigationBar: some View {
-        HStack(spacing: 12) {
-            Button {
+        AdminSovereignNavigationBar(
+            title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"),
+            subtitle: BranchContextStore.shared.currentBranchDisplayName.isEmpty
+                ? Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر")
+                : "\(BranchContextStore.shared.currentBranchDisplayName) • مباشر",
+            statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+            onBack: {
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 44, height: 44)
-                        .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75))
-
-                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(AdminSurface.primaryText)
-                }
             }
-            .buttonStyle(PlainButtonStyle())
-            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات"))
-                        .font(Font.custom("Beiruti-Bold", size: 20))
-                        .foregroundStyle(AdminSurface.primaryText)
-
-                    // Live pulse dot
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color(red: 0.16, green: 0.78, blue: 0.48))
-                            .frame(width: 6, height: 6)
-                        Text(Language.get("LiveSync", alter: "مباشر"))
-                            .font(Font.custom("Beiruti-Bold", size: 11))
-                            .foregroundStyle(Color(red: 0.16, green: 0.78, blue: 0.48))
-                    }
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color(red: 0.16, green: 0.78, blue: 0.48).opacity(0.12), in: Capsule())
-                }
-
-                if !BranchContextStore.shared.currentBranchDisplayName.isEmpty {
-                    Text(BranchContextStore.shared.currentBranchDisplayName)
-                        .font(Font.custom("Beiruti-Medium", size: 12))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                }
-            }
-
-            Spacer()
-
-            // Refresh button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        ) {
+            AdminSquircleActionButton(
+                systemImage: "arrow.clockwise",
+                isLoading: viewModel.isLoading,
+                accessibilityLabel: Language.get("Refresh", alter: "تحديث")
+            ) {
                 viewModel.loadHotelOperations()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(AdminSurface.control)
-                        .frame(width: 44, height: 44)
-                        .overlay(Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75))
-
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-                }
             }
-            .buttonStyle(PlainButtonStyle())
-            .disabled(viewModel.isLoading)
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 8)
     }
 
     private var hotelStateBanner: some View {

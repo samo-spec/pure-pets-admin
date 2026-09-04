@@ -38,6 +38,7 @@ public struct PPAdminBranchSwitcherBar: View {
         }
         .frame(maxWidth: .infinity)
         .buttonStyle(BranchCapsulePressStyle())
+        .disabled(!canSwitchBranch)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(branchSwitcherAccessibilityLabel))
         .accessibilityValue(Text(branchSwitcherAccessibilityValue))
@@ -59,7 +60,11 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var hasResolvedContext: Bool {
-        contextStore.activeBranch != nil || contextStore.isGlobal
+        contextStore.activeBranch != nil
+    }
+
+    private var canSwitchBranch: Bool {
+        contextStore.availableBranches.count > 1
     }
 
     private var branchCode: String? {
@@ -72,9 +77,6 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchContextLabel: String {
-        if contextStore.isGlobal {
-            return Language.get("BranchContext_Global_Title", alter: "وصول شامل لكافة الفروع")
-        }
         if contextStore.activeBranch != nil {
             return Language.get("BranchContext_Current_Active", alter: "الفرع النشط حالياً")
         }
@@ -86,10 +88,7 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchSymbolName: String {
-        if contextStore.isGlobal {
-            return "globe"
-        }
-        return contextStore.activeBranch == nil ? "building.2" : "building.2.fill"
+        contextStore.activeBranch == nil ? "building.2" : "building.2.fill"
     }
 
     private var branchSwitcherAccessibilityLabel: String {
@@ -104,13 +103,20 @@ public struct PPAdminBranchSwitcherBar: View {
     }
 
     private var branchSwitcherAccessibilityHint: String {
-        Language.get(
+        if !canSwitchBranch {
+            return Language.get(
+                "BranchContext_SingleBranch_Locked",
+                alter: "هذا هو فرع العمل الوحيد المعتمد لهذا الحساب."
+            )
+        }
+        return Language.get(
             "BranchContext_Switcher_Message",
             alter: "اختر الفرع لتفعيل سياق العمليات وعرض البيانات الخاصة به."
         )
     }
 
     private func triggerTap() {
+        guard canSwitchBranch else { return }
         let feedback = UIImpactFeedbackGenerator(style: .soft)
         feedback.prepare()
         feedback.impactOccurred(intensity: 0.82)
@@ -273,9 +279,9 @@ public struct PPAdminBranchSwitcherBar: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(AdminSurface.hairline.opacity(0.86), lineWidth: AdminStroke.hairline)
 
-            Image(systemName: "chevron.up.chevron.down")
+            Image(systemName: canSwitchBranch ? "chevron.up.chevron.down" : "lock.fill")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(AdminSurface.primary)
+                .foregroundStyle(canSwitchBranch ? AdminSurface.primary : AdminSurface.secondaryText)
         }
         .frame(width: 34, height: 38)
         .accessibilityHidden(true)

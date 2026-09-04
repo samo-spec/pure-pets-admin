@@ -282,6 +282,91 @@ public struct AdminSquircleBackButton: View {
     }
 }
 
+/// Flagship 44x44 continuous squircle close button matching the Sovereign Design System for modals and sheets.
+public struct AdminSquircleCloseButton: View {
+    public var action: () -> Void
+
+    public init(action: @escaping () -> Void) {
+        self.action = action
+    }
+
+    public var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                    )
+                Image(systemName: "xmark")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+    }
+}
+
+/// Sovereign 44x44 continuous squircle action button matching AdminSquircleBackButton.
+public struct AdminSquircleActionButton: View {
+    public let systemImage: String
+    public var isLoading: Bool
+    public var accessibilityLabel: String?
+    public var tintColor: Color?
+    public var action: () -> Void
+
+    public init(
+        systemImage: String,
+        isLoading: Bool = false,
+        accessibilityLabel: String? = nil,
+        tintColor: Color? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.systemImage = systemImage
+        self.isLoading = isLoading
+        self.accessibilityLabel = accessibilityLabel
+        self.tintColor = tintColor
+        self.action = action
+    }
+
+    public var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                    )
+                if isLoading {
+                    ProgressView()
+                        .tint(tintColor ?? AdminSurface.primary)
+                        .scaleEffect(0.85)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(tintColor ?? AdminSurface.primaryText)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoading)
+        .accessibilityLabel(accessibilityLabel ?? systemImage)
+    }
+}
+
 /// Signature pill action button (e.g. "✓ حفظ" Save pill) with brand glow shadow.
 public struct AdminPrimaryPillButton: View {
     public let title: String
@@ -332,6 +417,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
     public let title: String
     public var subtitle: String?
     public var statusDotColor: Color?
+    public var isModal: Bool
     public var onBack: () -> Void
     public let trailingContent: TrailingContent
 
@@ -339,12 +425,14 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         title: String,
         subtitle: String? = nil,
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
+        isModal: Bool = false,
         onBack: @escaping () -> Void,
         @ViewBuilder trailingContent: () -> TrailingContent
     ) {
         self.title = title
         self.subtitle = subtitle
         self.statusDotColor = statusDotColor
+        self.isModal = isModal
         self.onBack = onBack
         self.trailingContent = trailingContent()
     }
@@ -352,7 +440,11 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
     public var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                AdminSquircleBackButton(action: onBack)
+                if isModal {
+                    AdminSquircleCloseButton(action: onBack)
+                } else {
+                    AdminSquircleBackButton(action: onBack)
+                }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
@@ -395,12 +487,14 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
         title: String,
         subtitle: String? = nil,
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
+        isModal: Bool = false,
         onBack: @escaping () -> Void
     ) {
         self.init(
             title: title,
             subtitle: subtitle,
             statusDotColor: statusDotColor,
+            isModal: isModal,
             onBack: onBack,
             trailingContent: { EmptyView() }
         )

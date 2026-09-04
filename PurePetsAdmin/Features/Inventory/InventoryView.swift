@@ -9,6 +9,7 @@
 
 import SwiftUI
 import Combine
+import FirebaseFirestore
 
 // MARK: - Inventory Kind
 
@@ -62,11 +63,17 @@ final class InventoryViewModel: ObservableObject {
     @Published var showLowStockOnly = false
 
     let kind: InventoryKind
-    private var listener: AnyObject?
+    private var listener: (any ListenerRegistration)?
     private var cancellables = Set<AnyCancellable>()
 
+    private var branchScopedItems: [PetAccessory] {
+        guard PPBranchInventoryService.shared.currentBranchId?.isEmpty == false else { return [] }
+        let productIDs = Set(PPBranchInventoryService.shared.inventoryMap.keys)
+        return items.filter { productIDs.contains($0.accessoryID) }
+    }
+
     var filteredItems: [PetAccessory] {
-        var result = items
+        var result = branchScopedItems
         if showInStockOnly {
             result = result.filter {
                 let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
@@ -99,15 +106,15 @@ final class InventoryViewModel: ObservableObject {
         return result
     }
 
-    var totalCount: Int { items.count }
+    var totalCount: Int { branchScopedItems.count }
     var inStockCount: Int {
-        items.filter {
+        branchScopedItems.filter {
             let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
             return stock > 0 && !$0.noStock
         }.count
     }
     var lowStockCount: Int {
-        items.filter {
+        branchScopedItems.filter {
             let stock = PPBranchInventoryService.shared.availableStock(for: $0.accessoryID, fallback: $0.quantity)
             return stock <= 3 || $0.noStock
         }.count
@@ -123,6 +130,9 @@ final class InventoryViewModel: ObservableObject {
     }
 
     func startListening() {
+        listener?.remove()
+        listener = nil
+        cancellables.removeAll()
         isLoading = true
         errorMessage = nil
 
@@ -164,9 +174,7 @@ final class InventoryViewModel: ObservableObject {
     }
 
     func stopListening() {
-        if let reg = listener as? NSObjectProtocol {
-            NotificationCenter.default.removeObserver(reg)
-        }
+        listener?.remove()
         listener = nil
         cancellables.removeAll()
     }

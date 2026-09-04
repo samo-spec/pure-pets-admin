@@ -1561,9 +1561,12 @@ public struct PPInventoryListView: View {
     // MARK: - Sovereign Header Bar
 
     private var sovereignHeaderBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center) {
-                Button(action: {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            AdminSovereignNavigationBar(
+                title: viewModel.navigationTitle,
+                subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + (viewModel.totalCount > 0 ? " • " + String(format: Language.get("Total_Items_Format", alter: "%d صنف مسجل"), viewModel.totalCount) : ""),
+                statusDotColor: Color(uiColor: .ppSuccess),
+                onBack: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     if let onDismiss = onDismiss {
                         onDismiss()
@@ -1571,88 +1574,26 @@ public struct PPInventoryListView: View {
                         dismiss()
                         PPAdminNavigationFallback.popOrDismiss()
                     }
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                            .font(.system(size: 15, weight: .bold))
-                        Text(Language.get("Back", alter: "رجوع"))
-                            .font(AdminType.calloutBold)
-                    }
-                    .foregroundColor(AdminSurface.primaryText)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(AdminSurface.control, in: Capsule(style: .continuous))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
-                    )
                 }
-                .buttonStyle(CatalogPressStyle())
-                .contentShape(Rectangle())
-
-                Spacer()
-
-                // Add (+) Button
-                Button(action: {
+            ) {
+                AdminPrimaryPillButton(
+                    title: Language.get("Add", alter: "إضافة منتج"),
+                    systemImage: "plus"
+                ) {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     let addVC = AddAccessoryViewController(accessory: nil)
                     addVC.showTypeRow = false
                     addVC.defaultKind = viewModel.currentKind
                     onPushViewController(addVC)
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 13, weight: .bold))
-                        Text(Language.get("Add", alter: "إضافة منتج"))
-                            .font(AdminType.captionBold)
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        in: Capsule(style: .continuous)
-                    )
-                    .shadow(color: AdminSurface.primary.opacity(0.35), radius: 8, x: 0, y: 3)
-                }
-                .buttonStyle(CatalogPressStyle())
-                .accessibilityLabel(Language.get("Add", alter: "إضافة"))
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + " / " + viewModel.navigationTitle)
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminCommandInk.secondary)
-
-                HStack {
-                    Text(viewModel.navigationTitle)
-                        .font(AdminType.title2)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Spacer()
-
-                    Text(String(format: Language.get("Total_Items_Format", alter: "%d صنف مسجل"), viewModel.totalCount))
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(AdminSurface.primary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(AdminSurface.primary.opacity(0.10), in: Capsule())
                 }
             }
-            .padding(.top, 2)
 
             if let error = viewModel.errorMessage {
                 AdminErrorBanner(message: error) { viewModel.startListening() }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
     }
 
     // MARK: - Catalog Horizon Switcher (Tabs)
@@ -2707,40 +2648,30 @@ public struct PPInventoryItemDetailView: View {
 
     private var apexNavigationBar: some View {
         HStack(alignment: .center, spacing: 12) {
-            // Dismiss / Close Jewel (Leading in RTL / Right side physically)
-            Button {
+            AdminSquircleCloseButton {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onDismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 38, height: 38)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
-                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
             }
-            .buttonStyle(CatalogPressStyle())
-            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
 
-            Spacer(minLength: AdminSpacing.xs)
-
-            // Center Header Title & Specimen Lineage in Brand Typography
-            VStack(spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(Language.get("ItemDetails", alter: "تفاصيل الصنف"))
-                    .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                    .font(AdminType.title3)
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
-                Text(item.name)
-                    .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(item.noStock || item.quantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .frame(width: 6, height: 6)
+                    Text(item.name)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
             }
-            .frame(maxWidth: 200)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: AdminSpacing.xs)
-
-            // Quick Actions / Edit Jewel (Trailing in RTL / Left side physically)
+            // Quick Actions / Edit Jewel
             Menu {
                 Button {
                     onOpenFullEditor()
@@ -2784,15 +2715,20 @@ public struct PPInventoryItemDetailView: View {
                     Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
                 }
             } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-                    .frame(width: 38, height: 38)
-                    .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                    .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
-                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .frame(width: 44, height: 44)
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
             }
-            .buttonStyle(CatalogPressStyle())
             .accessibilityLabel(Language.get("Edit", alter: "تعديل الصنف"))
         }
         .padding(.vertical, 4)
@@ -4296,19 +4232,11 @@ private struct PPLivePetOperationSheet: View {
                         .foregroundStyle(AdminSurface.primaryText)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    AdminSquircleCloseButton {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(width: 32, height: 32)
-                            .background(AdminSurface.control, in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                     }
                     .disabled(model.isMutating)
-                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
                 }
             }
         }
@@ -5396,18 +5324,10 @@ private struct PPBranchSelectionStudioSheet: View {
                         .foregroundStyle(AdminSurface.primaryText)
                 }
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
+                    AdminSquircleCloseButton {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(width: 32, height: 32)
-                            .background(AdminSurface.control, in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                     }
-                    .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
                 }
             }
         }

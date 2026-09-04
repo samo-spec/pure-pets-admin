@@ -204,10 +204,8 @@ final class AccountingViewModel: ObservableObject {
     // Operational Feedback
     @Published var toastMessage: String? = nil
 
-    private var baseRevenue: Double = 0.0
-    private var baseOrderCount: Int = 0
-    private var workspaceFetchDate: Date = Date()
     private nonisolated(unsafe) var notificationToken: (any NSObjectProtocol)? = nil
+    private nonisolated(unsafe) var branchNotificationToken: (any NSObjectProtocol)? = nil
 
     private let service: PPAccountingService
     private nonisolated(unsafe) var listeners: [any ListenerRegistration] = []
@@ -223,12 +221,28 @@ final class AccountingViewModel: ObservableObject {
                 self?.syncFromService()
             }
         }
+        self.branchNotificationToken = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.PPActiveBranchDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.transactions = []
+                self?.expenses = []
+                self?.grossRevenue = 0
+                self?.paidOrderCount = 0
+                self?.subscribeToData()
+            }
+        }
         subscribeToData()
     }
 
     deinit {
         listeners.forEach { $0.remove() }
         if let token = notificationToken {
+            NotificationCenter.default.removeObserver(token)
+        }
+        if let token = branchNotificationToken {
             NotificationCenter.default.removeObserver(token)
         }
     }
@@ -243,70 +257,55 @@ final class AccountingViewModel: ObservableObject {
         let wsReg = service.subscribeAccountingWorkspace(withFilter: filter) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                self.workspaceFetchDate = Date()
-                if let ws = self.service.currentWorkspace, let dash = ws.primaryDashboard {
-                    self.baseRevenue = dash.income
-                    self.baseOrderCount = ws.incomeCount
-                }
                 self.syncFromService()
             }
         }
 
-        let txnReg = service.subscribeTransactions(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.syncFromService()
-            }
-        }
-
-        let expReg = service.subscribeExpenses(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.syncFromService()
-            }
-        }
-
-        let ordReg = service.subscribeOrderRevenue(withFilter: filter) { [weak self] in
-            Task { @MainActor in
-                guard let self else { return }
-                self.syncFromService()
-            }
-        }
-
-        listeners = [wsReg, txnReg, expReg, ordReg]
+        listeners = [wsReg]
     }
 
     private func syncFromService() {
-        transactions = service.transactions
-        expenses = service.expenses
-        evidenceAvailable = service.orderRevenueEvidenceAvailable
-        evidenceErrorDescription = service.orderRevenueError?.localizedDescription
-
-        // Live incremental revenue from transactions committed after baseline fetch
-        let newTransactions = transactions.filter { txn in
-            guard let created = txn.createdAt else { return false }
-            return created > self.workspaceFetchDate
-        }
-        let newTransactionRevenue = newTransactions.reduce(0.0) { acc, txn in
-            let type = txn.type.lowercased()
-            if type == "refund" || type == "refunded" || type == "cancel" || type == "cancelled" {
-                return acc - txn.amount
-            } else if type == "expense" {
-                return acc
-            } else {
-                return acc + txn.amount
-            }
+        guard let workspace = service.currentWorkspace else {
+            transactions = []
+            expenses = []
+            grossRevenue = 0
+            paidOrderCount = 0
+            evidenceAvailable = false
+            evidenceErrorDescription = Language.get("Accounting_BranchDataUnavailable", alter: "بيانات الفرع المحدد غير متاحة حالياً")
+            isLoading = false
+            isRefreshing = false
+            return
         }
 
-        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
-            let confirmedIncome = max(dash.income, self.baseRevenue)
-            grossRevenue = confirmedIncome + newTransactionRevenue
-            paidOrderCount = max(ws.incomeCount, self.baseOrderCount) + newTransactions.count
+        transactions = workspace.documents.compactMap { document in
+            guard document.kind == "income" || document.kind == "reversal" else { return nil }
+            let transaction = PPAccountingTransaction()
+            transaction.txnID = document.documentID
+            transaction.amount = document.total
+            transaction.type = document.kind == "reversal" ? "refund" : "income"
+            transaction.desc = document.descriptionText ?? document.documentNumber
+            return transaction
+        }
+        expenses = workspace.documents.compactMap { document in
+            guard document.kind == "expense" else { return nil }
+            let expense = PPAccountingExpense()
+            expense.expenseID = document.documentID
+            expense.amount = document.total
+            expense.category = document.categoryId ?? "other"
+            expense.desc = document.descriptionText ?? document.documentNumber
+            expense.createdBy = ""
+            return expense
+        }
+
+        if let dashboard = workspace.primaryDashboard {
+            grossRevenue = dashboard.income
+            paidOrderCount = workspace.incomeCount
         } else {
-            grossRevenue = service.orderRevenue + newTransactionRevenue
-            paidOrderCount = service.orderCount + newTransactions.count
+            grossRevenue = 0
+            paidOrderCount = 0
         }
-
+        evidenceAvailable = true
+        evidenceErrorDescription = nil
         isLoading = false
         isRefreshing = false
     }
@@ -319,14 +318,10 @@ final class AccountingViewModel: ObservableObject {
     // MARK: - Computed Financial Analytics
 
     var totalExpenses: Double {
-        let liveExpensesSum = expenses.reduce(0.0) { $0 + $1.amount }
-        if !expenses.isEmpty {
-            return liveExpensesSum
-        }
-        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard, dash.expenses > 0 {
+        if let ws = service.currentWorkspace, let dash = ws.primaryDashboard {
             return dash.expenses
         }
-        return 0.0
+        return expenses.reduce(0.0) { $0 + $1.amount }
     }
 
     var netProfit: Double {

@@ -24,6 +24,62 @@ import Combine
 /// Mirrors the Infra/Console `LIVE_PET_INVENTORY_MODE.individual` token.
 private let kPOSIndividualInventoryMode = "INDIVIDUAL_TRACKED"
 
+// MARK: - POS Swift Diagnostic Logger Bridge
+
+enum POSLogger {
+    static func debug(_ event: String, category: String = "ui", message: String, metadata: [String: Any]? = nil) {
+        PPPOSLogger.shared().logLevel(
+            .debug,
+            category: category,
+            event: event,
+            message: message,
+            traceID: nil,
+            durationMs: -1,
+            metadata: metadata
+        )
+    }
+
+    static func info(_ event: String, category: String = "ui", traceID: String? = nil, durationMs: Int = -1, message: String, metadata: [String: Any]? = nil) {
+        PPPOSLogger.shared().logLevel(
+            .info,
+            category: category,
+            event: event,
+            message: message,
+            traceID: traceID,
+            durationMs: durationMs,
+            metadata: metadata
+        )
+    }
+
+    static func warn(_ event: String, category: String = "ui", traceID: String? = nil, message: String, metadata: [String: Any]? = nil) {
+        PPPOSLogger.shared().logLevel(
+            .warning,
+            category: category,
+            event: event,
+            message: message,
+            traceID: traceID,
+            durationMs: -1,
+            metadata: metadata
+        )
+    }
+
+    static func error(_ event: String, category: String = "ui", traceID: String? = nil, durationMs: Int = -1, error: Error? = nil, message: String, metadata: [String: Any]? = nil) {
+        var combined = metadata ?? [:]
+        if let error {
+            combined["errorDescription"] = error.localizedDescription
+        }
+        PPPOSLogger.shared().logLevel(
+            .error,
+            category: category,
+            event: event,
+            message: message,
+            traceID: traceID,
+            durationMs: durationMs,
+            metadata: combined
+        )
+    }
+}
+
 private enum POSFastSellSpace {
     static let root = "pos.fastsell.root"
 }
@@ -203,6 +259,14 @@ struct POSDiscount: Equatable {
         case .fixedAmount:
             return "-\(String(format: "%.2f", value)) ر.ق"
         }
+    }
+
+    var isPercentage: Bool {
+        type == .percentage
+    }
+
+    func displayLabel(subtotal: Double) -> String {
+        displayBadge(subtotal: subtotal)
     }
 }
 
@@ -415,17 +479,32 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     func clearSelectedCustomer() {
+        if let prev = selectedCustomer {
+            POSLogger.info("customer.cleared", category: "customer", message: "Cleared selected customer '\(prev.name)'")
+        }
         selectedCustomer = nil
         invalidateSubmissionCommand()
     }
 
     func applyDiscount(_ discount: POSDiscount?) {
         appliedDiscount = discount
+        if let d = discount {
+            POSLogger.info("discount.applied", category: "pricing", message: "Applied discount: \(d.displayLabel(subtotal: cartSubtotal)) (Amount: \(discountAmount) QAR, Final Total: \(cartTotal) QAR)", metadata: [
+                "isPercent": d.isPercentage,
+                "value": d.value,
+                "deduction": discountAmount,
+                "cartTotal": cartTotal
+            ])
+        } else {
+            POSLogger.info("discount.cleared", category: "pricing", message: "Discount cleared from cart")
+        }
         invalidateSubmissionCommand()
     }
 
     func clearDiscount() {
+        guard appliedDiscount != nil else { return }
         appliedDiscount = nil
+        POSLogger.info("discount.cleared", category: "pricing", message: "Discount cleared from cart (Total: \(cartTotal) QAR)")
         invalidateSubmissionCommand()
     }
 
@@ -512,6 +591,7 @@ final class POSFastSellViewModel: ObservableObject {
         listener = nil
         isCatalogLoading = allAccessories.isEmpty
         catalogErrorMessage = nil
+        POSLogger.info("catalog.listener.started", category: "catalog", message: "Starting PetAccessory catalog listener")
 
         listener = AccessoryManager.shared().observeAllAccessories { [weak self] items, error in
             let projectedItems = items ?? []
@@ -521,6 +601,7 @@ final class POSFastSellViewModel: ObservableObject {
                 self.isCatalogLoading = false
                 if let projectedError {
                     self.catalogErrorMessage = projectedError
+                    POSLogger.error("catalog.listener.error", category: "catalog", message: "Catalog listener failed: \(projectedError)")
                     return
                 }
                 self.catalogErrorMessage = nil
@@ -532,11 +613,18 @@ final class POSFastSellViewModel: ObservableObject {
                     }
                     return a.accessoryID > b.accessoryID
                 }
+                let sellableCount = self.allAccessories.filter { $0.pos_isSellable }.count
+                POSLogger.info("catalog.snapshot.received", category: "catalog", message: "Catalog loaded: \(self.allAccessories.count) items (\(sellableCount) sellable in active branch)", metadata: [
+                    "total": self.allAccessories.count,
+                    "sellable": sellableCount,
+                    "branchId": BranchContextStore.shared.activeBranch?.branchID ?? "none"
+                ])
             }
         }
     }
 
     func retryCatalog() {
+        POSLogger.info("catalog.retry", category: "catalog", message: "Retrying catalog listener")
         startListening()
     }
 
@@ -559,14 +647,38 @@ final class POSFastSellViewModel: ObservableObject {
     /// - Returns: `true` when the cart actually changed.
     @discardableResult
     func addToCart(_ accessory: PetAccessory) -> Bool {
-        guard accessory.pos_isSellable else { return false }
+        guard accessory.pos_isSellable else {
+            POSLogger.warn("cart.add_rejected", category: "cart", message: "Cannot add '\(accessory.name)': not sellable in active branch", metadata: [
+                "productId": accessory.accessoryID,
+                "name": accessory.name
+            ])
+            return false
+        }
         let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
         if let idx = cartIndex(for: accessory.accessoryID) {
-            guard cartItems[idx].quantity < branchStock else { return false }
+            guard cartItems[idx].quantity < branchStock else {
+                POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add more '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
+                    "productId": accessory.accessoryID,
+                    "quantity": cartItems[idx].quantity,
+                    "stock": branchStock
+                ])
+                return false
+            }
             cartItems[idx].quantity += 1
+            POSLogger.info("cart.quantity_incremented", category: "cart", message: "Incremented '\(accessory.name)' to \(cartItems[idx].quantity) (Subtotal: \(cartSubtotal) QAR)", metadata: [
+                "productId": accessory.accessoryID,
+                "quantity": cartItems[idx].quantity,
+                "cartTotal": cartTotal
+            ])
         } else {
             guard branchStock > 0 else { return false }
             cartItems.append(POSCartItem(accessory: accessory, quantity: 1))
+            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(accessory.pos_canonicalUnitPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
+                "productId": accessory.accessoryID,
+                "name": accessory.name,
+                "unitPrice": accessory.pos_canonicalUnitPrice,
+                "cartTotal": cartTotal
+            ])
         }
         invalidateSubmissionCommand()
         return true
@@ -578,6 +690,7 @@ final class POSFastSellViewModel: ObservableObject {
         let unitIDs = units.map { $0.unitID }
         let ringTags = units.map { $0.label }
         let prices: [[String: Any]] = units.map { ["unitId": $0.unitID, "unitPrice": $0.sellingPrice] }
+        let lineTotal = prices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
 
         if let idx = cartIndex(for: product.accessoryID) {
             cartItems[idx].inventoryMode = kPOSIndividualInventoryMode
@@ -593,6 +706,13 @@ final class POSFastSellViewModel: ObservableObject {
             item.unitPrices = prices
             cartItems.append(item)
         }
+        POSLogger.info("cart.exact_units_bound", category: "cart", message: "Bound \(unitIDs.count) exact live units to '\(product.name)' (Line Total: \(lineTotal) QAR)", metadata: [
+            "productId": product.accessoryID,
+            "unitIds": unitIDs,
+            "ringTags": ringTags,
+            "lineTotal": lineTotal,
+            "cartTotal": cartTotal
+        ])
         invalidateSubmissionCommand()
     }
 
@@ -600,14 +720,22 @@ final class POSFastSellViewModel: ObservableObject {
         let previousCount = cartItems.count
         cartItems.removeAll { $0.id == item.id }
         if cartItems.count != previousCount {
+            POSLogger.info("cart.item_removed", category: "cart", message: "Removed '\(item.accessory.name)' from cart", metadata: [
+                "productId": item.accessory.accessoryID,
+                "remainingItems": cartItems.count,
+                "cartTotal": cartTotal
+            ])
             invalidateSubmissionCommand()
         }
     }
 
     func clearCart() {
         guard !cartItems.isEmpty else { return }
+        let count = cartItems.count
+        let total = cartTotal
         cartItems = []
         appliedDiscount = nil
+        POSLogger.info("cart.cleared", category: "cart", message: "Cleared cart (\(count) items, previously \(total) QAR)")
         invalidateSubmissionCommand()
     }
 
@@ -638,6 +766,12 @@ final class POSFastSellViewModel: ObservableObject {
             )
             cartItems.append(item)
         }
+        POSLogger.info("cart.reserved_unit_added", category: "cart", message: "Added reserved unit '\(ringTag.isEmpty ? unitID : ringTag)' for '\(accessory.name)' (Agreed: \(agreedPrice) QAR)", metadata: [
+            "productId": accessory.accessoryID,
+            "unitId": unitID,
+            "ringTag": ringTag,
+            "agreedPrice": agreedPrice
+        ])
     }
 
     func increaseQuantity(_ item: POSCartItem) {
@@ -646,6 +780,10 @@ final class POSFastSellViewModel: ObservableObject {
         let branchStock = PPBranchInventoryService.shared.availableStock(for: cartItems[idx].accessory.accessoryID, fallback: cartItems[idx].accessory.quantity)
         guard cartItems[idx].quantity < branchStock else { return }
         cartItems[idx].quantity += 1
+        POSLogger.info("cart.quantity_increased", category: "cart", message: "Increased '\(item.accessory.name)' quantity to \(cartItems[idx].quantity)", metadata: [
+            "productId": item.accessory.accessoryID,
+            "quantity": cartItems[idx].quantity
+        ])
         invalidateSubmissionCommand()
     }
 
@@ -665,13 +803,23 @@ final class POSFastSellViewModel: ObservableObject {
                 }
                 cartItems[idx].quantity = cartItems[idx].unitIDs.count
             }
+            POSLogger.info("cart.exact_unit_dropped", category: "cart", message: "Dropped one exact unit from '\(item.accessory.name)'", metadata: [
+                "productId": item.accessory.accessoryID
+            ])
             invalidateSubmissionCommand()
             return
         }
         if cartItems[idx].quantity > 1 {
             cartItems[idx].quantity -= 1
+            POSLogger.info("cart.quantity_decreased", category: "cart", message: "Decreased '\(item.accessory.name)' to \(cartItems[idx].quantity)", metadata: [
+                "productId": item.accessory.accessoryID,
+                "quantity": cartItems[idx].quantity
+            ])
         } else {
             cartItems.remove(at: idx)
+            POSLogger.info("cart.item_removed", category: "cart", message: "Removed '\(item.accessory.name)' from cart", metadata: [
+                "productId": item.accessory.accessoryID
+            ])
         }
         invalidateSubmissionCommand()
     }
@@ -679,7 +827,9 @@ final class POSFastSellViewModel: ObservableObject {
     func selectPaymentMethod(_ paymentMethod: String) {
         guard paymentMethods.contains(where: { $0.key == paymentMethod }) else { return }
         guard selectedPaymentMethod != paymentMethod else { return }
+        let previous = selectedPaymentMethod
         selectedPaymentMethod = paymentMethod
+        POSLogger.info("payment.method_changed", category: "payment", message: "Switched payment method from \(previous) to \(paymentMethod)")
         invalidateSubmissionCommand()
     }
 
@@ -769,6 +919,17 @@ final class POSFastSellViewModel: ObservableObject {
         let posCustomerID = selectedCustomer?.id
         let activeBranchId = BranchContextStore.shared.activeBranch?.branchID
 
+        POSLogger.info("checkout.initiated", category: "checkout", traceID: commandID, message: "Initiating checkout: \(items.count) line items (Total: \(cartTotal) QAR via \(selectedPaymentMethod))", metadata: [
+            "commandId": commandID,
+            "itemsCount": items.count,
+            "subtotal": cartSubtotal,
+            "discount": discountAmount,
+            "total": cartTotal,
+            "paymentMethod": selectedPaymentMethod,
+            "acceptedCash": acceptedCash,
+            "branchId": activeBranchId ?? "none"
+        ])
+
         PPPOSService.shared().submitPOSOrder(
             withItems: items,
             subtotal: cartSubtotal,
@@ -792,6 +953,13 @@ final class POSFastSellViewModel: ObservableObject {
                 guard let self, self.submissionCommandID == commandID else { return }
                 if let failure {
                     self.isSubmitting = false
+                    POSLogger.error("checkout.failed", category: "checkout", traceID: commandID, message: "Checkout failed: \(failure.serverMessage)", metadata: [
+                        "domainCode": failure.domainCode,
+                        "productId": failure.productID,
+                        "unitId": failure.unitID,
+                        "ringTag": failure.ringTag,
+                        "functionsCode": failure.functionsCode
+                    ])
                     // The server names the offending animal; drop those lines so
                     // the operator reselects instead of retrying a dead unit.
                     if self.discardStaleExactUnits(
@@ -809,11 +977,19 @@ final class POSFastSellViewModel: ObservableObject {
 
                 guard !transactionID.isEmpty else {
                     self.isSubmitting = false
+                    POSLogger.error("checkout.missing_txnid", category: "checkout", traceID: commandID, message: "Server did not return a valid transaction ID")
                     // The server may already have committed the command. Keep
                     // its ID so Retry is idempotent instead of creating a sale.
                     self.submitError = Language.get("POS_SubmitFailed", alter: "تعذر إتمام عملية البيع. حاول مرة أخرى.")
                     return
                 }
+
+                POSLogger.info("checkout.success", category: "checkout", traceID: commandID, message: "Sale committed with txn: \(transactionID) (Total: \(serverTotal) \(serverCurrency))", metadata: [
+                    "transactionId": transactionID,
+                    "serverTotal": serverTotal,
+                    "serverCurrency": serverCurrency,
+                    "paymentMethod": self.selectedPaymentMethod
+                ])
 
                 let fallbackReceipt = POSCompletedReceipt(
                     transactionID: transactionID,
@@ -963,6 +1139,7 @@ struct AdminPOSFastSellView: View {
     @StateObject private var viewModel = POSFastSellViewModel()
     @StateObject private var unitPicker = POSUnitPickerState()
     @State private var showsReservedLivePets = false
+    @State private var showsDeepLogInspector = false
     @State private var showsCustomerPicker = false
     @State private var showsItemPicker = false
     @State private var isShowingScanner = false
@@ -1056,6 +1233,9 @@ struct AdminPOSFastSellView: View {
         }
         .sheet(isPresented: $showsCategoryLens) {
             POSCategoryLensSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $showsDeepLogInspector) {
+            POSDeepLogInspectorView()
         }
         .sheet(isPresented: $showsItemPicker) {
             itemPickerSheet
@@ -1158,12 +1338,14 @@ struct AdminPOSFastSellView: View {
     private var commandDeck: some View {
         VStack(spacing: AdminSpacing.sm) {
             commandHeaderView
-            PPAdminBranchSwitcherBar(style: .compact)
-            customerBarView
-            omniSearchAndFilterBar
-            commandStatusView
+            VStack(spacing: AdminSpacing.sm) {
+                PPAdminBranchSwitcherBar(style: .compact)
+                customerBarView
+                omniSearchAndFilterBar
+                commandStatusView
+            }
+            .padding(.horizontal, AdminSpacing.base)
         }
-        .padding(.horizontal, AdminSpacing.base)
         .padding(.top, AdminSpacing.xs)
         .padding(.bottom, AdminSpacing.md)
         .background(AdminSurface.background)
@@ -1176,63 +1358,61 @@ struct AdminPOSFastSellView: View {
     }
 
     private var commandHeaderView: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Button {
+        AdminSovereignNavigationBar(
+            title: Language.get("POS_Title", alter: "بيع سريع"),
+            subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات • كاشير نقطة البيع"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            isModal: true,
+            onBack: {
                 dismissKeyboard()
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                    .background(AdminSurface.control, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
             }
-            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
+        ) {
+            HStack(spacing: 8) {
+                Button {
+                    dismissKeyboard()
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsDeepLogInspector = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
+                        Image(systemName: "terminal")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
 
-            VStack(alignment: .leading, spacing: 0) {
-                Text(Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات"))
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(1)
-                Text(Language.get("POS_Title", alter: "بيع سريع"))
-                    .font(AdminType.title3)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-
-            Button {
-                dismissKeyboard()
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                showsReservedLivePets = true
-            } label: {
-                HStack(spacing: AdminSpacing.xs) {
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 13, weight: .bold))
-                    Text(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
-                        .font(AdminType.captionBold)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        let errCount = (PPPOSLogger.shared().diagnosticSummary()["errorCount"] as? Int) ?? 0
+                        if errCount > 0 {
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 8, height: 8)
+                                .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
+                                .offset(x: -2, y: 2)
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(minHeight: AdminTouchTarget.minimum)
-                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.24), lineWidth: AdminStroke.thin)
-                )
-                .shadow(color: AdminSurface.primary.opacity(0.18), radius: 8, y: 3)
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("POS_DeepLog_Title", alter: "سجل التشخيص المباشر"))
+
+                AdminPrimaryPillButton(
+                    title: Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"),
+                    systemImage: "pawprint.fill"
+                ) {
+                    dismissKeyboard()
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    showsReservedLivePets = true
+                }
             }
-            .accessibilityLabel(Language.get("POS_ReservedLivePets_Button", alter: "الحيوانات المحجوزة"))
         }
     }
 
@@ -4681,3 +4861,689 @@ final class ScannerViewController: UIViewController {
         }
     }
 }
+
+// MARK: - POS Deep Diagnostic Logging Inspector
+
+extension PPPOSLogEntry: Identifiable {
+    public var id: String { entryID }
+}
+
+extension PPPOSLogLevel {
+    var localizedTitle: String {
+        switch self {
+        case .debug: return "Debug"
+        case .info: return Language.get("POS_DeepLog_Infos", alter: "معلومات")
+        case .warning: return Language.get("POS_DeepLog_Warnings", alter: "تحذيرات")
+        case .error: return Language.get("POS_DeepLog_Errors", alter: "أخطاء")
+        @unknown default: return "Log"
+        }
+    }
+
+    var themeColor: Color {
+        switch self {
+        case .debug: return Color.gray
+        case .info: return Color.blue
+        case .warning: return Color.orange
+        case .error: return Color.red
+        @unknown default: return Color.gray
+        }
+    }
+
+    var badgeIcon: String {
+        switch self {
+        case .debug: return "ant.fill"
+        case .info: return "info.circle.fill"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "xmark.octagon.fill"
+        @unknown default: return "circle.fill"
+        }
+    }
+}
+
+final class POSDeepLogViewModel: ObservableObject {
+    @Published var entries: [PPPOSLogEntry] = []
+    @Published var searchText: String = ""
+    @Published var selectedLevel: PPPOSLogLevel? = nil
+    @Published var selectedCategory: String? = nil
+    @Published var totalCount: Int = 0
+    @Published var infoCount: Int = 0
+    @Published var warningCount: Int = 0
+    @Published var errorCount: Int = 0
+    @Published var activeBranch: String = ""
+    @Published var lastLatencyMs: Int = 0
+    @Published var showCopiedToast: Bool = false
+
+    init() {
+        refresh()
+    }
+
+    func refresh() {
+        let all = PPPOSLogger.shared().allEntries()
+        self.entries = all
+        let summary = PPPOSLogger.shared().diagnosticSummary()
+        self.totalCount = summary["totalCount"] as? Int ?? all.count
+        self.infoCount = summary["infoCount"] as? Int ?? 0
+        self.warningCount = summary["warningCount"] as? Int ?? 0
+        self.errorCount = summary["errorCount"] as? Int ?? 0
+        self.activeBranch = summary["activeBranch"] as? String ?? ""
+        self.lastLatencyMs = summary["lastLatencyMs"] as? Int ?? 0
+    }
+
+    var availableCategories: [String] {
+        let set = Set(entries.map { $0.category }).filter { !$0.isEmpty }
+        return set.sorted()
+    }
+
+    var filteredEntries: [PPPOSLogEntry] {
+        entries.filter { entry in
+            if let lvl = selectedLevel, entry.level != lvl {
+                return false
+            }
+            if let cat = selectedCategory, entry.category != cat {
+                return false
+            }
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !query.isEmpty {
+                let eventMatch = entry.event.lowercased().contains(query)
+                let msgMatch = entry.message.lowercased().contains(query)
+                let catMatch = entry.category.lowercased().contains(query)
+                let traceMatch = entry.traceID?.lowercased().contains(query) ?? false
+                return eventMatch || msgMatch || catMatch || traceMatch
+            }
+            return true
+        }
+    }
+
+    func clearLogs() {
+        PPPOSLogger.shared().clearLogs()
+        refresh()
+    }
+
+    func copyAllLogs() {
+        let text = PPPOSLogger.shared().exportLogsAsPlainText()
+        UIPasteboard.general.string = text
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            showCopiedToast = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+            withAnimation(.easeOut(duration: 0.2)) {
+                self?.showCopiedToast = false
+            }
+        }
+    }
+
+    func exportText() -> String {
+        return PPPOSLogger.shared().exportLogsAsPlainText()
+    }
+}
+
+struct POSDeepLogInspectorView: View {
+    @StateObject private var viewModel = POSDeepLogViewModel()
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isSharing = false
+    @State private var showsClearAlert = false
+
+    private static let timeFormatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "HH:mm:ss.SSS"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        return df
+    }()
+
+    var body: some View {
+        NavigationView {
+            ZStack(alignment: .bottom) {
+                AdminSurface.background.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    headerView
+                    kpiSummaryView
+                    searchAndFilterBar
+                    Divider().background(AdminSurface.hairline)
+
+                    if viewModel.filteredEntries.isEmpty {
+                        emptyStateView
+                    } else {
+                        logListView
+                    }
+                }
+
+                if viewModel.showCopiedToast {
+                    copiedToastBanner
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, AdminSpacing.lg)
+                }
+            }
+            .navigationBarHidden(true)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+            .onReceive(NotificationCenter.default.publisher(for: PPPOSLogDidAppendNotification)) { _ in
+                viewModel.refresh()
+            }
+            .alert(isPresented: $showsClearAlert) {
+                Alert(
+                    title: Text(Language.get("POS_DeepLog_Clear", alter: "مسح السجل")),
+                    message: Text(Language.get("POS_DeepLog_Clear_Confirm", alter: "هل أنت متأكد من رغبتك في مسح جميع سجلات تشخيص نقاط البيع اللحظية؟")),
+                    primaryButton: .destructive(Text(Language.get("Delete", alter: "مسح"))) {
+                        viewModel.clearLogs()
+                    },
+                    secondaryButton: .cancel(Text(Language.get("Cancel", alter: "إلغاء")))
+                )
+            }
+            .sheet(isPresented: $isSharing) {
+                POSDeepLogActivityShareSheet(text: viewModel.exportText())
+            }
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
+    }
+
+    private var headerView: some View {
+        HStack(spacing: AdminSpacing.sm) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .fill(AdminSurface.primarySoft)
+                    .frame(width: 44, height: 44)
+                Image(systemName: "terminal.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("POS_DeepLog_Title", alter: "سجل التشخيص المباشر"))
+                    .font(AdminType.title3)
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(Language.get("POS_DeepLog_Subtitle", alter: "مراقبة فورية لأحداث البيع، المخزون، والاتصال بالخادم"))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            // Copy button
+            Button {
+                viewModel.copyAllLogs()
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control, in: Circle())
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
+            }
+            .accessibilityLabel(Language.get("POS_DeepLog_CopyAll", alter: "نسخ السجل بالكامل"))
+
+            // Share button
+            Button {
+                isSharing = true
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control, in: Circle())
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
+            }
+            .accessibilityLabel(Language.get("POS_DeepLog_Share", alter: "مشاركة"))
+
+            // Clear button
+            Button {
+                showsClearAlert = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(Color.red)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(Color.red.opacity(0.10), in: Circle())
+                    .overlay(Circle().stroke(Color.red.opacity(0.25), lineWidth: AdminStroke.thin))
+            }
+            .accessibilityLabel(Language.get("POS_DeepLog_Clear", alter: "مسح السجل"))
+
+            // Close button
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                    .background(AdminSurface.control, in: Circle())
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin))
+            }
+            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
+        }
+        .padding(.horizontal, AdminSpacing.base)
+        .padding(.vertical, AdminSpacing.sm)
+        .background(AdminSurface.surface)
+        .overlay(
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: AdminStroke.hairline),
+            alignment: .bottom
+        )
+    }
+
+    private var kpiSummaryView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: AdminSpacing.sm) {
+                kpiCard(
+                    title: Language.get("POS_DeepLog_Total", alter: "إجمالي السجلات"),
+                    value: "\(viewModel.totalCount)",
+                    icon: "list.bullet.rectangle",
+                    color: AdminSurface.primary
+                )
+                kpiCard(
+                    title: Language.get("POS_DeepLog_Infos", alter: "معلومات"),
+                    value: "\(viewModel.infoCount)",
+                    icon: "info.circle.fill",
+                    color: Color.blue
+                )
+                kpiCard(
+                    title: Language.get("POS_DeepLog_Warnings", alter: "تحذيرات"),
+                    value: "\(viewModel.warningCount)",
+                    icon: "exclamationmark.triangle.fill",
+                    color: Color.orange
+                )
+                kpiCard(
+                    title: Language.get("POS_DeepLog_Errors", alter: "أخطاء"),
+                    value: "\(viewModel.errorCount)",
+                    icon: "xmark.octagon.fill",
+                    color: Color.red
+                )
+                kpiCard(
+                    title: Language.get("POS_DeepLog_ActiveBranch", alter: "الفرع النشط"),
+                    value: viewModel.activeBranch.isEmpty ? "all" : viewModel.activeBranch,
+                    icon: "building.2.fill",
+                    color: AdminSurface.primary
+                )
+                kpiCard(
+                    title: Language.get("POS_DeepLog_LastLatency", alter: "زمن المعاملة الأخير"),
+                    value: viewModel.lastLatencyMs > 0 ? "\(viewModel.lastLatencyMs) ms" : "--",
+                    icon: "stopwatch.fill",
+                    color: viewModel.lastLatencyMs > 1000 ? Color.orange : Color.green
+                )
+            }
+            .padding(.horizontal, AdminSpacing.base)
+            .padding(.vertical, AdminSpacing.xs)
+        }
+        .background(AdminSurface.surface)
+    }
+
+    private func kpiCard(title: String, value: String, icon: String, color: Color) -> some View {
+        HStack(spacing: AdminSpacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(color)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(value)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, AdminSpacing.sm)
+        .padding(.vertical, AdminSpacing.xs)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+        )
+    }
+
+    private var searchAndFilterBar: some View {
+        VStack(spacing: AdminSpacing.xs) {
+            // Search field
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                TextField(
+                    Language.get("POS_DeepLog_SearchPlaceholder", alter: "بحث في الأحداث، الرموز، أو التفاصيل..."),
+                    text: $viewModel.searchText
+                )
+                .font(AdminType.caption)
+                .foregroundColor(AdminSurface.primaryText)
+                .textInputAutocapitalization(.never)
+                .disableAutocorrection(true)
+
+                if !viewModel.searchText.isEmpty {
+                    Button {
+                        viewModel.searchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .padding(.horizontal, AdminSpacing.sm)
+            .frame(height: 34)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: AdminStroke.thin)
+            )
+
+            // Severity & Category Filter Rows
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AdminSpacing.xs) {
+                    // All Levels
+                    filterPill(
+                        title: Language.get("All", alter: "الكل"),
+                        isSelected: viewModel.selectedLevel == nil,
+                        color: AdminSurface.primary
+                    ) {
+                        viewModel.selectedLevel = nil
+                    }
+
+                    // Level pills
+                    filterPill(
+                        title: PPPOSLogLevel.info.localizedTitle,
+                        isSelected: viewModel.selectedLevel == .info,
+                        color: PPPOSLogLevel.info.themeColor
+                    ) {
+                        viewModel.selectedLevel = (viewModel.selectedLevel == .info ? nil : .info)
+                    }
+
+                    filterPill(
+                        title: PPPOSLogLevel.warning.localizedTitle,
+                        isSelected: viewModel.selectedLevel == .warning,
+                        color: PPPOSLogLevel.warning.themeColor
+                    ) {
+                        viewModel.selectedLevel = (viewModel.selectedLevel == .warning ? nil : .warning)
+                    }
+
+                    filterPill(
+                        title: PPPOSLogLevel.error.localizedTitle,
+                        isSelected: viewModel.selectedLevel == .error,
+                        color: PPPOSLogLevel.error.themeColor
+                    ) {
+                        viewModel.selectedLevel = (viewModel.selectedLevel == .error ? nil : .error)
+                    }
+
+                    Divider()
+                        .frame(height: 16)
+                        .padding(.horizontal, AdminSpacing.xxs)
+
+                    // Category pills
+                    if !viewModel.availableCategories.isEmpty {
+                        ForEach(viewModel.availableCategories, id: \.self) { cat in
+                            filterPill(
+                                title: "#\(cat)",
+                                isSelected: viewModel.selectedCategory == cat,
+                                color: AdminSurface.primary
+                            ) {
+                                viewModel.selectedCategory = (viewModel.selectedCategory == cat ? nil : cat)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, AdminSpacing.base)
+        .padding(.vertical, AdminSpacing.xs)
+        .background(AdminSurface.surface)
+    }
+
+    private func filterPill(title: String, isSelected: Bool, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
+                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                .padding(.horizontal, AdminSpacing.sm)
+                .padding(.vertical, 5)
+                .background(
+                    isSelected ? color : AdminSurface.control,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(isSelected ? color : AdminSurface.hairline, lineWidth: AdminStroke.thin)
+                )
+        }
+    }
+
+    private var logListView: some View {
+        ScrollView {
+            LazyVStack(spacing: AdminSpacing.sm) {
+                ForEach(viewModel.filteredEntries) { entry in
+                    POSDeepLogEntryCard(entry: entry, timeFormatter: Self.timeFormatter)
+                }
+            }
+            .padding(.horizontal, AdminSpacing.base)
+            .padding(.vertical, AdminSpacing.sm)
+        }
+    }
+
+    private var emptyStateView: some View {
+        VStack(spacing: AdminSpacing.md) {
+            Spacer()
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primarySoft)
+                    .frame(width: 72, height: 72)
+                Image(systemName: "terminal")
+                    .font(.system(size: 32, weight: .medium))
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(spacing: AdminSpacing.xxs) {
+                Text(Language.get("POS_DeepLog_EmptyTitle", alter: "لا توجد سجلات بعد"))
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+                Text(Language.get("POS_DeepLog_EmptySubtitle", alter: "ستظهر أحداث وعمليات نقطة البيع هنا فور حدوثها."))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, AdminSpacing.xl)
+            }
+            Spacer()
+        }
+    }
+
+    private var copiedToastBanner: some View {
+        HStack(spacing: AdminSpacing.xs) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(.green)
+            Text(Language.get("POS_DeepLog_CopiedToast", alter: "تم نسخ السجل إلى الحافظة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, AdminSpacing.base)
+        .padding(.vertical, AdminSpacing.sm)
+        .background(Color.black.opacity(0.85), in: Capsule())
+        .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+    }
+}
+
+struct POSDeepLogEntryCard: View {
+    let entry: PPPOSLogEntry
+    let timeFormatter: DateFormatter
+
+    @State private var isMetadataExpanded = false
+    @State private var copiedTrace = false
+    @State private var copiedJSON = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            // Header Row: Level + Category + Timestamp + Duration
+            HStack(spacing: AdminSpacing.xs) {
+                // Level Pill
+                HStack(spacing: 3) {
+                    Image(systemName: entry.level.badgeIcon)
+                        .font(.system(size: 9, weight: .bold))
+                    Text(entry.levelString.uppercased())
+                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
+                }
+                .foregroundColor(entry.level.themeColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(entry.level.themeColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .stroke(entry.level.themeColor.opacity(0.25), lineWidth: AdminStroke.thin)
+                )
+
+                // Category Tag
+                Text("#\(entry.category)")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+
+                Spacer()
+
+                // Latency / Duration badge if applicable
+                if entry.durationMs > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "timer")
+                            .font(.system(size: 9))
+                        Text("\(entry.durationMs)ms")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    }
+                    .foregroundColor(entry.durationMs > 1000 ? .orange : AdminSurface.secondaryText)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(AdminSurface.control, in: Capsule())
+                }
+
+                // Timestamp
+                Text(timeFormatter.string(from: entry.timestamp))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            // Event Name
+            Text(entry.event)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundColor(AdminSurface.primaryText)
+
+            // Message
+            Text(entry.message)
+                .font(AdminType.caption)
+                .foregroundColor(AdminSurface.primaryText.opacity(0.9))
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Trace ID row (if available)
+            if let trace = entry.traceID, !trace.isEmpty {
+                HStack(spacing: AdminSpacing.xxs) {
+                    Text("trace:")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(trace)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(AdminSurface.primary)
+                        .lineLimit(1)
+
+                    Button {
+                        UIPasteboard.general.string = trace
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        copiedTrace = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            copiedTrace = false
+                        }
+                    } label: {
+                        Image(systemName: copiedTrace ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 9))
+                            .foregroundColor(copiedTrace ? .green : AdminSurface.secondaryText)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            }
+
+            // Metadata Drawer
+            if !entry.metadata.isEmpty {
+                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                    Button {
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            isMetadataExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: AdminSpacing.xxs) {
+                            Image(systemName: isMetadataExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9, weight: .bold))
+                            Text("Metadata (\(entry.metadata.count))")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            Spacer()
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                    }
+
+                    if isMetadataExpanded {
+                        VStack(alignment: .trailing, spacing: AdminSpacing.xxs) {
+                            Button {
+                                UIPasteboard.general.string = entry.jsonString()
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                copiedJSON = true
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                    copiedJSON = false
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Image(systemName: copiedJSON ? "checkmark" : "doc.on.doc")
+                                        .font(.system(size: 9))
+                                    Text(copiedJSON ? Language.get("Copied", alter: "تم النسخ") : Language.get("Copy", alter: "نسخ"))
+                                        .font(.system(size: 9, weight: .medium))
+                                }
+                                .foregroundColor(copiedJSON ? .green : AdminSurface.secondaryText)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+                            }
+
+                            Text(entry.jsonString())
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundColor(Color(white: 0.85))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled)
+                        }
+                        .padding(AdminSpacing.sm)
+                        .background(Color(white: 0.12), in: RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminRadius.small, style: .continuous)
+                                .stroke(Color.white.opacity(0.1), lineWidth: AdminStroke.thin)
+                        )
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(AdminSpacing.sm)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .stroke(
+                    entry.level == .error ? Color.red.opacity(0.35) : (entry.level == .warning ? Color.orange.opacity(0.35) : AdminSurface.hairline),
+                    lineWidth: entry.level == .error || entry.level == .warning ? AdminStroke.medium : AdminStroke.thin
+                )
+        )
+    }
+}
+
+struct POSDeepLogActivityShareSheet: UIViewControllerRepresentable {
+    let text: String
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        if let popover = controller.popoverPresentationController {
+            popover.permittedArrowDirections = []
+            if let window = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+                popover.sourceView = window
+                popover.sourceRect = CGRect(x: window.bounds.midX, y: window.bounds.midY, width: 0, height: 0)
+            }
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+

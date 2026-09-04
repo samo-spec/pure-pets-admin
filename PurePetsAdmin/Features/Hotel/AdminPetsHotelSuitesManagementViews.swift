@@ -657,53 +657,51 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
     public var body: some View {
         NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 18) {
-                    if let error = validationError {
-                        Text(error)
-                            .font(Font.custom("Beiruti-Bold", size: 13))
-                            .foregroundStyle(Color.red)
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(spacing: 0) {
+                AdminSovereignNavigationBar(
+                    title: isEditMode ? Language.get("Hotel_Suites_EditTitle", alter: "تعديل بيانات الجناح") : Language.get("Hotel_Suites_NewTitle", alter: "إضافة جناح جديد"),
+                    subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
+                    statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+                    isModal: true,
+                    onBack: { dismiss() }
+                )
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 18) {
+                        if let error = validationError {
+                            Text(error)
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(Color.red)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+
+                        // Section 1: Identification
+                        identitySection
+
+                        // Section 2: Wing & Tier Assignment
+                        wingAndTierSection
+
+                        // Section 3: Capacity & Shared Occupancy
+                        capacitySection
+
+                        // Section 4: Allowed Species Chips
+                        speciesSection
+
+                        // Section 5: Status & Operational Notes
+                        notesSection
+
+                        // Save CTA Button
+                        saveButton
                     }
-
-                    // Section 1: Identification
-                    identitySection
-
-                    // Section 2: Wing & Tier Assignment
-                    wingAndTierSection
-
-                    // Section 3: Capacity & Shared Occupancy
-                    capacitySection
-
-                    // Section 4: Allowed Species Chips
-                    speciesSection
-
-                    // Section 5: Status & Operational Notes
-                    notesSection
-
-                    // Save CTA Button
-                    saveButton
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 36)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 36)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(isEditMode ? Language.get("Hotel_Suites_EditTitle", alter: "تعديل بيانات الجناح") : Language.get("Hotel_Suites_NewTitle", alter: "إضافة جناح جديد"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .onAppear {
                 populateFields()
             }
@@ -1085,7 +1083,16 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
 
     public var body: some View {
         NavigationView {
-            ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 0) {
+                AdminSovereignNavigationBar(
+                    title: isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل الفئة الفندقية") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة فندقية جديدة"),
+                    subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
+                    statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+                    isModal: true,
+                    onBack: { dismiss() }
+                )
+
+                ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 16) {
                     if let error = validationError {
                         Text(error)
@@ -1198,43 +1205,32 @@ public struct AdminPetsHotelAccommodationTypeEditorSheet: View {
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
 
-                    // Save Button
-                    Button {
-                        validateAndSave()
-                    } label: {
-                        HStack(spacing: 6) {
-                            if isSubmitting {
-                                ProgressView()
-                                    .tint(.white)
+                        // Save Button
+                        Button {
+                            validateAndSave()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSubmitting {
+                                    ProgressView()
+                                        .tint(.white)
+                                }
+                                Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ الفئة") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية"))
+                                    .font(Font.custom("Beiruti-Bold", size: 16))
                             }
-                            Text(isEditMode ? Language.get("Save_Changes", alter: "حفظ الفئة") : Language.get("Hotel_Suites_CreateTypeCTA", alter: "إنشاء الفئة الفندقية"))
-                                .font(Font.custom("Beiruti-Bold", size: 16))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .foregroundStyle(.white)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .foregroundStyle(.white)
+                        .disabled(isSubmitting)
                     }
-                    .disabled(isSubmitting)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 16)
+                    .padding(.bottom, 36)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 36)
             }
             .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(isEditMode ? Language.get("Hotel_Suites_EditTypeTitle", alter: "تعديل الفئة الفندقية") : Language.get("Hotel_Suites_NewTypeTitle", alter: "فئة فندقية جديدة"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
-            }
+            .navigationBarHidden(true)
             .onAppear {
                 if let t = accommodationType {
                     code = t.code

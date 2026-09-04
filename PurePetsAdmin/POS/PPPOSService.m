@@ -781,66 +781,57 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     }];
 }
 
-- (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> *, NSError *))completion {
+- (void)fetchPOSHistoryForBranchID:(NSString *)branchID
+                         completion:(void(^)(NSArray<PPPOSReceipt *> *, NSError *))completion {
+    NSString *safeBranchID = [branchID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (safeBranchID.length == 0) {
+        if (completion) completion(@[], PPPOSServiceError(400, @"A selected branch is required for POS history."));
+        return;
+    }
+
     NSString *traceID = [PPPOSLogger generateTraceID];
     NSDate *startedAt = [NSDate date];
     [[PPPOSLogger sharedLogger] infoWithCategory:@"history"
                                            event:@"history.fetch.start"
                                          traceID:traceID
-                                        metadata:@{ @"schemas": @"[2, 3]" }
-                                         message:@"Fetching POS transaction history (schemas 2 & 3)"];
+                                        metadata:@{ @"branchId": safeBranchID }
+                                         message:@"Fetching selected-branch POS transaction history"];
 
     FIRCollectionReference *transactions = [[FIRFirestore firestore] collectionWithPath:@"transactions"];
-    dispatch_group_t group = dispatch_group_create();
-    NSMutableArray<PPPOSReceipt *> *receipts = [NSMutableArray array];
-    __block NSError *firstError = nil;
-
-    for (NSNumber *schemaVersion in @[@(2), @(3)]) {
-        dispatch_group_enter(group);
-        [[[transactions queryWhereField:@"posSchemaVersion" isEqualTo:schemaVersion]
-           queryOrderedByField:@"createdAt" descending:YES]
-          getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
-            @synchronized (receipts) {
-                if (error && !firstError) firstError = error;
-                if (!error) {
-                    for (FIRDocumentSnapshot *doc in snapshot.documents) {
-                        [receipts addObject:[[PPPOSReceipt alloc] initWithDictionary:doc.data documentID:doc.documentID]];
-                    }
-                }
+    FIRQuery *query = [[transactions queryWhereField:@"branchId" isEqualTo:safeBranchID]
+                       queryOrderedByField:@"createdAt" descending:YES];
+    [[query queryLimitedTo:250] getDocumentsWithCompletion:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
+            if (error) {
+                [[PPPOSLogger sharedLogger] errorWithCategory:@"history"
+                                                        event:@"history.fetch.error"
+                                                      traceID:traceID
+                                                   durationMs:durationMs
+                                                        error:error
+                                                     metadata:@{ @"branchId": safeBranchID }
+                                                      message:[NSString stringWithFormat:@"History fetch failed: %@", error.localizedDescription]];
+                if (completion) completion(@[], error);
+                return;
             }
-            dispatch_group_leave(group);
-        }];
-    }
 
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        NSInteger durationMs = PPPOSElapsedMilliseconds(startedAt);
-        if (firstError) {
-            [[PPPOSLogger sharedLogger] errorWithCategory:@"history"
-                                                    event:@"history.fetch.error"
-                                                  traceID:traceID
-                                               durationMs:durationMs
-                                                    error:firstError
-                                                 metadata:nil
-                                                  message:[NSString stringWithFormat:@"History fetch failed: %@", firstError.localizedDescription]];
-            if (completion) completion(@[], firstError);
-            return;
-        }
-        [receipts sortUsingComparator:^NSComparisonResult(PPPOSReceipt *left, PPPOSReceipt *right) {
-            NSDate *leftDate = left.createdAt ?: NSDate.distantPast;
-            NSDate *rightDate = right.createdAt ?: NSDate.distantPast;
-            return [rightDate compare:leftDate];
-        }];
+            NSMutableArray<PPPOSReceipt *> *receipts = [NSMutableArray array];
+            for (FIRDocumentSnapshot *doc in snapshot.documents) {
+                NSInteger schemaVersion = [doc.data[@"posSchemaVersion"] integerValue];
+                if (schemaVersion != 2 && schemaVersion != 3) continue;
+                [receipts addObject:[[PPPOSReceipt alloc] initWithDictionary:doc.data documentID:doc.documentID]];
+            }
 
-        [[PPPOSLogger sharedLogger] logLevel:PPPOSLogLevelInfo
-                                    category:@"history"
-                                       event:@"history.fetch.success"
-                                     message:[NSString stringWithFormat:@"Loaded %lu POS history receipts (%ldms)", (unsigned long)receipts.count, (long)durationMs]
-                                     traceID:traceID
-                                  durationMs:durationMs
-                                    metadata:@{ @"receiptsCount": @(receipts.count) }];
-
-        if (completion) completion(receipts.copy, nil);
-    });
+            [[PPPOSLogger sharedLogger] logLevel:PPPOSLogLevelInfo
+                                        category:@"history"
+                                           event:@"history.fetch.success"
+                                         message:[NSString stringWithFormat:@"Loaded %lu selected-branch POS receipts (%ldms)", (unsigned long)receipts.count, (long)durationMs]
+                                         traceID:traceID
+                                      durationMs:durationMs
+                                        metadata:@{ @"branchId": safeBranchID, @"receiptsCount": @(receipts.count) }];
+            if (completion) completion(receipts.copy, nil);
+        });
+    }];
 }
 
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID

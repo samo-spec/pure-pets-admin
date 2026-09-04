@@ -538,78 +538,25 @@ public struct PPListingsCommandCenterScreen: View {
     // MARK: - Sovereign Glassmorphic Navigation Bar
 
     private var sovereignNavigationBar: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                // Back Button (Luxury Glass Squircle)
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    viewModel.onDismiss()
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AdminSurface.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
-                        Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-                    .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-
-                // Title & Live Counter Stack
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("ListingsAdmin_Title", alter: "إدارة الإعلانات والقوائم"))
-                        .font(AdminType.title3)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(viewModel.pendingCount > 0 ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
-                            .frame(width: 6, height: 6)
-
-                        Text(
-                            viewModel.pendingCount > 0
-                                ? "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان") + " • \(viewModel.pendingCount) " + Language.get("PendingAction", alter: "بانتظار المراجعة")
-                                : "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان معروض وموثق")
-                        )
-                        .font(AdminType.caption2)
-                        .foregroundStyle(viewModel.pendingCount > 0 ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
-                    }
-                }
-
-                Spacer()
-
-                // Manual Refresh Action
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    viewModel.startRealtimeListeners()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(AdminSurface.surface)
-                            .frame(width: 38, height: 38)
-                            .overlay(
-                                Circle().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                    }
-                }
-                .buttonStyle(.plain)
+        AdminSovereignNavigationBar(
+            title: Language.get("ListingsAdmin_Title", alter: "إدارة الإعلانات والقوائم"),
+            subtitle: viewModel.pendingCount > 0
+                ? "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان") + " • \(viewModel.pendingCount) " + Language.get("PendingAction", alter: "بانتظار المراجعة")
+                : "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان معروض وموثق"),
+            statusDotColor: viewModel.pendingCount > 0 ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess),
+            onBack: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                viewModel.onDismiss()
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            .background(
-                Color.clear
-                    .ignoresSafeArea(edges: .top)
-            )
+        ) {
+            AdminSquircleActionButton(
+                systemImage: "arrow.clockwise",
+                isLoading: false,
+                accessibilityLabel: Language.get("Refresh", alter: "تحديث")
+            ) {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                viewModel.startRealtimeListeners()
+            }
         }
     }
 
@@ -979,11 +926,19 @@ public struct PPListingDetailDossierSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
-        NavigationView {
-            ZStack(alignment: .bottom) {
-                AdminSurface.background.ignoresSafeArea()
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                    title: Language.get("ListingDossierTitle", alter: "ملف فحص الإعلان"),
+                    subtitle: item.title,
+                    statusDotColor: item.statusColor,
+                    isModal: true,
+                    onBack: { dismiss() }
+                )
 
-                ScrollView {
+                ZStack(alignment: .bottom) {
+                    AdminSurface.background.ignoresSafeArea()
+
+                    ScrollView {
                     VStack(spacing: 18) {
                         // Hero Image Slot
                         if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
@@ -1124,15 +1079,9 @@ public struct PPListingDetailDossierSheet: View {
                     moderationActionDock
                 }
             }
-            .navigationTitle(Language.get("ListingDossierTitle", alter: "ملف فحص الإعلان"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) { dismiss() }
-                        .font(AdminType.calloutBold)
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 

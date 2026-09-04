@@ -200,6 +200,7 @@ public final class PPBranchInventoryService: ObservableObject {
 
     private var listenerRegistration: ListenerRegistration?
     private var settingsListenerRegistration: ListenerRegistration?
+    private var bindingGeneration = UUID()
     private var cancellables = Set<AnyCancellable>()
 
     public init() {
@@ -232,17 +233,22 @@ public final class PPBranchInventoryService: ObservableObject {
         }
     }
 
-    /// Subscribes to Firestore collection `branchInventory` and `branchProductSettings` for the specified branch
+    /// Subscribes to Firestore collection `branchInventory` and `branchProductSettings` for the specified branch.
+    /// Every branch change invalidates the previous generation and clears its projection before the new listeners attach.
     public func bindToBranch(_ branchId: String?) {
         listenerRegistration?.remove()
         listenerRegistration = nil
         settingsListenerRegistration?.remove()
         settingsListenerRegistration = nil
 
+        let generation = UUID()
+        bindingGeneration = generation
+        inventoryMap = [:]
+        settingsMap = [:]
+        lastSyncDate = nil
+
         guard let branchId = branchId?.trimmingCharacters(in: .whitespacesAndNewlines), !branchId.isEmpty else {
             currentBranchId = nil
-            inventoryMap = [:]
-            settingsMap = [:]
             isLoading = false
             return
         }
@@ -255,25 +261,27 @@ public final class PPBranchInventoryService: ObservableObject {
             .whereField("branchId", isEqualTo: branchId)
 
         listenerRegistration = query.addSnapshotListener { [weak self] snapshot, error in
-            guard let self = self else { return }
-            self.isLoading = false
+            Task { @MainActor in
+                guard let self,
+                      self.bindingGeneration == generation,
+                      self.currentBranchId == branchId else { return }
+                self.isLoading = false
 
-            if let error = error {
-                print("❌ [PPBranchInventoryService] Firestore inventory listener error: \(error.localizedDescription)")
-                return
-            }
-
-            guard let documents = snapshot?.documents else { return }
-
-            var newMap: [String: PPBranchInventory] = [:]
-            for doc in documents {
-                if let record = PPBranchInventory(dictionary: doc.data(), documentId: doc.documentID) {
-                    newMap[record.productId] = record
+                if let error {
+                    print("❌ [PPBranchInventoryService] Firestore inventory listener error: \(error.localizedDescription)")
+                    return
                 }
-            }
 
-            self.inventoryMap = newMap
-            self.lastSyncDate = Date()
+                guard let documents = snapshot?.documents else { return }
+                var newMap: [String: PPBranchInventory] = [:]
+                for doc in documents {
+                    if let record = PPBranchInventory(dictionary: doc.data(), documentId: doc.documentID) {
+                        newMap[record.productId] = record
+                    }
+                }
+                self.inventoryMap = newMap
+                self.lastSyncDate = Date()
+            }
         }
 
         let settingsQuery = Firestore.firestore()
@@ -281,20 +289,24 @@ public final class PPBranchInventoryService: ObservableObject {
             .whereField("branchId", isEqualTo: branchId)
 
         settingsListenerRegistration = settingsQuery.addSnapshotListener { [weak self] snapshot, error in
-            guard let self = self else { return }
-            if let error = error {
-                print("❌ [PPBranchInventoryService] Firestore settings listener error: \(error.localizedDescription)")
-                return
-            }
-
-            guard let documents = snapshot?.documents else { return }
-            var newSettings: [String: PPBranchProductSettings] = [:]
-            for doc in documents {
-                if let setting = PPBranchProductSettings(dictionary: doc.data(), documentId: doc.documentID) {
-                    newSettings[setting.productId] = setting
+            Task { @MainActor in
+                guard let self,
+                      self.bindingGeneration == generation,
+                      self.currentBranchId == branchId else { return }
+                if let error {
+                    print("❌ [PPBranchInventoryService] Firestore settings listener error: \(error.localizedDescription)")
+                    return
                 }
+
+                guard let documents = snapshot?.documents else { return }
+                var newSettings: [String: PPBranchProductSettings] = [:]
+                for doc in documents {
+                    if let setting = PPBranchProductSettings(dictionary: doc.data(), documentId: doc.documentID) {
+                        newSettings[setting.productId] = setting
+                    }
+                }
+                self.settingsMap = newSettings
             }
-            self.settingsMap = newSettings
         }
     }
 
@@ -303,12 +315,11 @@ public final class PPBranchInventoryService: ObservableObject {
         inventoryMap[productId]
     }
 
-    /// Returns available stock for a product in the active branch, or falls back to product default quantity
+    /// Returns available stock only from the active branch projection.
+    /// Missing branch inventory is unavailable, never a fallback to the company-wide catalog quantity.
     public func availableStock(for productId: String, fallback: Int = 0) -> Int {
-        if let record = inventoryMap[productId] {
-            return record.availableQuantity
-        }
-        return fallback
+        guard currentBranchId?.isEmpty == false else { return 0 }
+        return inventoryMap[productId]?.availableQuantity ?? 0
     }
 
     /// Resolves the effective selling price for a product, honoring branch overrides when present

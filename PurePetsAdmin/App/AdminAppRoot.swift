@@ -251,8 +251,34 @@ final class AdminSessionStore: ObservableObject {
                     return
                 }
                 if let snapshot {
-                    self.restoreError = nil
-                    self.state = .authenticated(AdminSession(source: snapshot))
+                    PPStaffAuth.shared().fetchStaffDoc(uid) { [weak self] staffDoc, staffError in
+                        DispatchQueue.main.async {
+                            guard let self,
+                                  case let .authenticated(activeSession) = self.state,
+                                  activeSession.uid == uid else { return }
+                            if let staffError {
+                                self.restoreError = self.localizedRestoreError(staffError)
+                                return
+                            }
+                            guard let staffDoc, staffDoc.isActive() else {
+                                self.accessMessage = Language.get("StatusUserDocError", alter: nil)
+                                self.signOutAndMarkUnauthenticated()
+                                return
+                            }
+                            PPBranchContextManager.shared().configure(withStaff: staffDoc) {
+                                DispatchQueue.main.async {
+                                    guard case let .authenticated(latestSession) = self.state,
+                                          latestSession.uid == uid else { return }
+                                    self.restoreError = nil
+                                    self.state = .authenticated(AdminSession(source: snapshot))
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("PPAdminCommandAuthorizationDidChangeNotification"),
+                                        object: nil
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

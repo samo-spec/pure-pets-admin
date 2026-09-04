@@ -660,98 +660,35 @@ struct AdminUsersListView: View {
     // MARK: - 1. Liquid Navigation Bar (Sovereign Team Members UI Pattern)
 
     private var liquidNavBar: some View {
-        HStack(spacing: 12) {
-            // 1. Transparent & Borderless Squircle Back Button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        AdminSovereignNavigationBar(
+            title: Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"),
+            subtitle: "\(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • مباشر")) (\(viewModel.totalCount))",
+            statusDotColor: Color(uiColor: .ppSuccess),
+            onBack: {
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            } label: {
-                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(Color.clear)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
-
-            // 2. Title Stack matching Team Members Screen Pattern
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("MissionControl_Customers_Title", alter: "حسابات العملاء"))
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 6, height: 6)
-
-                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • مباشر"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-
-                    Text("(\(viewModel.totalCount))")
-                        .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.primary)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            // 3. Trailing Action Items (Transparent & Borderless)
-            HStack(spacing: 6) {
-                // Refresh Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isSpinning = true
-                    }
+        ) {
+            HStack(spacing: 8) {
+                AdminSquircleActionButton(
+                    systemImage: "arrow.clockwise",
+                    isLoading: viewModel.isLoading,
+                    accessibilityLabel: Language.get("Refresh", alter: "تحديث")
+                ) {
                     viewModel.startListening()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        isSpinning = false
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .rotationEffect(.degrees(isSpinning ? 360 : 0))
-                        .frame(width: 44, height: 44)
-                        .background(Color.clear)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
 
-                // Add Customer Action Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                AdminPrimaryPillButton(
+                    title: Language.get("Add", alter: "إضافة"),
+                    systemImage: "plus"
+                ) {
                     viewModel.isAddCustomerSheetPresented = true
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(Language.get("Add", alter: "إضافة"))
-                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .callout))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .frame(height: 38)
-                    .background(AdminSurface.primary, in: Capsule())
-                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 6, y: 2)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(Language.get("AddUser", alter: "إضافة عميل جديد"))
             }
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 8)
-        .padding(.bottom, 6)
-        .background(Color.clear)
     }
 
     // MARK: - 2. Bento Telemetry Grid
@@ -1386,47 +1323,18 @@ struct AdminCustomerDossierView: View {
     // MARK: Dossier Navigation Bar (Sovereign Push Navigation)
 
     private var dossierNavigationBar: some View {
-        HStack(spacing: 12) {
-            // 1. Transparent & Borderless Squircle Back Button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        AdminSovereignNavigationBar(
+            title: Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"),
+            subtitle: customer.name,
+            statusDotColor: customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6),
+            onBack: {
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                 }
-            } label: {
-                Image(systemName: Language.isRTL() ? "arrow.right" : "arrow.left")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(Color.clear)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
-
-            // 2. Title & Subtitle Stack
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("MissionControl_UserDetail_Title", alter: "ملف حساب العميل"))
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(customer.isOnline ? Color(uiColor: .ppSuccess) : Color.gray.opacity(0.6))
-                        .frame(width: 6, height: 6)
-
-                    Text(customer.name)
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            // 3. Trailing Action Menu (Transparent & Borderless)
+        ) {
             Menu {
                 if !customer.phone.isEmpty {
                     Button {
@@ -1465,19 +1373,23 @@ struct AdminCustomerDossierView: View {
                     Label(Language.get("CopyUID", alter: "نسخ معرّف العميل"), systemImage: "doc.on.doc")
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 44, height: 44)
-                    .background(Color.clear)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .frame(width: 44, height: 44)
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Language.get("Actions", alter: "خيارات إضافية"))
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .background(Color.clear)
     }
 
     // MARK: Dossier Hero View
@@ -1893,7 +1805,15 @@ struct AdminAddCustomerSheet: View {
     @State private var formError: String? = nil
 
     var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"),
+                subtitle: Language.get("CommandCenter_Customers_Workspace", alter: "إدارة العملاء • بطاقة جديدة"),
+                statusDotColor: Color(uiColor: .ppSuccess),
+                isModal: true,
+                onBack: { dismiss() }
+            )
+
             ScrollView {
                 VStack(spacing: 16) {
                     // Live Monogram Hero Preview
@@ -2034,18 +1954,9 @@ struct AdminAddCustomerSheet: View {
                 }
                 .padding(AdminSpacing.screenMargin)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 

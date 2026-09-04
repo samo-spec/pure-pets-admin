@@ -854,13 +854,38 @@ public struct AdminHotelStay: Identifiable, Hashable {
             ?? parseHotelDate(dict["expectedCheckOutTime"])
             ?? Date().addingTimeInterval(86400 * 3)
 
+        let resolvedStayNumber = dict["stayNumber"] as? String
+            ?? dict["reservationNumber"] as? String
+            ?? dict["bookingNumber"] as? String
+            ?? (!id.isEmpty ? String(id.prefix(8)).uppercased() : "")
+
+        let resolvedCustomerName = customer["name"] as? String
+            ?? customer["fullName"] as? String
+            ?? dict["customerName"] as? String
+            ?? dict["ownerName"] as? String
+            ?? dict["userName"] as? String
+            ?? ""
+
+        let resolvedCustomerPhone = customer["phone"] as? String
+            ?? customer["mobile"] as? String
+            ?? dict["customerPhone"] as? String
+            ?? dict["ownerPhone"] as? String
+            ?? dict["userPhone"] as? String
+            ?? dict["phone"] as? String
+            ?? ""
+
+        let resolvedRoomNumber = dict["accommodationCode"] as? String
+            ?? dict["roomNumber"] as? String
+            ?? dict["roomName"] as? String
+            ?? ""
+
         return AdminHotelStay(
             id: id,
-            stayNumber: dict["stayNumber"] as? String ?? "",
+            stayNumber: resolvedStayNumber,
             reservationId: dict["reservationId"] as? String ?? "",
             customerId: dict["customerUid"] as? String ?? dict["customerId"] as? String ?? "",
-            customerName: customer["name"] as? String ?? dict["customerName"] as? String ?? "",
-            customerPhone: customer["phone"] as? String ?? dict["customerPhone"] as? String ?? "",
+            customerName: resolvedCustomerName,
+            customerPhone: resolvedCustomerPhone,
             petId: pet["petId"] as? String ?? dict["petId"] as? String ?? "",
             petName: pet["name"] as? String ?? dict["petName"] as? String ?? "",
             petBreed: pet["breed"] as? String ?? dict["petBreed"] as? String ?? "",
@@ -868,7 +893,7 @@ public struct AdminHotelStay: Identifiable, Hashable {
             petPhotoUrl: pet["imageURL"] as? String ?? dict["petPhotoUrl"] as? String,
             wing: resolvedHotelWing(rawValue: wingRaw, species: pet["species"] as? String ?? dict["petSpecies"] as? String),
             accommodationId: dict["accommodationId"] as? String ?? "",
-            roomNumber: dict["accommodationCode"] as? String ?? dict["roomNumber"] as? String ?? "",
+            roomNumber: resolvedRoomNumber,
             status: HotelReservationStatus(rawValue: statusRaw) ?? .draft,
             guestStatus: HotelGuestStatus(rawValue: guestStatusRaw) ?? .normal,
             checkInTime: checkInDate,

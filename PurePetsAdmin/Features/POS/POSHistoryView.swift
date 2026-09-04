@@ -18,13 +18,24 @@ final class POSHistoryViewModel: ObservableObject {
     @Published private(set) var receipts: [PPPOSReceipt] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+    private var loadGeneration = UUID()
 
-    func load() {
+    func load(branchID: String?) {
+        let branchID = branchID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let generation = UUID()
+        loadGeneration = generation
+        receipts = []
         isLoading = true
         errorMessage = nil
-        PPPOSService.shared().fetchPOSHistory { [weak self] receipts, error in
+        guard !branchID.isEmpty else {
+            isLoading = false
+            errorMessage = Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع")
+            return
+        }
+        PPPOSService.shared().fetchPOSHistory(branchID: branchID) { [weak self] receipts, error in
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.loadGeneration == generation,
+                      BranchContextStore.shared.activeBranch?.branchID == branchID else { return }
                 self.isLoading = false
                 if let error {
                     self.errorMessage = error.localizedDescription
@@ -52,6 +63,7 @@ struct AdminPOSHistoryView: View {
     let session: AdminSession
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var viewModel = POSHistoryViewModel()
 
     init(session: AdminSession, onDismiss: (() -> Void)? = nil) {
@@ -82,7 +94,7 @@ struct AdminPOSHistoryView: View {
                     Spacer()
                 } else if let error = viewModel.errorMessage {
                     Spacer()
-                    AdminErrorBanner(message: error, retry: { viewModel.load() })
+                    AdminErrorBanner(message: error, retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) })
                         .padding(.horizontal, AdminSpacing.screenMargin)
                     Spacer()
                 } else {
@@ -91,7 +103,10 @@ struct AdminPOSHistoryView: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .onAppear { viewModel.load() }
+        .onAppear { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
+        .onChange(of: branchStore.activeBranch?.branchID) { branchID in
+            viewModel.load(branchID: branchID)
+        }
     }
 
     // MARK: - Sovereign Navigation Bar
@@ -112,7 +127,7 @@ struct AdminPOSHistoryView: View {
                 if viewModel.isLoading {
                     ProgressView().tint(AdminSurface.primary)
                 } else {
-                    Button(action: { viewModel.load() }) {
+                    Button(action: { viewModel.load(branchID: branchStore.activeBranch?.branchID) }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AdminSurface.primaryText)
@@ -130,7 +145,7 @@ struct AdminPOSHistoryView: View {
             }
 
             if let error = viewModel.errorMessage {
-                AdminErrorBanner(message: error, retry: { viewModel.load() })
+                AdminErrorBanner(message: error, retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) })
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 4)
             }
@@ -173,7 +188,7 @@ struct AdminPOSHistoryView: View {
             .padding(.vertical, AdminSpacing.sm)
         }
         .refreshable {
-            viewModel.load()
+            viewModel.load(branchID: branchStore.activeBranch?.branchID)
             try? await Task.sleep(nanoseconds: 300_000_000)
         }
     }

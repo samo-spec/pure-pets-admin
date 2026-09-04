@@ -104,8 +104,10 @@ NS_ASSUME_NONNULL_BEGIN
                        branchID:(nullable NSString *)branchID
                      completion:(void(^)(PPPOSSubmitResult * _Nullable result,
                                          NSError * _Nullable error))completion;
-- (void)fetchPOSHistoryWithCompletion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts,
-                                                NSError * _Nullable error))completion;
+- (void)fetchPOSHistoryForBranchID:(NSString *)branchID
+                         completion:(void(^)(NSArray<PPPOSReceipt *> * _Nullable receipts,
+                                             NSError * _Nullable error))completion
+    NS_SWIFT_NAME(fetchPOSHistory(branchID:completion:));
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
                              completion:(void(^)(PPPOSReceipt * _Nullable receipt,
                                                  NSError * _Nullable error))completion;

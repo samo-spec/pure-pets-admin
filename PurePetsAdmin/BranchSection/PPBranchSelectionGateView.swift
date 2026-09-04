@@ -13,6 +13,7 @@ public struct PPBranchSelectionGateView: View {
     @ObservedObject var contextStore = BranchContextStore.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     @State private var searchText = ""
     @State private var selectedBranchAnimID: String? = nil
@@ -80,12 +81,7 @@ public struct PPBranchSelectionGateView: View {
                             activeBranchHeroShowcase(branch: current)
                         }
 
-                        // ── Global Enterprise Access Card (SuperAdmin) ────────
-                        if contextStore.isGlobal && searchText.isEmpty && allowGlobalAccess && onSelectBranch == nil {
-                            globalAccessOptionCard
-                        }
-
-                        // ── Available Branches Deck ──────────────────────────
+                        // ── Available Approved Branches Deck ────────────────
                         availableBranchesDeck
                     }
                     .padding(.horizontal, 16)
@@ -121,11 +117,20 @@ public struct PPBranchSelectionGateView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             contextStore.reload()
+            guard !accessibilityReduceMotion else {
+                isBeaconPulsing = false
+                return
+            }
             withAnimation(
                 .easeInOut(duration: 1.8)
                 .repeatForever(autoreverses: true)
             ) {
                 isBeaconPulsing = true
+            }
+        }
+        .onChange(of: accessibilityReduceMotion) { reduced in
+            if reduced {
+                isBeaconPulsing = false
             }
         }
     }
@@ -628,11 +633,13 @@ public struct PPBranchSelectionGateView: View {
 // MARK: - Card Press Feedback Button Style
 
 fileprivate struct CardPressFeedbackStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .scaleEffect(configuration.isPressed && !accessibilityReduceMotion ? 0.98 : 1.0)
             .opacity(configuration.isPressed ? 0.9 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
+            .animation(accessibilityReduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
     }
 }
 

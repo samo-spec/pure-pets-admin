@@ -577,48 +577,24 @@ struct AdminChatsView: View {
     // MARK: Header
 
     private var headerPill: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Button {
+        AdminSovereignNavigationBar(
+            title: supportText("Chats", "المحادثات"),
+            subtitle: supportText("CommandCenter_Customers_Workspace", "مساحة العملاء • الدعم الفني"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            onBack: {
                 if let onDismiss { onDismiss() } else { dismiss() }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(AdminSurface.primary)
-                    .frame(width: 38, height: 38)
-                    .background(AdminSurface.control, in: Circle())
             }
-            .accessibilityLabel(supportText("Close", "إغلاق"))
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text(supportText("CommandCenter_Customers_Workspace", "مساحة العملاء"))
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(1)
-                Text(supportText("Chats", "المحادثات"))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+        ) {
             if !viewModel.canManage && !viewModel.accessDenied {
                 Text(supportText("SupportChats_ReadOnly", "عرض فقط"))
                     .font(AdminType.caption2Bold)
                     .foregroundColor(AdminSurface.secondaryText)
                     .padding(.horizontal, 10)
-                    .frame(minHeight: 26)
-                    .background(AdminSurface.control, in: Capsule())
-                    .overlay(Capsule().stroke(AdminSurface.hairline))
+                    .frame(height: 32)
+                    .background(AdminSurface.surface, in: Capsule())
+                    .overlay(Capsule().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8))
             }
         }
-        .padding(.horizontal, AdminSpacing.sm)
-        .padding(.vertical, AdminSpacing.sm)
-        .frame(maxHeight: 58)
-        .background(AdminSurface.surface, in: Capsule())
-        .overlay(Capsule().stroke(AdminSurface.hairline))
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.xs)
     }
 
     // MARK: Identity + metrics + search
@@ -1189,43 +1165,16 @@ struct SupportThreadView: View {
     // MARK: Header
 
     private var threadHeader: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            HStack(spacing: AdminSpacing.sm) {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(AdminSurface.primary)
-                        .frame(width: 38, height: 38)
-                        .background(AdminSurface.control, in: Circle())
-                }
-                .accessibilityLabel(supportText("Close", "إغلاق"))
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(viewModel.title)
-                        .font(AdminType.headline)
-                        .foregroundColor(AdminSurface.primaryText)
-                        .lineLimit(1)
-                    Text(viewModel.canManage
-                         ? supportText("SupportChats_SupportReady", "صلاحية الرد الرسمي مفعّلة.")
-                         : supportText("SupportChats_ReadOnly", "عرض فقط"))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                statusMenu
-            }
-
-            Text(supportText("SupportChats_ChannelDetail", "قناة دعم العملاء الرسمية"))
-                .font(AdminType.caption2)
-                .foregroundColor(AdminSurface.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        AdminSovereignNavigationBar(
+            title: viewModel.title,
+            subtitle: viewModel.canManage
+                ? supportText("SupportChats_SupportReady", "صلاحية الرد الرسمي مفعّلة")
+                : supportText("SupportChats_ReadOnly", "عرض فقط"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            onBack: { dismiss() }
+        ) {
+            statusMenu
         }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.vertical, AdminSpacing.md)
     }
 
     /// A menu at every text size — replaces the legacy segmented-control /

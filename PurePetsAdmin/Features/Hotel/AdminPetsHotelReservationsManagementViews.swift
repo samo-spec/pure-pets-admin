@@ -449,7 +449,9 @@ public struct AdminPetsHotelReservationDetailSheet: View {
     @State private var pendingAction: String = ""
 
     public var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            sheetNavBar
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
                     // Hero Identity Deck
@@ -484,26 +486,36 @@ public struct AdminPetsHotelReservationDetailSheet: View {
                 .padding(.top, 16)
                 .padding(.bottom, 40)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(reservation.reservationNumber.isEmpty ? Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز") : reservation.reservationNumber)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $isExtending) {
+            AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
+        }
+        .sheet(isPresented: $isShowingReasonSheet) {
+            AdminPetsHotelReasonSheet(reservation: reservation, action: pendingAction, viewModel: viewModel)
+        }
+    }
+
+    private var sheetNavBar: some View {
+        AdminSovereignNavigationBar(
+            title: reservation.reservationNumber.isEmpty ? Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز") : reservation.reservationNumber,
+            subtitle: "\(reservation.petName) • \(reservation.wing.title)",
+            statusDotColor: reservation.status.tint,
+            isModal: true,
+            onBack: { dismiss() }
+        ) {
+            HStack(spacing: 4) {
+                Image(systemName: reservation.status.icon)
+                    .font(.system(size: 10, weight: .bold))
+                Text(reservation.status.title)
+                    .font(Font.custom("Beiruti-Bold", size: 12))
             }
-            .sheet(isPresented: $isExtending) {
-                AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
-            }
-            .sheet(isPresented: $isShowingReasonSheet) {
-                AdminPetsHotelReasonSheet(reservation: reservation, action: pendingAction, viewModel: viewModel)
-            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(reservation.status.tint.opacity(0.12), in: Capsule())
+            .foregroundStyle(reservation.status.tint)
         }
     }
 
@@ -916,7 +928,9 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     public var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            sheetNavBar
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
                     if let error = validationError {
@@ -953,26 +967,25 @@ public struct AdminPetsHotelCreateReservationSheet: View {
                 .padding(.top, 16)
                 .padding(.bottom, 40)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
-            }
-            .onAppear {
-                if selectedTypeId.isEmpty {
-                    selectedTypeId = viewModel.accommodationTypes.first?.id ?? ""
-                }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onAppear {
+            if selectedTypeId.isEmpty {
+                selectedTypeId = viewModel.accommodationTypes.first?.id ?? ""
             }
         }
+    }
+
+    private var sheetNavBar: some View {
+        AdminSovereignNavigationBar(
+            title: Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"),
+            subtitle: Language.get("Hotel_Res_NewReservationSub", alter: "فندق بيور بيتس • حجز إقامة"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            isModal: true,
+            onBack: { dismiss() }
+        )
     }
 
     private var customerSection: some View {
@@ -1328,7 +1341,15 @@ public struct AdminPetsHotelExtendStayDialog: View {
     }
 
     public var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("Hotel_Res_ExtendStay", alter: "تمديد الإقامة"),
+                subtitle: "\(reservation.petName) • \(reservation.reservationNumber)",
+                statusDotColor: Color(uiColor: .ppSuccess),
+                isModal: true,
+                onBack: { dismiss() }
+            )
+
             VStack(spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(Language.get("Hotel_ExtendStay_Title", alter: "تمديد فترة إقامة الحجز"))
@@ -1377,19 +1398,10 @@ public struct AdminPetsHotelExtendStayDialog: View {
                 .disabled(isSubmitting)
             }
             .padding(18)
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Hotel_Res_ExtendStay", alter: "تمديد الإقامة"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(Language.get("Cancel", alter: "إلغاء")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Bold", size: 14))
-                    .foregroundStyle(AdminSurface.primary)
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1419,7 +1431,15 @@ public struct AdminPetsHotelReasonSheet: View {
     }
 
     public var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("Hotel_Res_CancelReservation", alter: "إلغاء الحجز"),
+                subtitle: "\(reservation.petName) • \(reservation.reservationNumber)",
+                statusDotColor: Color(uiColor: .ppError),
+                isModal: true,
+                onBack: { dismiss() }
+            )
+
             VStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(Language.get("Hotel_Reason_SheetTitle", alter: "سبب إلغاء أو تعديل حالة الحجز"))
@@ -1494,18 +1514,9 @@ public struct AdminPetsHotelReasonSheet: View {
                 .disabled(isSubmitting)
             }
             .padding(18)
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Hotel_Res_CancelReservation", alter: "إلغاء الحجز"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(Language.get("Cancel", alter: "تراجع")) {
-                        dismiss()
-                    }
-                    .font(Font.custom("Beiruti-Bold", size: 14))
-                    .foregroundStyle(AdminSurface.primary)
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }

@@ -22,7 +22,9 @@ public struct AdminPetsHotelStayDetailSheet: View {
     }
 
     public var body: some View {
-        NavigationView {
+        VStack(spacing: 0) {
+            sheetNavBar
+
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 18) {
                     // Hero Identity Deck
@@ -56,28 +58,39 @@ public struct AdminPetsHotelStayDetailSheet: View {
                     actionControls
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 16)
+                .padding(.top, 12)
                 .padding(.bottom, 40)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(activeStay.petName)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                    }
-                }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .task {
+            if viewModel.canViewCare {
+                await viewModel.loadStayDossier(stayId: stay.id, updatePresentedDetail: true)
             }
-            .task {
-                if viewModel.canViewCare {
-                    await viewModel.loadStayDossier(stayId: stay.id, updatePresentedDetail: true)
-                }
+        }
+    }
+
+    // MARK: - Redesigned Sovereign Sheet Navigation Bar
+    private var sheetNavBar: some View {
+        AdminSovereignNavigationBar(
+            title: activeStay.petName,
+            subtitle: "\(activeStay.wing.title) • \(activeStay.roomNumber)",
+            statusDotColor: activeStay.guestStatus.color,
+            isModal: true,
+            onBack: { dismiss() }
+        ) {
+            HStack(spacing: 4) {
+                Image(systemName: activeStay.guestStatus.icon)
+                    .font(.system(size: 10, weight: .bold))
+                Text(activeStay.guestStatus.title)
+                    .font(Font.custom("Beiruti-Bold", size: 12))
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(activeStay.guestStatus.color.opacity(0.12), in: Capsule())
+            .foregroundStyle(activeStay.guestStatus.color)
         }
     }
 
@@ -118,7 +131,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
                     .foregroundStyle(activeStay.guestStatus.color)
                 }
 
-                Text("\(activeStay.petBreed) • \(activeStay.petSpecies)")
+                Text(petBreedSpeciesText)
                     .font(Font.custom("Beiruti-Medium", size: 15))
                     .foregroundStyle(AdminSurface.secondaryText)
 
@@ -126,7 +139,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
                     Text(Language.get("Hotel_StayNo", alter: "رقم الإقامة:"))
                         .font(Font.custom("Beiruti-Medium", size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(activeStay.stayNumber)
+                    Text(resolvedStayNumber)
                         .font(.system(size: 12, weight: .bold, design: .monospaced))
                         .foregroundStyle(AdminSurface.primary)
                 }
@@ -408,40 +421,42 @@ public struct AdminPetsHotelStayDetailSheet: View {
 
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(activeStay.customerName)
+                    Text(ownerDisplayName)
                         .font(Font.custom("Beiruti-Bold", size: 15))
                         .foregroundStyle(AdminSurface.primaryText)
-                    Text(activeStay.customerPhone)
+                    Text(ownerDisplayPhone)
                         .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
 
                 Spacer()
 
-                // Quick Call Button
-                if let url = URL(string: "tel:\(activeStay.customerPhone.replacingOccurrences(of: " ", with: ""))") {
-                    Link(destination: url) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.15))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: "phone.fill")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                if hasValidOwnerPhone {
+                    // Quick Call Button
+                    if let url = URL(string: "tel:\(cleanPhoneNumber)") {
+                        Link(destination: url) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.16, green: 0.72, blue: 0.44).opacity(0.15))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.16, green: 0.72, blue: 0.44))
+                            }
                         }
                     }
-                }
 
-                // WhatsApp Button
-                if let waURL = URL(string: "whatsapp://send?phone=\(activeStay.customerPhone.filter("0123456789".contains))") {
-                    Link(destination: waURL) {
-                        ZStack {
-                            Circle()
-                                .fill(Color(red: 0.18, green: 0.80, blue: 0.44).opacity(0.15))
-                                .frame(width: 40, height: 40)
-                            Image(systemName: "message.fill")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(Color(red: 0.18, green: 0.80, blue: 0.44))
+                    // WhatsApp Button
+                    if let waURL = URL(string: "https://wa.me/\(cleanPhoneNumber)") {
+                        Link(destination: waURL) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(red: 0.18, green: 0.80, blue: 0.44).opacity(0.15))
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(Color(red: 0.18, green: 0.80, blue: 0.44))
+                            }
                         }
                     }
                 }
@@ -464,7 +479,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.right.to.line")
+                Image(systemName: Language.isRTL() ? "arrow.left.to.line" : "arrow.right.to.line")
                     .font(.system(size: 15, weight: .bold))
                 Text(Language.get("Hotel_Execute_Checkout", alter: "تسجيل المغادرة وتسليم النزيل"))
                     .font(Font.custom("Beiruti-Bold", size: 16))
@@ -479,6 +494,64 @@ public struct AdminPetsHotelStayDetailSheet: View {
         .opacity(viewModel.canCheckOut ? 1 : 0.45)
     }
 
+    // MARK: - Resilient Formatting & Localization Helpers
+    private var petBreedSpeciesText: String {
+        let breed = activeStay.petBreed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let species = localizedSpeciesText(activeStay.petSpecies)
+        if !breed.isEmpty && !species.isEmpty {
+            return "\(species) • \(breed)"
+        } else if !species.isEmpty {
+            return species
+        } else if !breed.isEmpty {
+            return breed
+        } else {
+            return activeStay.wing.title
+        }
+    }
+
+    private func localizedSpeciesText(_ raw: String) -> String {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if s == "cat" || s == "قط" || s == "قطة" || s == "cats" {
+            return Language.get("Pet_Cat", alter: "قط")
+        } else if s == "dog" || s == "كلب" || s == "dogs" {
+            return Language.get("Pet_Dog", alter: "كلب")
+        } else if s == "bird" || s == "طير" || s == "طائر" || s == "birds" {
+            return Language.get("Pet_Bird", alter: "طائر")
+        } else if s == "rabbit" || s == "أرنب" || s == "rabbits" {
+            return Language.get("Pet_Rabbit", alter: "أرنب")
+        } else if s.isEmpty {
+            return ""
+        }
+        return raw
+    }
+
+    private var resolvedStayNumber: String {
+        let num = activeStay.stayNumber.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !num.isEmpty { return num }
+        let resId = activeStay.reservationId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !resId.isEmpty { return resId }
+        return String(activeStay.id.prefix(8)).uppercased()
+    }
+
+    private var ownerDisplayName: String {
+        let name = activeStay.customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? Language.get("Customer_Unknown", alter: "غير محدد") : name
+    }
+
+    private var ownerDisplayPhone: String {
+        let phone = activeStay.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        return phone.isEmpty ? Language.get("Phone_Unavailable", alter: "لا يوجد رقم مسجل") : phone
+    }
+
+    private var hasValidOwnerPhone: Bool {
+        !activeStay.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var cleanPhoneNumber: String {
+        let raw = activeStay.customerPhone.filter("0123456789+".contains)
+        return raw.hasPrefix("+") ? String(raw.dropFirst()) : raw
+    }
+
     private func formatDateRange(from: Date, to: Date) -> String {
         let df = DateFormatter()
         df.locale = Locale(identifier: Language.currentLanguageCode())
@@ -486,3 +559,4 @@ public struct AdminPetsHotelStayDetailSheet: View {
         return "\(df.string(from: from)) - \(df.string(from: to))"
     }
 }
+

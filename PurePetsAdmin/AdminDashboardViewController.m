@@ -2760,10 +2760,28 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
         [descriptors addObject:descriptor];
     }
 
-    [self.pp_commandOrbitController applyRoleName:[self pp_currentRoleDisplayNameForUser:UsrMgr.currentUser]
-                                  capabilityCount:self.dashboardActionCount
-                                          signals:descriptors
-                                         animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
+    UserModel *currentUser = UsrMgr.currentUser;
+    NSString *avatarString = nil;
+    if ([currentUser.photoURL isKindOfClass:NSString.class] && currentUser.photoURL.length > 0) {
+        avatarString = currentUser.photoURL;
+    } else if ([currentUser.UserImageUrl isKindOfClass:NSURL.class]) {
+        avatarString = [(NSURL *)currentUser.UserImageUrl absoluteString];
+    } else if ([currentUser.UserImageUrl isKindOfClass:NSString.class] && [(NSString *)currentUser.UserImageUrl length] > 0) {
+        avatarString = (NSString *)currentUser.UserImageUrl;
+    }
+    if ((!avatarString || avatarString.length == 0) && PPStaffAuth.sharedAuth.cachedCurrentStaff.photoURL.length > 0) {
+        avatarString = PPStaffAuth.sharedAuth.cachedCurrentStaff.photoURL;
+    }
+    if ((!avatarString || avatarString.length == 0) && [FIRAuth auth].currentUser.photoURL.absoluteString.length > 0) {
+        avatarString = [FIRAuth auth].currentUser.photoURL.absoluteString;
+    }
+
+    [self.pp_commandOrbitController applyIdentityDisplayName:[currentUser PPBestDisplayName]
+                                                    avatarURL:avatarString
+                                                     roleName:[self pp_currentRoleDisplayNameForUser:currentUser]
+                                              capabilityCount:self.dashboardActionCount
+                                                      signals:descriptors
+                                                     animated:(self.view.window != nil && !UIAccessibilityIsReduceMotionEnabled())];
     [self.pp_commandOrbitController applyHotelAccess:[self pp_canAccessPermission:kStaffPermHotelView]];
     [self pp_pushCommandReadiness];
 }
