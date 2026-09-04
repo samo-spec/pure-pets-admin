@@ -64,14 +64,18 @@ public final class AdminPetsHotelService: @unchecked Sendable {
     }
 
     // MARK: - Core Callable Execution
+    private struct HotelSendablePayload: @unchecked Sendable {
+        let dict: [String: Any]
+    }
+
     @MainActor
     private func executeCallable(name: String, payload: [String: Any]) async throws -> [String: Any] {
+        let boxed = HotelSendablePayload(dict: payload)
         let callable = functions.httpsCallable(name)
         callable.timeoutInterval = timeoutInterval
 
         do {
-            nonisolated(unsafe) let safePayload = payload
-            let result = try await callable.call(safePayload)
+            let result = try await callable.call(boxed.dict)
             guard let dict = result.data as? [String: Any] else {
                 throw AdminPetsHotelError.invalidResponse
             }
@@ -156,6 +160,7 @@ public final class AdminPetsHotelService: @unchecked Sendable {
         return try await callHotelCommand(name: "hotelStayCommand", action: "check_in", payload: payload)
     }
 
+    @MainActor
     public func checkOutStay(
         stayId: String,
         actualDepartureAt: Date = Date(),

@@ -115,35 +115,12 @@ public final class AdminPetsHotelViewModel: ObservableObject {
         listeners.append(l1)
 
         // 2. Load Projections via Cloud Functions hotelReadOperations
-        Task { [weak self] in
+        Task { @MainActor [weak self] in
             guard let self = self else { return }
             let activeBranch = self.currentBranchId ?? "default"
-
-            async let staysTask: [[String: Any]] = {
-                do {
-                    return try await AdminPetsHotelService.shared.fetchOperationalStays(branchId: activeBranch)
-                } catch {
-                    return []
-                }
-            }()
-
-            async let resTask: [[String: Any]] = {
-                do {
-                    return try await AdminPetsHotelService.shared.fetchReservationOperations(branchId: activeBranch)
-                } catch {
-                    return []
-                }
-            }()
-
-            async let ccTask: [String: Any] = {
-                do {
-                    return try await AdminPetsHotelService.shared.fetchCommandCenter(branchId: activeBranch)
-                } catch {
-                    return [:]
-                }
-            }()
-
-            let (serverStays, serverReservations, serverCC) = await (staysTask, resTask, ccTask)
+            let serverStays = (try? await AdminPetsHotelService.shared.fetchOperationalStays(branchId: activeBranch)) ?? []
+            let serverReservations = (try? await AdminPetsHotelService.shared.fetchReservationOperations(branchId: activeBranch)) ?? []
+            let serverCC = (try? await AdminPetsHotelService.shared.fetchCommandCenter(branchId: activeBranch)) ?? [:]
 
             if !serverStays.isEmpty {
                 self.stays = serverStays.map { dict in
