@@ -20,46 +20,87 @@ public struct AdminPetsHotelHubView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Top Navigation Bar
-            topNavigationBar
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
 
-            if viewModel.isLoading || viewModel.requiresBranchSelection || viewModel.errorMessage != nil {
-                hotelStateBanner
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 8)
-            }
+                VStack(spacing: 0) {
+                    // Top Navigation Bar
+                    topNavigationBar
 
-            // Flight Mode Tab Picker
-            flightTabPicker
+                    if viewModel.isLoading || viewModel.requiresBranchSelection || viewModel.errorMessage != nil {
+                        hotelStateBanner
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 8)
+                    }
 
-            // Search & Wing Filters (Visible on relevant tabs)
-            if viewModel.selectedTab == .guests || viewModel.selectedTab == .care {
-                filterDeck
-            }
+                    // Flight Mode Tab Picker
+                    flightTabPicker
 
-            // Tab Content
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 20) {
-                    switch viewModel.selectedTab {
-                    case .overview:
-                        overviewFlightDeck
-                    case .guests:
-                        guestsListView
-                    case .reservations:
-                        reservationsListView
-                    case .rooms:
-                        roomsGridView
-                    case .care:
-                        careOperationsView
+                    // Search & Wing Filters (Visible on relevant tabs)
+                    if viewModel.selectedTab == .guests || viewModel.selectedTab == .care {
+                        filterDeck
+                    }
+
+                    // Tab Content
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 20) {
+                            switch viewModel.selectedTab {
+                            case .overview:
+                                overviewFlightDeck
+                            case .guests:
+                                guestsListView
+                            case .reservations:
+                                reservationsListView
+                            case .rooms:
+                                roomsGridView
+                            case .care:
+                                careOperationsView
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                        .padding(.bottom, 48)
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
-                .padding(.bottom, 48)
+
+                // Push Navigation Links
+                NavigationLink(
+                    destination: AdminPetsHotelCreateReservationSheet(
+                        viewModel: viewModel,
+                        isPushMode: true,
+                        onBack: {
+                            viewModel.newReservationModalOpen = false
+                        }
+                    )
+                    .navigationBarHidden(true),
+                    isActive: $viewModel.newReservationModalOpen
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
+
+                NavigationLink(
+                    destination: AdminPetsHotelSuiteEditorSheet(
+                        accommodation: nil,
+                        viewModel: viewModel,
+                        isPushMode: true,
+                        onBack: {
+                            viewModel.isCreatingNewSuite = false
+                        }
+                    )
+                    .navigationBarHidden(true),
+                    isActive: $viewModel.isCreatingNewSuite
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
             }
+            .navigationBarHidden(true)
         }
-        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $viewModel.selectedStayDetail) { stay in
             AdminPetsHotelStayDetailSheet(stay: stay, viewModel: viewModel)
@@ -69,16 +110,8 @@ public struct AdminPetsHotelHubView: View {
             AdminPetsHotelReservationDetailSheet(reservation: res, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
-        .sheet(isPresented: $viewModel.newReservationModalOpen) {
-            AdminPetsHotelCreateReservationSheet(viewModel: viewModel)
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
         .sheet(item: $viewModel.suiteEditorModalAccommodation) { acc in
             AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
-        .sheet(isPresented: $viewModel.isCreatingNewSuite) {
-            AdminPetsHotelSuiteEditorSheet(accommodation: nil, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.typeEditorModalType) { type in

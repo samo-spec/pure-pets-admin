@@ -147,7 +147,7 @@ public struct PPAdminBranchSwitcherBar: View {
             branchIdentityEmblem
 
             Text(contextStore.currentBranchDisplayName)
-                .font(AdminType.subheadlineBold)
+                .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                 .foregroundColor(AdminSurface.primaryText)
                 .lineLimit(2)
                 .minimumScaleFactor(0.84)
@@ -263,7 +263,7 @@ public struct PPAdminBranchSwitcherBar: View {
             if canSwitchBranch {
                 HStack(spacing: 4) {
                     Text(Language.get("AdminCommandCenter_Switch_Action", alter: "تبديل"))
-                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primary)
 
                     Image(systemName: "chevron.up.chevron.down")
@@ -284,7 +284,7 @@ public struct PPAdminBranchSwitcherBar: View {
                         .foregroundStyle(AdminCommandInk.secondary)
 
                     Text(Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد"))
-                        .font(Font.custom("Beiruti-Medium", size: 10.5))
+                        .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
                 .padding(.horizontal, 7)

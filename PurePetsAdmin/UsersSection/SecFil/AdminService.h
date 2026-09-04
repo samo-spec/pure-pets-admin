@@ -12,7 +12,7 @@
 #import "PPStaffAuth.h"
 
 NS_ASSUME_NONNULL_BEGIN
-typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError * _Nullable error);
+typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError * _Nullable error) NS_SWIFT_SENDABLE;
 
 @interface AdminService : NSObject
 
@@ -40,6 +40,14 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
                 completion:(AdminServiceCompletion)completion;
 
 #pragma mark - User Access Management (new)
+
++ (void)createCustomerAccountWithName:(NSString *)name
+                                email:(NSString *)email
+                                phone:(nullable NSString *)phone
+                             password:(NSString *)password
+                        initialStatus:(nullable NSString *)initialStatus
+                           isVerified:(BOOL)isVerified
+                           completion:(AdminServiceCompletion)completion;
 
 + (void)updateUserFeatures:(NSString *)uid
                   features:(NSDictionary *)features

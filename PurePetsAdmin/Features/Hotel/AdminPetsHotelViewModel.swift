@@ -290,13 +290,14 @@ public final class AdminPetsHotelViewModel: ObservableObject {
             return
         }
         let branchId = currentBranchId
-        canViewHotel = staff.hasPermission(kStaffPermHotelView, inBranch: branchId)
-        canCheckIn = staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId)
-        canCheckOut = staff.hasPermission(kStaffPermHotelCheckOut, inBranch: branchId)
-        canManageAccommodations = staff.hasPermission(kStaffPermHotelAccommodationsManage, inBranch: branchId)
-        canViewCare = staff.hasPermission(kStaffPermHotelCareView, inBranch: branchId)
-        canExecuteCareTasks = staff.hasPermission(kStaffPermHotelTaskExecute, inBranch: branchId)
-        canViewBilling = staff.hasPermission(kStaffPermHotelBillingView, inBranch: branchId)
+        let canManageHotel = staff.hasPermission("hotel.manage", inBranch: branchId)
+        canViewHotel = staff.hasPermission(kStaffPermHotelView, inBranch: branchId) || canManageHotel
+        canCheckIn = staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId) || canManageHotel
+        canCheckOut = staff.hasPermission(kStaffPermHotelCheckOut, inBranch: branchId) || staff.hasPermission(kStaffPermHotelCheckIn, inBranch: branchId) || canManageHotel
+        canManageAccommodations = staff.hasPermission(kStaffPermHotelAccommodationsManage, inBranch: branchId) || canManageHotel
+        canViewCare = staff.hasPermission(kStaffPermHotelCareView, inBranch: branchId) || canManageHotel || canViewHotel
+        canExecuteCareTasks = staff.hasPermission(kStaffPermHotelTaskExecute, inBranch: branchId) || canManageHotel
+        canViewBilling = staff.hasPermission(kStaffPermHotelBillingView, inBranch: branchId) || canManageHotel
         if !canViewCare, selectedTab == .care {
             selectedTab = .overview
         }

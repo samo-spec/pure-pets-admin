@@ -6,12 +6,53 @@
 #import "Styling.h"
 #import "Lottie.h"
 #import "AppManager.h" // for kAppPrimaryColor, etc.
+#import <CoreText/CoreText.h>
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
-@import FirebaseAuth;
 
 @implementation Styling
+
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [self registerBrandFontsIfNeeded];
+    });
+}
+
++ (void)registerBrandFontsIfNeeded {
+    static dispatch_once_t regOnceToken;
+    dispatch_once(&regOnceToken, ^{
+        NSArray<NSString *> *fontFiles = @[@"Beiruti-Bold", @"Beiruti-Medium", @"Beiruti-Regular"];
+        NSBundle *bundle = [NSBundle mainBundle];
+        for (NSString *fontName in fontFiles) {
+            NSURL *fontURL = [bundle URLForResource:fontName withExtension:@"ttf"];
+            if (!fontURL) {
+                fontURL = [bundle URLForResource:fontName withExtension:@"ttf" subdirectory:@"Resourses"];
+            }
+            if (!fontURL) {
+                fontURL = [bundle URLForResource:fontName withExtension:@"ttf" subdirectory:@"Resources"];
+            }
+            if (fontURL) {
+                CFErrorRef error = NULL;
+                if (!CTFontManagerRegisterFontsForURL((__bridge CFURLRef)fontURL, kCTFontManagerScopeProcess, &error)) {
+                    if (error) {
+                        CFIndex errorCode = CFErrorGetCode(error);
+                        // 105 is kCTFontManagerErrorAlreadyRegistered
+                        if (errorCode != 105) {
+                            DLog(@"[Styling] Failed to register font %@: %@", fontName, (__bridge NSError *)error);
+                        }
+                        CFRelease(error);
+                    }
+                } else {
+                    DLog(@"[Styling] Successfully registered brand font: %@", fontName);
+                }
+            } else {
+                DLog(@"[Styling] Font file not found in bundle: %@.ttf", fontName);
+            }
+        }
+    });
+}
 
 #pragma mark - Generic Methods
 + (void)applyStyleWithCornerRadius:(CGFloat)cornerRadius
@@ -118,16 +159,19 @@
 
 
 + (UIFont *)fontBold:(CGFloat)size {
+    [self registerBrandFontsIfNeeded];
     UIFont *font = [UIFont fontWithName:@"Beiruti-Bold" size:size];
     return font ?: [UIFont boldSystemFontOfSize:size]; // fallback
 }
 
 + (UIFont *)fontMedium:(CGFloat)size {
+    [self registerBrandFontsIfNeeded];
     UIFont *font = [UIFont fontWithName:@"Beiruti-Medium" size:size];
     return font ?: [UIFont systemFontOfSize:size weight:UIFontWeightMedium]; // fallback
 }
 
 + (UIFont *)fontRegular:(CGFloat)size {
+    [self registerBrandFontsIfNeeded];
     UIFont *font = [UIFont fontWithName:@"Beiruti-Regular" size:size];
     return font ?: [UIFont systemFontOfSize:size]; // fallback
 }

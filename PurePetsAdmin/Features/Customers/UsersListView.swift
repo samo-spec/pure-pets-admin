@@ -394,25 +394,14 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
     func updateCustomerStatus(customer: PPCustomerAccountModel, toStatus: CustomerAccountStatus, reason: String = "") {
         let uid = customer.id
         let statusString = toStatus.rawValue
-        let isBlocked = toStatus == .blocked
 
         AdminService.updateUserStatus(uid, status: statusString, reason: reason.isEmpty ? "admin_console_update" : reason, duration: nil) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    // Direct fallback Firestore write
-                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
-                        "accountStatus": statusString,
-                        "isBlocked": isBlocked,
-                        "lastModified": FieldValue.serverTimestamp()
-                    ]) { fbError in
-                        if let fbError {
-                            self?.showToast(fbError.localizedDescription)
-                        } else {
-                            self?.showToast(Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح"))
-                        }
-                    }
+                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
                 } else {
                     self?.showToast(Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح"))
+                    self?.startListening()
                 }
             }
         }
@@ -425,25 +414,13 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserVerified(uid, verified: newVerified) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    // Fallback Firestore write
-                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
-                        "verified": newVerified,
-                        "lastModified": FieldValue.serverTimestamp()
-                    ]) { fbError in
-                        if let fbError {
-                            self?.showToast(fbError.localizedDescription)
-                        } else {
-                            let msg = newVerified
-                                ? Language.get("Customer_Verified_Success", alter: "تم توثيق الحساب بنجاح")
-                                : Language.get("Customer_Unverified_Success", alter: "تم إلغاء توثيق الحساب")
-                            self?.showToast(msg)
-                        }
-                    }
+                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
                 } else {
                     let msg = newVerified
                         ? Language.get("Customer_Verified_Success", alter: "تم توثيق الحساب بنجاح")
                         : Language.get("Customer_Unverified_Success", alter: "تم إلغاء توثيق الحساب")
                     self?.showToast(msg)
+                    self?.startListening()
                 }
             }
         }
@@ -457,14 +434,10 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserFeatures(uid, features: updated) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
-                        "features.\(featureKey)": isEnabled,
-                        "lastModified": FieldValue.serverTimestamp()
-                    ]) { _ in
-                        self?.showToast(Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة"))
-                    }
+                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
                 } else {
                     self?.showToast(Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة"))
+                    self?.startListening()
                 }
             }
         }
@@ -478,14 +451,10 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserRestrictions(uid, restrictions: updated) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    Firestore.firestore().collection("UsersCol").document(uid).updateData([
-                        "restrictions.\(restrictionKey)": isBlocked,
-                        "lastModified": FieldValue.serverTimestamp()
-                    ]) { _ in
-                        self?.showToast(Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان"))
-                    }
+                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
                 } else {
                     self?.showToast(Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان"))
+                    self?.startListening()
                 }
             }
         }
@@ -499,7 +468,7 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(error.localizedDescription)
+                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
                 } else {
                     self?.showToast(Language.get("PasswordReset_Sent", alter: "تم إرسال رابط إعادة تعيين كلمة المرور إلى بريد العميل"))
                 }
@@ -514,61 +483,53 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         password: String,
         initialStatus: CustomerAccountStatus,
         isVerified: Bool,
-        completion: @escaping (Bool, String?) -> Void
+        completion: @escaping @MainActor @Sendable (Bool, String?) -> Void
     ) {
-        let secondaryAppName = "CustomerProvisioningApp"
-        let secondaryApp: FirebaseApp
-        if let existing = FirebaseApp.app(name: secondaryAppName) {
-            secondaryApp = existing
-        } else if let defaultApp = FirebaseApp.app() {
-            FirebaseApp.configure(name: secondaryAppName, options: defaultApp.options)
-            secondaryApp = FirebaseApp.app(name: secondaryAppName)!
-        } else {
-            completion(false, "Firebase is not configured")
-            return
-        }
-
-        let secondaryAuth = Auth.auth(app: secondaryApp)
-        secondaryAuth.createUser(withEmail: email, password: password) { [weak self] authResult, error in
+        AdminService.createCustomerAccount(
+            withName: name,
+            email: email,
+            phone: phone.isEmpty ? nil : phone,
+            password: password,
+            initialStatus: initialStatus.rawValue,
+            isVerified: isVerified
+        ) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    completion(false, error.localizedDescription)
+                    let friendly = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    completion(false, friendly)
                     return
                 }
-                guard let user = authResult?.user else {
-                    completion(false, "Failed to resolve user")
-                    return
-                }
-
-                let uid = user.uid
-                try? secondaryAuth.signOut()
-
-                let docData: [String: Any] = [
-                    "uid": uid,
-                    "ID": uid,
-                    "UserName": name,
-                    "displayName": name,
-                    "UserEmail": email,
-                    "email": email,
-                    "MobileNo": phone,
-                    "accountType": "user",
-                    "accountStatus": initialStatus.rawValue,
-                    "isBlocked": initialStatus == .blocked,
-                    "verified": isVerified,
-                    "createdAt": FieldValue.serverTimestamp(),
-                    "lastModified": FieldValue.serverTimestamp()
-                ]
-
-                Firestore.firestore().collection("UsersCol").document(uid).setData(docData, merge: true) { err in
-                    if let err {
-                        completion(false, err.localizedDescription)
-                    } else {
-                        self?.showToast(Language.get("Customer_Created_Success", alter: "تم إنشاء حساب العميل بنجاح"))
-                        completion(true, nil)
-                    }
-                }
+                self?.showToast(Language.get("Customer_Created_Success", alter: "تم إنشاء حساب العميل بنجاح"))
+                self?.startListening()
+                completion(true, nil)
             }
         }
+    }
+
+    func friendlyErrorMessage(for error: Error) -> String {
+        let nsError = error as NSError
+        let errorDesc = error.localizedDescription.lowercased()
+        let code = nsError.code
+
+        if errorDesc.contains("permission") || errorDesc.contains("insufficient") || code == 7 {
+            return Language.get("Error_Customer_PermissionDenied", alter: "لا تمتلك الصلاحيات الكافية (إدارة المستخدمين) لتسجيل عميل جديد")
+        }
+        if errorDesc.contains("already exists") || errorDesc.contains("already-exists") || code == 6 {
+            return Language.get("Error_Customer_AlreadyExists", alter: "البريد الإلكتروني مسجل بالفعل لحساب آخر")
+        }
+        if errorDesc.contains("invalid email") || (errorDesc.contains("invalid-argument") && errorDesc.contains("email")) {
+            return Language.get("Error_Customer_InvalidEmail", alter: "صيغة البريد الإلكتروني غير صالحة")
+        }
+        if errorDesc.contains("password must be at least") || errorDesc.contains("weak-password") {
+            return Language.get("Error_Customer_WeakPassword", alter: "كلمة المرور يجب ألا تقل عن ٦ خانات")
+        }
+        if errorDesc.contains("unauthenticated") || code == 16 {
+            return Language.get("Error_Customer_Unauthenticated", alter: "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً")
+        }
+        if errorDesc.contains("network") || errorDesc.contains("unavailable") || code == 14 {
+            return Language.get("Error_Customer_NetworkUnavailable", alter: "تعذر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت")
+        }
+        return error.localizedDescription
     }
 }
 
@@ -1801,35 +1762,23 @@ struct AdminAddCustomerSheet: View {
     @State private var password: String = ""
     @State private var initialStatus: CustomerAccountStatus = .active
     @State private var isVerified: Bool = false
+    @State private var isPasswordVisible: Bool = false
     @State private var isSubmitting: Bool = false
     @State private var formError: String? = nil
 
     var body: some View {
         VStack(spacing: 0) {
-            AdminSovereignNavigationBar(
-                title: Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"),
-                subtitle: Language.get("CommandCenter_Customers_Workspace", alter: "إدارة العملاء • بطاقة جديدة"),
-                statusDotColor: Color(uiColor: .ppSuccess),
-                isModal: true,
-                onBack: { dismiss() }
-            )
+            // Sovereign Modal Header with balanced trailing close action
+            modalHeader
 
             ScrollView {
                 VStack(spacing: 16) {
                     // Live Monogram Hero Preview
                     liveMonogramPreview
 
+                    // Error Notification Banner
                     if let error = formError {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundColor(.red)
-                            Text(error)
-                                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                                .foregroundColor(AdminSurface.primaryText)
-                            Spacer()
-                        }
-                        .padding(10)
-                        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        errorBanner(error)
                     }
 
                     // Fields Container
@@ -1839,7 +1788,11 @@ struct AdminAddCustomerSheet: View {
                             title: Language.get("FullName_Field", alter: "الاسم الكامل للعميل *"),
                             placeholder: Language.get("Customer_Name_Placeholder", alter: "مثال: سالم الكواري"),
                             icon: "person.fill",
-                            text: $name
+                            text: Binding(
+                                get: { name },
+                                set: { name = $0; if formError != nil { formError = nil } }
+                            ),
+                            disabled: isSubmitting
                         )
 
                         // Phone Number with Qatar Prefix
@@ -1856,10 +1809,18 @@ struct AdminAddCustomerSheet: View {
                                     .padding(.vertical, 8)
                                     .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                                TextField("5512 3456", text: $phone)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .monospacedDigit()
-                                    .keyboardType(.phonePad)
+                                TextField("5512 3456", text: Binding(
+                                    get: { phone },
+                                    set: { newPhone in
+                                        let digits = newPhone.filter { "0123456789".contains($0) }
+                                        phone = String(digits.prefix(8))
+                                        if formError != nil { formError = nil }
+                                    }
+                                ))
+                                .font(.system(size: 14, weight: .semibold))
+                                .monospacedDigit()
+                                .keyboardType(.phonePad)
+                                .disabled(isSubmitting)
                             }
                             .padding(6)
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1871,22 +1832,31 @@ struct AdminAddCustomerSheet: View {
                             title: Language.get("Email_Field", alter: "البريد الإلكتروني *"),
                             placeholder: "customer@example.com",
                             icon: "envelope.fill",
-                            text: $email,
-                            keyboardType: .emailAddress
+                            text: Binding(
+                                get: { email },
+                                set: { email = $0; if formError != nil { formError = nil } }
+                            ),
+                            keyboardType: .emailAddress,
+                            disabled: isSubmitting
                         )
 
-                        // Password with Generator
+                        // Password with Generator and Eye Visibility Toggle
                         VStack(alignment: .leading, spacing: 4) {
                             HStack {
                                 Text(Language.get("Password_Field", alter: "كلمة المرور الأولية *"))
                                     .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
                                     .foregroundColor(AdminSurface.primaryText)
                                 Spacer()
-                                Button(Language.get("Generate_Password", alter: "توليد كلمة سر آمنة")) {
+                                Button {
                                     password = generateSecurePassword()
+                                    isPasswordVisible = true
+                                    if formError != nil { formError = nil }
+                                } label: {
+                                    Text(Language.get("Generate_Password", alter: "توليد كلمة سر آمنة"))
+                                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                                        .foregroundColor(AdminSurface.primary)
                                 }
-                                .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                                .foregroundColor(AdminSurface.primary)
+                                .disabled(isSubmitting)
                             }
 
                             HStack(spacing: 8) {
@@ -1895,9 +1865,35 @@ struct AdminAddCustomerSheet: View {
                                     .font(.system(size: 13))
                                     .frame(width: 20)
 
-                                TextField("••••••••", text: $password)
+                                if isPasswordVisible {
+                                    TextField("••••••••", text: Binding(
+                                        get: { password },
+                                        set: { password = $0; if formError != nil { formError = nil } }
+                                    ))
                                     .font(.system(size: 13, weight: .medium, design: .monospaced))
                                     .autocorrectionDisabled(true)
+                                    .textInputAutocapitalization(.never)
+                                    .disabled(isSubmitting)
+                                } else {
+                                    SecureField("••••••••", text: Binding(
+                                        get: { password },
+                                        set: { password = $0; if formError != nil { formError = nil } }
+                                    ))
+                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .autocorrectionDisabled(true)
+                                    .textInputAutocapitalization(.never)
+                                    .disabled(isSubmitting)
+                                }
+
+                                Button {
+                                    isPasswordVisible.toggle()
+                                } label: {
+                                    Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                        .font(.system(size: 13))
+                                        .frame(width: 24, height: 24)
+                                }
+                                .buttonStyle(.plain)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 9)
@@ -1906,16 +1902,22 @@ struct AdminAddCustomerSheet: View {
                         }
                     }
 
-                    // Initial Options
+                    // Initial Verification Option
                     VStack(spacing: 10) {
                         HStack {
-                            Text(Language.get("Initial_Verification", alter: "توثيق الحساب فورياً"))
-                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
-                                .foregroundColor(AdminSurface.primaryText)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("Initial_Verification", alter: "توثيق الحساب فورياً"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Text(Language.get("Initial_Verification_Hint", alter: "يمنح الحساب شارة التوثيق الأزرق ويتيح الوصول المباشر لكافة الخدمات"))
+                                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
                             Spacer()
                             Toggle("", isOn: $isVerified)
                                 .labelsHidden()
                                 .tint(Color(red: 0.12, green: 0.50, blue: 0.90))
+                                .disabled(isSubmitting)
                         }
                         .padding(12)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -1933,7 +1935,9 @@ struct AdminAddCustomerSheet: View {
                                 Image(systemName: "person.badge.plus")
                                     .font(.system(size: 15, weight: .bold))
                             }
-                            Text(Language.get("Create_Customer_CTA", alter: "حفظ وإنشاء حساب العميل"))
+                            Text(isSubmitting
+                                 ? Language.get("Saving", alter: "جاري الحفظ...")
+                                 : Language.get("Create_Customer_CTA", alter: "حفظ وإنشاء حساب العميل"))
                                 .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                         }
                         .foregroundColor(.white)
@@ -1949,7 +1953,8 @@ struct AdminAddCustomerSheet: View {
                         )
                         .shadow(color: AdminSurface.primary.opacity(0.25), radius: 8, y: 3)
                     }
-                    .disabled(isSubmitting)
+                    .disabled(isSubmitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity((isSubmitting || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) ? 0.6 : 1.0)
                     .padding(.top, 8)
                 }
                 .padding(AdminSpacing.screenMargin)
@@ -1960,6 +1965,74 @@ struct AdminAddCustomerSheet: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
+    private var modalHeader: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"))
+                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • بطاقة جديدة"))
+                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption2))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            AdminSquircleCloseButton {
+                dismiss()
+            }
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+    }
+
+    private func errorBanner(_ error: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(Color(uiColor: .ppError))
+
+            Text(error)
+                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .subheadline))
+                .foregroundColor(AdminSurface.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 4)
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    formError = nil
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .padding(6)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(uiColor: .ppError).opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(Color(uiColor: .ppError).opacity(0.25), lineWidth: 1)
+        )
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+    }
+
     private var liveMonogramPreview: some View {
         VStack(spacing: 6) {
             ZStack {
@@ -1968,7 +2041,7 @@ struct AdminAddCustomerSheet: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-                Text(name.isEmpty ? "PP" : String(name.prefix(2)).uppercased())
+                Text(calculatedInitials)
                     .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
                     .foregroundColor(.white)
             }
@@ -1976,12 +2049,25 @@ struct AdminAddCustomerSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .shadow(color: AdminSurface.primary.opacity(0.20), radius: 8, y: 3)
 
-            Text(name.isEmpty ? Language.get("NewCustomer_Preview", alter: "معاينة هوية العميل") : name)
+            Text(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? Language.get("NewCustomer_Preview", alter: "معاينة هوية العميل") : name)
                 .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .headline))
                 .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.center)
         }
         .padding(.top, 4)
         .padding(.bottom, 6)
+    }
+
+    private var calculatedInitials: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "PP" }
+        let components = trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+        if components.count >= 2,
+           let firstChar = components.first?.first,
+           let lastChar = components.last?.first {
+            return "\(firstChar)\(lastChar)".uppercased()
+        }
+        return String(trimmed.prefix(2)).uppercased()
     }
 
     private func onboardingField(
@@ -1989,7 +2075,8 @@ struct AdminAddCustomerSheet: View {
         placeholder: String,
         icon: String,
         text: Binding<String>,
-        keyboardType: UIKeyboardType = .default
+        keyboardType: UIKeyboardType = .default,
+        disabled: Bool = false
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -2006,6 +2093,8 @@ struct AdminAddCustomerSheet: View {
                     .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
                     .keyboardType(keyboardType)
                     .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .disabled(disabled)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
@@ -2022,20 +2111,28 @@ struct AdminAddCustomerSheet: View {
     private func submitForm() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPhone = phone.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digitsOnly = phone.filter { "0123456789".contains($0) }
 
         guard trimmedName.count >= 2 else {
-            formError = Language.get("Error_NameRequired", alter: "يرجى كتابة اسم العميل بالكامل (حرفين على الأقل)")
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                formError = Language.get("Error_NameRequired", alter: "يرجى كتابة اسم العميل بالكامل (حرفين على الأقل)")
+            }
             return
         }
         guard trimmedEmail.contains("@") && trimmedEmail.contains(".") else {
-            formError = Language.get("Error_EmailInvalid", alter: "يرجى كتابة بريد إلكتروني صالح")
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                formError = Language.get("Error_Customer_InvalidEmail", alter: "يرجى كتابة بريد إلكتروني صالح")
+            }
             return
         }
         guard password.count >= 6 else {
-            formError = Language.get("Error_PasswordShort", alter: "كلمة المرور يجب أن تكون ٦ خانات على الأقل")
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                formError = Language.get("Error_Customer_WeakPassword", alter: "كلمة المرور يجب أن تكون ٦ خانات على الأقل")
+            }
             return
         }
+
+        let fullPhone = digitsOnly.isEmpty ? "" : "+974" + digitsOnly
 
         formError = nil
         isSubmitting = true
@@ -2044,7 +2141,7 @@ struct AdminAddCustomerSheet: View {
         viewModel.createCustomer(
             name: trimmedName,
             email: trimmedEmail,
-            phone: trimmedPhone,
+            phone: fullPhone,
             password: password,
             initialStatus: initialStatus,
             isVerified: isVerified
@@ -2054,7 +2151,9 @@ struct AdminAddCustomerSheet: View {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 dismiss()
             } else {
-                formError = errDesc ?? "تعذر إنشاء الحساب"
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    formError = errDesc ?? Language.get("Error_Customer_Failed", alter: "تعذر إنشاء الحساب")
+                }
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
             }
         }

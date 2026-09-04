@@ -387,17 +387,62 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
     return PPStaffStrictBooleanTrue(self.scope[@"global"]);
 }
 
+BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
+    if (!perm.length || !granted.count) return NO;
+    if ([granted containsObject:perm]) return YES;
+
+    // Canonical hierarchical resolution matching the 18 modules (45 permissions)
+    if ([perm isEqualToString:@"stock.cost.view"]) {
+        return [granted containsObject:kStaffPermStockManage] || [granted containsObject:kStaffPermStockView];
+    }
+    if ([perm isEqualToString:@"stock.quarantine.release"]) {
+        return [granted containsObject:kStaffPermStockManage];
+    }
+    if ([perm isEqualToString:@"hotel.checkout"]) {
+        return [granted containsObject:kStaffPermHotelCheckIn];
+    }
+    if ([perm hasPrefix:@"hotel."] && [granted containsObject:@"hotel.manage"]) {
+        return YES;
+    }
+    if ([perm hasPrefix:@"delivery."] && [granted containsObject:@"delivery.override"]) {
+        return YES;
+    }
+    if (([perm isEqualToString:@"delivery.driver.view"] ||
+         [perm isEqualToString:@"delivery.driver.manage"] ||
+         [perm isEqualToString:@"delivery.assign"] ||
+         [perm isEqualToString:@"delivery.route.view"] ||
+         [perm isEqualToString:@"delivery.route.manage"] ||
+         [perm isEqualToString:@"delivery.pod.review"]) &&
+        [granted containsObject:@"delivery.dispatch"]) {
+        return YES;
+    }
+    if ([perm isEqualToString:@"delivery.cod.view"] && [granted containsObject:@"delivery.cod.reconcile"]) {
+        return YES;
+    }
+    if ([perm hasPrefix:@"users.features."] && [granted containsObject:@"users.features.manage"]) {
+        return YES;
+    }
+    if ([perm hasPrefix:@"users.restrictions."] && [granted containsObject:@"users.restrictions.manage"]) {
+        return YES;
+    }
+    if ([perm hasPrefix:@"users.subscriptions."] &&
+        ([granted containsObject:@"users.manage"] || [granted containsObject:@"users.features.manage"])) {
+        return YES;
+    }
+    return NO;
+}
+
 - (BOOL)hasPermission:(NSString *)perm {
     if (!perm.length || !self.isActive) return NO;
     if (self.isAdmin) return YES;
-    return [self.permissions containsObject:perm];
+    return PPStaffMatchesPermission(self.permissions, perm);
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms {
     if (!self.isActive) return NO;
     if (self.isAdmin) return YES;
     for (NSString *permission in perms) {
-        if ([self.permissions containsObject:permission]) {
+        if ([self hasPermission:permission]) {
             return YES;
         }
     }
@@ -439,7 +484,7 @@ static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
     if (branchID.length && self.branchPermissions[branchID]) {
         NSArray<NSString *> *branchPerms = self.branchPermissions[branchID];
         if ([branchPerms isKindOfClass:NSArray.class]) {
-            return [branchPerms containsObject:perm];
+            if (PPStaffMatchesPermission(branchPerms, perm)) return YES;
         }
     }
     return [self hasPermission:perm];

@@ -886,6 +886,15 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
 
+    public var isPushMode: Bool = false
+    public var onBack: (() -> Void)? = nil
+
+    public init(viewModel: AdminPetsHotelViewModel, isPushMode: Bool = false, onBack: (() -> Void)? = nil) {
+        self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
+
     // Customer state
     @State private var customerName: String = ""
     @State private var customerPhone: String = ""
@@ -983,32 +992,19 @@ public struct AdminPetsHotelCreateReservationSheet: View {
     }
 
     private var sheetNavBar: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 3) {
-                Text(Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"))
-                    .font(Font.custom("Beiruti-Bold", size: 20))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 6, height: 6)
-                    Text(Language.get("Hotel_Res_NewReservationSub", alter: "فندق بيور بيتس • حجز إقامة"))
-                        .font(Font.custom("Beiruti-Medium", size: 12))
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
-                        .lineLimit(1)
+        AdminSovereignNavigationBar(
+            title: Language.get("Hotel_Res_NewReservationTitle", alter: "تسجيل حجز فندقي جديد"),
+            subtitle: Language.get("Hotel_Res_NewReservationSub", alter: "فندق بيور بيتس • حجز إقامة"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack {
+                    onBack()
+                } else {
+                    dismiss()
                 }
             }
-            .multilineTextAlignment(Language.isRTL() ? .trailing : .leading)
-
-            Spacer(minLength: 8)
-
-            AdminSquircleCloseButton(action: { dismiss() })
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 16)
-        .padding(.bottom, 12)
+        )
     }
 
     private var customerSection: some View {
@@ -1409,7 +1405,11 @@ public struct AdminPetsHotelCreateReservationSheet: View {
             )
             isSubmitting = false
             if success {
-                dismiss()
+                if let onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
             }
         }
     }

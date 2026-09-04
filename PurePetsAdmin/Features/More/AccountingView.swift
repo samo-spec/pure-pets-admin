@@ -670,18 +670,6 @@ struct AdminAccountingView: View {
             }
         ) {
             HStack(spacing: 8) {
-                // Scope Badge
-                HStack(spacing: 4) {
-                    Image(systemName: session.hasGlobalScope ? "globe.americas.fill" : "building.2.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text(session.hasGlobalScope ? Language.get("Accounting_ScopeGlobal", alter: "مركزي") : Language.get("Accounting_ScopeBranch", alter: "فرع"))
-                        .font(AdminType.caption2Bold)
-                }
-                .foregroundColor(AdminSurface.primary)
-                .padding(.horizontal, 10)
-                .frame(height: 38)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
                 // Export Button (Matching Back Button Size & Corners: 44x44, radius 14)
                 AdminSquircleActionButton(
                     systemImage: "square.and.arrow.up",

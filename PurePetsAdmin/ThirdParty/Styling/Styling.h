@@ -43,6 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Preset: Header style (flat bg, no shadow, bold look)
 + (void)applyHeaderStyleToView:(UIView *)view;
 
++ (void)registerBrandFontsIfNeeded;
 + (UIFont *)fontBold:(CGFloat)size;
 + (UIFont *)fontMedium:(CGFloat)size;
 + (UIFont *)fontRegular:(CGFloat)size;

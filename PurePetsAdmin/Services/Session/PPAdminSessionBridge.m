@@ -99,14 +99,14 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
 
 - (BOOL)hasPermission:(NSString *)permission {
     if (permission.length == 0) return NO;
-    BOOL granted = self.grantsAllPermissions || [self.permissions containsObject:permission];
-    return granted;
+    if (self.grantsAllPermissions) return YES;
+    return PPStaffMatchesPermission(self.permissions, permission);
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)permissions {
     if (self.grantsAllPermissions) return YES;
     for (NSString *permission in permissions ?: @[]) {
-        if ([self.permissions containsObject:permission]) return YES;
+        if ([self hasPermission:permission]) return YES;
     }
     return NO;
 }

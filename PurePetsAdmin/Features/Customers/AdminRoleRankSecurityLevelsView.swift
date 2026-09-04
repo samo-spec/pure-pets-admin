@@ -1011,39 +1011,47 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 }
             }
         }
+        .background(
+            NavigationLink(
+                destination: RoleRankEditorSheet(
+                    existingRole: viewModel.editingRole,
+                    onSave: { roleData in
+                        viewModel.saveCustomRole(
+                            existingId: viewModel.editingRole?.id,
+                            titleAr: roleData.titleAr,
+                            titleEn: roleData.titleEn,
+                            descAr: roleData.descAr,
+                            descEn: roleData.descEn,
+                            rank: roleData.rank,
+                            tier: roleData.tier,
+                            iconName: roleData.iconName,
+                            accentHex: roleData.accentHex,
+                            permissions: roleData.permissions
+                        ) { success in
+                            if success {
+                                viewModel.isShowingEditor = false
+                                viewModel.editingRole = nil
+                            }
+                        }
+                    },
+                    onDismiss: {
+                        viewModel.isShowingEditor = false
+                        viewModel.editingRole = nil
+                    }
+                ),
+                isActive: $viewModel.isShowingEditor
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        )
         .sheet(item: $viewModel.inspectingMatrixRole) { role in
             RolePermissionsMatrixSheet(role: role)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $viewModel.inspectingStaffRole) { role in
             RoleAssignedStaffSheet(role: role, staffMembers: viewModel.staffMembers)
-        }
-        .sheet(isPresented: $viewModel.isShowingEditor) {
-            RoleRankEditorSheet(
-                existingRole: viewModel.editingRole,
-                onSave: { roleData in
-                    viewModel.saveCustomRole(
-                        existingId: viewModel.editingRole?.id,
-                        titleAr: roleData.titleAr,
-                        titleEn: roleData.titleEn,
-                        descAr: roleData.descAr,
-                        descEn: roleData.descEn,
-                        rank: roleData.rank,
-                        tier: roleData.tier,
-                        iconName: roleData.iconName,
-                        accentHex: roleData.accentHex,
-                        permissions: roleData.permissions
-                    ) { success in
-                        if success {
-                            viewModel.isShowingEditor = false
-                            viewModel.editingRole = nil
-                        }
-                    }
-                },
-                onDismiss: {
-                    viewModel.isShowingEditor = false
-                    viewModel.editingRole = nil
-                }
-            )
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .alert(
             Language.get("RoleRank_Delete_Confirm_Title", alter: "تأكيد حذف الدور المخصص"),
@@ -1097,6 +1105,8 @@ public struct AdminRoleRankSecurityLevelsView: View {
         .onChange(of: viewModel.selectedTierFilter) { _ in
             viewModel.applyFilter()
         }
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Sovereign Top Bar
@@ -1125,9 +1135,11 @@ public struct AdminRoleRankSecurityLevelsView: View {
                                 .font(.system(size: 14, weight: .bold))
                             Text(Language.get("RoleRank_NewRole_Btn", alter: "إضافة دور"))
                                 .font(Font.custom("Beiruti-Bold", size: 14))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, 10)
                         .frame(height: 40)
                         .background(
                             LinearGradient(
@@ -1274,6 +1286,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
                 )
                 .font(Font.custom("Beiruti-Regular", size: 14))
                 .foregroundColor(AdminSurface.primaryText)
+                .multilineTextAlignment(.leading)
 
                 if !viewModel.searchText.isEmpty {
                     Button(action: { viewModel.searchText = "" }) {
@@ -1499,6 +1512,8 @@ private struct SovereignRoleRankCard: View {
                     .font(Font.custom("Beiruti-Regular", size: 12.5))
                     .foregroundColor(AdminSurface.secondaryText)
                     .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             // Permission Capacity Progress Gauge
@@ -1521,7 +1536,7 @@ private struct SovereignRoleRankCard: View {
                 }
 
                 GeometryReader { geo in
-                    ZStack(alignment: Language.isRTL() ? .trailing : .leading) {
+                    ZStack(alignment: .leading) {
                         Capsule()
                             .fill(AdminSurface.hairline)
                             .frame(height: 5)
@@ -1654,6 +1669,8 @@ public struct RolePermissionsMatrixSheet: View {
             }
             .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     private var headerView: some View {
@@ -1708,6 +1725,7 @@ public struct RolePermissionsMatrixSheet: View {
                 TextField(Language.get("Search", alter: "تصفية الصلاحيات..."), text: $searchKeyword)
                     .font(Font.custom("Beiruti-Regular", size: 13))
                     .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
                 if !searchKeyword.isEmpty {
                     Button(action: { searchKeyword = "" }) {
                         Image(systemName: "xmark.circle.fill")
@@ -1914,6 +1932,8 @@ public struct RoleAssignedStaffSheet: View {
             }
             .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1974,63 +1994,53 @@ public struct RoleRankEditorSheet: View {
     }
 
     public var body: some View {
-        NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    navHeader
+            VStack(spacing: 0) {
+                sovereignEditorNavBar
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            identityCard
-                            rankAndClearanceTierCard
-                            iconAndThemeCard
-                            permissionsMatrixCard
-                        }
-                        .padding(AdminSpacing.base)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        identityCard
+                        rankAndClearanceTierCard
+                        iconAndThemeCard
+                        permissionsMatrixCard
                     }
+                    .padding(AdminSpacing.base)
                 }
             }
-            .navigationBarHidden(true)
         }
+        .navigationBarHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    private var navHeader: some View {
-        HStack {
-            Button(action: onDismiss) {
-                Text(Language.get("Cancel", alter: "إلغاء"))
-                    .font(Font.custom("Beiruti-Bold", size: 14))
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Text(existingRole != nil ? Language.get("RoleRank_Editor_Edit_Title", alter: "تعديل الدور المخصص") : Language.get("RoleRank_Editor_Create_Title", alter: "صياغة دور مخصص جديد"))
-                .font(Font.custom("Beiruti-Bold", size: 16))
-                .foregroundColor(AdminSurface.primaryText)
-
-            Spacer()
-
+    private var sovereignEditorNavBar: some View {
+        AdminSovereignNavigationBar(
+            title: existingRole != nil ? Language.get("RoleRank_Editor_Edit_Title", alter: "تعديل الدور المخصص") : Language.get("RoleRank_Editor_Create_Title", alter: "صياغة دور مخصص جديد"),
+            subtitle: Language.isRTL() ? "تحديد الصلاحيات ورتبة الوصول" : "Configure clearance & permissions",
+            onBack: onDismiss
+        ) {
             Button(action: saveTapped) {
-                if isSaving {
-                    ProgressView().tint(.white)
-                } else {
-                    Text(Language.get("Save", alter: "حفظ"))
-                        .font(Font.custom("Beiruti-Bold", size: 14))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(canSave ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.3), in: Capsule())
+                HStack(spacing: 6) {
+                    if isSaving {
+                        ProgressView().tint(.white).scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .heavy))
+                        Text(Language.get("Save", alter: "حفظ"))
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                    }
                 }
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 38)
+                .background(canSave ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.3), in: Capsule())
+                .shadow(color: canSave ? AdminSurface.primary.opacity(0.32) : Color.clear, radius: 6, y: 2)
             }
             .buttonStyle(.plain)
             .disabled(!canSave || isSaving)
         }
-        .padding(AdminSpacing.base)
-        .background(AdminSurface.surface)
-        .overlay(Rectangle().fill(AdminSurface.hairline).frame(height: 1), alignment: .bottom)
     }
 
     private var canSave: Bool {
@@ -2061,25 +2071,30 @@ public struct RoleRankEditorSheet: View {
             Text(Language.isRTL() ? "بيانات وهوية الدور" : "Role Identity")
                 .font(Font.custom("Beiruti-Bold", size: 14.5))
                 .foregroundColor(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(spacing: 8) {
                 TextField(Language.get("RoleRank_RoleName_Ar", alter: "اسم الدور بالعربية *"), text: $titleAr)
                     .font(Font.custom("Beiruti-Regular", size: 14))
+                    .multilineTextAlignment(.leading)
                     .padding(10)
                     .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
 
                 TextField(Language.get("RoleRank_RoleName_En", alter: "اسم الدور بالإنجليزية *"), text: $titleEn)
                     .font(Font.custom("Beiruti-Regular", size: 14))
+                    .multilineTextAlignment(.leading)
                     .padding(10)
                     .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
 
                 TextField(Language.get("RoleRank_RoleDesc_Ar", alter: "وصف المهام والمسؤوليات بالعربية"), text: $descAr)
                     .font(Font.custom("Beiruti-Regular", size: 13))
+                    .multilineTextAlignment(.leading)
                     .padding(10)
                     .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
 
                 TextField(Language.get("RoleRank_RoleDesc_En", alter: "وصف المهام والمسؤوليات بالإنجليزية"), text: $descEn)
                     .font(Font.custom("Beiruti-Regular", size: 13))
+                    .multilineTextAlignment(.leading)
                     .padding(10)
                     .background(AdminSurface.background, in: RoundedRectangle(cornerRadius: 10))
             }
@@ -2120,6 +2135,8 @@ public struct RoleRankEditorSheet: View {
             Text(tier.localizedDescription)
                 .font(Font.custom("Beiruti-Regular", size: 12))
                 .foregroundColor(AdminSurface.secondaryText)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(14)
         .background(AdminSurface.surface)
@@ -2132,6 +2149,7 @@ public struct RoleRankEditorSheet: View {
             Text(Language.get("RoleRank_Color_Select_Title", alter: "اللون المميز والأيقونة"))
                 .font(Font.custom("Beiruti-Bold", size: 14.5))
                 .foregroundColor(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             // Icons
             ScrollView(.horizontal, showsIndicators: false) {
@@ -2205,6 +2223,7 @@ public struct RoleRankEditorSheet: View {
                     selectedPermissions = Set(["dashboard.view", "reports.view"])
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             // Module Checkboxes
             VStack(spacing: 10) {
@@ -2227,6 +2246,7 @@ public struct RoleRankEditorSheet: View {
                                     Text(module.localizedTitle)
                                         .font(Font.custom("Beiruti-Bold", size: 13))
                                         .foregroundColor(AdminSurface.primaryText)
+                                        .multilineTextAlignment(.leading)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -2250,6 +2270,7 @@ public struct RoleRankEditorSheet: View {
                                     Text(perm.localizedTitle)
                                         .font(Font.custom("Beiruti-Regular", size: 12))
                                         .foregroundColor(checked ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                                        .multilineTextAlignment(.leading)
                                     Spacer()
                                 }
                                 .padding(.leading, 18)

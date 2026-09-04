@@ -1226,7 +1226,7 @@ private struct CommandCenterChrome: View {
                 VStack(alignment: .leading, spacing: 2) {
                     // Operator / Brand Title
                     Text(resolvedDisplayName)
-                        .font(Font.custom("Beiruti-Bold", size: 17.5))
+                        .font(PPBrandFont.bold(size: 18, relativeTo: .title3))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
 
@@ -1251,7 +1251,7 @@ private struct CommandCenterChrome: View {
                     .foregroundStyle(AdminSurface.primary)
 
                 Text(roleName)
-                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                     .foregroundStyle(AdminSurface.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
@@ -1299,7 +1299,7 @@ private struct CommandCenterChrome: View {
                     targetSize: CGSize(width: 44, height: 44)
                 ) {
                     Text(monogram)
-                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                         .foregroundStyle(AdminSurface.primary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -1348,7 +1348,7 @@ private struct CommandCenterChrome: View {
                         .fill(readinessTone.accent)
                         .frame(width: 5, height: 5)
                     Text(readinessText)
-                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                         .foregroundStyle(readinessTone.accent)
                         .lineLimit(1)
                         .minimumScaleFactor(0.80)
@@ -1368,7 +1368,7 @@ private struct CommandCenterChrome: View {
                     .fill(readinessTone.accent)
                     .frame(width: 5, height: 5)
                 Text(readinessText)
-                    .font(Font.custom("Beiruti-SemiBold", size: 11))
+                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
                     .foregroundStyle(readinessTone.color)
                     .lineLimit(1)
                     .minimumScaleFactor(0.80)
@@ -1412,11 +1412,11 @@ private struct CommandCenterChrome: View {
 
             VStack(alignment: .leading, spacing: 0) {
                 Text(Language.get("CommandCenter_Readiness_Label", alter: "حالة النظام التشغيلي"))
-                    .font(Font.custom("Beiruti-Regular", size: 10.5))
+                    .font(PPBrandFont.regular(size: 10.5, relativeTo: .caption2))
                     .foregroundStyle(AdminCommandInk.tertiary)
                     .lineLimit(1)
                 Text(readinessText)
-                    .font(Font.custom("Beiruti-Bold", size: 12.5))
+                    .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
                     .foregroundStyle(readinessTone.color)
                     .lineLimit(1)
             }
@@ -1451,7 +1451,7 @@ private struct CommandCenterChrome: View {
                         .foregroundStyle(AdminSurface.primary)
 
                     Text(languageTitle)
-                        .font(Font.custom("Beiruti-Bold", size: 12.5))
+                        .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
                         .foregroundStyle(AdminSurface.primary)
                         .lineLimit(1)
                 }
@@ -1576,7 +1576,7 @@ private struct CommandCenterChrome: View {
 
                 // 2. Branch Context Information (Simplified & Adaptive Height)
                 Text(currentBranchDisplayName)
-                    .font(Font.custom("Beiruti-Bold", size: 15))
+                    .font(PPBrandFont.bold(size: 15, relativeTo: .subheadline))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(2)
                     .minimumScaleFactor(0.85)
@@ -1589,7 +1589,7 @@ private struct CommandCenterChrome: View {
                 if canSwitchBranch {
                     HStack(spacing: 3.5) {
                         Text(Language.get("AdminCommandCenter_Switch_Action", alter: "تبديل"))
-                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+                            .font(PPBrandFont.bold(size: 11.5, relativeTo: .caption2))
                             .foregroundStyle(AdminSurface.primary)
 
                         Image(systemName: "chevron.up.chevron.down")
@@ -1610,7 +1610,7 @@ private struct CommandCenterChrome: View {
                             .foregroundStyle(AdminCommandInk.secondary)
 
                         Text(Language.get("BranchContext_SingleBranch_Locked", alter: "فرع معتمد"))
-                            .font(Font.custom("Beiruti-Medium", size: 10))
+                            .font(PPBrandFont.medium(size: 10, relativeTo: .caption2))
                             .foregroundStyle(AdminCommandInk.secondary)
                     }
                     .padding(.horizontal, 6)
@@ -1694,14 +1694,14 @@ private struct CommandCenterChrome: View {
                             .foregroundStyle(readinessTone.accent)
 
                         Text(readinessText)
-                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
                             .foregroundStyle(readinessTone.color)
                             .lineLimit(1)
 
                         Spacer(minLength: 4)
 
                         Text(Language.get("AdminCommandCenter_SourceIssue_TapHint", alter: "فحص المشكلة"))
-                            .font(Font.custom("Beiruti-Medium", size: 11.5))
+                            .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption2))
                             .foregroundStyle(readinessTone.accent)
 
                         Image(systemName: layoutDirection == .rightToLeft ? "chevron.left" : "chevron.right")

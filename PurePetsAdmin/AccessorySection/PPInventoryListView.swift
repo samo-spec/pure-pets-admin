@@ -897,8 +897,8 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     var canReleaseReservations: Bool {
         canSell && (staff?.hasPermission(kStaffPermPaymentsRefund) ?? false)
     }
-    var canReleaseQuarantine: Bool { staff?.hasPermission("stock.quarantine.release") ?? false }
-    var canViewCosts: Bool { staff?.hasPermission("stock.cost.view") ?? false }
+    var canReleaseQuarantine: Bool { canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false) }
+    var canViewCosts: Bool { canManageStock || (staff?.hasPermission("stock.view") ?? false) || (staff?.hasPermission("stock.cost.view") ?? false) }
 
     func reservation(for unit: PPLivePetInventoryUnit) -> PPLivePetReservation? {
         reservations.first { $0.contains(productID: item.accessoryID, unitID: unit.id) }
@@ -1676,6 +1676,7 @@ public struct PPInventoryListView: View {
 
     @State private var spinAngle: Double = 0
     @FocusState private var isSearchFocused: Bool
+    @State private var showingBranchSwitcherSheet: Bool = false
 
     public init(
         kind: AccessKindType = .typeAccessory,
@@ -1691,7 +1692,7 @@ public struct PPInventoryListView: View {
         GeometryReader { geometry in
             let isRegular = geometry.size.width >= 760
 
-            ZStack {
+            ZStack(alignment: .top) {
                 AdminSurface.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
@@ -1709,32 +1710,51 @@ public struct PPInventoryListView: View {
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        LazyVStack(spacing: 16) {
-                            apexTelemetryRadar
-                            searchAndFilterMatrix
-
-                            if viewModel.isLoading && viewModel.allItems.isEmpty {
-                                loadingSkeletonView
-                            } else if viewModel.filteredItems.isEmpty {
-                                emptyStateView
-                            } else {
-                                itemsListSection
-                            }
+                    if viewModel.isLoading && viewModel.allItems.isEmpty {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            loadingSkeletonView
+                                .padding(.horizontal, AdminSpacing.screenMargin)
+                                .padding(.top, 10)
+                                .padding(.bottom, 64)
+                                .frame(maxWidth: isRegular ? 980 : .infinity)
+                                .frame(maxWidth: .infinity)
                         }
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, 10)
-                        .padding(.bottom, 64)
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .refreshable {
-                        await viewModel.refresh()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if viewModel.allItems.isEmpty {
+                        flagshipCatalogEmptyStateView(isRegular: isRegular)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: false) {
+                            LazyVStack(spacing: 16) {
+                                apexTelemetryRadar
+                                searchAndFilterMatrix
+
+                                if viewModel.filteredItems.isEmpty {
+                                    filterEmptyStateCard
+                                } else {
+                                    itemsListSection
+                                }
+                            }
+                            .padding(.horizontal, AdminSpacing.screenMargin)
+                            .padding(.top, 10)
+                            .padding(.bottom, 64)
+                            .frame(maxWidth: isRegular ? 980 : .infinity)
+                            .frame(maxWidth: .infinity)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .refreshable {
+                            await viewModel.refresh()
+                        }
                     }
                 }
+                .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $showingBranchSwitcherSheet) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
 
         .onAppear {
             viewModel.startListening()
@@ -2187,123 +2207,459 @@ public struct PPInventoryListView: View {
 
     // MARK: - Items List Section
 
+    @ViewBuilder
     private var itemsListSection: some View {
-        LazyVStack(spacing: 12) {
-            ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
-                FlagshipInventoryCard(
-                    item: item,
-                    onTap: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        let detailVC = PPInventoryItemDetailHostingController(
-                            item: item,
-                            viewModel: viewModel,
-                            onOpenFullEditor: {
-                                let editVC = AddAccessoryViewController(accessory: item)
-                                editVC.showTypeRow = false
-                                editVC.defaultKind = viewModel.currentKind
-                                onPushViewController(editVC)
-                            },
-                            onOpenPOS: {
-                                if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
-                                    onPushViewController(controller)
-                                }
-                            },
-                            onAdjustQuantity: { delta in
-                                viewModel.adjustQuantity(by: delta, for: item)
-                            },
-                            onToggleStock: {
-                                viewModel.toggleStockAvailability(for: item)
-                            },
-                            onDelete: {
-                                confirmDelete(item: item)
+        ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
+            FlagshipInventoryCard(
+                item: item,
+                onTap: {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    let detailVC = PPInventoryItemDetailHostingController(
+                        item: item,
+                        viewModel: viewModel,
+                        onOpenFullEditor: {
+                            let editVC = AddAccessoryViewController(accessory: item)
+                            editVC.showTypeRow = false
+                            editVC.defaultKind = viewModel.currentKind
+                            onPushViewController(editVC)
+                        },
+                        onOpenPOS: {
+                            if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
+                                onPushViewController(controller)
                             }
-                        )
-                        onPushViewController(detailVC)
-                    },
-                    onEdit: {
-                        let editVC = AddAccessoryViewController(accessory: item)
-                        editVC.showTypeRow = false
-                        editVC.defaultKind = viewModel.currentKind
-                        onPushViewController(editVC)
-                    },
-                    onAdjustQuantity: { delta in
-                        viewModel.adjustQuantity(by: delta, for: item)
-                    },
-                    onToggleStock: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.toggleStockAvailability(for: item)
-                    },
-                    onDelete: {
-                        confirmDelete(item: item)
-                    }
-                )
-            }
+                        },
+                        onAdjustQuantity: { delta in
+                            viewModel.adjustQuantity(by: delta, for: item)
+                        },
+                        onToggleStock: {
+                            viewModel.toggleStockAvailability(for: item)
+                        },
+                        onDelete: {
+                            confirmDelete(item: item)
+                        }
+                    )
+                    onPushViewController(detailVC)
+                },
+                onEdit: {
+                    let editVC = AddAccessoryViewController(accessory: item)
+                    editVC.showTypeRow = false
+                    editVC.defaultKind = viewModel.currentKind
+                    onPushViewController(editVC)
+                },
+                onAdjustQuantity: { delta in
+                    viewModel.adjustQuantity(by: delta, for: item)
+                },
+                onToggleStock: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.toggleStockAvailability(for: item)
+                },
+                onDelete: {
+                    confirmDelete(item: item)
+                }
+            )
         }
     }
 
-    // MARK: - Empty State View
+    // MARK: - Flagship Empty State View (Zero Catalog Items)
 
-    private var emptyStateView: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AdminSurface.primary.opacity(0.10))
-                    .frame(width: 64, height: 64)
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(AdminSurface.primary)
-            }
-            .padding(.top, 24)
+    @ViewBuilder
+    private func flagshipCatalogEmptyStateView(isRegular: Bool) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 24) {
+                Spacer(minLength: 28)
 
-            Text(Language.get("No Accessories Found", alter: "لا توجد أصناف مطابقة"))
-                .font(AdminType.headline)
-                .foregroundColor(AdminSurface.primaryText)
+                // Concentric Aura Squircle Deck
+                ZStack {
+                    // Outermost ambient glow halo
+                    Circle()
+                        .fill(catalogTabThemeColor.opacity(0.09))
+                        .frame(width: 140, height: 140)
+                        .scaleEffect(reduceMotion ? 1.0 : 1.04)
 
-            Text(Language.get("Tap + to add your first accessory.", alter: "جرب تغيير كلمات البحث أو تصفية الحالة، أو اضغط + لإضافة صنف جديد."))
-                .font(AdminType.caption1)
-                .foregroundColor(AdminCommandInk.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+                    // Secondary ring contour
+                    Circle()
+                        .stroke(catalogTabThemeColor.opacity(0.20), lineWidth: 1.5)
+                        .frame(width: 110, height: 110)
 
-            HStack(spacing: 10) {
-                if !viewModel.searchText.isEmpty || viewModel.activeFilter != .all {
-                    Button {
-                        viewModel.searchText = ""
-                        viewModel.activeFilter = .all
-                    } label: {
-                        Text(Language.get("ResetFilters", alter: "إعادة ضبط الفلاتر"))
-                            .font(AdminType.captionBold)
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                    // Core Gradient Squircle Monolith
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    catalogTabThemeColor,
+                                    catalogTabThemeColor.opacity(0.80)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 78, height: 78)
+                        .shadow(color: catalogTabThemeColor.opacity(0.32), radius: 16, x: 0, y: 8)
+
+                    // Symbol Icon
+                    Image(systemName: catalogTabEmptyIcon)
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundColor(.white)
+
+                    // Elevated Micro-Badge
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Circle()
+                                .fill(Color.white)
+                                .frame(width: 26, height: 26)
+                                .overlay(
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 13, weight: .bold))
+                                        .foregroundStyle(catalogTabThemeColor)
+                                )
+                                .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+                                .offset(x: Language.isRTL() ? -6 : 6, y: 4)
+                        }
                     }
+                    .frame(width: 78, height: 78)
+                }
+                .padding(.top, 12)
+
+                // Branch Context Pill
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 7, height: 7)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.8), radius: 3, x: 0, y: 0)
+
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(AdminSurface.primary)
+
+                    Text(activeBranchLabelText)
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(AdminSurface.surface)
+                        .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 2)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.75)
+                )
+
+                // Beiruti Typographic Hierarchy
+                VStack(spacing: 10) {
+                    Text(catalogTabEmptyTitle)
+                        .font(AdminType.title2)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+
+                    Text(catalogTabEmptySubtitle)
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(4)
+                        .padding(.horizontal, 32)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Button(action: {
+                // Command Horizon Action Buttons
+                VStack(spacing: 12) {
+                    // Primary Action Button: Add Item
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        let addVC = AddAccessoryViewController(accessory: nil)
+                        addVC.showTypeRow = false
+                        addVC.defaultKind = viewModel.currentKind
+                        onPushViewController(addVC)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 17, weight: .semibold))
+                            Text(catalogTabAddButtonTitle)
+                                .font(AdminType.bodyBold)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.90)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.28), radius: 12, x: 0, y: 6)
+                    }
+                    .buttonStyle(CatalogPressStyle())
+
+                    // Secondary Action Horizon: Switch Branch & Refresh
+                    HStack(spacing: 10) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showingBranchSwitcherSheet = true
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(Language.get("SwitchBranch_Action", alter: "تبديل الفرع"))
+                                    .font(AdminType.captionBold)
+                            }
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(AdminSurface.control)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+                            )
+                        }
+                        .buttonStyle(CatalogPressStyle())
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            Task {
+                                await viewModel.refresh()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(Language.get("Sync_Inventory_Action", alter: "تحديث السحابة"))
+                                    .font(AdminType.captionBold)
+                            }
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(AdminSurface.primary.opacity(0.08))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(AdminSurface.primary.opacity(0.2), lineWidth: 0.75)
+                            )
+                        }
+                        .buttonStyle(CatalogPressStyle())
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 6)
+
+                // Feature Badges
+                HStack(spacing: 10) {
+                    featureBadge(
+                        icon: "shippingbox.and.arrow.backward.fill",
+                        text: Language.get("Instant_Stock_Control", alter: "مخزون لحظي")
+                    )
+                    featureBadge(
+                        icon: "tag.circle.fill",
+                        text: Language.get("Branch_Pricing_Control", alter: "تسعير مخصص")
+                    )
+                    featureBadge(
+                        icon: "bolt.shield.fill",
+                        text: Language.get("Secure_Cloud_Sync", alter: "مزامنة سحابية")
+                    )
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+
+                Spacer(minLength: 40)
+            }
+            .frame(maxWidth: isRegular ? 640 : .infinity)
+            .padding(.horizontal, AdminSpacing.screenMargin)
+        }
+        .refreshable {
+            await viewModel.refresh()
+        }
+    }
+
+    // MARK: - Filter / Search Empty State Card
+
+    private var filterEmptyStateCard: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(AdminSurface.primary.opacity(0.08))
+                    .frame(width: 58, height: 58)
+
+                Image(systemName: viewModel.searchText.isEmpty ? "line.3.horizontal.decrease.circle" : "magnifyingglass")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .padding(.top, 8)
+
+            VStack(spacing: 6) {
+                Text(Language.get("Inventory_No_Filter_Matches", alter: "لا توجد نتائج مطابقة للبحث أو التصفية"))
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+
+                if !viewModel.searchText.isEmpty {
+                    Text(String(format: Language.get("Inventory_No_Results_For_Query", alter: "لم نجد أي أصناف تطابق «%@». جرب البحث باسم آخر أو كود الصنف."), viewModel.searchText))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                } else {
+                    Text(Language.get("Inventory_No_Results_Filter_Hint", alter: "لا توجد عناصر تطابق الفلتر المحدد حالياً في هذا القسم."))
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+            }
+
+            HStack(spacing: 12) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        viewModel.searchText = ""
+                        viewModel.activeFilter = .all
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(Language.get("ResetFilters", alter: "إعادة ضبط الفلاتر"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                }
+                .buttonStyle(CatalogPressStyle())
+
+                Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     let addVC = AddAccessoryViewController(accessory: nil)
                     addVC.showTypeRow = false
                     addVC.defaultKind = viewModel.currentKind
                     onPushViewController(addVC)
-                }) {
+                } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus")
+                            .font(.system(size: 12, weight: .bold))
                         Text(Language.get("Add", alter: "إضافة صنف جديد"))
+                            .font(AdminType.captionBold)
                     }
-                    .font(AdminType.captionBold)
                     .foregroundColor(.white)
                     .padding(.horizontal, 18)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 10)
                     .background(AdminSurface.primary, in: Capsule(style: .continuous))
                 }
+                .buttonStyle(CatalogPressStyle())
             }
-            .padding(.top, 8)
+            .padding(.bottom, 8)
         }
-        .frame(maxWidth: .infinity, minHeight: 220)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.02), radius: 8, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Empty State Contextual Helpers
+
+    private var catalogTabThemeColor: Color {
+        switch viewModel.activeTab {
+        case .food:
+            return Color(red: 0.95, green: 0.60, blue: 0.12)
+        case .livePets:
+            return Color(red: 0.10, green: 0.74, blue: 0.52)
+        case .accessories:
+            return AdminSurface.primary
+        }
+    }
+
+    private var catalogTabEmptyIcon: String {
+        switch viewModel.activeTab {
+        case .food:
+            return "takeoutbag.and.cup.and.straw.fill"
+        case .livePets:
+            return "pawprint.fill"
+        case .accessories:
+            return "bag.fill"
+        }
+    }
+
+    private var catalogTabEmptyTitle: String {
+        switch viewModel.activeTab {
+        case .food:
+            return Language.get("Inventory_Food_Empty_Title", alter: "لا توجد أطعمة أو مكملات مسجلة")
+        case .livePets:
+            return Language.get("Inventory_LivePets_Empty_Title", alter: "لا توجد حيوانات حية مسجلة")
+        case .accessories:
+            return Language.get("Inventory_Accessories_Empty_Title", alter: "لا توجد إكسسوارات مسجلة")
+        }
+    }
+
+    private var catalogTabEmptySubtitle: String {
+        let branchName = BranchContextStore.shared.currentBranchDisplayName
+        let hasBranch = !branchName.isEmpty && branchName != "main_store"
+        switch viewModel.activeTab {
+        case .food:
+            return hasBranch
+                ? String(format: Language.get("Inventory_Food_Empty_Subtitle_Branch", alter: "لم يتم تسجيل أي منتجات أطعمة أو مكملات في فرع «%@» حتى الآن. يمكنك إضافة صنف جديد فوراً."), branchName)
+                : Language.get("Inventory_Food_Empty_Subtitle", alter: "لم يتم تسجيل أي منتجات أطعمة أو مكملات في قاعدة البيانات حتى الآن. ابدأ بإضافة الأصناف وتحديد التكلفة والأسعار.")
+        case .livePets:
+            return hasBranch
+                ? String(format: Language.get("Inventory_LivePets_Empty_Subtitle_Branch", alter: "لا توجد حيوانات مسجلة في فرع «%@» حالياً. يمكنك إضافة حيوان جديد إلى السجل أو تبديل الفرع."), branchName)
+                : Language.get("Inventory_LivePets_Empty_Subtitle", alter: "لا توجد حيوانات حية مسجلة في قاعدة البيانات حالياً. يمكنك إضافة حيوان جديد الآن وتوثيق بياناته.")
+        case .accessories:
+            return hasBranch
+                ? String(format: Language.get("Inventory_Accessories_Empty_Subtitle_Branch", alter: "لم يتم إضافة أي إكسسوارات أو مستلزمات في فرع «%@». يمكنك إضافة أول صنف جديد الآن."), branchName)
+                : Language.get("Inventory_Accessories_Empty_Subtitle", alter: "لم يتم تسجيل أي إكسسوارات في قاعدة البيانات حالياً. يمكنك الضغط على زر الإضافة لتسجيل أول صنف.")
+        }
+    }
+
+    private var catalogTabAddButtonTitle: String {
+        switch viewModel.activeTab {
+        case .food:
+            return Language.get("Inventory_Add_Food", alter: "+ إضافة طعام أو مكمل جديد")
+        case .livePets:
+            return Language.get("Inventory_Add_LivePet", alter: "+ إضافة حيوان جديد")
+        case .accessories:
+            return Language.get("Inventory_Add_Accessory", alter: "+ إضافة إكسسوار جديد")
+        }
+    }
+
+    private var activeBranchLabelText: String {
+        let name = BranchContextStore.shared.currentBranchDisplayName
+        if !name.isEmpty && name != "main_store" {
+            return String(format: Language.get("Inventory_Active_Branch_Pill", alter: "الفرع: %@"), name)
+        }
+        return Language.get("Inventory_All_Branches_Pill", alter: "جميع الفروع • نطاق عام")
+    }
+
+    private func featureBadge(icon: String, text: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(catalogTabThemeColor)
+            Text(text)
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminCommandInk.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous)
+                .fill(AdminSurface.control.opacity(0.85))
         )
     }
 

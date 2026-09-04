@@ -429,13 +429,26 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
 
 - (void)fetchMainKindsWithCompletion:(void(^)(NSArray<MainKindsModel *> * _Nullable kinds, NSError * _Nullable error))completion {
     FIRFirestore *db = [FIRFirestore firestore];
+    FIRQuery *query = [[db collectionWithPath:@"MainKindsCollection"] queryOrderedByField:@"sortingKey" descending:NO];
     
-    DLog(@"Fetching MainKindsCollection from Firestore…");
-    [[db collectionWithPath:@"MainKindsCollection"] getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snapshot,
-                                                                                 NSError * _Nullable error) {
-        if (error) {
-            DLog(@"❌ Error fetching MainKinds: %@", error.localizedDescription);
-            if (completion) completion(nil, error);
+    DLog(@"Fetching fresh MainKindsCollection from Firestore (Server first)…");
+    [query getDocumentsWithSource:FIRFirestoreSourceServer completion:^(FIRQuerySnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error || !snapshot) {
+            DLog(@"⚠️ Server fetch failed (%@), trying default cache...", error.localizedDescription);
+            [query getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable cacheSnap, NSError * _Nullable cacheErr) {
+                if (cacheErr) {
+                    DLog(@"❌ Error fetching MainKinds: %@", cacheErr.localizedDescription);
+                    if (completion) completion(nil, cacheErr);
+                    return;
+                }
+                NSMutableArray<MainKindsModel *> *result = [NSMutableArray array];
+                for (FIRDocumentSnapshot *doc in cacheSnap.documents) {
+                    MainKindsModel *kind = [[MainKindsModel alloc] initWithSnapshot:doc];
+                    [result addObject:kind];
+                }
+                self.MainKindsArray = result;
+                if (completion) completion(result, nil);
+            }];
             return;
         }
         
@@ -443,11 +456,10 @@ static BOOL PPAppCheckErrorLooksLikeAppAttestFailure(NSError *error) {
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
             MainKindsModel *kind = [[MainKindsModel alloc] initWithSnapshot:doc];
             [result addObject:kind];
-            DLog(@"Loaded MainKind: %@ (id=%@)", kind.KindNameEn ?: @"?", doc.documentID);
         }
         
         self.MainKindsArray = result;
-        DLog(@"✅ Finished fetching MainKinds. Count = %lu", (unsigned long)result.count);
+        DLog(@"✅ Finished fetching fresh MainKinds from server. Count = %lu", (unsigned long)result.count);
         
         if (completion) completion(result, nil);
     }];

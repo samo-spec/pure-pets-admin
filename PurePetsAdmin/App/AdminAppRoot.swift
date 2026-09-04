@@ -24,11 +24,11 @@ struct AdminSession: Equatable {
     }
 
     func hasPermission(_ permission: String) -> Bool {
-        grantsAllPermissions || permissions.contains(permission)
+        source.hasPermission(permission)
     }
 
     func hasAnyPermission(_ required: [String]) -> Bool {
-        required.isEmpty || grantsAllPermissions || required.contains(where: permissions.contains)
+        required.isEmpty || source.hasAnyPermission(required)
     }
 
     var hasGlobalScope: Bool {

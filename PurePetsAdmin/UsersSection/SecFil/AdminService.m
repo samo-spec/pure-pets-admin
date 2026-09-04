@@ -146,6 +146,28 @@
                completion:completion];
 }
 
++ (void)createCustomerAccountWithName:(NSString *)name
+                                email:(NSString *)email
+                                phone:(nullable NSString *)phone
+                             password:(NSString *)password
+                        initialStatus:(nullable NSString *)initialStatus
+                           isVerified:(BOOL)isVerified
+                           completion:(AdminServiceCompletion)completion {
+    NSMutableDictionary *payload = [@{
+        @"name": name ?: @"",
+        @"email": email ?: @"",
+        @"password": password ?: @"",
+        @"initialStatus": initialStatus ?: @"active",
+        @"isVerified": @(isVerified)
+    } mutableCopy];
+    if (phone.length > 0) {
+        payload[@"phone"] = phone;
+    }
+    [self pp_callCallable:@"createCustomerAccount"
+                  payload:payload.copy
+               completion:completion];
+}
+
 + (void)updateUserSubscription:(NSString *)uid
                   subscription:(NSDictionary *)subscription
                     completion:(AdminServiceCompletion)completion {
@@ -157,13 +179,9 @@
 + (void)updateUserVerified:(NSString *)uid
                   verified:(BOOL)verified
                 completion:(AdminServiceCompletion)completion {
-    FIRFirestore *db = [FIRFirestore firestore];
-    [[[db collectionWithPath:kPPUsersCol] documentWithPath:uid] updateData:@{
-        @"verified": @(verified),
-        @"updatedAt": [FIRFieldValue fieldValueForServerTimestamp]
-    } completion:^(NSError * _Nullable error) {
-        [self pp_completeOnMain:completion result:error ? nil : @{@"success": @YES} error:error];
-    }];
+    [self pp_callCallable:@"updateUserVerified"
+                  payload:@{@"uid": uid ?: @"", @"verified": @(verified)}
+               completion:completion];
 }
 
 #pragma mark - Legacy (kept for migration bridge — will be removed)

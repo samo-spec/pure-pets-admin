@@ -54,7 +54,7 @@ public struct PPScannedCheque: Identifiable, Sendable, Equatable {
 private struct ScannerButtonPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
     }
 }
@@ -69,6 +69,35 @@ public enum PPScannerPhase: Equatable {
     case error(String)
 }
 
+// MARK: - Visual Focus Indicator
+
+private struct PPScannerFocusIndicator: View {
+    @State private var scale: CGFloat = 1.35
+    @State private var opacity: Double = 1.0
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .stroke(Color(red: 0.96, green: 0.62, blue: 0.04), lineWidth: 1.5)
+                .frame(width: 54, height: 54)
+            
+            Circle()
+                .fill(Color(red: 0.96, green: 0.62, blue: 0.04))
+                .frame(width: 4, height: 4)
+        }
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.25)) {
+                scale = 1.0
+            }
+            withAnimation(.easeOut(duration: 0.6).delay(0.6)) {
+                opacity = 0.0
+            }
+        }
+    }
+}
+
 // MARK: - Master PPScanner View
 
 public struct PPScannerView: View {
@@ -80,7 +109,7 @@ public struct PPScannerView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var phase: PPScannerPhase = .scanning
     @State private var isShowingPhotoPicker = false
-    @State private var reviewCheque: PPScannedCheque? = nil
+    @State private var focusTapTrigger: UUID = UUID()
 
     public init(
         cartTotal: Double = 0.0,
@@ -160,48 +189,81 @@ public struct PPScannerView: View {
     private var liveScannerDeck: some View {
         GeometryReader { proxy in
             let screenSize = proxy.size
+            let safeArea = proxy.safeAreaInsets
+            let rSize = reticleSize(for: screenSize)
+            // Optical Center: Ergonomically positioned at 42% of screen height
+            let reticleCenterY = screenSize.height * 0.42
+            let reticleRect = CGRect(
+                x: (screenSize.width - rSize.width) / 2.0,
+                y: reticleCenterY - (rSize.height / 2.0),
+                width: rSize.width,
+                height: rSize.height
+            )
+
             ZStack {
-                // 1. Full-Bleed Camera Viewport
+                // 1. Full-Bleed Camera Viewport with Tap-to-Focus & Pinch-to-Zoom
                 PPScannerCameraPreview(session: engine.session)
                     .ignoresSafeArea()
-
-                // 2. Translucent Optical Mask & Vignette
-                PPScannerVignetteMask(reticleSize: reticleSize(for: screenSize))
-                    .ignoresSafeArea()
-
-                // 3. Central Spatial Reticle & Telemetry
-                VStack(spacing: 12) {
-                    Spacer(minLength: 60)
-
-                    // Top Quality Telemetry Gauges
-                    telemetryGauges
-
-                    // The Aspect-Engineered Cheque Reticle (~2.2:1)
-                    PPScannerReticle(
-                        size: reticleSize(for: screenSize),
-                        isLocked: engine.isChequeDetected,
-                        autoCaptureProgress: autoCaptureProgress
+                    .contentShape(Rectangle())
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { factor in
+                                engine.applyPinchZoom(factor)
+                            }
+                            .onEnded { _ in
+                                engine.finalizePinchZoom()
+                            }
                     )
-
-                    // Live Recognized Field HUD
-                    if let detected = engine.detectedPreviewText, !detected.isEmpty {
-                        liveFieldHUD(text: detected)
-                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .onTapGesture { location in
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        engine.focus(at: location, in: screenSize)
+                        focusTapTrigger = UUID()
                     }
 
-                    Spacer(minLength: 20)
+                // 2. Translucent Optical Mask & Vignette (coincident with reticle)
+                PPScannerVignetteMask(reticleRect: reticleRect)
+                    .ignoresSafeArea()
 
-                    // Bottom Flight Deck Controls
-                    bottomControls
-                        .padding(.bottom, 24)
+                // 3. Central Spatial Reticle (locked to exact reticleRect)
+                PPScannerReticle(
+                    size: rSize,
+                    isLocked: engine.isChequeDetected,
+                    autoCaptureProgress: autoCaptureProgress
+                )
+                .position(x: screenSize.width / 2.0, y: reticleCenterY)
+
+                // 4. Telemetry Gauges (pinned directly above the reticle)
+                telemetryGauges
+                    .position(x: screenSize.width / 2.0, y: reticleRect.minY - 26)
+
+                // 5. Live Recognized Field HUD (pinned directly below the reticle)
+                if let detected = engine.detectedPreviewText, !detected.isEmpty {
+                    liveFieldHUD(text: detected)
+                        .position(x: screenSize.width / 2.0, y: reticleRect.maxY + 28)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
-                .padding(.horizontal, 16)
 
-                // 4. Sovereign Frosted Navigation Bar Chrome
+                // 6. Interactive Focus Indicator
+                if let pt = engine.focusPoint {
+                    PPScannerFocusIndicator()
+                        .position(pt)
+                        .id(focusTapTrigger)
+                }
+
+                // 7. Bottom Flight Deck Controls (pinned to bottom safe area)
                 VStack {
-                    sovereignNavigationBar
+                    Spacer()
+                    bottomControls
+                        .padding(.bottom, max(safeArea.bottom, 16) + 10)
+                }
+                .ignoresSafeArea(edges: .bottom)
+
+                // 8. Sovereign Frosted Navigation Bar Chrome (pinned to top safe area)
+                VStack {
+                    sovereignNavigationBar(topInset: max(safeArea.top, 44) + 6)
                     Spacer()
                 }
+                .ignoresSafeArea(edges: .top)
             }
         }
     }
@@ -214,41 +276,54 @@ public struct PPScannerView: View {
     }
 
     private func reticleSize(for screenSize: CGSize) -> CGSize {
-        // Standard Cheque Aspect Ratio is ~2.2 : 1
-        let maxWidth = min(screenSize.width - 36, 520)
+        // Standard Cheque Aspect Ratio is ~2.18 : 1
+        let maxWidth = min(screenSize.width - 32, 520)
         let height = maxWidth / 2.18
         return CGSize(width: maxWidth, height: height)
     }
 
     // MARK: - Sovereign Navigation Bar
 
-    private var sovereignNavigationBar: some View {
+    private func sovereignNavigationBar(topInset: CGFloat) -> some View {
         HStack(spacing: 12) {
-            // Dismiss Button
+            // Dismiss Button (42x42 squircle)
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onDismiss()
             } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 40, height: 40)
-                    .background(Color.black.opacity(0.45), in: Circle())
-                    .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(Color.black.opacity(0.40))
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                .frame(width: 42, height: 42)
             }
             .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
 
-            Spacer()
+            Spacer(minLength: 4)
 
             // Title and Intelligence Subtitle
             VStack(spacing: 2) {
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text.viewfinder")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(Color(red: 0.96, green: 0.62, blue: 0.04))
                     Text(Language.get("PPScanner_Title", alter: "ماسح الشيكات"))
                         .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
                         .foregroundColor(.white)
+                    
+                    // Live OCR Engine Activity Pulse
+                    Circle()
+                        .fill(engine.isChequeDetected ? Color.green : Color(red: 0.96, green: 0.62, blue: 0.04))
+                        .frame(width: 6, height: 6)
+                        .shadow(
+                            color: (engine.isChequeDetected ? Color.green : Color(red: 0.96, green: 0.62, blue: 0.04)).opacity(0.8),
+                            radius: 3
+                        )
                 }
 
                 Text(Language.get("PPScanner_Subtitle", alter: "محرك المسح المالي الضوئي"))
@@ -256,7 +331,7 @@ public struct PPScannerView: View {
                     .foregroundColor(Color.white.opacity(0.70))
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
             // Trailing Actions Cluster (Gallery & Torch)
             HStack(spacing: 8) {
@@ -265,55 +340,67 @@ public struct PPScannerView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     isShowingPhotoPicker = true
                 } label: {
-                    Image(systemName: "photo.on.rectangle.angled")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.black.opacity(0.45), in: Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(Color.black.opacity(0.40))
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+                        Image(systemName: "photo.on.rectangle.angled")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                    }
+                    .frame(width: 42, height: 42)
                 }
                 .accessibilityLabel(Language.get("PPScanner_Gallery", alter: "من ألبوم الصور"))
 
-                // Torch Toggle Button
+                // Torch Toggle Button with Amber Sovereign Glow
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     engine.toggleTorch()
                 } label: {
-                    Image(systemName: engine.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(engine.isTorchOn ? Color(red: 0.96, green: 0.62, blue: 0.04) : .white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            engine.isTorchOn
-                                ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.25)
-                                : Color.black.opacity(0.45),
-                            in: Circle()
-                        )
-                        .overlay(
-                            Circle().stroke(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(
                                 engine.isTorchOn
-                                    ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.60)
-                                    : Color.white.opacity(0.2),
-                                lineWidth: 1
+                                    ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35)
+                                    : Color.black.opacity(0.40)
                             )
-                        )
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(
+                                engine.isTorchOn
+                                    ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.80)
+                                    : Color.white.opacity(0.18),
+                                lineWidth: 0.8
+                            )
+                        Image(systemName: engine.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(engine.isTorchOn ? Color(red: 0.96, green: 0.62, blue: 0.04) : .white)
+                    }
+                    .frame(width: 42, height: 42)
+                    .shadow(
+                        color: engine.isTorchOn ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.55) : .clear,
+                        radius: 8
+                    )
                 }
                 .accessibilityLabel(Language.get("PPScanner_Torch", alter: "إضاءة الفلاش"))
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-                .background(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .stroke(Color.white.opacity(0.15), lineWidth: 0.75)
-                )
-        )
         .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.vertical, 8)
+        .background {
+            // Sovereign Glass Container with guaranteed zero material bleed
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.black.opacity(0.65))
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .padding(.horizontal, 14)
+        .padding(.top, topInset)
     }
 
     // MARK: - Telemetry Gauges
@@ -385,19 +472,24 @@ public struct PPScannerView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.70))
-                .background(.ultraThinMaterial)
-                .overlay(Capsule(style: .continuous).stroke(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.60), lineWidth: 1))
-        )
+        .background {
+            ZStack {
+                Capsule(style: .continuous)
+                    .fill(.ultraThinMaterial)
+                Capsule(style: .continuous)
+                    .fill(Color.black.opacity(0.70))
+                Capsule(style: .continuous)
+                    .strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.65), lineWidth: 1)
+            }
+        }
+        .clipShape(Capsule(style: .continuous))
         .shadow(color: Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), radius: 8, x: 0, y: 2)
     }
 
     // MARK: - Bottom Controls Bar
 
     private var bottomControls: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             // Status Guidance Subtitle
             Text(guidanceText)
                 .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .subheadline))
@@ -405,10 +497,23 @@ public struct PPScannerView: View {
                 .multilineTextAlignment(.center)
                 .shadow(color: .black, radius: 4, x: 0, y: 2)
 
-            // Kinetic Dual-Ring Shutter Button
-            HStack {
-                Spacer()
+            // Kinetic Dual-Ring Shutter & Zoom Selector Cluster
+            HStack(spacing: 24) {
+                // Quick Zoom Macro Toggle Pill
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    engine.toggleZoomLevel()
+                } label: {
+                    Text(String(format: "%.0fx", engine.currentZoom))
+                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.black.opacity(0.45), in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 0.8))
+                }
+                .accessibilityLabel(Language.get("PPScanner_Zoom", alter: "درجة التقريب"))
 
+                // Shutter Button
                 Button {
                     UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                     engine.capturePhotoManually()
@@ -445,7 +550,19 @@ public struct PPScannerView: View {
                 .buttonStyle(ScannerButtonPressStyle())
                 .accessibilityLabel(Language.get("PPScanner_ManualCapture", alter: "التقاط يدوي"))
 
-                Spacer()
+                // Gallery Shortcut Duplicate on Flight Deck
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isShowingPhotoPicker = true
+                } label: {
+                    Image(systemName: "photo")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color.black.opacity(0.45), in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 0.8))
+                }
+                .accessibilityLabel(Language.get("PPScanner_Gallery", alter: "من ألبوم الصور"))
             }
         }
     }
@@ -558,7 +675,7 @@ private struct PPScannerReticle: View {
                 )
 
             // Chamfered Laser Corner Brackets
-            PPScannerCornerBrackets(color: accentColor, cornerLength: 24, thickness: 3.5)
+            PPScannerCornerBrackets(color: accentColor, cornerLength: 26, thickness: 3.5)
 
             // Animated Laser Scanning Beam
             GeometryReader { geo in
@@ -644,30 +761,26 @@ private struct PPScannerCornerBrackets: View {
     }
 }
 
-// MARK: - Vignette Mask
+// MARK: - Vignette Mask (100% Geometry Matched to Reticle)
 
 private struct PPScannerVignetteMask: View {
-    let reticleSize: CGSize
+    let reticleRect: CGRect
 
     var body: some View {
-        GeometryReader { proxy in
-            let fullSize = proxy.size
-            let xOffset = (fullSize.width - reticleSize.width) / 2
-            let yOffset = (fullSize.height - reticleSize.height) / 2
-
-            Canvas { context, size in
-                context.fill(
-                    Path(CGRect(origin: .zero, size: size)),
-                    with: .color(Color.black.opacity(0.55))
-                )
-                let reticleRect = CGRect(x: xOffset, y: yOffset, width: reticleSize.width, height: reticleSize.height)
-                context.blendMode = .destinationOut
-                context.fill(
-                    Path(roundedRect: reticleRect, cornerRadius: 18),
-                    with: .color(.black)
-                )
-            }
+        Canvas { context, size in
+            // Outer darkened ambient mask
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .color(Color.black.opacity(0.55))
+            )
+            // Cutout window - perfectly coincident with reticleRect
+            context.blendMode = .destinationOut
+            context.fill(
+                Path(roundedRect: reticleRect, cornerRadius: 18),
+                with: .color(.black)
+            )
         }
+        .allowsHitTesting(false)
     }
 }
 
@@ -802,7 +915,8 @@ private struct PPScannerReviewFlightDeck: View {
                     var updated = cheque
                     updated.chequeNumber = editedChequeNumber.trimmingCharacters(in: .whitespacesAndNewlines)
                     updated.bankName = editedBankName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let parsed = Double(editedAmount.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    let cleanAmt = PPScannerEngine.normalizeArabicNumerals(editedAmount.trimmingCharacters(in: .whitespacesAndNewlines))
+                    if let parsed = Double(cleanAmt) {
                         updated.amount = parsed
                     }
                     onConfirm(updated)
@@ -943,6 +1057,60 @@ private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - Qatar & GCC Bank Catalog Matcher
+
+private struct PPBankDefinition {
+    let canonicalName: String
+    let patterns: [String]
+}
+
+private let kQatarBankCatalog: [PPBankDefinition] = [
+    PPBankDefinition(
+        canonicalName: "QNB • بنك قطر الوطني",
+        patterns: ["QNB", "QATAR NATIONAL BANK", "الوطني", "قطر الوطني", "NATIONAL BANK OF QATAR"]
+    ),
+    PPBankDefinition(
+        canonicalName: "QIB • مصرف قطر الإسلامي",
+        patterns: ["QIB", "QATAR ISLAMIC BANK", "المصرف", "قطر الإسلامي", "المصرف الإسلامي", "ISLAMIC BANK"]
+    ),
+    PPBankDefinition(
+        canonicalName: "CBQ • البنك التجاري",
+        patterns: ["CBQ", "COMMERCIAL BANK", "التجاري", "البنك التجاري", "COMMERCIAL BANK OF QATAR"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Doha Bank • بنك الدوحة",
+        patterns: ["DOHA BANK", "بنك الدوحة", "الدوحة"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Masraf Al Rayan • مصرف الريان",
+        patterns: ["MASRAF AL RAYAN", "AL RAYAN", "الريان", "مصرف الريان", "RAYAN BANK"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Dukhan Bank • بنك دخان",
+        patterns: ["DUKHAN", "دخان", "بنك دخان", "BARWA", "بروة", "بنك بروة"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Ahlibank • البنك الأهلي",
+        patterns: ["AHLIBANK", "AHLI BANK", "الأهلي", "البنك الأهلي", "AHLI"]
+    ),
+    PPBankDefinition(
+        canonicalName: "QDB • بنك قطر للتنمية",
+        patterns: ["QDB", "QATAR DEVELOPMENT BANK", "تنمية", "بنك قطر للتنمية"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Arab Bank • البنك العربي",
+        patterns: ["ARAB BANK", "البنك العربي", "العربي"]
+    ),
+    PPBankDefinition(
+        canonicalName: "HSBC • إتش إس بي سي",
+        patterns: ["HSBC", "إتش إس بي سي", "اتش اس بي سي"]
+    ),
+    PPBankDefinition(
+        canonicalName: "Standard Chartered • ستاندرد تشارترد",
+        patterns: ["STANDARD CHARTERED", "ستاندرد تشارترد"]
+    )
+]
+
 // MARK: - Optical Scanner Vision & AVFoundation Engine
 
 @MainActor
@@ -961,6 +1129,10 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     @Published var isDeviceSteady: Bool = true
     @Published var isChequeDetected: Bool = false
     @Published var detectedPreviewText: String? = nil
+    @Published var focusPoint: CGPoint? = nil
+    @Published var currentZoom: CGFloat = 1.0
+
+    private var baseZoomFactor: CGFloat = 1.0
 
     var onCaptureComplete: ((PPScannedCheque) -> Void)?
     var onAutoCaptureProgress: ((CGFloat) -> Void)?
@@ -980,6 +1152,19 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     deinit {
         motionManager.stopDeviceMotionUpdates()
     }
+
+    // MARK: - Numeral Normalization
+
+    public nonisolated static func normalizeArabicNumerals(_ text: String) -> String {
+        let arabicNumbers: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "،": ",", "٫": ".", "٬": ","
+        ]
+        return String(text.map { arabicNumbers[$0] ?? $0 })
+    }
+
+    // MARK: - Permissions & Setup
 
     func checkPermissionsAndStart() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -1061,6 +1246,68 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         device.unlockForConfiguration()
     }
 
+    // MARK: - Tap to Focus & Exposure
+
+    func focus(at point: CGPoint, in viewSize: CGSize) {
+        guard let device = videoDevice, viewSize.width > 0, viewSize.height > 0 else { return }
+        // Convert screen coordinates to normalized camera coordinates (0.0 to 1.0)
+        let x = point.y / viewSize.height
+        let y = 1.0 - (point.x / viewSize.width)
+        let devicePoint = CGPoint(x: max(0.01, min(0.99, x)), y: max(0.01, min(0.99, y)))
+
+        do {
+            try device.lockForConfiguration()
+            if device.isFocusPointOfInterestSupported && device.isFocusModeSupported(.autoFocus) {
+                device.focusPointOfInterest = devicePoint
+                device.focusMode = .autoFocus
+            }
+            if device.isExposurePointOfInterestSupported && device.isExposureModeSupported(.autoExpose) {
+                device.exposurePointOfInterest = devicePoint
+                device.exposureMode = .autoExpose
+            }
+            device.unlockForConfiguration()
+            self.focusPoint = point
+        } catch {
+            print("[PPScannerEngine] Focus configuration error: \(error)")
+        }
+    }
+
+    // MARK: - Zoom Controls
+
+    func toggleZoomLevel() {
+        guard let device = videoDevice else { return }
+        let targetZoom: CGFloat = (currentZoom > 1.4) ? 1.0 : 2.0
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = targetZoom
+            device.unlockForConfiguration()
+            self.currentZoom = targetZoom
+            self.baseZoomFactor = targetZoom
+        } catch {
+            print("[PPScannerEngine] Zoom error: \(error)")
+        }
+    }
+
+    func applyPinchZoom(_ factor: CGFloat) {
+        guard let device = videoDevice else { return }
+        let maxZoom = min(device.activeFormat.videoMaxZoomFactor, 5.0)
+        let newZoom = max(1.0, min(baseZoomFactor * factor, maxZoom))
+        do {
+            try device.lockForConfiguration()
+            device.videoZoomFactor = newZoom
+            device.unlockForConfiguration()
+            self.currentZoom = newZoom
+        } catch {
+            print("[PPScannerEngine] Pinch zoom error: \(error)")
+        }
+    }
+
+    func finalizePinchZoom() {
+        baseZoomFactor = currentZoom
+    }
+
+    // MARK: - Motion Tracking
+
     private func startMotionTracking() {
         guard motionManager.isDeviceMotionAvailable else { return }
         motionManager.deviceMotionUpdateInterval = 0.2
@@ -1095,13 +1342,16 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             }
         }
 
-        // Vision Text Recognition Request
+        // Vision Text Recognition Request with Arabic & English
         let request = VNRecognizeTextRequest { [weak self] req, err in
             guard let self, err == nil, let observations = req.results as? [VNRecognizedTextObservation] else { return }
             self.parseObservations(observations, sampleBuffer: sampleBuffer)
         }
         request.recognitionLevel = .accurate
         request.usesLanguageCorrection = true
+        if #available(iOS 16.0, *) {
+            request.recognitionLanguages = ["ar-SA", "en-US"]
+        }
 
         let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
         try? handler.perform([request])
@@ -1118,12 +1368,12 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             }
         }
 
-        let fullText = recognizedStrings.joined(separator: "\n")
-        let parsed = extractFinancialData(from: fullText)
+        let rawText = recognizedStrings.joined(separator: "\n")
+        let parsed = extractFinancialData(from: rawText)
         let candidateImage = self.imageFromSampleBuffer(sampleBuffer)
 
         Task { @MainActor in
-            let hasValidChequeSignals = !parsed.chequeNumber.isEmpty || !parsed.bankName.isEmpty || fullText.contains("⑆") || fullText.contains("⑈")
+            let hasValidChequeSignals = !parsed.chequeNumber.isEmpty || !parsed.bankName.isEmpty || rawText.contains("⑆") || rawText.contains("⑈")
 
             self.isChequeDetected = hasValidChequeSignals
 
@@ -1133,7 +1383,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                     preview = "شيك #\(parsed.chequeNumber)"
                 }
                 if !parsed.bankName.isEmpty {
-                    preview += (preview.isEmpty ? "" : " • ") + parsed.bankName
+                    let bankShort = parsed.bankName.components(separatedBy: " • ").first ?? parsed.bankName
+                    preview += (preview.isEmpty ? "" : " • ") + bankShort
                 }
                 if let amt = parsed.amount {
                     preview += String(format: " • %.2f ر.ق", amt)
@@ -1150,7 +1401,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                         bankName: parsed.bankName,
                         amount: parsed.amount,
                         dateString: parsed.dateString,
-                        rawText: fullText
+                        rawText: rawText
                     )
                 }
 
@@ -1180,56 +1431,92 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         }
     }
 
-    private nonisolated func extractFinancialData(from text: String) -> (chequeNumber: String, bankName: String, amount: Double?, dateString: String?) {
+    // MARK: - Financial Data Extraction & Optical Intelligence
+
+    private nonisolated func extractFinancialData(from rawText: String) -> (chequeNumber: String, bankName: String, amount: Double?, dateString: String?) {
         var chequeNumber = ""
         var bankName = ""
         var amount: Double? = nil
         var dateString: String? = nil
 
-        let lines = text.components(separatedBy: .newlines)
+        // Normalize Eastern Arabic Numerals (٠-٩) and punctuation across entire text
+        let normalizedText = PPScannerEngine.normalizeArabicNumerals(rawText)
+        let lines = normalizedText.components(separatedBy: .newlines)
 
-        // 1. Detect Cheque Number (MICR or standard 6-8 digit pattern)
+        // 1. Detect Bank Name (Comprehensive Qatar & GCC Catalog)
+        let uppercaseNormalized = normalizedText.uppercased()
+        let uppercaseRaw = rawText.uppercased()
+
+        for bank in kQatarBankCatalog {
+            for pattern in bank.patterns {
+                let patternUpper = pattern.uppercased()
+                if uppercaseNormalized.contains(patternUpper) || uppercaseRaw.contains(patternUpper) {
+                    bankName = bank.canonicalName
+                    break
+                }
+            }
+            if !bankName.isEmpty { break }
+        }
+
+        // 2. Detect Cheque Number (MICR Line or Explicit Label or Standalone Serial)
+        // Strategy A: Strict MICR Delimiters (⑆004821⑆ or ⑈004821⑈)
         for line in lines {
-            // Pattern for MICR delimiters ⑆004821⑆
-            if let micrMatch = line.range(of: "[⑆#]?([0-9]{6,8})[⑆#]?", options: .regularExpression) {
-                let raw = String(line[micrMatch]).replacingOccurrences(of: "⑆", with: "").replacingOccurrences(of: "#", with: "")
-                if chequeNumber.isEmpty && raw.count >= 6 {
-                    chequeNumber = raw
+            if let micrMatch = line.range(of: "[⑆⑈:#|c] *([0-9]{6,8}) *[⑆⑈:#|c]", options: .regularExpression) {
+                let segment = String(line[micrMatch])
+                let digitsOnly = segment.filter { $0.isNumber }
+                if digitsOnly.count >= 6 && digitsOnly.count <= 8 {
+                    chequeNumber = digitsOnly
+                    break
                 }
             }
         }
 
-        // 2. Detect Bank Name (Qatar & Regional Major Banks)
-        let uppercaseText = text.uppercased()
-        if uppercaseText.contains("QNB") || text.contains("الوطني") {
-            bankName = "QNB"
-        } else if uppercaseText.contains("QIB") || text.contains("المصرف") || text.contains("قطر الإسلامي") {
-            bankName = "QIB"
-        } else if uppercaseText.contains("COMMERCIAL BANK") || uppercaseText.contains("CBQ") || text.contains("التجاري") {
-            bankName = "CBQ"
-        } else if uppercaseText.contains("DOHA BANK") || text.contains("بنك الدوحة") {
-            bankName = "Doha Bank"
-        } else if uppercaseText.contains("RAYAN") || text.contains("الريان") {
-            bankName = "Masraf Al Rayan"
-        } else if uppercaseText.contains("DUKHAN") || text.contains("دخان") {
-            bankName = "Dukhan Bank"
-        } else if uppercaseText.contains("AHLI") || text.contains("الأهلي") {
-            bankName = "Ahlibank"
-        }
-
-        // 3. Detect Amount (e.g. 1500.00, 1,250.00, QAR 175)
-        for line in lines {
-            if let amountRange = line.range(of: "([0-9]{1,3}(,[0-9]{3})*(\\.[0-9]{2}))", options: .regularExpression) {
-                let clean = String(line[amountRange]).replacingOccurrences(of: ",", with: "")
-                if let val = Double(clean), val > 0, amount == nil {
-                    amount = val
+        // Strategy B: Labeled Cheque Number (e.g. "Cheque No: 004821" or "رقم الشيك : 004821")
+        if chequeNumber.isEmpty {
+            for line in lines {
+                if let labelMatch = line.range(of: "(?i)(?:cheque|chq|no|num|رقم|شيك)[^0-9\n]{0,10}([0-9]{6,8})", options: .regularExpression) {
+                    let segment = String(line[labelMatch])
+                    let digitsOnly = segment.filter { $0.isNumber }
+                    if digitsOnly.count >= 6 && digitsOnly.count <= 8 {
+                        chequeNumber = digitsOnly
+                        break
+                    }
                 }
             }
         }
 
-        // 4. Detect Date (DD/MM/YYYY or YYYY/MM/DD)
+        // Strategy C: Standalone 6-8 digit line (common on GCC cheques)
+        if chequeNumber.isEmpty {
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.count >= 6 && trimmed.count <= 8 && trimmed.allSatisfy({ $0.isNumber }) {
+                    chequeNumber = trimmed
+                    break
+                }
+            }
+        }
+
+        // 3. Detect Amount (e.g. 1500.00, 1,250.00, ***1500.00/-***, QAR 175)
         for line in lines {
-            if let dateRange = line.range(of: "\\b([0-9]{2}[/-][0-9]{2}[/-][0-9]{4}|[0-9]{4}[/-][0-9]{2}[/-][0-9]{2})\\b", options: .regularExpression) {
+            // Regex matching amounts with optional currency, comma grouping, and decimal
+            if let amountRange = line.range(of: #"([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]{2,7}\.[0-9]{1,2}|\b[0-9]{3,7}\b)"#, options: .regularExpression) {
+                let rawSegment = String(line[amountRange])
+                let clean = rawSegment.replacingOccurrences(of: ",", with: "")
+                if let val = Double(clean), val >= 1.0, val <= 10_000_000.0 {
+                    // Check if line contains cheque number so we don't confuse cheque serial with amount
+                    if !chequeNumber.isEmpty && clean == chequeNumber {
+                        continue
+                    }
+                    if amount == nil || val > (amount ?? 0) {
+                        amount = val
+                    }
+                }
+            }
+        }
+
+        // 4. Detect Date (DD/MM/YYYY, YYYY/MM/DD, DD-MM-YYYY)
+        for line in lines {
+            if let dateRange = line.range(of: "\\b((?:20[2-3][0-9][/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12][0-9]|3[01]))|(?:(?:0?[1-9]|[12][0-9]|3[01])[/-](?:0?[1-9]|1[0-2])[/-]20[2-3][0-9]))\\b", options: .regularExpression) {
                 dateString = String(line[dateRange])
                 break
             }
@@ -1288,8 +1575,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                         strings.append(top.string)
                     }
                 }
-                let fullText = strings.joined(separator: "\n")
-                let parsed = self.extractFinancialData(from: fullText)
+                let rawText = strings.joined(separator: "\n")
+                let parsed = self.extractFinancialData(from: rawText)
 
                 DispatchQueue.main.async {
                     let result = PPScannedCheque(
@@ -1298,13 +1585,16 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                         bankName: parsed.bankName,
                         amount: parsed.amount,
                         dateString: parsed.dateString,
-                        rawText: fullText
+                        rawText: rawText
                     )
                     completion(result)
                 }
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
+            if #available(iOS 16.0, *) {
+                request.recognitionLanguages = ["ar-SA", "en-US"]
+            }
 
             let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
             try? handler.perform([request])

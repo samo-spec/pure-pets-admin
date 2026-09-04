@@ -484,13 +484,19 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminRoleRankSecurityLevelsView { [weak self] in
-            guard let self = self else {
-                PPAdminNavigationFallback.popOrDismiss()
-                return
+        let rootView = NavigationView {
+            AdminRoleRankSecurityLevelsView { [weak self] in
+                guard let self = self else {
+                    PPAdminNavigationFallback.popOrDismiss()
+                    return
+                }
+                PPAdminNavigationFallback.popOrDismiss(from: self)
             }
-            PPAdminNavigationFallback.popOrDismiss(from: self)
-        })
+        }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+
+        let host = UIHostingController(rootView: rootView)
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -517,8 +523,12 @@ import SwiftUI
 
     @objc(makeViewControllerWithOnDismiss:)
     public static func makeViewController(onDismiss: (() -> Void)? = nil) -> UIViewController {
-        let view = AdminRoleRankSecurityLevelsView(onDismiss: onDismiss)
-        let host = UIHostingController(rootView: view)
+        let rootView = NavigationView {
+            AdminRoleRankSecurityLevelsView(onDismiss: onDismiss)
+        }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        let host = UIHostingController(rootView: rootView)
         host.view.backgroundColor = .clear
         return host
     }

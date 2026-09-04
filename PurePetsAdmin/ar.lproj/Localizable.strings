@@ -5550,6 +5550,17 @@
 "Hotel_Err_CustomerNameRequired" = "يرجى إدخال اسم العميل.";
 "Hotel_Err_CustomerPhoneRequired" = "يرجى إدخال رقم هاتف العميل.";
 "Hotel_Err_PetNameRequired" = "يرجى إدخال اسم الحيوان الأليف.";
+"Hotel_Customer_SelectOrAdd" = "تحديد أو إضافة عميل للحجز";
+"Hotel_Customer_SelectHint" = "اختر عميلاً مسجلاً أو أنشئ ملفاً جديداً فورياً من دليل العملاء";
+"Hotel_Customer_BoundLabel" = "عميل الحجز المعتمد";
+"Hotel_Err_CustomerRequired" = "يرجى تحديد أو إضافة عميل للحجز من الدليل.";
+"Hotel_Deposit_Presets_Full" = "كامل المبلغ";
+"Hotel_Telemetry_SuitesReady" = "متاح %d جناح";
+"Hotel_MedicationInstructions" = "تعليمات الأدوية والجرعات بالتفصيل...";
+"Hotel_SpecialDietAndAllergies" = "النظام الغذائي الخاص أو الحساسية إن وجدت...";
+"Hotel_RemainingBalance" = "المتبقي عند تسجيل المغادرة:";
+"Hotel_Weight_Kg" = "الوزن التقريبي (كجم)";
+"Hotel_Nights_Count" = "%ld ليالي إقامة";
 "Hotel_MedicationRequiredBadge" = "يتطلب خطة أدوية مسجلة";
 "Hotel_Res_NewReservationSub" = "فندق بيور بيتس • حجز إقامة";
 "Customer_Details" = "بيانات العميل";
@@ -5695,7 +5706,15 @@
 "Password_Field" = "كلمة المرور الأولية *";
 "Generate_Password" = "توليد كلمة سر آمنة";
 "Initial_Verification" = "توثيق الحساب فورياً";
+"Initial_Verification_Hint" = "يمنح الحساب شارة التوثيق الأزرق ويتيح الوصول المباشر لكافة الخدمات";
 "Create_Customer_CTA" = "حفظ وإنشاء حساب العميل";
+"Error_Customer_PermissionDenied" = "لا تمتلك الصلاحيات الكافية (إدارة المستخدمين) لتسجيل عميل جديد";
+"Error_Customer_AlreadyExists" = "البريد الإلكتروني مسجل بالفعل لحساب آخر";
+"Error_Customer_InvalidEmail" = "صيغة البريد الإلكتروني غير صالحة";
+"Error_Customer_WeakPassword" = "كلمة المرور يجب ألا تقل عن ٦ خانات";
+"Error_Customer_Unauthenticated" = "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مجدداً";
+"Error_Customer_NetworkUnavailable" = "تعذر الاتصال بالخادم، يرجى التحقق من اتصال الإنترنت";
+"Error_Customer_Failed" = "تعذر إنشاء الحساب، يرجى المحاولة لاحقاً";
 "Details" = "التفاصيل";
 "Customer" = "العميل والاتصال";
 "Pet_Name" = "الاسم";
@@ -5762,15 +5781,15 @@
 "SupportContext_DetailTitle" = "تفاصيل السياق";
 
 /* Role Rank & Security Levels Matrix */
-"RoleRank_Title" = "مصفوفة رتب الأدوار ومستويات الأمان";
-"RoleRank_Subtitle" = "الهيكل الهرمي لحوكمة الصلاحيات ومستويات الحماية والوصول";
+"RoleRank_Title" = "رتب الأدوار ومستويات الأمان";
+"RoleRank_Subtitle" = "الهيكل الهرمي لحوكمة الصلاحيات والوصول";
 "RoleRank_Badge" = "حوكمة IAM السيادية";
 "RoleRank_Search_Placeholder" = "ابحث باسم الدور، الرتبة، أو الصلاحيات...";
 "RoleRank_TotalRoles" = "إجمالي الأدوار";
 "RoleRank_SystemRoles" = "أدوار النظام";
 "RoleRank_CustomRoles" = "أدوار مخصصة";
 "RoleRank_AssignedPersonnel" = "الكادر المفوّض";
-"RoleRank_NewRole_Btn" = "إضافة دور جديد";
+"RoleRank_NewRole_Btn" = "إضافة دور";
 "RoleRank_Clone_Btn" = "استنساخ الدور";
 "RoleRank_Edit_Btn" = "تعديل الدور";
 "RoleRank_Delete_Btn" = "حذف الدور";
@@ -5812,4 +5831,28 @@
 "RoleRank_Restricted" = "محظورة ومقيّدة";
 "RoleRank_Entry_Button" = "مصفوفة رتب الأدوار ومستويات الأمان";
 "RoleRank_Entry_Subtitle" = "حوكمة تسلسل القيادة وحصانة الصلاحيات";
+
+/* Inventory Flagship Empty State */
+"Inventory_Accessories_Empty_Title" = "لا توجد إكسسوارات مسجلة";
+"Inventory_Accessories_Empty_Subtitle" = "لم يتم تسجيل أي إكسسوارات في قاعدة البيانات حالياً. يمكنك الضغط على زر الإضافة لتسجيل أول صنف.";
+"Inventory_Accessories_Empty_Subtitle_Branch" = "لم يتم إضافة أي إكسسوارات أو مستلزمات في فرع «%@». يمكنك إضافة أول صنف جديد الآن.";
+"Inventory_Food_Empty_Title" = "لا توجد أطعمة أو مكملات مسجلة";
+"Inventory_Food_Empty_Subtitle" = "لم يتم تسجيل أي منتجات أطعمة أو مكملات في قاعدة البيانات حتى الآن. ابدأ بإضافة الأصناف وتحديد التكلفة والأسعار.";
+"Inventory_Food_Empty_Subtitle_Branch" = "لم يتم تسجيل أي منتجات أطعمة أو مكملات في فرع «%@» حتى الآن. يمكنك إضافة صنف جديد فوراً.";
+"Inventory_LivePets_Empty_Title" = "لا توجد حيوانات حية مسجلة";
+"Inventory_LivePets_Empty_Subtitle" = "لا توجد حيوانات حية مسجلة في قاعدة البيانات حالياً. يمكنك إضافة حيوان جديد الآن وتوثيق بياناته.";
+"Inventory_LivePets_Empty_Subtitle_Branch" = "لا توجد حيوانات مسجلة في فرع «%@» حالياً. يمكنك إضافة حيوان جديد إلى السجل أو تبديل الفرع.";
+"Inventory_Add_Accessory" = "+ إضافة إكسسوار جديد";
+"Inventory_Add_Food" = "+ إضافة طعام أو مكمل جديد";
+"Inventory_Add_LivePet" = "+ إضافة حيوان جديد";
+"Inventory_Active_Branch_Pill" = "الفرع: %@";
+"Inventory_All_Branches_Pill" = "جميع الفروع • نطاق عام";
+"SwitchBranch_Action" = "تبديل الفرع";
+"Sync_Inventory_Action" = "تحديث السحابة";
+"Instant_Stock_Control" = "مخزون لحظي";
+"Branch_Pricing_Control" = "تسعير مخصص";
+"Secure_Cloud_Sync" = "مزامنة سحابية";
+"Inventory_No_Filter_Matches" = "لا توجد نتائج مطابقة للبحث أو التصفية";
+"Inventory_No_Results_For_Query" = "لم نجد أي أصناف تطابق «%@». جرب البحث باسم آخر أو كود الصنف.";
+"Inventory_No_Results_Filter_Hint" = "لا توجد عناصر تطابق الفلتر المحدد حالياً في هذا القسم.";
 

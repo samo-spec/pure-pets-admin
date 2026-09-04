@@ -5489,6 +5489,17 @@
 "Hotel_Err_CustomerNameRequired" = "Please enter customer name.";
 "Hotel_Err_CustomerPhoneRequired" = "Please enter customer phone.";
 "Hotel_Err_PetNameRequired" = "Please enter pet name.";
+"Hotel_Customer_SelectOrAdd" = "Select or Add Booking Customer";
+"Hotel_Customer_SelectHint" = "Pick a registered customer or create instant walk-in profile";
+"Hotel_Customer_BoundLabel" = "Bound Booking Customer";
+"Hotel_Err_CustomerRequired" = "Please select or register a customer for this reservation.";
+"Hotel_Deposit_Presets_Full" = "Full Amount";
+"Hotel_Telemetry_SuitesReady" = "%d Suites Ready";
+"Hotel_MedicationInstructions" = "Medication schedule and dosing instructions...";
+"Hotel_SpecialDietAndAllergies" = "Special diet or allergies if applicable...";
+"Hotel_RemainingBalance" = "Balance at Checkout:";
+"Hotel_Weight_Kg" = "Approximate Weight (KG)";
+"Hotel_Nights_Count" = "%ld Nights Stay";
 "Hotel_MedicationRequiredBadge" = "Requires Medication Plan";
 "Hotel_Res_NewReservationSub" = "Pure Pets Hotel • Boarding Stay";
 "Customer_Details" = "Customer Details";
@@ -5634,7 +5645,15 @@
 "Password_Field" = "Initial Password *";
 "Generate_Password" = "Generate secure password";
 "Initial_Verification" = "Verify account immediately";
+"Initial_Verification_Hint" = "Grants the blue verification badge and gives direct access to all services";
 "Create_Customer_CTA" = "Save & Create Customer Account";
+"Error_Customer_PermissionDenied" = "Insufficient permissions (Manage Users) to register a new customer";
+"Error_Customer_AlreadyExists" = "An account with this email address already exists";
+"Error_Customer_InvalidEmail" = "Invalid email address format";
+"Error_Customer_WeakPassword" = "Password must be at least 6 characters";
+"Error_Customer_Unauthenticated" = "Session expired, please sign in again";
+"Error_Customer_NetworkUnavailable" = "Server unreachable, please check your network connection";
+"Error_Customer_Failed" = "Failed to create customer account, please try again later";
 "Details" = "Details";
 "Customer" = "Customer & Contact";
 "Pet_Name" = "Name";
@@ -5751,4 +5770,28 @@
 "RoleRank_Restricted" = "Restricted";
 "RoleRank_Entry_Button" = "Role Rank & Security Levels Matrix";
 "RoleRank_Entry_Subtitle" = "Privilege hierarchy & security governance";
+
+/* Inventory Flagship Empty State */
+"Inventory_Accessories_Empty_Title" = "No Accessories Found";
+"Inventory_Accessories_Empty_Subtitle" = "No accessories have been registered in the database yet. Tap add to register your first item.";
+"Inventory_Accessories_Empty_Subtitle_Branch" = "No accessories or supplies are registered for branch «%@». Add a new item now.";
+"Inventory_Food_Empty_Title" = "No Pet Food Found";
+"Inventory_Food_Empty_Subtitle" = "No pet food or supplement products have been recorded yet. Start adding items and configuring prices.";
+"Inventory_Food_Empty_Subtitle_Branch" = "No pet food products registered for branch «%@» yet. You can add a new item right away.";
+"Inventory_LivePets_Empty_Title" = "No Live Pets Found";
+"Inventory_LivePets_Empty_Subtitle" = "No live pets are currently recorded in the system. Tap add to document a new pet entry.";
+"Inventory_LivePets_Empty_Subtitle_Branch" = "No live pets registered for branch «%@» currently. Add a new pet or switch branches.";
+"Inventory_Add_Accessory" = "+ Add New Accessory";
+"Inventory_Add_Food" = "+ Add New Pet Food";
+"Inventory_Add_LivePet" = "+ Add New Live Pet";
+"Inventory_Active_Branch_Pill" = "Branch: %@";
+"Inventory_All_Branches_Pill" = "All Branches • Global";
+"SwitchBranch_Action" = "Switch Branch";
+"Sync_Inventory_Action" = "Cloud Sync";
+"Instant_Stock_Control" = "Live Stock";
+"Branch_Pricing_Control" = "Branch Pricing";
+"Secure_Cloud_Sync" = "Cloud Sync";
+"Inventory_No_Filter_Matches" = "No Matching Inventory Items";
+"Inventory_No_Results_For_Query" = "No items match «%@». Try another keyword or SKU.";
+"Inventory_No_Results_Filter_Hint" = "No items match the currently active filter in this section.";
 

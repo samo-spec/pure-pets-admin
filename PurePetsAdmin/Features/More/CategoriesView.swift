@@ -571,6 +571,7 @@ final class AdminCategoriesViewModel: ObservableObject {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
+                    NotificationCenter.default.post(name: NSNotification.Name("MainKindsUpdatedNotification"), object: nil)
                     self?.writeAuditLog(action: action, targetID: docID, before: nil, after: ["numericID": item.numericID, "nameAr": item.nameAr, "nameEn": item.nameEn])
                     completion(true, Language.get("Category_Saved", alter: "تم حفظ التصنيف بنجاح"))
                 }
@@ -590,6 +591,7 @@ final class AdminCategoriesViewModel: ObservableObject {
                 if let error {
                     completion(false, error.localizedDescription)
                 } else {
+                    NotificationCenter.default.post(name: NSNotification.Name("MainKindsUpdatedNotification"), object: nil)
                     self?.writeAuditLog(action: "delete_category", targetID: docID, before: ["nameAr": item.nameAr, "nameEn": item.nameEn], after: nil)
                     completion(true, Language.get("Category_Deleted", alter: "تم حذف التصنيف بنجاح"))
                 }
@@ -636,6 +638,7 @@ final class AdminCategoriesViewModel: ObservableObject {
                 } else {
                     // Sync with parent document SubKindsArray for consumer app parity
                     self?.syncParentSubKindsArray(mainKindDocID: mainKindDocID)
+                    NotificationCenter.default.post(name: NSNotification.Name("MainKindsUpdatedNotification"), object: nil)
                     self?.writeAuditLog(action: action, targetID: target, before: nil, after: ["ID": subKind.numericID, "nameAr": subKind.nameAr, "nameEn": subKind.nameEn])
                     completion(true, Language.get("SubKind_Saved", alter: "تم حفظ السلالة بنجاح"))
                 }
@@ -661,6 +664,7 @@ final class AdminCategoriesViewModel: ObservableObject {
                     completion(false, error.localizedDescription)
                 } else {
                     self?.syncParentSubKindsArray(mainKindDocID: mainKindDocID)
+                    NotificationCenter.default.post(name: NSNotification.Name("MainKindsUpdatedNotification"), object: nil)
                     self?.writeAuditLog(action: "delete_subkind", targetID: target, before: ["ID": subKind.numericID, "nameAr": subKind.nameAr, "nameEn": subKind.nameEn], after: nil)
                     completion(true, Language.get("SubKind_Deleted", alter: "تم حذف السلالة بنجاح"))
                 }

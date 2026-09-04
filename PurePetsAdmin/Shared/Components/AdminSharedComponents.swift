@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreText
 import Kingfisher
 
 /// The only remote-image pipeline used by the Admin app. Its named Kingfisher cache
@@ -469,6 +470,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
                         .font(AdminType.title3)
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
+                        .minimumScaleFactor(0.85)
 
                     if let sub = subtitle, !sub.isEmpty {
                         HStack(spacing: 6) {
@@ -481,6 +483,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
                                 .font(AdminType.caption2)
                                 .foregroundStyle(statusDotColor ?? AdminSurface.secondaryText)
                                 .lineLimit(1)
+                                .minimumScaleFactor(0.85)
                         }
                     }
                 }
@@ -582,5 +585,67 @@ extension View {
     /// and automatically normalize any typed or pasted Arabic-Indic numerals to standard ASCII English digits.
     public func englishNumericInput(text: Binding<String>, allowsDecimal: Bool = true) -> some View {
         modifier(PPEnglishNumericInputModifier(text: text, allowsDecimal: allowsDecimal))
+    }
+}
+
+// MARK: - Pure Pets Brand Typography
+
+public enum PPBrandFont {
+    public static func registerIfNeeded() {
+        _ = _registrationToken
+    }
+
+    private static let _registrationToken: Void = {
+        let fontNames = ["Beiruti-Bold", "Beiruti-Medium", "Beiruti-Regular"]
+        let bundle = Bundle.main
+        for name in fontNames {
+            let url = bundle.url(forResource: name, withExtension: "ttf")
+                ?? bundle.url(forResource: name, withExtension: "ttf", subdirectory: "Resourses")
+                ?? bundle.url(forResource: name, withExtension: "ttf", subdirectory: "Resources")
+            if let url = url {
+                var error: Unmanaged<CFError>?
+                if !CTFontManagerRegisterFontsForURL(url as CFURL, .process, &error) {
+                    if let error = error?.takeRetainedValue() {
+                        let code = CFErrorGetCode(error)
+                        // Error code 105 is kCTFontManagerErrorAlreadyRegistered
+                        if code != 105 {
+                            print("[PPBrandFont] Registration notice for \(name): \(error)")
+                        }
+                    }
+                }
+            } else {
+                print("[PPBrandFont] Font asset \(name).ttf not found in bundle")
+            }
+        }
+    }()
+
+    public static func bold(size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        registerIfNeeded()
+        return Font.custom("Beiruti-Bold", size: size, relativeTo: textStyle)
+    }
+
+    public static func medium(size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        registerIfNeeded()
+        return Font.custom("Beiruti-Medium", size: size, relativeTo: textStyle)
+    }
+
+    public static func regular(size: CGFloat, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        registerIfNeeded()
+        return Font.custom("Beiruti-Regular", size: size, relativeTo: textStyle)
+    }
+
+    public static func uiFontBold(size: CGFloat) -> UIFont {
+        registerIfNeeded()
+        return UIFont(name: "Beiruti-Bold", size: size) ?? UIFont.boldSystemFont(ofSize: size)
+    }
+
+    public static func uiFontMedium(size: CGFloat) -> UIFont {
+        registerIfNeeded()
+        return UIFont(name: "Beiruti-Medium", size: size) ?? UIFont.systemFont(ofSize: size, weight: .medium)
+    }
+
+    public static func uiFontRegular(size: CGFloat) -> UIFont {
+        registerIfNeeded()
+        return UIFont(name: "Beiruti-Regular", size: size) ?? UIFont.systemFont(ofSize: size)
     }
 }

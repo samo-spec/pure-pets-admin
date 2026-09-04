@@ -986,7 +986,7 @@ static NSString *PPDeliveryErrorText(NSError *error) {
     // Route guards and callable enforcement remain the final access boundary.
     if (!staff) return;
 
-    BOOL allowed = [staff hasAnyPermission:@[kStaffPermDeliveryView, kStaffPermPaymentsManage]];
+    BOOL allowed = [staff hasAnyPermission:@[kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryOverride, kStaffPermDeliveryCODReconcile, kStaffPermPaymentsManage]];
     self.permissionDenied = !allowed;
     if (self.permissionDenied) {
         if (!wasDenied) self.loadGeneration += 1;

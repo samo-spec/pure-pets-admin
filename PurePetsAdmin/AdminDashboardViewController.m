@@ -3059,6 +3059,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
 
     NSMutableArray<NSDictionary<NSString *, id> *> *stockItems = [NSMutableArray array];
     if ([self pp_canAccessAnyPermissions:@[
+        kStaffPermStockView,
+        kStaffPermStockManage,
+        kStaffPermStockCreate,
+        kStaffPermStockDelete,
         kPermManageStore,
         kPermAdminAll
     ]]) {
@@ -3068,6 +3072,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                           iconName:@"shippingbox"]];
     }
     if ([self pp_canAccessAnyPermissions:@[
+        kStaffPermStockView,
+        kStaffPermStockManage,
+        kStaffPermStockCreate,
+        kStaffPermStockDelete,
         kPermManageFood,
         kPermManageStore,
         kPermAdminAll
@@ -3078,6 +3086,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                           iconName:@"bag"]];
     }
     if ([self pp_canAccessAnyPermissions:@[
+        kStaffPermStockView,
+        kStaffPermStockManage,
+        kStaffPermStockCreate,
+        kStaffPermStockDelete,
         kPermManageStore,
         kPermAdminAll
     ]]) {
@@ -3307,7 +3319,7 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
                                                    items:items]];
         actionCount += items.count;
     }
-    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermDeliveryView, kStaffPermPaymentsManage]]) {
+    if ([self pp_canAccessAnyPermissions:@[kPermAdminAll, kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryOverride, kStaffPermDeliveryCODReconcile, kStaffPermPaymentsManage]]) {
         NSArray *items = @[[self pp_itemWithTag:@"delivery"
                                        titleKey:@"Delivery_Title"
                                     subtitleKey:@"Delivery_Subtitle"

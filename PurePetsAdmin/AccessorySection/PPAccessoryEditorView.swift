@@ -152,11 +152,16 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         didSet {
             if oldValue?.id != selectedMainKind?.id {
                 selectedSubKind = nil
+                dynamicSubKinds = []
+                if let newMain = selectedMainKind {
+                    fetchFreshSubKinds(for: newMain)
+                }
             }
             updateUnsavedChanges()
         }
     }
     @Published var selectedSubKind: SubKindModel? = nil { didSet { updateUnsavedChanges() } }
+    @Published var dynamicSubKinds: [SubKindModel] = []
     
     // Live Pet Specific Lifecycle & Bio-Security Fields
     @Published var ringTag: String = "" { didSet { updateUnsavedChanges() } }
@@ -270,6 +275,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         setupStoreOptions()
         restoreLivePetRecoveryIfNeeded()
         loadMainKinds()
+
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("MainKindsUpdatedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.loadMainKinds(forceServer: true)
+        }
     }
 
     // MARK: - Populate Data
@@ -446,30 +459,98 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     // MARK: - MainKinds & Breeds Fetching
 
-    func loadMainKinds() {
+    func loadMainKinds(forceServer: Bool = true) {
         if let cached = AppManager.shared().mainKindsArray as? [MainKindsModel], !cached.isEmpty {
             self.availableMainKinds = cached
             self.matchSelectedCategories()
             self.finishInitialHydration()
-            return
+            if !forceServer {
+                return
+            }
         }
 
-        isLoadingKinds = true
+        isLoadingKinds = availableMainKinds.isEmpty
         kindsErrorMessage = nil
 
-        AppManager.shared().fetchMainKinds { [weak self] kinds, error in
+        let db = Firestore.firestore()
+        let query = db.collection("MainKindsCollection").order(by: "sortingKey", descending: false)
+
+        query.getDocuments(source: .server) { [weak self] snapshot, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
                 self.isLoadingKinds = false
-                if let err = error {
-                    self.kindsErrorMessage = err.localizedDescription
-                } else if let list = kinds as? [MainKindsModel], !list.isEmpty {
-                    self.availableMainKinds = list
-                    self.matchSelectedCategories()
-                } else {
-                    self.kindsErrorMessage = Language.get("Something went wrong.", alter: "تعذر تحميل قائمة الأنواع")
+
+                if let error = error {
+                    if self.availableMainKinds.isEmpty {
+                        query.getDocuments { cacheSnap, cacheErr in
+                            DispatchQueue.main.async {
+                                if let docs = cacheSnap?.documents, !docs.isEmpty {
+                                    self.processFreshMainKinds(docs: docs)
+                                } else {
+                                    self.kindsErrorMessage = error.localizedDescription
+                                }
+                                self.finishInitialHydration()
+                            }
+                        }
+                    } else {
+                        self.finishInitialHydration()
+                    }
+                    return
+                }
+
+                if let docs = snapshot?.documents, !docs.isEmpty {
+                    self.processFreshMainKinds(docs: docs)
                 }
                 self.finishInitialHydration()
+            }
+        }
+    }
+
+    private func processFreshMainKinds(docs: [QueryDocumentSnapshot]) {
+        var list: [MainKindsModel] = []
+        for doc in docs {
+            let model = MainKindsModel(snapshot: doc)
+            list.append(model)
+        }
+        self.availableMainKinds = list
+        AppManager.shared().mainKindsArray = NSMutableArray(array: list)
+
+        if let currentMain = self.selectedMainKind {
+            if let freshMain = list.first(where: { $0.id == currentMain.id }) {
+                self.selectedMainKind = freshMain
+                self.fetchFreshSubKinds(for: freshMain)
+            }
+        }
+        self.matchSelectedCategories()
+    }
+
+    func fetchFreshSubKinds(for mainKind: MainKindsModel) {
+        let docID = mainKind.documentID.isEmpty ? "\(mainKind.id)" : mainKind.documentID
+        guard !docID.isEmpty else { return }
+        let db = Firestore.firestore()
+
+        db.collection("MainKindsCollection").document(docID).collection("SubKinds").order(by: "ID", descending: false).getDocuments(source: .server) { [weak self] snapshot, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                var items: [SubKindModel] = []
+                if let docs = snapshot?.documents, !docs.isEmpty {
+                    for doc in docs {
+                        let sub = SubKindModel(snapshot: doc)
+                        items.append(sub)
+                    }
+                }
+
+                if items.isEmpty, let arr = mainKind.subKindsArray as? [SubKindModel], !arr.isEmpty {
+                    items = arr
+                }
+
+                if !items.isEmpty {
+                    self.dynamicSubKinds = items
+                    mainKind.subKindsArray = NSMutableArray(array: items)
+                    if let sel = self.selectedSubKind {
+                        self.selectedSubKind = items.first(where: { $0.id == sel.id })
+                    }
+                }
             }
         }
     }
@@ -514,7 +595,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.manage") ?? false
     }
     var canViewStockCosts: Bool {
-        PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false
+        canManageStock || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.view") ?? false) || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false)
     }
 
     var groupCost: Double {
@@ -727,6 +808,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var availableSubKinds: [SubKindModel] {
+        if !dynamicSubKinds.isEmpty {
+            return dynamicSubKinds
+        }
         return (selectedMainKind?.subKindsArray as? [SubKindModel]) ?? []
     }
 
@@ -2241,31 +2325,13 @@ struct PPAccessoryEditorScreen: View {
                     }
                 }
             ) {
-                HStack(spacing: 8) {
-                    // Active Live Status Pill
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(viewModel.isDraft ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
-                            .frame(width: 6, height: 6)
-                        Text(viewModel.isDraft ? Language.get("Draft", alter: "مسودة") : Language.get("Active", alter: "نشط"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(viewModel.isDraft ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
-                    }
-                    .padding(.horizontal, 9)
-                    .frame(height: 38)
-                    .background(
-                        (viewModel.isDraft ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess)).opacity(0.12),
-                        in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    )
-
-                    // Primary Save Pill
-                    AdminPrimaryPillButton(
-                        title: Language.get("Save", alter: "حفظ"),
-                        systemImage: "checkmark",
-                        isLoading: viewModel.isSubmitting
-                    ) {
-                        viewModel.saveAccessory()
-                    }
+                // Primary Save Pill
+                AdminPrimaryPillButton(
+                    title: Language.get("Save", alter: "حفظ"),
+                    systemImage: "checkmark",
+                    isLoading: viewModel.isSubmitting
+                ) {
+                    viewModel.saveAccessory()
                 }
             }
 
@@ -4382,11 +4448,17 @@ private struct PPLivePetIntakeJourney: View {
                         symbol: "pawprint.fill"
                     )
                 },
+                onRefresh: {
+                    viewModel.loadMainKinds(forceServer: true)
+                },
                 onSelect: { selectedID in
                     viewModel.selectedMainKind = viewModel.availableMainKinds.first { String($0.id) == selectedID }
                     viewModel.showSpeciesPicker = false
                 }
             )
+            .onAppear {
+                viewModel.loadMainKinds(forceServer: true)
+            }
         }
         .sheet(isPresented: $viewModel.showBreedPicker) {
             PPLivePetChoiceSheet(
@@ -4403,11 +4475,23 @@ private struct PPLivePetIntakeJourney: View {
                         symbol: "tag.fill"
                     )
                 },
+                onRefresh: {
+                    if let main = viewModel.selectedMainKind {
+                        viewModel.fetchFreshSubKinds(for: main)
+                    } else {
+                        viewModel.loadMainKinds(forceServer: true)
+                    }
+                },
                 onSelect: { selectedID in
                     viewModel.selectedSubKind = viewModel.availableSubKinds.first { String($0.id) == selectedID }
                     viewModel.showBreedPicker = false
                 }
             )
+            .onAppear {
+                if let main = viewModel.selectedMainKind {
+                    viewModel.fetchFreshSubKinds(for: main)
+                }
+            }
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
             PPBranchSelectionGateView(
@@ -7879,6 +7963,7 @@ private struct PPLivePetChoiceSheet: View {
     let emptyTitle: String
     let selectedID: String?
     let choices: [PPLivePetChoice]
+    var onRefresh: (() -> Void)? = nil
     let onSelect: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -7960,6 +8045,9 @@ private struct PPLivePetChoiceSheet: View {
                         .padding(.horizontal, AdminSpacing.screenMargin)
                         .padding(.bottom, AdminSpacing.lg)
                     }
+                    .refreshable {
+                        onRefresh?()
+                    }
                 }
                 .padding(.top, AdminSpacing.md)
             }
@@ -7968,6 +8056,18 @@ private struct PPLivePetChoiceSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(Language.get("Cancel", alter: "إلغاء")) { dismiss() }
                         .font(AdminType.calloutBold)
+                }
+                if let onRefresh {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onRefresh()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                    }
                 }
             }
         }
@@ -8411,11 +8511,17 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: viewModel.isFood ? "fork.knife.circle.fill" : "shippingbox.fill"
                     )
                 },
+                onRefresh: {
+                    viewModel.loadMainKinds(forceServer: true)
+                },
                 onSelect: { selectedID in
                     viewModel.selectedMainKind = viewModel.availableMainKinds.first { String($0.id) == selectedID }
                     viewModel.showSpeciesPicker = false
                 }
             )
+            .onAppear {
+                viewModel.loadMainKinds(forceServer: true)
+            }
         }
         .sheet(isPresented: $viewModel.showBreedPicker) {
             PPLivePetChoiceSheet(
@@ -8432,11 +8538,23 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: "tag.fill"
                     )
                 },
+                onRefresh: {
+                    if let main = viewModel.selectedMainKind {
+                        viewModel.fetchFreshSubKinds(for: main)
+                    } else {
+                        viewModel.loadMainKinds(forceServer: true)
+                    }
+                },
                 onSelect: { selectedID in
                     viewModel.selectedSubKind = viewModel.availableSubKinds.first { String($0.id) == selectedID }
                     viewModel.showBreedPicker = false
                 }
             )
+            .onAppear {
+                if let main = viewModel.selectedMainKind {
+                    viewModel.fetchFreshSubKinds(for: main)
+                }
+            }
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
             PPBranchSelectionGateView(

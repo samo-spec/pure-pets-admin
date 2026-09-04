@@ -189,10 +189,10 @@ enum AdminRoute: Hashable, Identifiable {
         case .fulfillment: return ["payments.view", "payments.manage", "providers.view"]
         // `payments.manage` is an isolated official-fleet compatibility bridge.
         // New staff grants must use the dedicated delivery permission.
-        case .delivery: return ["delivery.view", "payments.manage"]
+        case .delivery: return ["delivery.view", "delivery.dispatch", "delivery.override", "delivery.cod.reconcile", "payments.manage"]
         case .providerApplications, .providerPlans, .providerFeatures: return ["providers.view", "providers.manage"]
         case .providerAccounting: return ["payments.view", "payments.manage"]
-        case .pointOfSale: return ["pos.sell"]
+        case .pointOfSale: return ["pos.view", "pos.sell"]
         case .pointOfSaleHistory: return ["pos.view", "pos.sell", "pos.history"]
         case .users: return ["users.view", "users.manage", "users.block", "users.features.view", "users.features.manage", "users.subscriptions.view", "users.subscriptions.manage", "users.restrictions.view", "users.restrictions.manage"]
         case .staff: return ["staff.view", "staff.manage"]
@@ -201,7 +201,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .notifications: return ["notifications.view", "support.view", "support.manage", "moderation.view", "moderation.manage"]
         case .notificationComposer: return ["notifications.send"]
         case .notificationSettings: return ["notifications.view", "notifications.send", "support.manage", "moderation.manage", "users.block"]
-        case .accessories, .food, .livePets: return ["stock.manage", "stock.create", "stock.delete", "payments.manage", "payments.refund", "accounting.manage", "categories.manage"]
+        case .accessories, .food, .livePets: return ["stock.view", "stock.manage", "stock.create", "stock.delete", "payments.manage", "payments.refund", "accounting.manage", "categories.manage"]
         case .branches: return ["branches.view", "branches.manage"]
         case .agents: return ["agents.view", "agents.manage"]
         case .homeControl: return ["settings.view", "settings.manage"]
@@ -213,20 +213,12 @@ enum AdminRoute: Hashable, Identifiable {
         case .categories: return ["categories.view", "categories.manage"]
         case .banners: return ["banners.manage"]
         case .listings: return ["listings.view", "listings.manage", "listings.moderate"]
-        case .hotel: return ["hotel.view"]
+        case .hotel: return ["hotel.view", "hotel.manage", "hotel.checkin"]
         }
     }
 
-    /// Some legacy controllers perform a direct Firestore read whose rule is
-    /// narrower than the module catalog permission. Keep that backend
-    /// constraint explicit instead of showing a route that will immediately
-    /// fail after navigation.
     var requiredAllPermissions: [String] {
         switch self {
-        case .accessories, .food, .livePets:
-            return ["stock.manage"]
-        case .listings:
-            return ["stock.manage"]
         default:
             return []
         }

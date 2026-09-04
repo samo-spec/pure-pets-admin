@@ -332,6 +332,17 @@ struct AdminStaffManagementView: View {
                 }
                 .hidden()
 
+                // Push Navigation Link for Sovereign Role Rank & Security Levels Matrix
+                NavigationLink(
+                    destination: AdminRoleRankSecurityLevelsView(
+                        onDismiss: { isShowingRoleRankMatrix = false }
+                    ),
+                    isActive: $isShowingRoleRankMatrix
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+
                 if let message = toastMessage {
                     VStack {
                         Spacer()
@@ -344,9 +355,6 @@ struct AdminStaffManagementView: View {
                 }
             }
             .navigationBarHidden(true)
-            .sheet(isPresented: $isShowingRoleRankMatrix) {
-                AdminRoleRankSecurityLevelsView(onDismiss: { isShowingRoleRankMatrix = false })
-            }
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)

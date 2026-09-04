@@ -96,19 +96,7 @@ public struct AdminProvidersView: View {
                     dismiss()
                 }
             }
-        ) {
-            HStack(spacing: 6) {
-                Image(systemName: "person.2.badge.gearshape.fill")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
-                Text(Language.get("Providers_Hub", alter: "مركز المزودين"))
-                    .font(AdminType.captionBold)
-                    .foregroundStyle(AdminSurface.primary)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 38)
-            .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }
+        )
     }
 
     private var providerTabPicker: some View {

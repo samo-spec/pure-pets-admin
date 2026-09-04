@@ -266,4 +266,8 @@ typedef void (^PPStaffListCompletion)(NSArray<PPStaffDoc *> * _Nullable docs, NS
 
 @end
 
+/// Resolves a requested permission key against granted catalog permissions,
+/// taking into account canonical hierarchy and fine-grained sub-actions across the 18 modules (45 permissions).
+FOUNDATION_EXPORT BOOL PPStaffMatchesPermission(NSArray<NSString *> * _Nullable granted, NSString * _Nullable perm);
+
 NS_ASSUME_NONNULL_END

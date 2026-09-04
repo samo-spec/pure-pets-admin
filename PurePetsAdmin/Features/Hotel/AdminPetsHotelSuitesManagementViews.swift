@@ -636,6 +636,9 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
     @ObservedObject var viewModel: AdminPetsHotelViewModel
     @Environment(\.dismiss) private var dismiss
 
+    public var isPushMode: Bool = false
+    public var onBack: (() -> Void)? = nil
+
     @State private var code: String = ""
     @State private var name: String = ""
     @State private var selectedWing: HotelWing = .dogs
@@ -650,21 +653,28 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
 
     private var isEditMode: Bool { accommodation != nil }
 
-    public init(accommodation: AdminHotelAccommodation?, viewModel: AdminPetsHotelViewModel) {
+    public init(accommodation: AdminHotelAccommodation?, viewModel: AdminPetsHotelViewModel, isPushMode: Bool = false, onBack: (() -> Void)? = nil) {
         self.accommodation = accommodation
         self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
     }
 
     public var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                AdminSovereignNavigationBar(
-                    title: isEditMode ? Language.get("Hotel_Suites_EditTitle", alter: "تعديل بيانات الجناح") : Language.get("Hotel_Suites_NewTitle", alter: "إضافة جناح جديد"),
-                    subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
-                    statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
-                    isModal: true,
-                    onBack: { dismiss() }
-                )
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: isEditMode ? Language.get("Hotel_Suites_EditTitle", alter: "تعديل بيانات الجناح") : Language.get("Hotel_Suites_NewTitle", alter: "إضافة جناح جديد"),
+                subtitle: Language.get("Hotel_Workspace", alter: "مساحة الفندق • مباشر"),
+                statusDotColor: Color(red: 0.16, green: 0.78, blue: 0.48),
+                isModal: !isPushMode,
+                onBack: {
+                    if let onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
+                }
+            )
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 18) {
@@ -700,11 +710,10 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
                     .padding(.bottom, 36)
                 }
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationBarHidden(true)
-            .onAppear {
-                populateFields()
-            }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .onAppear {
+            populateFields()
         }
     }
 
@@ -1050,7 +1059,11 @@ public struct AdminPetsHotelSuiteEditorSheet: View {
             )
             isSubmitting = false
             if success {
-                dismiss()
+                if let onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
             }
         }
     }
