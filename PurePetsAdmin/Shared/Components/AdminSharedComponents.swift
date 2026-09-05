@@ -386,7 +386,7 @@ public struct AdminSquircleActionButton: View {
     }
 }
 
-/// Signature pill action button (e.g. "✓ حفظ" Save pill) with brand glow shadow.
+/// Signature action button for top navigation bars (icon only, no title, 44x44 standard touch target).
 public struct AdminPrimaryPillButton: View {
     public let title: String
     public let systemImage: String
@@ -410,24 +410,22 @@ public struct AdminPrimaryPillButton: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             action()
         } label: {
-            HStack(spacing: 6) {
+            ZStack {
                 if isLoading {
-                    ProgressView().tint(.white).scaleEffect(0.8)
+                    ProgressView().tint(.white).scaleEffect(0.85)
                 } else {
                     Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .heavy))
-                    Text(title)
-                        .font(AdminType.calloutBold)
+                        .font(.system(size: 15, weight: .bold))
                 }
             }
             .foregroundColor(.white)
-            .padding(.horizontal, 14)
-            .frame(height: 38)
-            .background(AdminSurface.primary, in: Capsule())
-            .shadow(color: AdminSurface.primary.opacity(0.35), radius: 6, x: 0, y: 3)
+            .frame(width: 44, height: 44)
+            .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .shadow(color: AdminSurface.primary.opacity(0.32), radius: 6, x: 0, y: 3)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
+        .accessibilityLabel(title)
     }
 }
 

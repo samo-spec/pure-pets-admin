@@ -9,6 +9,7 @@
 import SwiftUI
 import AVFoundation
 import Vision
+import ImageIO
 @preconcurrency import CoreMotion
 import PhotosUI
 
@@ -83,6 +84,19 @@ private enum PPScannerVisual {
     static let chromeRaised = Color.black.opacity(0.82)
     static let hairline = Color.white.opacity(0.16)
     static let secondaryText = Color.white.opacity(0.68)
+}
+
+private let kPPScannerViewportCoordinateSpace = "PPScannerViewportCoordinateSpace"
+
+private struct PPScannerReticleFramePreferenceKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        let next = nextValue()
+        if !next.isEmpty {
+            value = next
+        }
+    }
 }
 
 // MARK: - Visual Focus Indicator
@@ -179,6 +193,7 @@ public struct PPScannerView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
+            engine.updateExpectedAmount(cartTotal)
             engine.onCameraReady = {
                 guard phase == .starting else { return }
                 withAnimation(phaseAnimation) {
@@ -336,6 +351,13 @@ public struct PPScannerView: View {
                     )
                 }
             }
+            .coordinateSpace(name: kPPScannerViewportCoordinateSpace)
+            .onPreferenceChange(PPScannerReticleFramePreferenceKey.self) { reticleFrame in
+                engine.updateScanGeometry(
+                    reticleFrame: reticleFrame,
+                    viewportSize: screenSize
+                )
+            }
             .ignoresSafeArea()
         }
     }
@@ -417,6 +439,14 @@ public struct PPScannerView: View {
                 autoCaptureProgress: autoCaptureProgress
             )
             .allowsHitTesting(false)
+            .background {
+                GeometryReader { reticleProxy in
+                    Color.clear.preference(
+                        key: PPScannerReticleFramePreferenceKey.self,
+                        value: reticleProxy.frame(in: .named(kPPScannerViewportCoordinateSpace))
+                    )
+                }
+            }
 
             scannerSignalRail
 
@@ -1077,15 +1107,11 @@ private struct PPScannerReticle: View {
 
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
-                    LinearGradient(
-                        colors: [accentColor.opacity(0.92), accentColor.opacity(0.30), accentColor.opacity(0.78)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: isLocked ? 1.8 : 1.0
+                    isLocked ? accentColor.opacity(0.34) : Color.white.opacity(0.16),
+                    lineWidth: 0.75
                 )
 
-            PPScannerCornerBrackets(color: accentColor, cornerLength: 30, thickness: 3.2)
+            PPScannerCornerBrackets(color: accentColor, cornerLength: 38, thickness: 2.6)
 
             if !reduceMotion && !isLocked {
                 GeometryReader { geo in
@@ -1167,7 +1193,61 @@ private struct PPScannerReticle: View {
     }
 }
 
-// MARK: - Laser Corner Brackets
+// MARK: - Precision Corner Guides
+
+private struct PPScannerCornerGuideShape: Shape {
+    let cornerLength: CGFloat
+    let cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let inset: CGFloat = 2
+        let length = min(cornerLength, min(rect.width, rect.height) * 0.28)
+        let radius = min(cornerRadius, length * 0.48)
+        let minX = rect.minX + inset
+        let maxX = rect.maxX - inset
+        let minY = rect.minY + inset
+        let maxY = rect.maxY - inset
+        var path = Path()
+
+        path.move(to: CGPoint(x: minX, y: minY + length))
+        path.addLine(to: CGPoint(x: minX, y: minY + radius))
+        path.addCurve(
+            to: CGPoint(x: minX + radius, y: minY),
+            control1: CGPoint(x: minX, y: minY + radius * 0.42),
+            control2: CGPoint(x: minX + radius * 0.42, y: minY)
+        )
+        path.addLine(to: CGPoint(x: minX + length, y: minY))
+
+        path.move(to: CGPoint(x: maxX - length, y: minY))
+        path.addLine(to: CGPoint(x: maxX - radius, y: minY))
+        path.addCurve(
+            to: CGPoint(x: maxX, y: minY + radius),
+            control1: CGPoint(x: maxX - radius * 0.42, y: minY),
+            control2: CGPoint(x: maxX, y: minY + radius * 0.42)
+        )
+        path.addLine(to: CGPoint(x: maxX, y: minY + length))
+
+        path.move(to: CGPoint(x: minX, y: maxY - length))
+        path.addLine(to: CGPoint(x: minX, y: maxY - radius))
+        path.addCurve(
+            to: CGPoint(x: minX + radius, y: maxY),
+            control1: CGPoint(x: minX, y: maxY - radius * 0.42),
+            control2: CGPoint(x: minX + radius * 0.42, y: maxY)
+        )
+        path.addLine(to: CGPoint(x: minX + length, y: maxY))
+
+        path.move(to: CGPoint(x: maxX - length, y: maxY))
+        path.addLine(to: CGPoint(x: maxX - radius, y: maxY))
+        path.addCurve(
+            to: CGPoint(x: maxX, y: maxY - radius),
+            control1: CGPoint(x: maxX - radius * 0.42, y: maxY),
+            control2: CGPoint(x: maxX, y: maxY - radius * 0.42)
+        )
+        path.addLine(to: CGPoint(x: maxX, y: maxY - length))
+
+        return path
+    }
+}
 
 private struct PPScannerCornerBrackets: View {
     let color: Color
@@ -1175,32 +1255,33 @@ private struct PPScannerCornerBrackets: View {
     let thickness: CGFloat
 
     var body: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
+        let guide = PPScannerCornerGuideShape(cornerLength: cornerLength, cornerRadius: 16)
 
-            Path { path in
-                // Top-Left
-                path.move(to: CGPoint(x: 0, y: cornerLength))
-                path.addLine(to: CGPoint(x: 0, y: 0))
-                path.addLine(to: CGPoint(x: cornerLength, y: 0))
+        ZStack {
+            guide
+                .stroke(
+                    Color.black.opacity(0.66),
+                    style: StrokeStyle(
+                        lineWidth: thickness + 3.2,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
 
-                // Top-Right
-                path.move(to: CGPoint(x: w - cornerLength, y: 0))
-                path.addLine(to: CGPoint(x: w, y: 0))
-                path.addLine(to: CGPoint(x: w, y: cornerLength))
-
-                // Bottom-Left
-                path.move(to: CGPoint(x: 0, y: h - cornerLength))
-                path.addLine(to: CGPoint(x: 0, y: h))
-                path.addLine(to: CGPoint(x: cornerLength, y: h))
-
-                // Bottom-Right
-                path.move(to: CGPoint(x: w - cornerLength, y: h))
-                path.addLine(to: CGPoint(x: w, y: h))
-                path.addLine(to: CGPoint(x: w, y: h - cornerLength))
-            }
-            .stroke(color, style: StrokeStyle(lineWidth: thickness, lineCap: .round, lineJoin: .round))
+            guide
+                .stroke(
+                    LinearGradient(
+                        colors: [color.opacity(0.72), color, color.opacity(0.82)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(
+                        lineWidth: thickness,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+                .shadow(color: color.opacity(0.28), radius: 4)
         }
     }
 }
@@ -1441,7 +1522,7 @@ final class PPScannerPreviewViewController: UIViewController {
 // MARK: - Native Photo Picker Wrapper
 
 private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
-    let onImageSelected: (UIImage?) -> Void
+    let onImageSelected: @MainActor @Sendable (UIImage?) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onImageSelected: onImageSelected)
@@ -1460,22 +1541,27 @@ private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
     final class Coordinator: NSObject, PHPickerViewControllerDelegate {
-        let onImageSelected: (UIImage?) -> Void
+        let onImageSelected: @MainActor @Sendable (UIImage?) -> Void
 
-        init(onImageSelected: @escaping (UIImage?) -> Void) {
+        init(onImageSelected: @escaping @MainActor @Sendable (UIImage?) -> Void) {
             self.onImageSelected = onImageSelected
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             guard let provider = results.first?.itemProvider,
                   provider.canLoadObject(ofClass: UIImage.self) else {
-                onImageSelected(nil)
+                let callback = onImageSelected
+                Task { @MainActor in
+                    callback(nil)
+                }
                 return
             }
 
-            provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
-                DispatchQueue.main.async {
-                    self?.onImageSelected(object as? UIImage)
+            let callback = onImageSelected
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                let image = object as? UIImage
+                Task { @MainActor in
+                    callback(image)
                 }
             }
         }
@@ -1536,6 +1622,68 @@ private let kQatarBankCatalog: [PPBankDefinition] = [
     )
 ]
 
+private let kPPScannerCustomWords: [String] = [
+    "CHEQUE", "CHECK", "CHQ", "CHEQUE NO", "CHEQUE NUMBER", "QAR", "QR",
+    "شيك", "رقم الشيك", "المبلغ", "ريال قطري"
+] + kQatarBankCatalog.flatMap { bank in
+    [bank.canonicalName] + bank.patterns
+}
+
+private struct PPScannerRecognizedLine {
+    let text: String
+    let boundingBox: CGRect
+    let confidence: Float
+}
+
+private struct PPScannerParsedFields {
+    let chequeNumber: String
+    let bankName: String
+    let amount: Double?
+    let dateString: String?
+    let hasExplicitChequeLabel: Bool
+    let hasMICREvidence: Bool
+    let evidenceScore: Int
+
+    var isReliableCheque: Bool {
+        let hasNumber = !chequeNumber.isEmpty
+        let hasBank = !bankName.isEmpty
+        let hasAmount = amount != nil
+        let hasDate = dateString != nil
+
+        if hasExplicitChequeLabel && (hasNumber || hasBank || hasAmount) {
+            return evidenceScore >= 4
+        }
+        if hasMICREvidence && hasNumber && (hasBank || hasAmount) {
+            return evidenceScore >= 5
+        }
+        if hasBank && hasNumber {
+            return evidenceScore >= 5
+        }
+        return hasBank && hasAmount && hasDate && evidenceScore >= 5
+    }
+
+    var stabilitySignature: String {
+        let normalizedBank = bankName.lowercased()
+        if !chequeNumber.isEmpty && !normalizedBank.isEmpty {
+            return "\(chequeNumber)|\(normalizedBank)"
+        }
+        if !chequeNumber.isEmpty, let amount {
+            return "\(chequeNumber)|\(String(format: "%.2f", amount))"
+        }
+        if !normalizedBank.isEmpty, let amount {
+            return "\(normalizedBank)|\(String(format: "%.2f", amount))"
+        }
+        return ""
+    }
+}
+
+private struct PPScannerAnalysisContext {
+    var reticleFrame: CGRect = .zero
+    var viewportSize: CGSize = .zero
+    var orientation: CGImagePropertyOrientation = .right
+    var expectedAmount: Double = 0
+}
+
 // MARK: - Optical Scanner Vision & AVFoundation Engine
 
 @MainActor
@@ -1566,12 +1714,13 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     var onPermissionDenied: (() -> Void)?
     var onCameraUnavailable: (() -> Void)?
 
-    private var isAnalyzing = false
+    private nonisolated(unsafe) let analysisContextLock = NSLock()
+    private nonisolated(unsafe) var analysisContext = PPScannerAnalysisContext()
     private nonisolated(unsafe) var lastFrameTime: TimeInterval = 0
     private var consecutiveValidFrames: Int = 0
     private var autoCaptureStartTime: Date? = nil
-
-    private var latestCandidateCheque: PPScannedCheque? = nil
+    private var lastCandidateSignature = ""
+    private var isPhotoCaptureInFlight = false
 
     override init() {
         super.init()
@@ -1582,15 +1731,159 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         motionManager.stopDeviceMotionUpdates()
     }
 
+    // MARK: - Scan Geometry & Orientation
+
+    func updateExpectedAmount(_ amount: Double) {
+        analysisContextLock.lock()
+        analysisContext.expectedAmount = max(0, amount)
+        analysisContextLock.unlock()
+    }
+
+    func updateScanGeometry(reticleFrame: CGRect, viewportSize: CGSize) {
+        guard !reticleFrame.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
+
+        let orientation: CGImagePropertyOrientation
+        switch UIDevice.current.orientation {
+        case .portrait:
+            orientation = .right
+        case .portraitUpsideDown:
+            orientation = .left
+        case .landscapeLeft:
+            orientation = .up
+        case .landscapeRight:
+            orientation = .down
+        default:
+            orientation = viewportSize.width > viewportSize.height ? .up : .right
+        }
+
+        let viewportBounds = CGRect(origin: .zero, size: viewportSize)
+        let boundedFrame = reticleFrame.standardized.intersection(viewportBounds)
+        guard !boundedFrame.isEmpty else { return }
+
+        analysisContextLock.lock()
+        analysisContext.reticleFrame = boundedFrame
+        analysisContext.viewportSize = viewportSize
+        analysisContext.orientation = orientation
+        analysisContextLock.unlock()
+    }
+
+    private nonisolated func currentAnalysisContext() -> PPScannerAnalysisContext {
+        analysisContextLock.lock()
+        let snapshot = analysisContext
+        analysisContextLock.unlock()
+        return snapshot
+    }
+
+    private nonisolated func visionRegionOfInterest(
+        rawPixelSize: CGSize,
+        context: PPScannerAnalysisContext
+    ) -> CGRect {
+        guard rawPixelSize.width > 0, rawPixelSize.height > 0,
+              context.viewportSize.width > 0, context.viewportSize.height > 0,
+              !context.reticleFrame.isEmpty else {
+            return CGRect(x: 0.04, y: 0.33, width: 0.92, height: 0.34)
+        }
+
+        let swapsDimensions: Bool
+        switch context.orientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            swapsDimensions = true
+        default:
+            swapsDimensions = false
+        }
+
+        let orientedSize = swapsDimensions
+            ? CGSize(width: rawPixelSize.height, height: rawPixelSize.width)
+            : rawPixelSize
+        let viewport = context.viewportSize
+        let scale = max(viewport.width / orientedSize.width, viewport.height / orientedSize.height)
+        guard scale.isFinite, scale > 0 else {
+            return CGRect(x: 0.04, y: 0.33, width: 0.92, height: 0.34)
+        }
+
+        let renderedSize = CGSize(width: orientedSize.width * scale, height: orientedSize.height * scale)
+        let cropOffset = CGPoint(
+            x: max(0, (renderedSize.width - viewport.width) * 0.5),
+            y: max(0, (renderedSize.height - viewport.height) * 0.5)
+        )
+        let expandedFrame = context.reticleFrame.insetBy(
+            dx: -context.reticleFrame.width * 0.035,
+            dy: -context.reticleFrame.height * 0.08
+        ).intersection(CGRect(origin: .zero, size: viewport))
+        let imageRectTopLeft = CGRect(
+            x: (expandedFrame.minX + cropOffset.x) / scale,
+            y: (expandedFrame.minY + cropOffset.y) / scale,
+            width: expandedFrame.width / scale,
+            height: expandedFrame.height / scale
+        )
+
+        let normalized = CGRect(
+            x: imageRectTopLeft.minX / orientedSize.width,
+            y: 1 - (imageRectTopLeft.maxY / orientedSize.height),
+            width: imageRectTopLeft.width / orientedSize.width,
+            height: imageRectTopLeft.height / orientedSize.height
+        )
+        let imageBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+        let bounded = normalized.standardized.intersection(imageBounds)
+        guard bounded.width >= 0.08, bounded.height >= 0.08 else {
+            return CGRect(x: 0.04, y: 0.33, width: 0.92, height: 0.34)
+        }
+        return bounded
+    }
+
+    private nonisolated static func cgImageOrientation(
+        for imageOrientation: UIImage.Orientation
+    ) -> CGImagePropertyOrientation {
+        switch imageOrientation {
+        case .up: return .up
+        case .down: return .down
+        case .left: return .left
+        case .right: return .right
+        case .upMirrored: return .upMirrored
+        case .downMirrored: return .downMirrored
+        case .leftMirrored: return .leftMirrored
+        case .rightMirrored: return .rightMirrored
+        @unknown default: return .up
+        }
+    }
+
     // MARK: - Numeral Normalization
 
     public nonisolated static func normalizeArabicNumerals(_ text: String) -> String {
         let arabicNumbers: [Character: Character] = [
             "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
             "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
             "،": ",", "٫": ".", "٬": ","
         ]
         return String(text.map { arabicNumbers[$0] ?? $0 })
+    }
+
+    private nonisolated static func normalizeNumericConfusions(in text: String) -> String {
+        let normalized = Array(normalizeArabicNumerals(text))
+        let substitutions: [Character: Character] = [
+            "O": "0", "o": "0",
+            "I": "1", "l": "1", "|": "1", "!": "1",
+            "Z": "2", "z": "2",
+            "S": "5", "s": "5",
+            "B": "8"
+        ]
+
+        return String(normalized.enumerated().map { index, character in
+            guard let replacement = substitutions[character] else { return character }
+            let previousIsNumeric = index > 0 && normalized[index - 1].isNumber
+            let nextIsNumeric = index + 1 < normalized.count && normalized[index + 1].isNumber
+            return previousIsNumeric || nextIsNumeric ? replacement : character
+        })
+    }
+
+    private nonisolated static func digitsOnly(from text: String) -> String {
+        String(normalizeNumericConfusions(in: text).filter(\.isNumber))
+    }
+
+    private nonisolated static func containsAny(_ needles: [String], in haystack: String) -> Bool {
+        needles.contains { haystack.contains($0) }
     }
 
     // MARK: - Permissions & Setup
@@ -1657,11 +1950,27 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             }
 
             self.videoDevice = device
+            do {
+                try device.lockForConfiguration()
+                if device.isFocusModeSupported(.continuousAutoFocus) {
+                    device.focusMode = .continuousAutoFocus
+                }
+                if device.isExposureModeSupported(.continuousAutoExposure) {
+                    device.exposureMode = .continuousAutoExposure
+                }
+                if device.isSmoothAutoFocusSupported {
+                    device.isSmoothAutoFocusEnabled = true
+                }
+                device.unlockForConfiguration()
+            } catch {
+                // The camera remains usable with its default focus configuration.
+            }
             self.session.addInput(input)
             self.videoOutput.alwaysDiscardsLateVideoFrames = true
             self.videoOutput.setSampleBufferDelegate(self, queue: self.visionQueue)
             self.session.addOutput(self.videoOutput)
             self.session.addOutput(self.photoOutput)
+            self.photoOutput.maxPhotoQualityPrioritization = .quality
 
             self.session.commitConfiguration()
             self.session.startRunning()
@@ -1696,7 +2005,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     func resume() {
         consecutiveValidFrames = 0
         autoCaptureStartTime = nil
-        latestCandidateCheque = nil
+        lastCandidateSignature = ""
+        isPhotoCaptureInFlight = false
         detectedPreviewText = nil
         isChequeDetected = false
         focusPoint = nil
@@ -1802,6 +2112,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         lastFrameTime = currentTime
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        let context = currentAnalysisContext()
 
         // Analyze Ambient Lighting
         if let metadata = CMCopyDictionaryOfAttachments(allocator: nil, target: sampleBuffer, attachmentMode: kCMAttachmentMode_ShouldPropagate) as? [String: Any],
@@ -1812,42 +2123,92 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             }
         }
 
-        // Vision Text Recognition Request with Arabic & English
-        let request = VNRecognizeTextRequest { [weak self] req, err in
-            guard let self, err == nil, let observations = req.results as? [VNRecognizedTextObservation] else { return }
-            self.parseObservations(observations, sampleBuffer: sampleBuffer)
-        }
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        if #available(iOS 16.0, *) {
-            request.recognitionLanguages = ["ar-SA", "en-US"]
-        }
+        let rawSize = CGSize(
+            width: CVPixelBufferGetWidth(pixelBuffer),
+            height: CVPixelBufferGetHeight(pixelBuffer)
+        )
+        let region = visionRegionOfInterest(rawPixelSize: rawSize, context: context)
+        let request = configuredTextRequest(regionOfInterest: region)
+        let handler = VNImageRequestHandler(
+            cvPixelBuffer: pixelBuffer,
+            orientation: context.orientation,
+            options: [:]
+        )
 
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
-        try? handler.perform([request])
+        do {
+            try handler.perform([request])
+            handleLiveRecognition(
+                request.results ?? [],
+                expectedAmount: context.expectedAmount
+            )
+        } catch {
+            // A transient Vision failure must not terminate the camera session.
+        }
     }
 
-    private nonisolated func parseObservations(
-        _ observations: [VNRecognizedTextObservation],
-        sampleBuffer: CMSampleBuffer
-    ) {
-        var recognizedStrings: [String] = []
-        for observation in observations {
-            if let topCandidate = observation.topCandidates(1).first {
-                recognizedStrings.append(topCandidate.string)
+    private nonisolated func configuredTextRequest(
+        regionOfInterest: CGRect
+    ) -> VNRecognizeTextRequest {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        // Raw recognition protects cheque digits and MICR-like runs from lexical correction.
+        request.usesLanguageCorrection = false
+        request.automaticallyDetectsLanguage = true
+        request.customWords = kPPScannerCustomWords
+        request.minimumTextHeight = 0.006
+        request.regionOfInterest = regionOfInterest
+
+        if let supported = try? request.supportedRecognitionLanguages() {
+            var preferred: [String] = []
+            for prefix in ["en", "ar"] {
+                if let language = supported.first(where: {
+                    $0.lowercased().hasPrefix(prefix)
+                }) {
+                    preferred.append(language)
+                }
+            }
+            if !preferred.isEmpty {
+                request.recognitionLanguages = preferred
             }
         }
+        return request
+    }
 
-        let rawText = recognizedStrings.joined(separator: "\n")
-        let parsed = extractFinancialData(from: rawText)
-        let candidateImage = self.imageFromSampleBuffer(sampleBuffer)
+    private nonisolated func recognizedLines(
+        _ observations: [VNRecognizedTextObservation],
+    ) -> [PPScannerRecognizedLine] {
+        observations.compactMap { observation in
+            guard let candidate = observation.topCandidates(1).first,
+                  candidate.confidence >= 0.15 else { return nil }
+            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return nil }
+            return PPScannerRecognizedLine(
+                text: text,
+                boundingBox: observation.boundingBox,
+                confidence: candidate.confidence
+            )
+        }
+        .sorted { lhs, rhs in
+            let verticalDelta = abs(lhs.boundingBox.midY - rhs.boundingBox.midY)
+            if verticalDelta > 0.025 {
+                return lhs.boundingBox.midY > rhs.boundingBox.midY
+            }
+            return lhs.boundingBox.minX < rhs.boundingBox.minX
+        }
+    }
 
-        Task { @MainActor in
-            let hasValidChequeSignals = !parsed.chequeNumber.isEmpty || !parsed.bankName.isEmpty || rawText.contains("⑆") || rawText.contains("⑈")
+    private nonisolated func handleLiveRecognition(
+        _ observations: [VNRecognizedTextObservation],
+        expectedAmount: Double
+    ) {
+        let lines = recognizedLines(observations)
+        let parsed = extractFinancialData(from: lines, expectedAmount: expectedAmount)
 
-            self.isChequeDetected = hasValidChequeSignals
+        Task { @MainActor [weak self] in
+            guard let self, !self.isPhotoCaptureInFlight else { return }
+            self.isChequeDetected = parsed.isReliableCheque
 
-            if hasValidChequeSignals {
+            if parsed.isReliableCheque {
                 var preview = ""
                 if !parsed.chequeNumber.isEmpty {
                     preview = String(
@@ -1868,21 +2229,16 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 }
                 self.detectedPreviewText = preview.isEmpty ? Language.get("PPScanner_ChequeDetected", alter: "تم التعرف على الشيك") : preview
 
-                self.consecutiveValidFrames += 1
-
-                // Create intermediate candidate cheque
-                if let image = candidateImage {
-                    self.latestCandidateCheque = PPScannedCheque(
-                        image: image,
-                        chequeNumber: parsed.chequeNumber,
-                        bankName: parsed.bankName,
-                        amount: parsed.amount,
-                        dateString: parsed.dateString,
-                        rawText: rawText
-                    )
+                if !parsed.stabilitySignature.isEmpty,
+                   parsed.stabilitySignature == self.lastCandidateSignature {
+                    self.consecutiveValidFrames += 1
+                } else {
+                    self.lastCandidateSignature = parsed.stabilitySignature
+                    self.consecutiveValidFrames = 1
+                    self.autoCaptureStartTime = nil
                 }
 
-                // Handle Auto-Capture Timeline
+                // Capture only after the same financial identity survives consecutive frames.
                 if self.isDeviceSteady, !self.isLowLight, self.consecutiveValidFrames >= 3 {
                     if self.autoCaptureStartTime == nil {
                         self.autoCaptureStartTime = Date()
@@ -1891,9 +2247,9 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                     let progress = min(CGFloat(elapsed / 0.8), 1.0)
                     self.onAutoCaptureProgress?(progress)
 
-                    if progress >= 1.0, let candidate = self.latestCandidateCheque {
+                    if progress >= 1.0 {
                         self.autoCaptureStartTime = nil
-                        self.onCaptureComplete?(candidate)
+                        self.capturePhotoManually()
                     }
                 } else {
                     self.autoCaptureStartTime = nil
@@ -1901,6 +2257,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 }
             } else {
                 self.consecutiveValidFrames = 0
+                self.lastCandidateSignature = ""
                 self.detectedPreviewText = nil
                 self.autoCaptureStartTime = nil
                 self.onAutoCaptureProgress?(0.0)
@@ -1910,119 +2267,243 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
     // MARK: - Financial Data Extraction & Optical Intelligence
 
-    private nonisolated func extractFinancialData(from rawText: String) -> (chequeNumber: String, bankName: String, amount: Double?, dateString: String?) {
-        var chequeNumber = ""
-        var bankName = ""
-        var amount: Double? = nil
-        var dateString: String? = nil
+    private nonisolated func extractFinancialData(
+        from lines: [PPScannerRecognizedLine],
+        expectedAmount: Double
+    ) -> PPScannerParsedFields {
+        let rawText = lines.map(\.text).joined(separator: "\n")
+        let normalizedText = Self.normalizeNumericConfusions(in: rawText)
+        let chequeLabelPattern = "(?i)(?:\\b(?:cheque|check|chq)\\b|رقم\\s*(?:ال)?شيك|(?:ال)?شيك\\s*(?:رقم|no\\.?))"
+        let hasExplicitChequeLabel = containsRegex(chequeLabelPattern, in: normalizedText)
+        let hasMICREvidence = containsMICREvidence(in: lines)
+        let bankName = extractBankName(from: normalizedText)
+        let chequeNumber = extractChequeNumber(
+            from: lines,
+            chequeLabelPattern: chequeLabelPattern
+        )
+        let dateString = extractChequeDate(from: normalizedText)
+        let amount = extractAmount(
+            from: lines,
+            chequeNumber: chequeNumber,
+            expectedAmount: expectedAmount
+        )
 
-        // Normalize Eastern Arabic Numerals (٠-٩) and punctuation across entire text
-        let normalizedText = PPScannerEngine.normalizeArabicNumerals(rawText)
-        let lines = normalizedText.components(separatedBy: .newlines)
+        var evidenceScore = 0
+        if !chequeNumber.isEmpty { evidenceScore += 2 }
+        if !bankName.isEmpty { evidenceScore += 2 }
+        if amount != nil { evidenceScore += 1 }
+        if dateString != nil { evidenceScore += 1 }
+        if hasExplicitChequeLabel { evidenceScore += 2 }
+        if hasMICREvidence { evidenceScore += 2 }
+        if lines.count >= 3 { evidenceScore += 1 }
 
-        // 1. Detect Bank Name (Comprehensive Qatar & GCC Catalog)
-        let uppercaseNormalized = normalizedText.uppercased()
-        let uppercaseRaw = rawText.uppercased()
+        return PPScannerParsedFields(
+            chequeNumber: chequeNumber,
+            bankName: bankName,
+            amount: amount,
+            dateString: dateString,
+            hasExplicitChequeLabel: hasExplicitChequeLabel,
+            hasMICREvidence: hasMICREvidence,
+            evidenceScore: evidenceScore
+        )
+    }
+
+    private nonisolated func extractBankName(from normalizedText: String) -> String {
+        let uppercaseText = normalizedText.uppercased()
+        var bestMatch = ""
+        var bestScore = Int.min
 
         for bank in kQatarBankCatalog {
             for pattern in bank.patterns {
-                let patternUpper = pattern.uppercased()
-                if uppercaseNormalized.contains(patternUpper) || uppercaseRaw.contains(patternUpper) {
-                    bankName = bank.canonicalName
-                    break
-                }
-            }
-            if !bankName.isEmpty { break }
-        }
-
-        // 2. Detect Cheque Number (MICR Line or Explicit Label or Standalone Serial)
-        // Strategy A: Strict MICR Delimiters (⑆004821⑆ or ⑈004821⑈)
-        for line in lines {
-            if let micrMatch = line.range(of: "[⑆⑈:#|c] *([0-9]{6,8}) *[⑆⑈:#|c]", options: .regularExpression) {
-                let segment = String(line[micrMatch])
-                let digitsOnly = segment.filter { $0.isNumber }
-                if digitsOnly.count >= 6 && digitsOnly.count <= 8 {
-                    chequeNumber = digitsOnly
-                    break
+                let uppercasePattern = pattern.uppercased()
+                guard uppercaseText.contains(uppercasePattern) else { continue }
+                let compactPattern = uppercasePattern.filter { $0.isLetter || $0.isNumber }
+                let acronymBonus = compactPattern.count <= 5 ? 40 : 0
+                let score = compactPattern.count + acronymBonus
+                if score > bestScore {
+                    bestScore = score
+                    bestMatch = bank.canonicalName
                 }
             }
         }
-
-        // Strategy B: Labeled Cheque Number (e.g. "Cheque No: 004821" or "رقم الشيك : 004821")
-        if chequeNumber.isEmpty {
-            for line in lines {
-                if let labelMatch = line.range(of: "(?i)(?:cheque|chq|no|num|رقم|شيك)[^0-9\n]{0,10}([0-9]{6,8})", options: .regularExpression) {
-                    let segment = String(line[labelMatch])
-                    let digitsOnly = segment.filter { $0.isNumber }
-                    if digitsOnly.count >= 6 && digitsOnly.count <= 8 {
-                        chequeNumber = digitsOnly
-                        break
-                    }
-                }
-            }
-        }
-
-        // Strategy C: Standalone 6-8 digit line (common on GCC cheques)
-        if chequeNumber.isEmpty {
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.count >= 6 && trimmed.count <= 8 && trimmed.allSatisfy({ $0.isNumber }) {
-                    chequeNumber = trimmed
-                    break
-                }
-            }
-        }
-
-        // 3. Detect Amount (e.g. 1500.00, 1,250.00, ***1500.00/-***, QAR 175)
-        for line in lines {
-            // Regex matching amounts with optional currency, comma grouping, and decimal
-            if let amountRange = line.range(of: #"([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{1,2})?|[0-9]{2,7}\.[0-9]{1,2}|\b[0-9]{3,7}\b)"#, options: .regularExpression) {
-                let rawSegment = String(line[amountRange])
-                let clean = rawSegment.replacingOccurrences(of: ",", with: "")
-                if let val = Double(clean), val >= 1.0, val <= 10_000_000.0 {
-                    // Check if line contains cheque number so we don't confuse cheque serial with amount
-                    if !chequeNumber.isEmpty && clean == chequeNumber {
-                        continue
-                    }
-                    if amount == nil || val > (amount ?? 0) {
-                        amount = val
-                    }
-                }
-            }
-        }
-
-        // 4. Detect Date (DD/MM/YYYY, YYYY/MM/DD, DD-MM-YYYY)
-        for line in lines {
-            if let dateRange = line.range(of: "\\b((?:20[2-3][0-9][/-](?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12][0-9]|3[01]))|(?:(?:0?[1-9]|[12][0-9]|3[01])[/-](?:0?[1-9]|1[0-2])[/-]20[2-3][0-9]))\\b", options: .regularExpression) {
-                dateString = String(line[dateRange])
-                break
-            }
-        }
-
-        return (chequeNumber, bankName, amount, dateString)
+        return bestMatch
     }
 
-    private nonisolated func imageFromSampleBuffer(_ sampleBuffer: CMSampleBuffer) -> UIImage? {
-        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let context = CIContext()
-        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return nil }
-        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
+    private nonisolated func extractChequeNumber(
+        from lines: [PPScannerRecognizedLine],
+        chequeLabelPattern: String
+    ) -> String {
+        let labelledNumberPattern = chequeLabelPattern + "(?:\\s*(?:no\\.?|number|#))?[^0-9]{0,18}([0-9][0-9\\s-]{3,14}[0-9])"
+        let contiguousNumberPattern = "(?<![0-9])([0-9]{5,12})(?![0-9])"
+        var bestValue = ""
+        var bestScore = Int.min
+
+        func consider(_ rawCandidate: String, line: PPScannerRecognizedLine, baseScore: Int) {
+            let digits = Self.digitsOnly(from: rawCandidate)
+            guard (5...12).contains(digits.count) else { return }
+
+            let normalizedLine = Self.normalizeNumericConfusions(in: line.text)
+            let lowerLine = normalizedLine.lowercased()
+            let hasAmountContext = Self.containsAny(
+                ["qar", "q.r", "ر.ق", "ريال", "amount", "المبلغ", "total", "الإجمالي"],
+                in: lowerLine
+            )
+            let hasDateContext = Self.containsAny(["date", "التاريخ", "/"], in: lowerLine)
+            var score = baseScore + Int(line.confidence * 20)
+            score += (6...8).contains(digits.count) ? 28 : 10
+            if line.boundingBox.midY < 0.36 { score += 34 }
+            if line.boundingBox.midY > 0.62, line.boundingBox.midX > 0.45 { score += 24 }
+            if hasAmountContext { score -= 120 }
+            if hasDateContext { score -= 80 }
+
+            if score > bestScore {
+                bestScore = score
+                bestValue = digits
+            }
+        }
+
+        for line in lines {
+            let normalizedLine = Self.normalizeNumericConfusions(in: line.text)
+            for candidate in regexValues(labelledNumberPattern, in: normalizedLine, captureGroup: 1) {
+                consider(candidate, line: line, baseScore: 180)
+            }
+            for candidate in regexValues(contiguousNumberPattern, in: normalizedLine, captureGroup: 1) {
+                let hasMICRMarker = Self.containsAny(["⑆", "⑇", "⑈", "⑉", "micr"], in: normalizedLine.lowercased())
+                consider(candidate, line: line, baseScore: hasMICRMarker ? 95 : 0)
+            }
+        }
+
+        return bestScore >= 34 ? bestValue : ""
+    }
+
+    private nonisolated func extractAmount(
+        from lines: [PPScannerRecognizedLine],
+        chequeNumber: String,
+        expectedAmount: Double
+    ) -> Double? {
+        let amountPattern = "(?<![0-9])((?:[0-9]{1,3}(?:[ ,][0-9]{3})+|[0-9]{1,8})(?:\\.[0-9]{1,2})?)(?![0-9])"
+        let datePattern = "\\b(?:(?:20[0-9]{2}[./-](?:0?[1-9]|1[0-2])[./-](?:0?[1-9]|[12][0-9]|3[01]))|(?:(?:0?[1-9]|[12][0-9]|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:20)?[0-9]{2}))\\b"
+        var bestValue: Double?
+        var bestScore = Int.min
+
+        for line in lines {
+            let normalizedLine = Self.normalizeNumericConfusions(in: line.text)
+            let lowerLine = normalizedLine.lowercased()
+            let hasCurrencyHint = Self.containsAny(
+                ["qar", "q.r", "qr", "ر.ق", "ر ق", "ريال"],
+                in: lowerLine
+            )
+            let hasAmountHint = Self.containsAny(
+                ["amount", "total", "sum", "pay", "المبلغ", "الإجمالي", "فقط"],
+                in: lowerLine
+            )
+            let isDateLine = containsRegex(datePattern, in: normalizedLine)
+
+            for candidate in regexValues(amountPattern, in: normalizedLine, captureGroup: 1) {
+                let clean = candidate
+                    .replacingOccurrences(of: " ", with: "")
+                    .replacingOccurrences(of: ",", with: "")
+                guard let value = Double(clean), value >= 0.01, value <= 10_000_000 else { continue }
+                let candidateDigits = Self.digitsOnly(from: candidate)
+                if !chequeNumber.isEmpty, candidateDigits == chequeNumber { continue }
+                if isDateLine { continue }
+                if !candidate.contains("."), (2020...2040).contains(Int(value)) { continue }
+
+                var score = Int(line.confidence * 20)
+                if hasCurrencyHint { score += 130 }
+                if hasAmountHint { score += 100 }
+                if candidate.contains(".") { score += 28 }
+
+                if expectedAmount > 0 {
+                    let delta = abs(value - expectedAmount)
+                    let relativeDelta = delta / max(expectedAmount, 1)
+                    if delta <= 0.01 {
+                        score += 220
+                    } else if relativeDelta <= 0.01 {
+                        score += 140
+                    } else if relativeDelta <= 0.05 {
+                        score += 60
+                    }
+                }
+
+                if candidateDigits.count >= 6, !hasCurrencyHint, !hasAmountHint {
+                    score -= 90
+                }
+                if !hasCurrencyHint, !hasAmountHint, !candidate.contains("."), expectedAmount <= 0 {
+                    score -= 24
+                }
+
+                if score > bestScore {
+                    bestScore = score
+                    bestValue = value
+                }
+            }
+        }
+
+        return bestScore >= 15 ? bestValue : nil
+    }
+
+    private nonisolated func extractChequeDate(from normalizedText: String) -> String? {
+        let pattern = "\\b(?:(?:20[0-9]{2}[./-](?:0?[1-9]|1[0-2])[./-](?:0?[1-9]|[12][0-9]|3[01]))|(?:(?:0?[1-9]|[12][0-9]|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:20)?[0-9]{2}))\\b"
+        return regexValues(pattern, in: normalizedText, captureGroup: 0).first
+    }
+
+    private nonisolated func containsMICREvidence(in lines: [PPScannerRecognizedLine]) -> Bool {
+        let contiguousNumberPattern = "(?<![0-9])([0-9]{5,14})(?![0-9])"
+        for (index, line) in lines.enumerated() {
+            let normalizedLine = Self.normalizeNumericConfusions(in: line.text)
+            if Self.containsAny(["⑆", "⑇", "⑈", "⑉", "micr"], in: normalizedLine.lowercased()) {
+                return true
+            }
+            let isTrailingLine = index >= max(0, lines.count - 2)
+            if isTrailingLine,
+               regexValues(contiguousNumberPattern, in: normalizedLine, captureGroup: 1).count >= 2 {
+                return true
+            }
+        }
+        return false
+    }
+
+    private nonisolated func containsRegex(_ pattern: String, in text: String) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+        let range = NSRange(location: 0, length: (text as NSString).length)
+        return regex.firstMatch(in: text, range: range) != nil
+    }
+
+    private nonisolated func regexValues(
+        _ pattern: String,
+        in text: String,
+        captureGroup: Int
+    ) -> [String] {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let source = text as NSString
+        let range = NSRange(location: 0, length: source.length)
+        return regex.matches(in: text, range: range).compactMap { match in
+            guard captureGroup < match.numberOfRanges else { return nil }
+            let matchRange = match.range(at: captureGroup)
+            guard matchRange.location != NSNotFound else { return nil }
+            return source.substring(with: matchRange)
+        }
     }
 
     // Manual Shutter Photo Capture
     func capturePhotoManually() {
+        guard !isPhotoCaptureInFlight else { return }
         guard session.isRunning else {
             onCameraUnavailable?()
             return
         }
+
+        isPhotoCaptureInFlight = true
         let settings = AVCapturePhotoSettings()
+        settings.photoQualityPrioritization = .quality
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
     nonisolated public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else {
             Task { @MainActor [weak self] in
+                self?.isPhotoCaptureInFlight = false
                 self?.onCameraUnavailable?()
             }
             return
@@ -2030,8 +2511,9 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.processImportedImage(image) { parsedCheque in
+            self.processImportedImage(image, useScanRegion: true) { parsedCheque in
                 Task { @MainActor in
+                    self.isPhotoCaptureInFlight = false
                     self.onCaptureComplete?(parsedCheque)
                 }
             }
@@ -2039,51 +2521,114 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     }
 
     // Process Image from Photo Library
-    func processImportedImage(_ image: UIImage, completion: @escaping @Sendable (PPScannedCheque) -> Void) {
+    func processImportedImage(
+        _ image: UIImage,
+        useScanRegion: Bool = false,
+        completion: @escaping @Sendable (PPScannedCheque) -> Void
+    ) {
         guard let cgImage = image.cgImage else {
             completion(PPScannedCheque(image: image))
             return
         }
 
+        let context = currentAnalysisContext()
+        let orientation = Self.cgImageOrientation(for: image.imageOrientation)
+        let rawSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let scanRegion = useScanRegion
+            ? visionRegionOfInterest(rawPixelSize: rawSize, context: context)
+            : CGRect(x: 0, y: 0, width: 1, height: 1)
+
         visionQueue.async { [weak self] in
             guard let self else { return }
-            let request = VNRecognizeTextRequest { req, err in
-                guard err == nil, let observations = req.results as? [VNRecognizedTextObservation] else {
-                    DispatchQueue.main.async {
-                        completion(PPScannedCheque(image: image))
-                    }
-                    return
-                }
+            let handler = VNImageRequestHandler(
+                cgImage: cgImage,
+                orientation: orientation,
+                options: [:]
+            )
 
-                var strings: [String] = []
-                for obs in observations {
-                    if let top = obs.topCandidates(1).first {
-                        strings.append(top.string)
-                    }
-                }
-                let rawText = strings.joined(separator: "\n")
-                let parsed = self.extractFinancialData(from: rawText)
-
-                DispatchQueue.main.async {
-                    let result = PPScannedCheque(
-                        image: image,
-                        chequeNumber: parsed.chequeNumber,
-                        bankName: parsed.bankName,
-                        amount: parsed.amount,
-                        dateString: parsed.dateString,
-                        rawText: rawText
-                    )
-                    completion(result)
-                }
-            }
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            if #available(iOS 16.0, *) {
-                request.recognitionLanguages = ["ar-SA", "en-US"]
+            var primaryRegion = scanRegion
+            if !useScanRegion,
+               let detectedRegion = self.detectedChequeRegion(using: handler) {
+                primaryRegion = detectedRegion
             }
 
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try? handler.perform([request])
+            var recognition = self.recognizeCheque(
+                using: handler,
+                regionOfInterest: primaryRegion,
+                expectedAmount: context.expectedAmount
+            )
+
+            let fullImageRegion = CGRect(x: 0, y: 0, width: 1, height: 1)
+            if primaryRegion != fullImageRegion,
+               (recognition == nil || (recognition?.fields.evidenceScore ?? 0) < 3),
+               let fallback = self.recognizeCheque(
+                    using: handler,
+                    regionOfInterest: fullImageRegion,
+                    expectedAmount: context.expectedAmount
+               ),
+               fallback.fields.evidenceScore > (recognition?.fields.evidenceScore ?? -1) {
+                recognition = fallback
+            }
+
+            let rawText = recognition?.lines.map(\.text).joined(separator: "\n") ?? ""
+            let parsed = recognition?.fields
+            DispatchQueue.main.async {
+                let result = PPScannedCheque(
+                    image: image,
+                    chequeNumber: parsed?.chequeNumber ?? "",
+                    bankName: parsed?.bankName ?? "",
+                    amount: parsed?.amount,
+                    dateString: parsed?.dateString,
+                    rawText: rawText
+                )
+                completion(result)
+            }
+        }
+    }
+
+    private nonisolated func recognizeCheque(
+        using handler: VNImageRequestHandler,
+        regionOfInterest: CGRect,
+        expectedAmount: Double
+    ) -> (lines: [PPScannerRecognizedLine], fields: PPScannerParsedFields)? {
+        let request = configuredTextRequest(regionOfInterest: regionOfInterest)
+        do {
+            try handler.perform([request])
+            let lines = recognizedLines(request.results ?? [])
+            guard !lines.isEmpty else { return nil }
+            return (
+                lines,
+                extractFinancialData(from: lines, expectedAmount: expectedAmount)
+            )
+        } catch {
+            return nil
+        }
+    }
+
+    private nonisolated func detectedChequeRegion(
+        using handler: VNImageRequestHandler
+    ) -> CGRect? {
+        let request = VNDetectRectanglesRequest()
+        request.maximumObservations = 6
+        request.minimumAspectRatio = 0.30
+        request.maximumAspectRatio = 0.78
+        request.minimumSize = 0.20
+        request.minimumConfidence = 0.45
+        request.quadratureTolerance = 28
+
+        do {
+            try handler.perform([request])
+            guard let rectangle = request.results?.max(by: {
+                ($0.boundingBox.width * $0.boundingBox.height) <
+                ($1.boundingBox.width * $1.boundingBox.height)
+            }) else { return nil }
+
+            let expanded = rectangle.boundingBox.insetBy(dx: -0.025, dy: -0.025)
+            let imageBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+            let bounded = expanded.standardized.intersection(imageBounds)
+            return bounded.width >= 0.18 && bounded.height >= 0.10 ? bounded : nil
+        } catch {
+            return nil
         }
     }
 }

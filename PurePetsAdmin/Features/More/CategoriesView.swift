@@ -16,6 +16,8 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseStorage
+import PhotosUI
 
 // MARK: - 1. Domain Models
 
@@ -216,6 +218,7 @@ struct AdminSubSubKindItem: Identifiable, Equatable, Sendable {
     var subKindID: Int
     var nameAr: String
     var nameEn: String
+    var imageUrl: String = ""
 
     var localizedName: String {
         if Language.isRTL() {
@@ -239,13 +242,15 @@ struct AdminSubSubKindItem: Identifiable, Equatable, Sendable {
         let sID = (data["subKindID"] as? NSNumber)?.intValue ?? 0
         let ar = data["nameAr"] as? String ?? ""
         let en = data["nameEn"] as? String ?? ""
+        let img = data["imageUrl"] as? String ?? (data["iconUrl"] as? String ?? "")
 
         return AdminSubSubKindItem(
             id: doc.documentID,
             numericID: numID,
             subKindID: sID,
             nameAr: ar,
-            nameEn: en
+            nameEn: en,
+            imageUrl: img
         )
     }
 
@@ -254,7 +259,8 @@ struct AdminSubSubKindItem: Identifiable, Equatable, Sendable {
             "ID": numericID,
             "subKindID": subKindID,
             "nameAr": nameAr,
-            "nameEn": nameEn
+            "nameEn": nameEn,
+            "imageUrl": imageUrl
         ]
     }
 }
@@ -268,6 +274,7 @@ struct AdminSubKindItemDetail: Identifiable, Equatable, Sendable {
     var itemNameEn: String
     var male: String
     var female: String
+    var imageUrl: String = ""
 
     var localizedName: String {
         if Language.isRTL() {
@@ -293,6 +300,7 @@ struct AdminSubKindItemDetail: Identifiable, Equatable, Sendable {
         let en = data["itemNameEn"] as? String ?? ""
         let m = data["Male"] as? String ?? ""
         let f = data["Female"] as? String ?? ""
+        let img = data["imageUrl"] as? String ?? (data["iconUrl"] as? String ?? "")
 
         return AdminSubKindItemDetail(
             id: doc.documentID,
@@ -301,7 +309,8 @@ struct AdminSubKindItemDetail: Identifiable, Equatable, Sendable {
             itemNameAr: ar,
             itemNameEn: en,
             male: m,
-            female: f
+            female: f,
+            imageUrl: img
         )
     }
 
@@ -312,7 +321,8 @@ struct AdminSubKindItemDetail: Identifiable, Equatable, Sendable {
             "itemNameAr": itemNameAr,
             "itemNameEn": itemNameEn,
             "Male": male,
-            "Female": female
+            "Female": female,
+            "imageUrl": imageUrl
         ]
     }
 }

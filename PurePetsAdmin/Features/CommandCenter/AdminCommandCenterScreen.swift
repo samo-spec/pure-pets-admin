@@ -3001,7 +3001,7 @@ private struct CommandQuickActionCard: View {
                                 .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
                         )
                     } else {
-                        Image(systemName: Language.isRTL() ? "chevron.backward" : "chevron.forward")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 9.5, weight: .bold))
                             .foregroundStyle(item.accent.opacity(0.75))
                             .accessibilityHidden(true)
