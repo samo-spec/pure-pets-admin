@@ -2876,6 +2876,19 @@
 "Categories_Toggled_Visible" = "Category is now live on storefront";
 "Categories_Toggled_Hidden" = "Category is now hidden from storefront";
 "Categories_Reordered_Success" = "Category display order updated successfully";
+"Categories_Upload_Prompt" = "Pick Image or Icon from Library";
+"Categories_Upload_Hint" = "PNG or JPEG • Automatically uploaded and linked";
+"Categories_Manual_URL" = "Edit Image URL Manually (Optional)";
+"Categories_SubKind_ImageTitle" = "Breed Image & Icon";
+"Categories_SubKind_ImageSub" = "This image serves as the visual identity for this breed in the catalog.";
+"Categories_SubSub_ImageTitle" = "Sub-Variety Image";
+"Categories_SubSub_ImageSub" = "Distinctive image representing this strain or sub-variety.";
+"Categories_Item_ImageTitle" = "Item & Specification Image";
+"Categories_Item_ImageSub" = "Illustration for the traits and specifications of this item.";
+"Category_Image_Title" = "Main Category Image";
+"Category_Image_Sub" = "Featured image for this category across customer apps and store cards.";
+"Image_Load_Error" = "Failed to load image • Tap to change";
+"Change" = "Change";
 
 
 /* ===================== Branches Section ===================== */

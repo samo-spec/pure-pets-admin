@@ -2382,30 +2382,26 @@ struct AdminCategoryStudioView: View {
                 }
             }
 
+            AdminPetImageUploaderSection(
+                title: Language.get("Category_Image_Title", alter: "صورة الفصيلة الرئيسية"),
+                subtitle: Language.get("Category_Image_Sub", alter: "الصورة المعروضة في بطاقة الفصيلة في المتجر وقوائم التطبيق."),
+                imageUrl: $draftImageUrl,
+                storagePath: "categories"
+            )
+
             VStack(alignment: .leading, spacing: 6) {
-                Text(Language.get("Categories_Custom_Symbol_Or_Url", alter: "اسم أيقونة مخصصة (SF Symbol) أو رابط صورة"))
+                Text(Language.get("Category_IconName", alter: "اسم أيقونة مخصصة (SF Symbol)"))
                     .font(AdminType.caption2)
                     .foregroundColor(AdminSurface.secondaryText)
 
-                HStack(spacing: 8) {
-                    TextField("pawprint.fill", text: $draftIconName)
-                        .font(AdminType.callout)
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AdminSurface.hairline))
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-
-                    TextField("https://...", text: $draftImageUrl)
-                        .font(AdminType.callout)
-                        .padding(.horizontal, 12)
-                        .frame(height: 40)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AdminSurface.hairline))
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
-                }
+                TextField("pawprint.fill", text: $draftIconName)
+                    .font(AdminType.callout)
+                    .padding(.horizontal, 12)
+                    .frame(height: 40)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(AdminSurface.hairline))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
             }
         }
         .padding(AdminSpacing.cardPadding)
@@ -3405,6 +3401,279 @@ struct AdminSubSubKindStudioView: View {
     }
 }
 
+// MARK: - Dedicated Category/Breed Photo Picker & Uploader
+
+private struct AdminCategoryPhotoPicker: UIViewControllerRepresentable {
+    let onPicked: @MainActor @Sendable (UIImage) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: AdminCategoryPhotoPicker
+
+        init(_ parent: AdminCategoryPhotoPicker) {
+            self.parent = parent
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.dismiss()
+            guard let first = results.first else { return }
+
+            if first.itemProvider.canLoadObject(ofClass: UIImage.self) {
+                first.itemProvider.loadObject(ofClass: UIImage.self) { object, _ in
+                    if let img = object as? UIImage {
+                        Task { @MainActor in
+                            self.parent.onPicked(img)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct AdminPetImageUploaderSection: View {
+    let title: String
+    let subtitle: String?
+    @Binding var imageUrl: String
+    let storagePath: String
+
+    @State private var pickedImage: UIImage? = nil
+    @State private var isShowingPicker = false
+    @State private var isUploading = false
+    @State private var uploadError: String? = nil
+    @State private var isManualUrlExpanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title)
+                    .font(AdminType.calloutBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                if isUploading {
+                    ProgressView()
+                        .tint(AdminSurface.primary)
+                        .scaleEffect(0.8)
+                }
+            }
+
+            if let sub = subtitle, !sub.isEmpty {
+                Text(sub)
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            // Image Preview Card or Empty Upload Prompt
+            if let image = pickedImage {
+                imagePreviewCard(image: Image(uiImage: image))
+            } else if !imageUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      let url = URL(string: imageUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let loadedImage):
+                        imagePreviewCard(image: loadedImage)
+                    case .failure:
+                        uploadPlaceholder(hasError: true)
+                    case .empty:
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(AdminSurface.control)
+                                .frame(height: 120)
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        }
+                    @unknown default:
+                        uploadPlaceholder()
+                    }
+                }
+            } else {
+                uploadPlaceholder()
+            }
+
+            if let err = uploadError {
+                Text(err)
+                    .font(AdminType.captionBold)
+                    .foregroundColor(Color.red)
+                    .padding(.top, 2)
+            }
+
+            // Collapsible Manual URL Disclosure
+            DisclosureGroup(
+                isExpanded: $isManualUrlExpanded,
+                content: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("https://...", text: $imageUrl)
+                            .font(AdminType.caption)
+                            .padding(.horizontal, 10)
+                            .frame(height: 38)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(AdminSurface.hairline))
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                    .padding(.top, 6)
+                },
+                label: {
+                    Text(Language.get("Categories_Manual_URL", alter: "تعديل رابط الصورة يدوياً (اختياري)"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+            )
+            .padding(.top, 2)
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+        .sheet(isPresented: $isShowingPicker) {
+            AdminCategoryPhotoPicker { img in
+                self.pickedImage = img
+                self.uploadImageToStorage(img)
+            }
+        }
+    }
+
+    private func imagePreviewCard(image: Image) -> some View {
+        ZStack(alignment: .topTrailing) {
+            image
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity)
+                .frame(height: 140)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 1)
+                )
+
+            HStack(spacing: 8) {
+                // Change Photo Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    isShowingPicker = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "photo.badge.plus")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Change", alter: "تغيير"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.65), in: Capsule())
+                }
+
+                // Delete Photo Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    pickedImage = nil
+                    imageUrl = ""
+                } label: {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                        .padding(7)
+                        .background(Color.red.opacity(0.85), in: Circle())
+                }
+            }
+            .padding(10)
+        }
+    }
+
+    private func uploadPlaceholder(hasError: Bool = false) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            isShowingPicker = true
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.primary.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: hasError ? "exclamationmark.triangle" : "photo.badge.plus")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(hasError ? Color.orange : AdminSurface.primary)
+                }
+
+                Text(hasError ? Language.get("Image_Load_Error", alter: "تعذر تحميل الصورة • اضغط للتغيير") : Language.get("Categories_Upload_Prompt", alter: "اختر صورة أو أيقونة من المعرض"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Text(Language.get("Categories_Upload_Hint", alter: "PNG أو JPEG • سيتم الرفع تلقائياً وتحديث الرابط"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5]))
+                    .foregroundColor(AdminSurface.primary.opacity(0.35))
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func uploadImageToStorage(_ img: UIImage) {
+        guard let data = img.pngData() else {
+            uploadError = "Failed to encode image data"
+            return
+        }
+
+        isUploading = true
+        uploadError = nil
+
+        let fileName = "\(UUID().uuidString).png"
+        let storageRef = Storage.storage().reference().child("\(storagePath)/\(fileName)")
+        let meta = StorageMetadata()
+        meta.contentType = "image/png"
+        meta.customMetadata = [
+            "uploaded_by": Auth.auth().currentUser?.uid ?? "",
+            "folder": storagePath
+        ]
+
+        storageRef.putData(data, metadata: meta) { _, err in
+            if let err = err {
+                Task { @MainActor in
+                    self.isUploading = false
+                    self.uploadError = err.localizedDescription
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                }
+                return
+            }
+
+            storageRef.downloadURL { url, dlErr in
+                Task { @MainActor in
+                    self.isUploading = false
+                    if let dlErr = dlErr {
+                        self.uploadError = dlErr.localizedDescription
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    } else if let downloadString = url?.absoluteString {
+                        self.imageUrl = downloadString
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - 10. Sovereign Category Create Sheet
 
 struct AdminCategoryCreateSheet: View {
@@ -3526,19 +3795,12 @@ struct AdminCategoryCreateSheet: View {
                                         .textInputAutocapitalization(.never)
                                 }
 
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Category_ImageURL", alter: "رابط الصورة (URL)"))
-                                        .font(AdminType.captionBold)
-                                        .foregroundColor(AdminSurface.secondaryText)
-                                    TextField("https://...", text: $imageUrl)
-                                        .font(AdminType.callout)
-                                        .padding(.horizontal, 12)
-                                        .frame(height: 42)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AdminSurface.hairline))
-                                        .autocorrectionDisabled()
-                                        .textInputAutocapitalization(.never)
-                                }
+                                AdminPetImageUploaderSection(
+                                    title: Language.get("Category_Image_Title", alter: "صورة الفصيلة الرئيسية"),
+                                    subtitle: Language.get("Category_Image_Sub", alter: "الصورة المعروضة في بطاقة الفصيلة في المتجر وقوائم التطبيق."),
+                                    imageUrl: $imageUrl,
+                                    storagePath: "categories"
+                                )
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(Language.get("Category_ColorHex", alter: "لون التمييز (HEX)"))
@@ -3732,24 +3994,19 @@ struct AdminSubKindEditorSheet: View {
                                 }
                                 .padding(.vertical, 4)
 
-                                // Icon URL
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Categories_SubKind_IconUrl", alter: "رابط الأيقونة (URL)"))
-                                        .font(AdminType.captionBold)
-                                        .foregroundColor(AdminSurface.secondaryText)
-                                    TextField("https://...", text: $iconUrl)
-                                        .font(AdminType.callout)
-                                        .padding(.horizontal, 12)
-                                        .frame(height: 42)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(AdminSurface.hairline))
-                                        .autocorrectionDisabled()
-                                        .textInputAutocapitalization(.never)
-                                }
                             }
                         }
                         .padding(AdminSpacing.cardPadding)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+                        // Pet Image Uploader Section
+                        AdminPetImageUploaderSection(
+                            title: Language.get("Categories_SubKind_ImageTitle", alter: "صورة وأيقونة السلالة"),
+                            subtitle: Language.get("Categories_SubKind_ImageSub", alter: "تظهر هذه الصورة كأيقونة وهوية مرئية للسلالة في الكتالوج."),
+                            imageUrl: $iconUrl,
+                            storagePath: "subkinds"
+                        )
                         .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
 
                         // Capabilities Card
@@ -3815,6 +4072,7 @@ struct AdminSubSubKindEditorSheet: View {
 
     @State private var nameAr: String = ""
     @State private var nameEn: String = ""
+    @State private var imageUrl: String = ""
 
     init(subSub: AdminSubSubKindItem, isNew: Bool, onSave: @escaping (AdminSubSubKindItem) -> Void) {
         self.subSub = subSub
@@ -3823,6 +4081,7 @@ struct AdminSubSubKindEditorSheet: View {
 
         _nameAr = State(initialValue: subSub.nameAr)
         _nameEn = State(initialValue: subSub.nameEn)
+        _imageUrl = State(initialValue: subSub.imageUrl)
     }
 
     var body: some View {
@@ -3843,6 +4102,7 @@ struct AdminSubSubKindEditorSheet: View {
                         var copy = subSub
                         copy.nameAr = nameAr
                         copy.nameEn = nameEn
+                        copy.imageUrl = imageUrl
                         onSave(copy)
                     }
                     .disabled(nameAr.trimmingCharacters(in: .whitespaces).isEmpty && nameEn.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -3884,6 +4144,14 @@ struct AdminSubSubKindEditorSheet: View {
                         .padding(AdminSpacing.cardPadding)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
                         .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+                        // Pet Image Uploader Section
+                        AdminPetImageUploaderSection(
+                            title: Language.get("Categories_SubSub_ImageTitle", alter: "صورة التفريع الفرعي"),
+                            subtitle: Language.get("Categories_SubSub_ImageSub", alter: "صورة مميزة لهذا التفريع أو الخط النقي."),
+                            imageUrl: $imageUrl,
+                            storagePath: "subsubkinds"
+                        )
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, AdminSpacing.md)

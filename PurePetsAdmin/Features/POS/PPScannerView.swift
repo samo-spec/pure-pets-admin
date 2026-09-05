@@ -89,7 +89,7 @@ private enum PPScannerVisual {
 private let kPPScannerViewportCoordinateSpace = "PPScannerViewportCoordinateSpace"
 
 private struct PPScannerReticleFramePreferenceKey: PreferenceKey {
-    static var defaultValue: CGRect = .zero
+    static let defaultValue: CGRect = .zero
 
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
         let next = nextValue()
@@ -1107,8 +1107,12 @@ private struct PPScannerReticle: View {
 
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
-                    isLocked ? accentColor.opacity(0.34) : Color.white.opacity(0.16),
-                    lineWidth: 0.75
+                    LinearGradient(
+                        colors: [accentColor.opacity(0.92), accentColor.opacity(0.30), accentColor.opacity(0.78)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: isLocked ? 1.8 : 1.0
                 )
 
             PPScannerCornerBrackets(color: accentColor, cornerLength: 38, thickness: 2.6)
@@ -1417,10 +1421,15 @@ private struct PPScannerReviewFlightDeck: View {
                     var updated = cheque
                     updated.chequeNumber = editedChequeNumber.trimmingCharacters(in: .whitespacesAndNewlines)
                     updated.bankName = editedBankName.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let cleanAmt = PPScannerEngine.normalizeArabicNumerals(editedAmount.trimmingCharacters(in: .whitespacesAndNewlines))
-                    if let parsed = Double(cleanAmt) {
-                        updated.amount = parsed
+                    let normalizedAmount = PPScannerEngine.normalizeArabicNumerals(
+                        editedAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+                    )
+                    let isValidAmountInput = normalizedAmount.allSatisfy {
+                        $0.isNumber || $0 == "." || $0 == "," || $0.isWhitespace
                     }
+                    updated.amount = isValidAmountInput
+                        ? PPScannerEngine.parsedAmountCandidate(normalizedAmount)?.value
+                        : nil
                     onConfirm(updated)
                 } label: {
                     HStack(spacing: 8) {
@@ -1453,8 +1462,8 @@ private struct PPScannerReviewFlightDeck: View {
             editedBankName = cheque.bankName
             if let amt = cheque.amount {
                 editedAmount = String(format: "%.2f", amt)
-            } else if cartTotal > 0 {
-                editedAmount = String(format: "%.2f", cartTotal)
+            } else {
+                editedAmount = ""
             }
         }
     }
@@ -1548,8 +1557,7 @@ private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
         }
 
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-            guard let provider = results.first?.itemProvider,
-                  provider.canLoadObject(ofClass: UIImage.self) else {
+            guard let provider = results.first?.itemProvider else {
                 let callback = onImageSelected
                 Task { @MainActor in
                     callback(nil)
@@ -1558,10 +1566,24 @@ private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
             }
 
             let callback = onImageSelected
-            provider.loadObject(ofClass: UIImage.self) { object, _ in
-                let image = object as? UIImage
+            if provider.canLoadObject(ofClass: UIImage.self) {
+                provider.loadObject(ofClass: UIImage.self) { object, _ in
+                    nonisolated(unsafe) let image = object as? UIImage
+                    Task { @MainActor in
+                        callback(image)
+                    }
+                }
+            } else if provider.hasItemConformingToTypeIdentifier("public.image") {
+                provider.loadDataRepresentation(forTypeIdentifier: "public.image") { data, _ in
+                    nonisolated(unsafe) let rawData = data
+                    Task { @MainActor in
+                        let image = rawData.flatMap { UIImage(data: $0) }
+                        callback(image)
+                    }
+                }
+            } else {
                 Task { @MainActor in
-                    callback(image)
+                    callback(nil)
                 }
             }
         }
@@ -1648,8 +1670,6 @@ private struct PPScannerParsedFields {
         let hasNumber = !chequeNumber.isEmpty
         let hasBank = !bankName.isEmpty
         let hasAmount = amount != nil
-        let hasDate = dateString != nil
-
         if hasExplicitChequeLabel && (hasNumber || hasBank || hasAmount) {
             return evidenceScore >= 4
         }
@@ -1659,7 +1679,7 @@ private struct PPScannerParsedFields {
         if hasBank && hasNumber {
             return evidenceScore >= 5
         }
-        return hasBank && hasAmount && hasDate && evidenceScore >= 5
+        return false
     }
 
     var stabilitySignature: String {
@@ -1717,6 +1737,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     private nonisolated(unsafe) let analysisContextLock = NSLock()
     private nonisolated(unsafe) var analysisContext = PPScannerAnalysisContext()
     private nonisolated(unsafe) var lastFrameTime: TimeInterval = 0
+    private nonisolated(unsafe) var cachedRecognitionLanguages: [String]?
     private var consecutiveValidFrames: Int = 0
     private var autoCaptureStartTime: Date? = nil
     private var lastCandidateSignature = ""
@@ -1864,22 +1885,62 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         let normalized = Array(normalizeArabicNumerals(text))
         let substitutions: [Character: Character] = [
             "O": "0", "o": "0",
-            "I": "1", "l": "1", "|": "1", "!": "1",
-            "Z": "2", "z": "2",
-            "S": "5", "s": "5",
-            "B": "8"
+            "I": "1", "L": "1", "l": "1", "|": "1", "!": "1"
         ]
 
         return String(normalized.enumerated().map { index, character in
             guard let replacement = substitutions[character] else { return character }
             let previousIsNumeric = index > 0 && normalized[index - 1].isNumber
             let nextIsNumeric = index + 1 < normalized.count && normalized[index + 1].isNumber
-            return previousIsNumeric || nextIsNumeric ? replacement : character
+            let previousIsBoundary = index == 0 || (!normalized[index - 1].isLetter && !normalized[index - 1].isNumber)
+            let nextIsBoundary = index + 1 == normalized.count || (!normalized[index + 1].isLetter && !normalized[index + 1].isNumber)
+            let belongsToNumericRun =
+                (previousIsNumeric && (nextIsNumeric || nextIsBoundary)) ||
+                (nextIsNumeric && (previousIsNumeric || previousIsBoundary))
+            return belongsToNumericRun ? replacement : character
         })
     }
 
+    private nonisolated static func normalizeNumericCandidate(_ text: String) -> String {
+        let substitutions: [Character: Character] = [
+            "O": "0", "o": "0",
+            "I": "1", "L": "1", "l": "1", "|": "1", "!": "1"
+        ]
+        return String(normalizeArabicNumerals(text).map { substitutions[$0] ?? $0 })
+    }
+
     private nonisolated static func digitsOnly(from text: String) -> String {
-        String(normalizeNumericConfusions(in: text).filter(\.isNumber))
+        String(normalizeNumericCandidate(text).filter(\.isNumber))
+    }
+
+    fileprivate nonisolated static func parsedAmountCandidate(
+        _ text: String
+    ) -> (value: Double, hasExplicitFraction: Bool)? {
+        var clean = normalizeNumericCandidate(text)
+            .filter { $0.isNumber || $0 == "." || $0 == "," }
+        guard !clean.isEmpty else { return nil }
+
+        let hasDot = clean.contains(".")
+        let commaCount = clean.filter { $0 == "," }.count
+        var hasExplicitFraction = hasDot
+
+        if hasDot {
+            clean.removeAll { $0 == "," }
+        } else if commaCount == 1, let commaIndex = clean.firstIndex(of: ",") {
+            let fractionCount = clean.distance(from: clean.index(after: commaIndex), to: clean.endIndex)
+            if (1...2).contains(fractionCount) {
+                clean.replaceSubrange(commaIndex...commaIndex, with: ".")
+                hasExplicitFraction = true
+            } else {
+                clean.removeAll { $0 == "," }
+            }
+        } else {
+            clean.removeAll { $0 == "," }
+        }
+
+        guard clean.filter({ $0 == "." }).count <= 1,
+              let value = Double(clean) else { return nil }
+        return (value, hasExplicitFraction)
     }
 
     private nonisolated static func containsAny(_ needles: [String], in haystack: String) -> Bool {
@@ -2158,7 +2219,9 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         request.minimumTextHeight = 0.006
         request.regionOfInterest = regionOfInterest
 
-        if let supported = try? request.supportedRecognitionLanguages() {
+        if let cachedRecognitionLanguages {
+            request.recognitionLanguages = cachedRecognitionLanguages
+        } else if let supported = try? request.supportedRecognitionLanguages() {
             var preferred: [String] = []
             for prefix in ["en", "ar"] {
                 if let language = supported.first(where: {
@@ -2168,6 +2231,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 }
             }
             if !preferred.isEmpty {
+                cachedRecognitionLanguages = preferred
                 request.recognitionLanguages = preferred
             }
         }
@@ -2272,7 +2336,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         expectedAmount: Double
     ) -> PPScannerParsedFields {
         let rawText = lines.map(\.text).joined(separator: "\n")
-        let normalizedText = Self.normalizeNumericConfusions(in: rawText)
+        let normalizedText = Self.normalizeArabicNumerals(rawText)
+        let numericNormalizedText = Self.normalizeNumericConfusions(in: normalizedText)
         let chequeLabelPattern = "(?i)(?:\\b(?:cheque|check|chq)\\b|رقم\\s*(?:ال)?شيك|(?:ال)?شيك\\s*(?:رقم|no\\.?))"
         let hasExplicitChequeLabel = containsRegex(chequeLabelPattern, in: normalizedText)
         let hasMICREvidence = containsMICREvidence(in: lines)
@@ -2281,7 +2346,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             from: lines,
             chequeLabelPattern: chequeLabelPattern
         )
-        let dateString = extractChequeDate(from: normalizedText)
+        let dateString = extractChequeDate(from: numericNormalizedText)
         let amount = extractAmount(
             from: lines,
             chequeNumber: chequeNumber,
@@ -2310,16 +2375,24 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
     private nonisolated func extractBankName(from normalizedText: String) -> String {
         let uppercaseText = normalizedText.uppercased()
+        let compactLines = uppercaseText.components(separatedBy: .newlines).map {
+            $0.filter { $0.isLetter || $0.isNumber }
+        }
         var bestMatch = ""
         var bestScore = Int.min
 
         for bank in kQatarBankCatalog {
             for pattern in bank.patterns {
                 let uppercasePattern = pattern.uppercased()
-                guard uppercaseText.contains(uppercasePattern) else { continue }
                 let compactPattern = uppercasePattern.filter { $0.isLetter || $0.isNumber }
+                let isDirectMatch = uppercaseText.contains(uppercasePattern)
+                let isCompactMatch = compactPattern.count >= 3 && compactLines.contains {
+                    $0.contains(compactPattern)
+                }
+                guard isDirectMatch || isCompactMatch else { continue }
                 let acronymBonus = compactPattern.count <= 5 ? 40 : 0
-                let score = compactPattern.count + acronymBonus
+                let directMatchBonus = isDirectMatch ? 16 : 0
+                let score = compactPattern.count + acronymBonus + directMatchBonus
                 if score > bestScore {
                     bestScore = score
                     bestMatch = bank.canonicalName
@@ -2333,8 +2406,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         from lines: [PPScannerRecognizedLine],
         chequeLabelPattern: String
     ) -> String {
-        let labelledNumberPattern = chequeLabelPattern + "(?:\\s*(?:no\\.?|number|#))?[^0-9]{0,18}([0-9][0-9\\s-]{3,14}[0-9])"
-        let contiguousNumberPattern = "(?<![0-9])([0-9]{5,12})(?![0-9])"
+        let labelledNumberPattern = chequeLabelPattern + "(?:\\s*(?:no\\.?|number|#))?[^0-9OoIlL|!]{0,18}([0-9OoIlL|!][0-9OoIlL|!\\s-]{3,14}[0-9OoIlL|!])"
+        let contiguousNumberPattern = "(?<![A-Za-z0-9])([0-9OoIlL|!]{5,12})(?![A-Za-z0-9])"
         var bestValue = ""
         var bestScore = Int.min
 
@@ -2381,7 +2454,10 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         chequeNumber: String,
         expectedAmount: Double
     ) -> Double? {
-        let amountPattern = "(?<![0-9])((?:[0-9]{1,3}(?:[ ,][0-9]{3})+|[0-9]{1,8})(?:\\.[0-9]{1,2})?)(?![0-9])"
+        let numericGlyph = "[0-9OoIlL|!]"
+        let amountBody = "(?:\(numericGlyph){1,3}(?:[ ,]\(numericGlyph){3})+|\(numericGlyph){1,8})(?:[.,]\(numericGlyph){1,2})?"
+        let amountPattern = "(?<![A-Za-z0-9])(\(amountBody))(?![A-Za-z0-9])"
+        let contextualAmountPattern = "(?i)(?:qar|q\\.?r\\.?|qr|amount|total|sum|pay|المبلغ|الإجمالي|ريال)[^0-9OoIlL|!]{0,8}(\(amountBody))"
         let datePattern = "\\b(?:(?:20[0-9]{2}[./-](?:0?[1-9]|1[0-2])[./-](?:0?[1-9]|[12][0-9]|3[01]))|(?:(?:0?[1-9]|[12][0-9]|3[01])[./-](?:0?[1-9]|1[0-2])[./-](?:20)?[0-9]{2}))\\b"
         var bestValue: Double?
         var bestScore = Int.min
@@ -2398,25 +2474,42 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 in: lowerLine
             )
             let isDateLine = containsRegex(datePattern, in: normalizedLine)
+            let candidates = regexValues(amountPattern, in: normalizedLine, captureGroup: 1)
+                + regexValues(contextualAmountPattern, in: normalizedLine, captureGroup: 1)
 
-            for candidate in regexValues(amountPattern, in: normalizedLine, captureGroup: 1) {
-                let clean = candidate
-                    .replacingOccurrences(of: " ", with: "")
-                    .replacingOccurrences(of: ",", with: "")
-                guard let value = Double(clean), value >= 0.01, value <= 10_000_000 else { continue }
+            for candidate in candidates {
+                guard let parsedCandidate = Self.parsedAmountCandidate(candidate) else { continue }
+                let value = parsedCandidate.value
+                guard value >= 0.01, value <= 10_000_000 else { continue }
                 let candidateDigits = Self.digitsOnly(from: candidate)
-                if !chequeNumber.isEmpty, candidateDigits == chequeNumber { continue }
-                if isDateLine { continue }
-                if !candidate.contains("."), (2020...2040).contains(Int(value)) { continue }
+                if !chequeNumber.isEmpty,
+                   candidateDigits == chequeNumber,
+                   !parsedCandidate.hasExplicitFraction,
+                   !hasCurrencyHint,
+                   !hasAmountHint {
+                    continue
+                }
+                if isDateLine,
+                   !parsedCandidate.hasExplicitFraction,
+                   !hasCurrencyHint,
+                   !hasAmountHint {
+                    continue
+                }
+                if !parsedCandidate.hasExplicitFraction, (2020...2040).contains(Int(value)) { continue }
+
+                let delta = expectedAmount > 0 ? abs(value - expectedAmount) : .infinity
+                let relativeDelta = expectedAmount > 0 ? delta / max(expectedAmount, 1) : .infinity
+                let isCloseToExpected = relativeDelta <= 0.05
+                guard hasCurrencyHint || hasAmountHint || parsedCandidate.hasExplicitFraction || isCloseToExpected else {
+                    continue
+                }
 
                 var score = Int(line.confidence * 20)
                 if hasCurrencyHint { score += 130 }
                 if hasAmountHint { score += 100 }
-                if candidate.contains(".") { score += 28 }
+                if parsedCandidate.hasExplicitFraction { score += 28 }
 
                 if expectedAmount > 0 {
-                    let delta = abs(value - expectedAmount)
-                    let relativeDelta = delta / max(expectedAmount, 1)
                     if delta <= 0.01 {
                         score += 220
                     } else if relativeDelta <= 0.01 {
@@ -2429,9 +2522,6 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 if candidateDigits.count >= 6, !hasCurrencyHint, !hasAmountHint {
                     score -= 90
                 }
-                if !hasCurrencyHint, !hasAmountHint, !candidate.contains("."), expectedAmount <= 0 {
-                    score -= 24
-                }
 
                 if score > bestScore {
                     bestScore = score
@@ -2440,7 +2530,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             }
         }
 
-        return bestScore >= 15 ? bestValue : nil
+        return bestScore >= 35 ? bestValue : nil
     }
 
     private nonisolated func extractChequeDate(from normalizedText: String) -> String? {
@@ -2512,10 +2602,8 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.processImportedImage(image, useScanRegion: true) { parsedCheque in
-                Task { @MainActor in
-                    self.isPhotoCaptureInFlight = false
-                    self.onCaptureComplete?(parsedCheque)
-                }
+                self.isPhotoCaptureInFlight = false
+                self.onCaptureComplete?(parsedCheque)
             }
         }
     }
@@ -2524,15 +2612,16 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     func processImportedImage(
         _ image: UIImage,
         useScanRegion: Bool = false,
-        completion: @escaping @Sendable (PPScannedCheque) -> Void
+        completion: @escaping @MainActor @Sendable (PPScannedCheque) -> Void
     ) {
         guard let cgImage = image.cgImage else {
             completion(PPScannedCheque(image: image))
             return
         }
 
-        let context = currentAnalysisContext()
+        var context = currentAnalysisContext()
         let orientation = Self.cgImageOrientation(for: image.imageOrientation)
+        context.orientation = orientation
         let rawSize = CGSize(width: cgImage.width, height: cgImage.height)
         let scanRegion = useScanRegion
             ? visionRegionOfInterest(rawPixelSize: rawSize, context: context)
@@ -2572,9 +2661,10 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
             let rawText = recognition?.lines.map(\.text).joined(separator: "\n") ?? ""
             let parsed = recognition?.fields
-            DispatchQueue.main.async {
+            nonisolated(unsafe) let safeImage = image
+            Task { @MainActor in
                 let result = PPScannedCheque(
-                    image: image,
+                    image: safeImage,
                     chequeNumber: parsed?.chequeNumber ?? "",
                     bankName: parsed?.bankName ?? "",
                     amount: parsed?.amount,

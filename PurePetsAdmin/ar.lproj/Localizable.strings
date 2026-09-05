@@ -2926,6 +2926,19 @@
 "Categories_Toggled_Visible" = "تم تفعيل ظهور التصنيف للمستخدمين";
 "Categories_Toggled_Hidden" = "تم إخفاء التصنيف من واجهة المستخدمين";
 "Categories_Reordered_Success" = "تم حفظ الترتيب الجديد للفئات بنجاح";
+"Categories_Upload_Prompt" = "اختر صورة أو أيقونة من المعرض";
+"Categories_Upload_Hint" = "PNG أو JPEG • سيتم الرفع تلقائياً وتحديث الرابط";
+"Categories_Manual_URL" = "تعديل رابط الصورة يدوياً (اختياري)";
+"Categories_SubKind_ImageTitle" = "صورة وأيقونة السلالة";
+"Categories_SubKind_ImageSub" = "تظهر هذه الصورة كأيقونة وهوية مرئية للسلالة في الكتالوج.";
+"Categories_SubSub_ImageTitle" = "صورة التفريع الفرعي";
+"Categories_SubSub_ImageSub" = "صورة مميزة لهذا التفريع أو الخط النقي.";
+"Categories_Item_ImageTitle" = "صورة المواصفة أو العنصر";
+"Categories_Item_ImageSub" = "صورة توضيحية لخصائص ومواصفات هذا الصنف.";
+"Category_Image_Title" = "صورة الفصيلة الرئيسية";
+"Category_Image_Sub" = "الصورة المعروضة في بطاقة الفصيلة في المتجر وقوائم التطبيق.";
+"Image_Load_Error" = "تعذر تحميل الصورة • اضغط للتغيير";
+"Change" = "تغيير";
 
 
 /* ===================== Branches Section ===================== */
