@@ -10,8 +10,6 @@
 #import "NotificationsListViewController.h"
 #import "NotificationCell.h"
 #import "NotificationDetailViewController.h"
-#import "NotificationComposerViewController.h"
-#import "NotificationSettingsViewController.h"
 #import "NotificationManager.h"
 #import "NotificationModel.h"
 #import "Styling.h"
@@ -294,13 +292,13 @@ typedef NS_ENUM(NSInteger, PPAdminNotificationLens) {
 
 - (void)openSettingsTapped {
     [PPFunc pp_playTapEffect];
-    NotificationSettingsViewController *vc = [[NotificationSettingsViewController alloc] init];
+    AdminNotificationSettingsHostingController *vc = [[AdminNotificationSettingsHostingController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
 
 - (void)openComposerTapped {
     [PPFunc pp_playTapEffect];
-    NotificationComposerViewController *vc = [[NotificationComposerViewController alloc] init];
+    AdminNotificationComposerHostingController *vc = [[AdminNotificationComposerHostingController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
 

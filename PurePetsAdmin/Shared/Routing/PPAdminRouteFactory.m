@@ -16,8 +16,6 @@
 #import "UsersSection/UserController/UserManagementController.h"
 #import "UsersSection/References/UserManager.h"
 #import "NotificationsSection/NotificationsListViewController.h"
-#import "NotificationsSection/NotificationComposerViewController.h"
-#import "NotificationsSection/NotificationSettingsViewController.h"
 #import "ThirdParty/PPCells/PPChatsViewController.h"
 #import "ThirdParty/PPCells/PPSettingsViewController.h"
 #import "HomeControl/PPHomeControlPanelViewController.h"
@@ -51,8 +49,8 @@
     }
     if ([identifier isEqualToString:@"chats"]) return [PPAdminChatsHostingController new];
     if ([identifier isEqualToString:@"notifications"]) return [NotificationsListViewController new];
-    if ([identifier isEqualToString:@"notificationComposer"]) return [NotificationComposerViewController new];
-    if ([identifier isEqualToString:@"notificationSettings"]) return [NotificationSettingsViewController new];
+    if ([identifier isEqualToString:@"notificationComposer"]) return [AdminNotificationComposerHostingController new];
+    if ([identifier isEqualToString:@"notificationSettings"]) return [AdminNotificationSettingsHostingController new];
     if ([identifier isEqualToString:@"settings"]) return [PPSettingsViewController new];
     if ([identifier isEqualToString:@"accessories"]) return [PPInventoryListHostingController makeForAccessories];
     if ([identifier isEqualToString:@"food"]) return [PPInventoryListHostingController makeForFood];
@@ -61,7 +59,7 @@
     if ([identifier isEqualToString:@"agents"]) return [PPAgentsViewController new];
     if ([identifier isEqualToString:@"accounting"]) return [AdminAccountingHostingController new];
     if ([identifier isEqualToString:@"audit"]) return [PPAuditLogViewController new];
-    if ([identifier isEqualToString:@"moderation"]) return [PPContentModerationViewController new];
+    if ([identifier isEqualToString:@"moderation"]) return [AdminModerationHostingController new];
     if ([identifier isEqualToString:@"homeControl"]) return [AdminHomeControlHostingController new];
     if ([identifier isEqualToString:@"services"]) return [PPServicesListViewController new];
     if ([identifier isEqualToString:@"vets"]) return [PPAdminRouteFactory makeSwiftUIHostingControllerForVets];

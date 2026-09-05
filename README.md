@@ -159,7 +159,8 @@ Pure Pets Admin/
 │   │   ├── NotificationManager/
 │   │   ├── NotificationModel/
 │   │   ├── NotificationsListViewController/
-│   │   ├── NotificationComposerViewController/
+│   │   ├── AdminNotificationComposerView (SwiftUI)/
+│   │   ├── AdminNotificationSettingsView (SwiftUI)/
 │   │   └── PPProInAppNotificationPresenter/
 │   ├── DeliveryCompanySection/
 │   │   ├── DeliveryCompanyManager/
@@ -421,7 +422,8 @@ Push notification management and in-app inbox.
 - **NotificationManager**: Inbox CRUD operations.
 - **NotificationModel**: Notification data model.
 - **NotificationsListViewController**: Inbox list view.
-- **NotificationComposerViewController**: Push notification composer.
+- **AdminNotificationComposerView**: Flagship SwiftUI sovereign push notification composer.
+- **AdminNotificationSettingsView**: Sovereign APNs gateway & channel notification settings cockpit.
 - **PPProInAppNotificationPresenter**: In-app notification presentation.
 
 ### DeliveryCompanySection (`DeliveryCompanySection/`)
@@ -582,7 +584,8 @@ validateAuth() → requirePermission("permission.key") → validate input → bu
 | `NotificationManager` | In-app inbox CRUD (mark read, delete, archive) |
 | `NotificationModel` | Notification data model |
 | `NotificationsListViewController` | Inbox UI |
-| `NotificationComposerViewController` | Admin push composition UI |
+| `AdminNotificationComposerView` | Flagship SwiftUI push notification composer |
+| `AdminNotificationSettingsView` | Sovereign SwiftUI APNs gateway & channel settings cockpit |
 | `PPProInAppNotificationPresenter` | In-app banner presentation |
 
 ---

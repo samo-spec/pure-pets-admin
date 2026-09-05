@@ -6,8 +6,6 @@
 #import "AdminDashboardViewController.h"
 #import "PPHero.h"
 #import "PPFirebaseCompat.h"
-#import "NotificationComposerViewController.h"
-#import "NotificationSettingsViewController.h"
 #import "NotificationsListViewController.h"
 #import "PPBannersListVC.h"
 // Legacy PPVetsListViewController replaced by SwiftUI PPVetsListHostingController
@@ -3522,7 +3520,7 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
         return [AdminCategoriesHostingController new];
     }
     if ([tag isEqualToString:@"moderation"]) {
-        return [PPContentModerationViewController new];
+        return [AdminModerationHostingController new];
     }
     if ([tag isEqualToString:@"listings"]) {
         return [PPListingsAdminViewController new];
@@ -3540,10 +3538,10 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
         return [NotificationsListViewController new];
     }
     if ([tag isEqualToString:@"notificationsCompose"]) {
-        return [NotificationComposerViewController new];
+        return [AdminNotificationComposerHostingController new];
     }
     if ([tag isEqualToString:@"notificationSettings"]) {
-        return [NotificationSettingsViewController new];
+        return [AdminNotificationSettingsHostingController new];
     }
     if ([tag isEqualToString:@"adminWebApp"]) {
         return [PPAdminWebAppViewController new];

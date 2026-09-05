@@ -602,6 +602,52 @@
 "NotificationComposer_Partial_Title" = "Partially queued";
 "NotificationComposer_Failed_Message" = "Couldn't queue this notification.";
 "NotificationComposer_Recipient_Limit" = "Choose no more than %ld specific recipients.";
+"NotificationComposer_Title" = "Send Push Notifications";
+"NotificationComposer_Preview_LockScreen" = "Lock Screen";
+"NotificationComposer_Preview_DynamicIsland" = "Dynamic Island";
+"NotificationComposer_Templates_Button" = "Templates";
+"NotificationComposer_Action_Reset" = "Reset";
+"NotificationComposer_Templates_SectionTitle" = "Ready-Made Templates";
+"NotificationComposer_Audience_SectionTitle" = "Target Audience";
+"NotificationComposer_Audience_Everyone" = "Everyone";
+"NotificationComposer_Audience_EveryoneSub" = "All devices & subscribers";
+"NotificationComposer_Audience_AllUsers" = "Customers";
+"NotificationComposer_Audience_AllUsersSub" = "Registered app accounts";
+"NotificationComposer_Audience_Admins" = "Staff & Admins";
+"NotificationComposer_Audience_AdminsSub" = "Command center & ops team";
+"NotificationComposer_Audience_Specific" = "Specific Users";
+"NotificationComposer_Audience_SpecificSub" = "Custom selected list";
+"NotificationComposer_SelectedRecipients" = "Selected Recipients";
+"NotificationComposer_AddRecipientsPrompt" = "Tap here to select users from directory";
+"NotificationComposer_ManageRecipients" = "Manage List";
+"NotificationComposer_Payload_SectionTitle" = "Notification Payload";
+"NotificationComposer_TitlePlaceholder" = "Enter a concise, attractive title...";
+"NotificationComposer_BodyPlaceholder" = "Enter notification details clearly here for the lock screen...";
+"NotificationComposer_Simulator_Title" = "Interactive Lock Screen Simulator";
+"NotificationComposer_Simulator_Hint" = "Pixel-perfect live rendering mirroring how this alert appears on customer iOS devices.";
+"NotificationComposer_Broadcast_Confirm_Title" = "Confirm Mass Broadcast";
+"NotificationComposer_Broadcast_Confirm_Message" = "You are about to dispatch an instant push notification to all active devices. Do you wish to proceed?";
+"NotificationComposer_Action_ConfirmBroadcast" = "Yes, Broadcast Now";
+"NotificationComposer_Status_Ready" = "Ready to broadcast — tap to transmit";
+"NotificationComposer_Validation_TitleRequired" = "Please enter a notification title";
+"NotificationComposer_Validation_BodyRequired" = "Please enter notification message body";
+"NotificationComposer_Failed_NoRecipients" = "No active devices found to receive the notification.";
+"NotificationComposer_Receipt_SuccessTitle" = "Notification Broadcasted Successfully!";
+"NotificationComposer_Receipt_Key" = "Transaction Ref";
+"NotificationComposer_Receipt_Recipients" = "Target Devices";
+"NotificationComposer_Receipt_Pruned" = "Inactive Pruned";
+"NotificationComposer_Action_SendAnother" = "Compose Another Notification";
+"NotificationComposer_Action_ReturnToDashboard" = "Return to Command Center";
+"NotificationComposer_Templates_ModalTitle" = "Notification Presets & Templates";
+"SearchUsers" = "Search by name, phone, email, or UID...";
+"UsersAvailable" = "users available";
+"Selected" = "selected";
+"SelectAll" = "Select All";
+"ClearSelection" = "Clear Selection";
+"ClearAll" = "Clear All";
+"ConfirmRecipients" = "Confirm Recipients";
+"SelectUsers" = "Select Recipients";
+"LivePreview" = "Live Preview";
 
 /* Notifications screen */
 "NotificationsTitle" = "Notifications";
@@ -2689,6 +2735,24 @@
 "NotificationSettings_CategoryWarningSubtitle" = "Warnings that may need administrator attention.";
 "NotificationSettings_EnabledCount_Format" = "%ld of %ld categories enabled";
 "NotificationSettings_SessionNote" = "These controls keep their current values while this settings screen remains open.";
+"NotificationSettings_Title" = "Notification & Channel Settings";
+"NotificationSettings_Gateway_Title" = "APNs Notification Gateway";
+"NotificationSettings_Action_TestPush" = "Diagnostic Pulse";
+"NotificationSettings_EnableInSettings_Prompt" = "Notifications disabled in iOS Settings — tap to enable";
+"NotificationSettings_Channels_Title" = "Administrative Channels";
+"NotificationSettings_Audio_SectionTitle" = "Audio, Haptics & Quiet Hours";
+"NotificationSettings_Sound_Title" = "Custom Alert Sounds";
+"NotificationSettings_Sound_Sub" = "Play acoustic sound when a new notification arrives";
+"NotificationSettings_Haptics_Title" = "Haptic Vibration";
+"NotificationSettings_Haptics_Sub" = "Physical alert pulses for incoming notifications";
+"NotificationSettings_QuietHours_Title" = "Scheduled Quiet Hours (DND)";
+"NotificationSettings_QuietHours_Sub" = "Mute non-critical alerts during rest hours";
+"NotificationSettings_Action_Sync" = "Sync Preferences";
+"NotificationSettings_Action_Reset" = "Restore Defaults";
+"NotificationSettings_Action_SyncWithCloud" = "Sync Preferences with Cloud";
+"NotificationSettings_Action_ResetDefaults" = "Restore Channel Defaults";
+"NotificationSettings_Reset_Confirm_Title" = "Reset Channel Settings";
+"NotificationSettings_Reset_Confirm_Message" = "Are you sure you want to restore all channels and sound preferences to their default states?";
 
 "AddStaffMember" = "Create Team Member";
 "AddStaffMemberSubtitle" = "Create a team account with controlled access.";
@@ -3521,6 +3585,12 @@
 "AdminCommandCenter_Role" = "Role";
 "AdminCommandCenter_NotConfirmed" = "Not confirmed";
 "AdminCommandCenter_Refresh" = "Refresh";
+
+/* Command Center workplace header */
+"AdminCommandCenter_Header_WorkingBranch" = "Working branch";
+"AdminCommandCenter_Header_Switch" = "Switch";
+"AdminCommandCenter_Header_FixedBranchHint" = "No other branch is available to switch to.";
+"AdminCommandCenter_Header_Language_Format" = "Switch to %@";
 "AdminCommandCenter_Retry" = "Retry";
 "AdminCommandCenter_SourceIssue_SheetTitle" = "Source details";
 "AdminCommandCenter_SourceIssue_SheetDetail" = "The dashboard could not confirm current data from these sources. Other available workflows remain usable.";
@@ -3633,6 +3703,9 @@
 "AdminQuickActions_Users_Subtitle" = "Accounts & Roles";
 "AdminQuickActions_POS" = "Point of Sale";
 "AdminQuickActions_POS_Subtitle" = "Instant Sell";
+"AdminQuickActions_POS_Action" = "Launch POS";
+"AdminQuickActions_POS_Tag" = "Instant • Scanner";
+"AdminQuickActions_POS_Live" = "ONLINE";
 "AdminQuickActions_Notifications" = "Notifications";
 "AdminQuickActions_Broadcast" = "Broadcast";
 "AdminQuickActions_Broadcast_Subtitle" = "Push Alert";
@@ -5274,7 +5347,27 @@
 "StaffRole_Sales" = "Sales Agent";
 "StaffRole_PaymentsManager" = "Payments Manager";
 "StaffRole_SupportAgent" = "Support Agent";
+"StaffRole_ContentEditor" = "Content Editor";
+"StaffRole_ContentPublisher" = "Content Publisher";
 "StaffRole_Viewer" = "Viewer";
+"StaffRole_SecurityAdmin" = "Security Admin";
+"StaffRole_ComplianceAuditor" = "Compliance Auditor";
+
+"StaffRole_SUPER_ADMIN" = "Super Admin";
+"StaffRole_OWNER" = "System Owner";
+"StaffRole_OPERATIONS_MANAGER" = "Operations Manager";
+"StaffRole_BRANCH_MANAGER" = "Branch Manager";
+"StaffRole_INVENTORY_MANAGER" = "Inventory Manager";
+"StaffRole_ACCOUNTANT" = "Accountant";
+"StaffRole_WAREHOUSE" = "Warehouse Manager";
+"StaffRole_SALES" = "Sales Agent";
+"StaffRole_PAYMENTS_MANAGER" = "Payments Manager";
+"StaffRole_SUPPORT_AGENT" = "Support Agent";
+"StaffRole_CONTENT_EDITOR" = "Content Editor";
+"StaffRole_CONTENT_PUBLISHER" = "Content Publisher";
+"StaffRole_VIEWER" = "Viewer";
+"StaffRole_SECURITY_ADMIN" = "Security Admin";
+"StaffRole_COMPLIANCE_AUDITOR" = "Compliance Auditor";
 
 /* Working Branch Scope & Permissions */
 "Staff_Branch_Scope_Title" = "Working Branch & Scope Permissions";

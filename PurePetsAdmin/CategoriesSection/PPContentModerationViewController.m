@@ -3,6 +3,7 @@
 #import "PPAlertHelper.h"
 #import "Styling.h"
 #import "Language.h"
+#import "PurePetsAdmin-Swift.h"
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseFirestore;
@@ -170,7 +171,7 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
 
 - (void)didTapBack {
     [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [self.navigationController popViewControllerAnimated:YES];
+    [PPAdminNavigationFallback popOrDismissFrom:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {

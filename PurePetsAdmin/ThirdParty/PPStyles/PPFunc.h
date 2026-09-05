@@ -6,6 +6,9 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+@protocol TOCropViewControllerDelegate;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -57,5 +60,28 @@ typedef NS_ENUM(NSUInteger, PPSheetDetentStyle) {
 - (UIImage *)pp_circularImage;
 @end
 
+
+// =========================================  PPActionButton  ===========================================//
+// Factory for creating styled UIActions with custom brand font
+@interface PPActionButton : NSObject
+
++ (UIAction *)actionWithTitle:(NSString *)title
+              systemImageName:(nullable NSString *)systemImageName
+                         font:(nullable UIFont *)font
+                        color:(nullable UIColor *)color
+                      handler:(void (^)(UIAction *action))handler;
+
++ (void)applyStyleToAction:(UIAction *)action
+                      font:(nullable UIFont *)font
+                     color:(nullable UIColor *)color;
+
++ (UIAction *)deleteActionWithHandler:(void (^)(UIAction *action))handler;
++ (UIAction *)editActionWithHandler:(void (^)(UIAction *action))handler;
++ (UIAction *)shareActionWithHandler:(void (^)(UIAction *action))handler;
++ (UIAction *)showProfileActionWithHandler:(void (^)(UIAction *action))handler;
++ (UIAction *)settingsActionWithHandler:(void (^)(UIAction *action))handler;
++ (UIAction *)logoutActionWithHandler:(void (^)(UIAction *action))handler;
+
+@end
 
 NS_ASSUME_NONNULL_END

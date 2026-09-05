@@ -2900,6 +2900,14 @@ struct AdminSubKindStudioView: View {
                     .tint(Color(uiColor: .ppSuccess))
                 }
                 .padding(.top, 4)
+
+                // Pet Image Uploader Section
+                AdminPetImageUploaderSection(
+                    title: Language.get("Categories_SubKind_ImageTitle", alter: "صورة وأيقونة السلالة"),
+                    subtitle: Language.get("Categories_SubKind_ImageSub", alter: "تظهر هذه الصورة كأيقونة وهوية مرئية للسلالة في الكتالوج."),
+                    imageUrl: $iconUrl,
+                    storagePath: "subkinds"
+                )
             }
         }
         .padding(AdminSpacing.cardPadding)
@@ -3457,6 +3465,7 @@ struct AdminPetImageUploaderSection: View {
     @State private var isUploading = false
     @State private var uploadError: String? = nil
     @State private var isManualUrlExpanded = false
+    @State private var isFitMode: Bool = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -3493,7 +3502,7 @@ struct AdminPetImageUploaderSection: View {
                         ZStack {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(AdminSurface.control)
-                                .frame(height: 120)
+                                .frame(height: 180)
                             ProgressView()
                                 .tint(AdminSurface.primary)
                         }
@@ -3549,18 +3558,53 @@ struct AdminPetImageUploaderSection: View {
 
     private func imagePreviewCard(image: Image) -> some View {
         ZStack(alignment: .topTrailing) {
-            image
-                .resizable()
-                .scaledToFill()
-                .frame(maxWidth: .infinity)
-                .frame(height: 140)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(AdminSurface.hairline, lineWidth: 1)
-                )
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AdminSurface.control)
 
-            HStack(spacing: 8) {
+                if isFitMode {
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: 180)
+                        .padding(8)
+                } else {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 180)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 1)
+            )
+
+            HStack(spacing: 6) {
+                // Content Mode Toggle Button (Fit / Fill)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        isFitMode.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: isFitMode ? "arrow.up.left.and.arrow.down.right" : "aspectratio.fill")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(isFitMode ? Language.get("Fit", alter: "احتواء") : Language.get("Fill", alter: "ملء"))
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.65), in: Capsule())
+                }
+                .accessibilityLabel(isFitMode ? "احتواء الصورة" : "ملء الإطار")
+
                 // Change Photo Button
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -4176,6 +4220,7 @@ struct AdminItemEditorSheet: View {
     @State private var itemNameEn: String = ""
     @State private var male: String = ""
     @State private var female: String = ""
+    @State private var imageUrl: String = ""
 
     init(item: AdminSubKindItemDetail, isNew: Bool, onSave: @escaping (AdminSubKindItemDetail) -> Void) {
         self.item = item
@@ -4186,6 +4231,7 @@ struct AdminItemEditorSheet: View {
         _itemNameEn = State(initialValue: item.itemNameEn)
         _male = State(initialValue: item.male)
         _female = State(initialValue: item.female)
+        _imageUrl = State(initialValue: item.imageUrl)
     }
 
     var body: some View {
@@ -4208,6 +4254,7 @@ struct AdminItemEditorSheet: View {
                         copy.itemNameEn = itemNameEn
                         copy.male = male
                         copy.female = female
+                        copy.imageUrl = imageUrl
                         onSave(copy)
                     }
                     .disabled(itemNameAr.trimmingCharacters(in: .whitespaces).isEmpty && itemNameEn.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -4296,6 +4343,14 @@ struct AdminItemEditorSheet: View {
                         .padding(AdminSpacing.cardPadding)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
                         .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+                        // Pet Image Uploader Section
+                        AdminPetImageUploaderSection(
+                            title: Language.get("Categories_Item_ImageTitle", alter: "صورة المواصفة أو العنصر"),
+                            subtitle: Language.get("Categories_Item_ImageSub", alter: "صورة توضيحية لخصائص ومواصفات هذا الصنف."),
+                            imageUrl: $imageUrl,
+                            storagePath: "subkind_items"
+                        )
                     }
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, AdminSpacing.md)

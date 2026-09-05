@@ -6,23 +6,12 @@
 //
 
 #import "PPStaffAuth.h"
+#import "PPStaffAuthCatalog.generated.m"
 #import <CoreFoundation/CoreFoundation.h>
 @import Firebase;
 @import FirebaseAuth;
 
-#pragma mark - Staff Role Constants
-
-PPStaffRole const PPStaffRoleSuperAdmin        = @"super_admin";
-PPStaffRole const PPStaffRoleOwner             = @"owner";
-PPStaffRole const PPStaffRoleOperationsManager = @"operations_manager";
-PPStaffRole const PPStaffRoleBranchManager     = @"branch_manager";
-PPStaffRole const PPStaffRoleInventoryManager  = @"inventory_manager";
-PPStaffRole const PPStaffRoleAccountant        = @"accountant";
-PPStaffRole const PPStaffRoleWarehouse         = @"warehouse";
-PPStaffRole const PPStaffRoleSales             = @"sales";
-PPStaffRole const PPStaffRolePaymentsManager   = @"payments_manager";
-PPStaffRole const PPStaffRoleSupportAgent      = @"support_agent";
-PPStaffRole const PPStaffRoleViewer            = @"viewer";
+#pragma mark - Staff Status Constants
 
 PPStaffStatus const PPStaffStatusActive   = @"active";
 PPStaffStatus const PPStaffStatusDisabled = @"disabled";
@@ -30,125 +19,6 @@ PPStaffStatus const PPStaffStatusDisabled = @"disabled";
 static NSString * const kPPStaffAuthUsersCollection = @"staff_users";
 static NSString * const kPPStaffAuthAccountTypeStaff = @"staff";
 
-#pragma mark - Permission Key Constants
-
-NSString * const kStaffPermDashboardView = @"dashboard.view";
-
-NSString * const kStaffPermStaffView   = @"staff.view";
-NSString * const kStaffPermStaffManage = @"staff.manage";
-
-NSString * const kStaffPermUsersView                 = @"users.view";
-NSString * const kStaffPermUsersManage               = @"users.manage";
-NSString * const kStaffPermUsersBlock                = @"users.block";
-NSString * const kStaffPermUsersFeaturesView         = @"users.features.view";
-NSString * const kStaffPermUsersFeaturesManage       = @"users.features.manage";
-NSString * const kStaffPermUsersSubscriptionsView    = @"users.subscriptions.view";
-NSString * const kStaffPermUsersSubscriptionsManage  = @"users.subscriptions.manage";
-NSString * const kStaffPermUsersRestrictionsView     = @"users.restrictions.view";
-NSString * const kStaffPermUsersRestrictionsManage   = @"users.restrictions.manage";
-
-NSString * const kStaffPermStockView   = @"stock.view";
-NSString * const kStaffPermStockManage = @"stock.manage";
-NSString * const kStaffPermStockCreate = @"stock.create";
-NSString * const kStaffPermStockDelete = @"stock.delete";
-
-NSString * const kStaffPermListingsView     = @"listings.view";
-NSString * const kStaffPermListingsManage   = @"listings.manage";
-NSString * const kStaffPermListingsModerate = @"listings.moderate";
-
-NSString * const kStaffPermPaymentsView   = @"payments.view";
-NSString * const kStaffPermPaymentsManage = @"payments.manage";
-NSString * const kStaffPermPaymentsRefund = @"payments.refund";
-
-NSString * const kStaffPermDeliveryView           = @"delivery.view";
-NSString * const kStaffPermDeliveryDispatch       = @"delivery.dispatch";
-NSString * const kStaffPermDeliveryAssign         = @"delivery.assign";
-NSString * const kStaffPermDeliveryOverride       = @"delivery.override";
-NSString * const kStaffPermDeliveryDriverView     = @"delivery.driver.view";
-NSString * const kStaffPermDeliveryDriverManage   = @"delivery.driver.manage";
-NSString * const kStaffPermDeliveryCarrierView    = @"delivery.carrier.view";
-NSString * const kStaffPermDeliveryCarrierManage  = @"delivery.carrier.manage";
-NSString * const kStaffPermDeliveryRouteView      = @"delivery.route.view";
-NSString * const kStaffPermDeliveryRouteManage    = @"delivery.route.manage";
-NSString * const kStaffPermDeliveryPODReview      = @"delivery.pod.review";
-NSString * const kStaffPermDeliveryCODView        = @"delivery.cod.view";
-NSString * const kStaffPermDeliveryCODReconcile   = @"delivery.cod.reconcile";
-NSString * const kStaffPermDeliverySettingsManage = @"delivery.settings.manage";
-
-NSString * const kStaffPermPosView    = @"pos.view";
-NSString * const kStaffPermPosSell    = @"pos.sell";
-NSString * const kStaffPermPosHistory = @"pos.history";
-
-NSString * const kStaffPermBranchesView   = @"branches.view";
-NSString * const kStaffPermBranchesManage = @"branches.manage";
-
-NSString * const kStaffPermAgentsView   = @"agents.view";
-NSString * const kStaffPermAgentsManage = @"agents.manage";
-
-NSString * const kStaffPermSupportView   = @"support.view";
-NSString * const kStaffPermSupportManage = @"support.manage";
-
-NSString * const kStaffPermServicesView   = @"services.view";
-NSString * const kStaffPermServicesManage = @"services.manage";
-
-NSString * const kStaffPermProvidersView   = @"providers.view";
-NSString * const kStaffPermProvidersManage = @"providers.manage";
-
-NSString * const kStaffPermSettingsView   = @"settings.view";
-NSString * const kStaffPermSettingsManage = @"settings.manage";
-
-NSString * const kStaffPermNotificationsView = @"notifications.view";
-NSString * const kStaffPermNotificationsSend = @"notifications.send";
-
-NSString * const kStaffPermAccountingView   = @"accounting.view";
-NSString * const kStaffPermAccountingManage = @"accounting.manage";
-
-NSString * const kStaffPermReportsView   = @"reports.view";
-NSString * const kStaffPermReportsExport = @"reports.export";
-
-NSString * const kStaffPermAuditView = @"audit.view";
-
-NSString * const kStaffPermModerationView   = @"moderation.view";
-NSString * const kStaffPermModerationManage = @"moderation.manage";
-
-NSString * const kStaffPermBannersView   = @"banners.view";
-NSString * const kStaffPermBannersManage = @"banners.manage";
-
-NSString * const kStaffPermCategoriesView   = @"categories.view";
-NSString * const kStaffPermCategoriesManage = @"categories.manage";
-
-NSString * const kStaffPermVeterinariansView   = @"veterinarians.view";
-NSString * const kStaffPermVeterinariansManage = @"veterinarians.manage";
-
-NSString * const kStaffPermHotelView                  = @"hotel.view";
-NSString * const kStaffPermHotelReservationsManage    = @"hotel.reservations.manage";
-NSString * const kStaffPermHotelCheckIn               = @"hotel.checkin";
-NSString * const kStaffPermHotelCheckOut              = @"hotel.checkout";
-NSString * const kStaffPermHotelAccommodationsManage  = @"hotel.accommodations.manage";
-NSString * const kStaffPermHotelCareView              = @"hotel.care.view";
-NSString * const kStaffPermHotelCareManage            = @"hotel.care.manage";
-NSString * const kStaffPermHotelTaskRead               = @"hotel.task.read";
-NSString * const kStaffPermHotelTaskAssign             = @"hotel.task.assign";
-NSString * const kStaffPermHotelTaskExecute            = @"hotel.task.execute";
-NSString * const kStaffPermHotelMedicationRead         = @"hotel.medication.read";
-NSString * const kStaffPermHotelMedicationManage       = @"hotel.medication.manage";
-NSString * const kStaffPermHotelMedicationAdminister   = @"hotel.medication.administer";
-NSString * const kStaffPermHotelHealthRead             = @"hotel.health.read";
-NSString * const kStaffPermHotelHealthCreate           = @"hotel.health.create";
-NSString * const kStaffPermHotelHealthManage           = @"hotel.health.manage";
-NSString * const kStaffPermHotelIncidentsView          = @"hotel.incidents.view";
-NSString * const kStaffPermHotelIncidentsManage        = @"hotel.incidents.manage";
-NSString * const kStaffPermHotelServicesManage         = @"hotel.services.manage";
-NSString * const kStaffPermHotelMediaView              = @"hotel.media.view";
-NSString * const kStaffPermHotelMediaManage            = @"hotel.media.manage";
-NSString * const kStaffPermHotelBillingView            = @"hotel.billing.view";
-NSString * const kStaffPermHotelBillingManage          = @"hotel.billing.manage";
-NSString * const kStaffPermHotelBillingAdjust          = @"hotel.billing.adjust";
-NSString * const kStaffPermHotelTransportManage        = @"hotel.transport.manage";
-NSString * const kStaffPermHotelNotificationsManage    = @"hotel.notifications.manage";
-NSString * const kStaffPermHotelReportsView            = @"hotel.reports.view";
-NSString * const kStaffPermHotelSettingsManage         = @"hotel.settings.manage";
-NSString * const kStaffPermHotelOverride               = @"hotel.override";
 
 static NSString *PPStaffSafeString(id value) {
     if ([value isKindOfClass:NSString.class]) {
@@ -185,131 +55,6 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
     }
 
     return ordered.array ?: @[];
-}
-
-static PPStaffRole PPStaffNormalizedRole(id value) {
-    NSString *rawRole = PPStaffSafeString(value);
-    if (rawRole.length == 0) {
-        return PPStaffRoleViewer;
-    }
-
-    // Mirror infra's explicit legacy migration aliases; arbitrary role labels
-    // must never become an elevated Admin role on the client.
-    if ([rawRole isEqualToString:@"SuperAdmin"]) return PPStaffRoleSuperAdmin;
-    if ([rawRole isEqualToString:@"Owner"]) return PPStaffRoleOwner;
-    if ([rawRole isEqualToString:@"BranchManager"]) return PPStaffRoleBranchManager;
-    if ([rawRole isEqualToString:@"Accountant"]) return PPStaffRoleAccountant;
-    if ([rawRole isEqualToString:@"Warehouse"]) return PPStaffRoleWarehouse;
-    if ([rawRole isEqualToString:@"Sales"]) return PPStaffRoleSales;
-    if ([rawRole isEqualToString:@"InventoryManager"]) return PPStaffRoleInventoryManager;
-    if ([rawRole isEqualToString:@"Staff"]) return PPStaffRoleViewer;
-    if ([rawRole isEqualToString:@"Viewer"]) return PPStaffRoleViewer;
-
-    NSMutableString *canonicalCandidate = [rawRole.lowercaseString mutableCopy];
-    NSCharacterSet *allowedCharacters = [NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz_"];
-    for (NSUInteger index = 0; index < canonicalCandidate.length; index++) {
-        unichar character = [canonicalCandidate characterAtIndex:index];
-        if (![allowedCharacters characterIsMember:character]) {
-            [canonicalCandidate replaceCharactersInRange:NSMakeRange(index, 1) withString:@"_"];
-        }
-    }
-
-    NSArray<NSString *> *knownRoles = @[
-        PPStaffRoleSuperAdmin,
-        PPStaffRoleOwner,
-        PPStaffRoleOperationsManager,
-        PPStaffRoleBranchManager,
-        PPStaffRoleInventoryManager,
-        PPStaffRoleAccountant,
-        PPStaffRoleWarehouse,
-        PPStaffRoleSales,
-        PPStaffRolePaymentsManager,
-        PPStaffRoleSupportAgent,
-        PPStaffRoleViewer,
-    ];
-    if ([knownRoles containsObject:canonicalCandidate]) {
-        return canonicalCandidate;
-    }
-
-    // Infra normalizes unknown/custom labels to viewer. Preserve that exact
-    // fallback so role display, default permissions, and client IAM agree.
-    return PPStaffRoleViewer;
-}
-
-static NSArray<NSString *> *PPStaffAllPermissionKeys(void) {
-    static NSArray<NSString *> *keys;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        keys = @[
-            kStaffPermDashboardView,
-            kStaffPermStaffView, kStaffPermStaffManage,
-            kStaffPermUsersView, kStaffPermUsersManage, kStaffPermUsersBlock,
-            kStaffPermUsersFeaturesView, kStaffPermUsersFeaturesManage,
-            kStaffPermUsersSubscriptionsView, kStaffPermUsersSubscriptionsManage,
-            kStaffPermUsersRestrictionsView, kStaffPermUsersRestrictionsManage,
-            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate, kStaffPermStockDelete,
-            kStaffPermListingsView, kStaffPermListingsManage, kStaffPermListingsModerate,
-            kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermPaymentsRefund,
-            kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryAssign,
-            kStaffPermDeliveryOverride,
-            kStaffPermDeliveryDriverView, kStaffPermDeliveryDriverManage,
-            kStaffPermDeliveryCarrierView, kStaffPermDeliveryCarrierManage,
-            kStaffPermDeliveryRouteView, kStaffPermDeliveryRouteManage,
-            kStaffPermDeliveryPODReview,
-            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
-            kStaffPermDeliverySettingsManage,
-            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
-            kStaffPermBranchesView, kStaffPermBranchesManage,
-            kStaffPermAgentsView, kStaffPermAgentsManage,
-            kStaffPermSupportView, kStaffPermSupportManage,
-            kStaffPermServicesView, kStaffPermServicesManage,
-            kStaffPermProvidersView, kStaffPermProvidersManage,
-            kStaffPermSettingsView, kStaffPermSettingsManage,
-            kStaffPermNotificationsView, kStaffPermNotificationsSend,
-            kStaffPermAccountingView, kStaffPermAccountingManage,
-            kStaffPermReportsView, kStaffPermReportsExport,
-            kStaffPermAuditView,
-            kStaffPermModerationView, kStaffPermModerationManage,
-            kStaffPermBannersView, kStaffPermBannersManage,
-            kStaffPermCategoriesView, kStaffPermCategoriesManage,
-            kStaffPermVeterinariansView, kStaffPermVeterinariansManage,
-            kStaffPermHotelView, kStaffPermHotelReservationsManage,
-            kStaffPermHotelCheckIn, kStaffPermHotelCheckOut,
-            kStaffPermHotelAccommodationsManage,
-            kStaffPermHotelCareView, kStaffPermHotelCareManage,
-            kStaffPermHotelTaskRead, kStaffPermHotelTaskAssign, kStaffPermHotelTaskExecute,
-            kStaffPermHotelMedicationRead, kStaffPermHotelMedicationManage, kStaffPermHotelMedicationAdminister,
-            kStaffPermHotelHealthRead, kStaffPermHotelHealthCreate, kStaffPermHotelHealthManage,
-            kStaffPermHotelIncidentsView, kStaffPermHotelIncidentsManage,
-            kStaffPermHotelServicesManage,
-            kStaffPermHotelMediaView, kStaffPermHotelMediaManage,
-            kStaffPermHotelBillingView, kStaffPermHotelBillingManage, kStaffPermHotelBillingAdjust,
-            kStaffPermHotelTransportManage, kStaffPermHotelNotificationsManage,
-            kStaffPermHotelReportsView, kStaffPermHotelSettingsManage,
-            kStaffPermHotelOverride,
-        ];
-    });
-    return keys;
-}
-
-static NSArray<NSString *> *PPStaffViewOnlyPermissionKeys(void) {
-    static NSArray<NSString *> *keys;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSMutableArray<NSString *> *result = [NSMutableArray array];
-        for (NSString *permission in PPStaffAllPermissionKeys()) {
-            if ([permission hasSuffix:@".view"] &&
-                ![permission isEqualToString:kStaffPermDeliveryCODView] &&
-                ![permission isEqualToString:kStaffPermHotelIncidentsView] &&
-                ![permission isEqualToString:kStaffPermHotelMediaView] &&
-                ![permission isEqualToString:kStaffPermHotelBillingView] &&
-                ![permission isEqualToString:kStaffPermHotelReportsView]) {
-                [result addObject:permission];
-            }
-        }
-        keys = result.copy;
-    });
-    return keys;
 }
 
 #pragma mark - PPStaffDoc
@@ -700,129 +445,16 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
 }
 
 + (BOOL)isAdminRole:(PPStaffRole)role {
-    PPStaffRole normalizedRole = PPStaffNormalizedRole(role);
-    return [normalizedRole isEqualToString:PPStaffRoleSuperAdmin] ||
-           [normalizedRole isEqualToString:PPStaffRoleOwner];
+    return PPStaffIsAdminRole(role);
 }
 
 + (NSArray<NSString *> *)defaultPermissionsForStaffRole:(PPStaffRole)role {
-    PPStaffRole normalizedRole = PPStaffNormalizedRole(role);
-
-    if ([normalizedRole isEqualToString:PPStaffRoleSuperAdmin] ||
-        [normalizedRole isEqualToString:PPStaffRoleOwner]) {
-        return PPStaffAllPermissionKeys();
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleOperationsManager]) {
-        NSMutableArray<NSString *> *permissions = [NSMutableArray array];
-        for (NSString *permission in PPStaffAllPermissionKeys()) {
-            if ([permission hasPrefix:@"staff."]) continue;
-            if ([permission isEqualToString:kStaffPermAuditView]) continue;
-            if ([permission isEqualToString:kStaffPermDeliverySettingsManage]) continue;
-            if ([permission isEqualToString:kStaffPermHotelMedicationAdminister]) continue;
-            if ([permission isEqualToString:kStaffPermHotelBillingAdjust]) continue;
-            if ([permission isEqualToString:kStaffPermHotelOverride]) continue;
-            [permissions addObject:permission];
-        }
-        return permissions.copy;
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleBranchManager]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate,
-            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
-            kStaffPermAccountingView,
-            kStaffPermDeliveryView, kStaffPermDeliveryDispatch, kStaffPermDeliveryAssign,
-            kStaffPermReportsView,
-            kStaffPermNotificationsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleAccountant]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermAccountingView, kStaffPermAccountingManage,
-            kStaffPermPaymentsView, kStaffPermPaymentsManage,
-            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
-            kStaffPermReportsView, kStaffPermReportsExport,
-            kStaffPermNotificationsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleWarehouse]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate,
-            kStaffPermDeliveryView, kStaffPermDeliveryDispatch,
-            kStaffPermCategoriesView,
-            kStaffPermNotificationsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleSales]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
-            kStaffPermStockView,
-            kStaffPermNotificationsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermStockView, kStaffPermStockManage, kStaffPermStockCreate, kStaffPermStockDelete,
-            kStaffPermCategoriesView, kStaffPermCategoriesManage,
-            kStaffPermReportsView,
-            kStaffPermNotificationsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRolePaymentsManager]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermPaymentsView, kStaffPermPaymentsManage, kStaffPermPaymentsRefund,
-            kStaffPermDeliveryCODView, kStaffPermDeliveryCODReconcile,
-            kStaffPermAccountingView, kStaffPermAccountingManage,
-            kStaffPermReportsView, kStaffPermReportsExport,
-            kStaffPermPosView, kStaffPermPosSell, kStaffPermPosHistory,
-            kStaffPermNotificationsView,
-            kStaffPermHotelView,
-            kStaffPermHotelBillingView, kStaffPermHotelBillingManage, kStaffPermHotelBillingAdjust,
-            kStaffPermHotelReportsView,
-        ];
-    }
-
-    if ([normalizedRole isEqualToString:PPStaffRoleSupportAgent]) {
-        return @[
-            kStaffPermDashboardView,
-            kStaffPermSupportView, kStaffPermSupportManage,
-            kStaffPermUsersView,
-            kStaffPermUsersFeaturesView,
-            kStaffPermUsersRestrictionsView,
-            kStaffPermNotificationsView,
-            kStaffPermHotelView, kStaffPermHotelCareView,
-        ];
-    }
-
-    return PPStaffViewOnlyPermissionKeys();
+    return PPStaffDefaultPermissionsForRole(role);
 }
 
 + (NSString *)localizedRoleName:(PPStaffRole)role {
-    PPStaffRole normalizedRole = PPStaffNormalizedRole(role);
-    if ([normalizedRole isEqualToString:PPStaffRoleSuperAdmin])        return kLang(@"StaffRole_SuperAdmin");
-    if ([normalizedRole isEqualToString:PPStaffRoleOwner])             return kLang(@"StaffRole_Owner");
-    if ([normalizedRole isEqualToString:PPStaffRoleOperationsManager]) return kLang(@"StaffRole_OperationsManager");
-    if ([normalizedRole isEqualToString:PPStaffRoleBranchManager])     return kLang(@"StaffRole_BranchManager");
-    if ([normalizedRole isEqualToString:PPStaffRoleAccountant])        return kLang(@"StaffRole_Accountant");
-    if ([normalizedRole isEqualToString:PPStaffRoleWarehouse])         return kLang(@"StaffRole_Warehouse");
-    if ([normalizedRole isEqualToString:PPStaffRoleSales])             return kLang(@"StaffRole_Sales");
-    if ([normalizedRole isEqualToString:PPStaffRoleInventoryManager])  return kLang(@"StaffRole_InventoryManager");
-    if ([normalizedRole isEqualToString:PPStaffRolePaymentsManager])   return kLang(@"StaffRole_PaymentsManager");
-    if ([normalizedRole isEqualToString:PPStaffRoleSupportAgent])      return kLang(@"StaffRole_SupportAgent");
-    if ([normalizedRole isEqualToString:PPStaffRoleViewer])            return kLang(@"StaffRole_Viewer");
-    return normalizedRole ?: @"";
+    return PPStaffLocalizedRoleName(role);
 }
+
 
 @end

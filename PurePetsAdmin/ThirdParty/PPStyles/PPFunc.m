@@ -346,3 +346,141 @@
 }
 @end
 
+
+// =========================================  PPActionButton  ===========================================//
+@implementation PPActionButton
+
++ (void)applyStyleToAction:(UIAction *)action
+                      font:(nullable UIFont *)font
+                     color:(nullable UIColor *)color
+{
+    if (!action) return;
+    NSString *title = action.title ?: @"";
+    if (title.length == 0) return;
+
+    NSMutableDictionary<NSAttributedStringKey, id> *attributes = [NSMutableDictionary dictionary];
+    attributes[NSFontAttributeName] = font ?: [Styling fontMedium:15] ?: [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+    if (color) {
+        attributes[NSForegroundColorAttributeName] = color;
+    }
+
+    NSAttributedString *attributedTitle = [[NSAttributedString alloc] initWithString:title attributes:attributes];
+    @try {
+        [action setValue:attributedTitle forKey:@"attributedTitle"];
+    } @catch (__unused NSException *exception) {
+    }
+}
+
++ (UIAction *)actionWithTitle:(NSString *)title
+              systemImageName:(nullable NSString *)systemImageName
+                         font:(nullable UIFont *)font
+                        color:(nullable UIColor *)color
+                      handler:(void (^)(UIAction *action))handler
+{
+    UIImage *icon = systemImageName.length ? [UIImage systemImageNamed:systemImageName] : nil;
+    UIAction *action = [UIAction actionWithTitle:title
+                                           image:icon
+                                      identifier:nil
+                                         handler:^(__kindof UIAction * _Nonnull act) {
+        if (handler) handler(act);
+    }];
+    [self applyStyleToAction:action font:font color:color];
+    return action;
+}
+
++ (UIAction *)deleteActionWithHandler:(void (^)(UIAction *action))handler {
+    return [self actionWithTitle:kLang(@"Delete")
+                 systemImageName:@"trash"
+                            font:[Styling fontBold:15]
+                           color:UIColor.systemRedColor
+                         handler:handler];
+}
+
++ (UIAction *)editActionWithHandler:(void (^)(UIAction *action))handler {
+    return [self actionWithTitle:kLang(@"Edit")
+                 systemImageName:@"pencil"
+                            font:[Styling fontMedium:15]
+                           color:UIColor.labelColor
+                         handler:handler];
+}
+
++ (UIAction *)shareActionWithHandler:(void (^)(UIAction *action))handler {
+    return [self actionWithTitle:kLang(@"Share")
+                 systemImageName:@"square.and.arrow.up"
+                            font:[Styling fontMedium:15]
+                           color:UIColor.labelColor
+                         handler:handler];
+}
+
++ (UIAction *)showProfileActionWithHandler:(void (^)(UIAction *action))handler {
+    return [self actionWithTitle:kLang(@"showProfile")
+                 systemImageName:@"person.circle.fill"
+                            font:[Styling fontMedium:15]
+                           color:UIColor.labelColor
+                         handler:handler];
+}
+
++ (UIAction *)settingsActionWithHandler:(void (^)(UIAction *action))handler {
+    return [self actionWithTitle:kLang(@"Setting")
+                 systemImageName:@"gear"
+                            font:[Styling fontMedium:15]
+                           color:UIColor.labelColor
+                         handler:handler];
+}
+
++ (UIAction *)logoutActionWithHandler:(void (^)(UIAction *action))handler {
+    UIAction *action = [self actionWithTitle:kLang(@"Logout")
+                             systemImageName:@"rectangle.portrait.and.arrow.right"
+                                        font:[Styling fontMedium:15]
+                                       color:UIColor.systemRedColor
+                                     handler:handler];
+    action.attributes = UIMenuElementAttributesDestructive;
+    return action;
+}
+
+@end
+
+
+// =========================================  UIAction Swizzle  ===========================================//
+@interface UIAction (PPMenuActionTitleFont)
+@end
+
+@implementation UIAction (PPMenuActionTitleFont)
+
++ (void)load {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        Method originalMethod = class_getClassMethod(self, @selector(actionWithTitle:image:identifier:handler:));
+        Method swizzledMethod = class_getClassMethod(self, @selector(pp_purepets_admin_actionWithTitle:image:identifier:handler:));
+        if (originalMethod && swizzledMethod) {
+            method_exchangeImplementations(originalMethod, swizzledMethod);
+        }
+    });
+}
+
++ (instancetype)pp_purepets_admin_actionWithTitle:(NSString *)title
+                                            image:(UIImage *)image
+                                       identifier:(UIActionIdentifier)identifier
+                                          handler:(void (^)(__kindof UIAction *action))handler
+{
+    UIAction *action = [self pp_purepets_admin_actionWithTitle:title
+                                                         image:image
+                                                    identifier:identifier
+                                                       handler:handler];
+    if (title.length > 0) {
+        UIFont *font = [Styling fontMedium:15] ?: [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+        NSAttributedString *attributedTitle = [[NSAttributedString alloc] initWithString:title
+                                                                               attributes:@{
+            NSFontAttributeName: font
+        }];
+        @try {
+            [action setValue:attributedTitle forKey:@"attributedTitle"];
+        } @catch (__unused NSException *exception) {
+        }
+    }
+    return action;
+}
+
+@end
+
+

@@ -11,7 +11,6 @@
 //
 
 #import "PPSettingsViewController.h"
-#import "NotificationSettingsViewController.h"
 #import "UserManagementController.h"
 #import "PPAuditLogViewController.h"
 #import "PPFirebaseCompat.h"
@@ -1797,7 +1796,7 @@
 
 - (void)pp_openNotifications {
     [PPFunc pp_playTapEffect];
-    NotificationSettingsViewController *vc = [[NotificationSettingsViewController alloc] init];
+    AdminNotificationSettingsHostingController *vc = [[AdminNotificationSettingsHostingController alloc] init];
     [self.navigationController pushViewController:vc animated:YES];
 }
 

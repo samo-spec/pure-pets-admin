@@ -398,9 +398,13 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserStatus(uid, status: statusString, reason: reason.isEmpty ? "admin_console_update" : reason, duration: nil) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
+                    let msg = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: msg)
+                    self?.showToast(msg)
                 } else {
-                    self?.showToast(Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح"))
+                    let msg = Language.get("Customer_Status_Updated", alter: "تم تحديث حالة الحساب بنجاح")
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Success", alter: "تم بنجاح"), subtitle: msg)
+                    self?.showToast(msg)
                     self?.startListening()
                 }
             }
@@ -414,11 +418,14 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserVerified(uid, verified: newVerified) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
+                    let msg = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: msg)
+                    self?.showToast(msg)
                 } else {
                     let msg = newVerified
                         ? Language.get("Customer_Verified_Success", alter: "تم توثيق الحساب بنجاح")
                         : Language.get("Customer_Unverified_Success", alter: "تم إلغاء توثيق الحساب")
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Success", alter: "تم بنجاح"), subtitle: msg)
                     self?.showToast(msg)
                     self?.startListening()
                 }
@@ -434,9 +441,13 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserFeatures(uid, features: updated) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
+                    let msg = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: msg)
+                    self?.showToast(msg)
                 } else {
-                    self?.showToast(Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة"))
+                    let msg = Language.get("Customer_Feature_Updated", alter: "تم تحديث صلاحية الميزة")
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Success", alter: "تم بنجاح"), subtitle: msg)
+                    self?.showToast(msg)
                     self?.startListening()
                 }
             }
@@ -451,9 +462,13 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
         AdminService.updateUserRestrictions(uid, restrictions: updated) { [weak self] _, error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
+                    let msg = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: msg)
+                    self?.showToast(msg)
                 } else {
-                    self?.showToast(Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان"))
+                    let msg = Language.get("Customer_Restriction_Updated", alter: "تم تحديث قيد الأمان")
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Success", alter: "تم بنجاح"), subtitle: msg)
+                    self?.showToast(msg)
                     self?.startListening()
                 }
             }
@@ -462,15 +477,21 @@ final class AdminCustomerAccountsViewModel: ObservableObject {
 
     func sendPasswordReset(email: String) {
         guard !email.isEmpty else {
-            showToast(Language.get("Error_NoEmail", alter: "العميل لا يمتلك بريداً إلكترونياً مسجلاً"))
+            let msg = Language.get("Error_NoEmail", alter: "العميل لا يمتلك بريداً إلكترونياً مسجلاً")
+            PPAlertHelper.showWarning(in: nil, title: Language.get("Warning", alter: "تنبيه"), subtitle: msg)
+            showToast(msg)
             return
         }
         Auth.auth().sendPasswordReset(withEmail: email) { [weak self] error in
             DispatchQueue.main.async {
                 if let error {
-                    self?.showToast(self?.friendlyErrorMessage(for: error) ?? error.localizedDescription)
+                    let msg = self?.friendlyErrorMessage(for: error) ?? error.localizedDescription
+                    PPAlertHelper.showError(in: nil, title: Language.get("Error", alter: "خطأ"), subtitle: msg)
+                    self?.showToast(msg)
                 } else {
-                    self?.showToast(Language.get("PasswordReset_Sent", alter: "تم إرسال رابط إعادة تعيين كلمة المرور إلى بريد العميل"))
+                    let msg = Language.get("PasswordReset_Sent", alter: "تم إرسال رابط إعادة تعيين كلمة المرور إلى بريد العميل")
+                    PPAlertHelper.showSuccess(in: nil, title: Language.get("Success", alter: "تم بنجاح"), subtitle: msg)
+                    self?.showToast(msg)
                 }
             }
         }
@@ -959,7 +980,23 @@ struct AdminUsersListView: View {
                             },
                             onToggleBlock: {
                                 let newStatus: CustomerAccountStatus = customer.status == .blocked ? .active : .blocked
-                                viewModel.updateCustomerStatus(customer: customer, toStatus: newStatus)
+                                if newStatus == .blocked {
+                                    PPAlertHelper.showConfirmation(
+                                        in: nil,
+                                        title: Language.get("Block_Customer_Title", alter: "حظر حساب العميل"),
+                                        subtitle: String(format: Language.get("Block_Customer_Subtitle_Format", alter: "هل أنت متأكد من حظر حساب العميل (%@)؟ لن يتمكن من استخدام المنصة."), customer.name),
+                                        confirmButton: Language.get("Block", alter: "حظر"),
+                                        cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                                        icon: UIImage(systemName: "nosign"),
+                                        confirmBlock: { _, didConfirm in
+                                            guard didConfirm else { return }
+                                            viewModel.updateCustomerStatus(customer: customer, toStatus: newStatus)
+                                        },
+                                        cancelBlock: nil
+                                    )
+                                } else {
+                                    viewModel.updateCustomerStatus(customer: customer, toStatus: newStatus)
+                                }
                             }
                         )
                     }
@@ -1204,14 +1241,55 @@ private struct CustomerAccountCardView: View {
 
     private func openCall(_ phone: String) {
         let clean = phone.filter { "0123456789+".contains($0) }
-        guard let url = URL(string: "tel://\(clean)") else { return }
-        UIApplication.shared.open(url)
+        guard !clean.isEmpty else {
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("Warning", alter: "تنبيه"),
+                subtitle: Language.get("Customer_No_Phone", alter: "لا يوجد رقم هاتف مسجل لهذا العميل")
+            )
+            return
+        }
+        let displayPhone = customer.formattedPhone.isEmpty ? phone : customer.formattedPhone
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Call_Customer_Title", alter: "الاتصال بالعميل"),
+            subtitle: String(format: Language.get("Call_Customer_Subtitle_Format", alter: "هل ترغب في إجراء مكالمة هاتفية مع العميل (%@) على الرقم %@؟"), customer.name, displayPhone),
+            confirmButton: Language.get("Call", alter: "اتصال"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "phone.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard let url = URL(string: "tel://\(clean)") else { return }
+                UIApplication.shared.open(url)
+            },
+            cancelBlock: nil
+        )
     }
 
     private func openWhatsApp(_ phone: String) {
         let digits = phone.filter { "0123456789".contains($0) }
-        guard let url = URL(string: "https://wa.me/\(digits)") else { return }
-        UIApplication.shared.open(url)
+        guard !digits.isEmpty else {
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("Warning", alter: "تنبيه"),
+                subtitle: Language.get("Customer_No_Phone", alter: "لا يوجد رقم هاتف مسجل لهذا العميل")
+            )
+            return
+        }
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("WhatsApp_Customer_Title", alter: "محادثة واتساب"),
+            subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.name),
+            confirmButton: Language.get("WhatsApp", alter: "فتح واتساب"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "message.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+                UIApplication.shared.open(url)
+            },
+            cancelBlock: nil
+        )
     }
 }
 
@@ -1299,19 +1377,13 @@ struct AdminCustomerDossierView: View {
             Menu {
                 if !customer.phone.isEmpty {
                     Button {
-                        let clean = customer.phone.filter { "0123456789+".contains($0) }
-                        if let url = URL(string: "tel://\(clean)") {
-                            UIApplication.shared.open(url)
-                        }
+                        handleCallAction()
                     } label: {
                         Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
                     }
 
                     Button {
-                        let clean = customer.phone.filter { $0.isNumber }
-                        if let url = URL(string: "https://wa.me/\(clean)") {
-                            UIApplication.shared.open(url)
-                        }
+                        handleWhatsAppAction()
                     } label: {
                         Label(Language.get("WhatsApp", alter: "واتساب"), systemImage: "message.fill")
                     }
@@ -1319,9 +1391,7 @@ struct AdminCustomerDossierView: View {
 
                 if !customer.email.isEmpty {
                     Button {
-                        if let url = URL(string: "mailto:\(customer.email)") {
-                            UIApplication.shared.open(url)
-                        }
+                        handleEmailAction()
                     } label: {
                         Label(Language.get("Email", alter: "بريد إلكتروني"), systemImage: "envelope.fill")
                     }
@@ -1443,24 +1513,16 @@ struct AdminCustomerDossierView: View {
 
     private var contactHubRow: some View {
         HStack(spacing: 10) {
-            contactButton(title: "اتصال هاتفي", icon: "phone.fill", color: AdminSurface.primary) {
-                guard !customer.phone.isEmpty else { return }
-                let clean = customer.phone.filter { "0123456789+".contains($0) }
-                guard let url = URL(string: "tel://\(clean)") else { return }
-                UIApplication.shared.open(url)
+            contactButton(title: Language.get("Call", alter: "اتصال هاتفي"), icon: "phone.fill", color: AdminSurface.primary) {
+                handleCallAction()
             }
 
-            contactButton(title: "محادثة واتساب", icon: "message.fill", color: Color(uiColor: .ppSuccess)) {
-                guard !customer.phone.isEmpty else { return }
-                let digits = customer.phone.filter { "0123456789".contains($0) }
-                guard let url = URL(string: "https://wa.me/\(digits)") else { return }
-                UIApplication.shared.open(url)
+            contactButton(title: Language.get("WhatsApp", alter: "محادثة واتساب"), icon: "message.fill", color: Color(uiColor: .ppSuccess)) {
+                handleWhatsAppAction()
             }
 
-            contactButton(title: "إرسال بريد", icon: "envelope.fill", color: Color(red: 0.12, green: 0.50, blue: 0.90)) {
-                guard !customer.email.isEmpty else { return }
-                guard let url = URL(string: "mailto:\(customer.email)") else { return }
-                UIApplication.shared.open(url)
+            contactButton(title: Language.get("Email", alter: "إرسال بريد"), icon: "envelope.fill", color: Color(red: 0.12, green: 0.50, blue: 0.90)) {
+                handleEmailAction()
             }
         }
     }
@@ -1489,6 +1551,86 @@ struct AdminCustomerDossierView: View {
         .buttonStyle(PlainButtonStyle())
     }
 
+    // MARK: - Action Handlers (PPAlertHelper Integrated)
+
+    private func handleCallAction() {
+        let clean = customer.phone.filter { "0123456789+".contains($0) }
+        guard !clean.isEmpty else {
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("Warning", alter: "تنبيه"),
+                subtitle: Language.get("Customer_No_Phone", alter: "لا يوجد رقم هاتف مسجل لهذا العميل")
+            )
+            return
+        }
+        let displayPhone = customer.formattedPhone.isEmpty ? customer.phone : customer.formattedPhone
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Call_Customer_Title", alter: "الاتصال بالعميل"),
+            subtitle: String(format: Language.get("Call_Customer_Subtitle_Format", alter: "هل ترغب في إجراء مكالمة هاتفية مع العميل (%@) على الرقم %@؟"), customer.name, displayPhone),
+            confirmButton: Language.get("Call", alter: "اتصال"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "phone.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard let url = URL(string: "tel://\(clean)") else { return }
+                UIApplication.shared.open(url)
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func handleWhatsAppAction() {
+        let digits = customer.phone.filter { "0123456789".contains($0) }
+        guard !digits.isEmpty else {
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("Warning", alter: "تنبيه"),
+                subtitle: Language.get("Customer_No_Phone", alter: "لا يوجد رقم هاتف مسجل لهذا العميل")
+            )
+            return
+        }
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("WhatsApp_Customer_Title", alter: "محادثة واتساب"),
+            subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.name),
+            confirmButton: Language.get("WhatsApp", alter: "فتح واتساب"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "message.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard let url = URL(string: "https://wa.me/\(digits)") else { return }
+                UIApplication.shared.open(url)
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func handleEmailAction() {
+        guard !customer.email.isEmpty else {
+            PPAlertHelper.showWarning(
+                in: nil,
+                title: Language.get("Warning", alter: "تنبيه"),
+                subtitle: Language.get("Customer_No_Email", alter: "العميل لا يمتلك بريداً إلكترونياً مسجلاً")
+            )
+            return
+        }
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Email_Customer_Title", alter: "إرسال بريد إلكتروني"),
+            subtitle: String(format: Language.get("Email_Customer_Subtitle_Format", alter: "هل ترغب في إرسال بريد إلكتروني إلى العميل على العنوان: %@؟"), customer.email),
+            confirmButton: Language.get("Send", alter: "إرسال"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "envelope.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                guard let url = URL(string: "mailto:\(customer.email)") else { return }
+                UIApplication.shared.open(url)
+            },
+            cancelBlock: nil
+        )
+    }
+
     // MARK: Lifecycle & Status Chamber
 
     private var lifecycleStatusChamber: some View {
@@ -1509,8 +1651,26 @@ struct AdminCustomerDossierView: View {
                     let isSel = selectedStatus == st
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
-                        selectedStatus = st
-                        viewModel.updateCustomerStatus(customer: customer, toStatus: st)
+                        if st == selectedStatus { return }
+                        if st == .blocked || st == .disabled {
+                            PPAlertHelper.showConfirmation(
+                                in: nil,
+                                title: Language.get("Customer_Status_Change_Title", alter: "تأكيد تغيير حالة الحساب"),
+                                subtitle: String(format: Language.get("Customer_Status_Change_Subtitle", alter: "هل أنت متأكد من تغيير حالة حساب العميل (%@) إلى '%@'؟"), customer.name, st.title),
+                                confirmButton: Language.get("Confirm", alter: "تأكيد التغيير"),
+                                cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                                icon: UIImage(systemName: st.icon),
+                                confirmBlock: { _, didConfirm in
+                                    guard didConfirm else { return }
+                                    selectedStatus = st
+                                    viewModel.updateCustomerStatus(customer: customer, toStatus: st)
+                                },
+                                cancelBlock: nil
+                            )
+                        } else {
+                            selectedStatus = st
+                            viewModel.updateCustomerStatus(customer: customer, toStatus: st)
+                        }
                     } label: {
                         VStack(spacing: 3) {
                             Image(systemName: st.icon)
@@ -1566,8 +1726,25 @@ struct AdminCustomerDossierView: View {
             Toggle("", isOn: Binding(
                 get: { isVerified },
                 set: { val in
-                    isVerified = val
-                    viewModel.toggleVerification(customer: customer)
+                    if !val {
+                        PPAlertHelper.showConfirmation(
+                            in: nil,
+                            title: Language.get("Unverify_Customer_Title", alter: "إلغاء توثيق الحساب"),
+                            subtitle: String(format: Language.get("Unverify_Customer_Subtitle", alter: "هل ترغب في سحب شارة التوثيق المعتمدة من حساب العميل (%@)؟"), customer.name),
+                            confirmButton: Language.get("Confirm", alter: "تأكيد الإلغاء"),
+                            cancelButton: Language.get("Cancel", alter: "تراجع"),
+                            icon: UIImage(systemName: "shield.slash"),
+                            confirmBlock: { _, didConfirm in
+                                guard didConfirm else { return }
+                                isVerified = false
+                                viewModel.toggleVerification(customer: customer)
+                            },
+                            cancelBlock: nil
+                        )
+                    } else {
+                        isVerified = true
+                        viewModel.toggleVerification(customer: customer)
+                    }
                 }
             ))
             .labelsHidden()
@@ -1680,8 +1857,25 @@ struct AdminCustomerDossierView: View {
                         Toggle("", isOn: Binding(
                             get: { isBlocked },
                             set: { val in
-                                restrictions[item.id] = val
-                                viewModel.updateRestriction(customer: customer, restrictionKey: item.id, isBlocked: val)
+                                if val {
+                                    PPAlertHelper.showConfirmation(
+                                        in: nil,
+                                        title: Language.get("Customer_Restriction_Apply_Title", alter: "تطبيق قيد الأمان"),
+                                        subtitle: String(format: Language.get("Customer_Restriction_Apply_Subtitle", alter: "هل أنت متأكد من تفعيل قيد '%@' على حساب العميل (%@)؟"), item.title, customer.name),
+                                        confirmButton: Language.get("Confirm", alter: "تأكيد التفعيل"),
+                                        cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                                        icon: UIImage(systemName: "lock.shield.fill"),
+                                        confirmBlock: { _, didConfirm in
+                                            guard didConfirm else { return }
+                                            restrictions[item.id] = true
+                                            viewModel.updateRestriction(customer: customer, restrictionKey: item.id, isBlocked: true)
+                                        },
+                                        cancelBlock: nil
+                                    )
+                                } else {
+                                    restrictions[item.id] = false
+                                    viewModel.updateRestriction(customer: customer, restrictionKey: item.id, isBlocked: false)
+                                }
                             }
                         ))
                         .labelsHidden()
@@ -1709,7 +1903,25 @@ struct AdminCustomerDossierView: View {
         VStack(spacing: 8) {
             // Password Reset Button
             Button {
-                viewModel.sendPasswordReset(email: customer.email)
+                guard !customer.email.isEmpty else {
+                    let msg = Language.get("Error_NoEmail", alter: "العميل لا يمتلك بريداً إلكترونياً مسجلاً")
+                    PPAlertHelper.showWarning(in: nil, title: Language.get("Warning", alter: "تنبيه"), subtitle: msg)
+                    viewModel.showToast(msg)
+                    return
+                }
+                PPAlertHelper.showConfirmation(
+                    in: nil,
+                    title: Language.get("Send_Password_Reset", alter: "إرسال رابط استعادة كلمة المرور"),
+                    subtitle: String(format: Language.get("PasswordReset_Confirm_Subtitle", alter: "هل ترغب في إرسال رابط إعادة تعيين كلمة المرور إلى البريد الإلكتروني: %@؟"), customer.email),
+                    confirmButton: Language.get("Send", alter: "إرسال الرابط"),
+                    cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                    icon: UIImage(systemName: "key.fill"),
+                    confirmBlock: { _, didConfirm in
+                        guard didConfirm else { return }
+                        viewModel.sendPasswordReset(email: customer.email)
+                    },
+                    cancelBlock: nil
+                )
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "key.fill")

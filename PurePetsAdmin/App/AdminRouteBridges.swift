@@ -533,3 +533,113 @@ import SwiftUI
         return host
     }
 }
+
+@objc public final class AdminModerationHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let host = UIHostingController(rootView: AdminModerationView { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+@objc @MainActor public final class AdminModerationHostingBridge: NSObject {
+    @objc(makeViewController)
+    public static func makeViewController() -> UIViewController {
+        return makeViewController(onDismiss: nil)
+    }
+
+    @objc(makeViewControllerWithOnDismiss:)
+    public static func makeViewController(onDismiss: (() -> Void)? = nil) -> UIViewController {
+        let host = UIHostingController(rootView: AdminModerationView {
+            if let onDismiss = onDismiss {
+                onDismiss()
+            } else {
+                PPAdminNavigationFallback.popOrDismiss()
+            }
+        })
+        host.view.backgroundColor = .ppBackground
+        return host
+    }
+}
+
+@objc public final class AdminNotificationComposerHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let host = UIHostingController(rootView: AdminNotificationComposerView { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+@objc public final class AdminNotificationSettingsHostingController: UIViewController {
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        let host = UIHostingController(rootView: AdminNotificationSettingsView { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+}
+
+
+

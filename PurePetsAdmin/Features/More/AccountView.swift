@@ -820,7 +820,7 @@ struct AdminAccountView: View {
             ) {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 if let onPush = onPushViewController {
-                    onPush(NotificationSettingsViewController())
+                    onPush(AdminNotificationSettingsHostingController())
                 } else {
                     PPAdminNavigationFallback.popOrDismiss()
                 }

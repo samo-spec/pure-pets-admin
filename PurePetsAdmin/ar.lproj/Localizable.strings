@@ -605,6 +605,52 @@
 "NotificationComposer_Partial_Title" = "تمت الجدولة جزئيًا";
 "NotificationComposer_Failed_Message" = "تعذرت جدولة هذا الإشعار.";
 "NotificationComposer_Recipient_Limit" = "اختر ما لا يزيد عن %ld مستلمين محددين.";
+"NotificationComposer_Title" = "إنشاء وإرسال الإشعارات";
+"NotificationComposer_Preview_LockScreen" = "شاشة القفل";
+"NotificationComposer_Preview_DynamicIsland" = "الجزيرة التفاعلية";
+"NotificationComposer_Templates_Button" = "القوالب";
+"NotificationComposer_Action_Reset" = "إعادة تعيين";
+"NotificationComposer_Templates_SectionTitle" = "نماذج وقوالب جاهزة";
+"NotificationComposer_Audience_SectionTitle" = "تحديد الجمهور المستهدف";
+"NotificationComposer_Audience_Everyone" = "الجميع";
+"NotificationComposer_Audience_EveryoneSub" = "كافة الأجهزة والمشتركين";
+"NotificationComposer_Audience_AllUsers" = "العملاء";
+"NotificationComposer_Audience_AllUsersSub" = "حسابات المستخدمين المسجلين";
+"NotificationComposer_Audience_Admins" = "فريق الإدارة";
+"NotificationComposer_Audience_AdminsSub" = "لوحة التحكم والعمليات";
+"NotificationComposer_Audience_Specific" = "مستلمون محددون";
+"NotificationComposer_Audience_SpecificSub" = "تحديد قائمة مخصصة";
+"NotificationComposer_SelectedRecipients" = "المستلمون المختارون";
+"NotificationComposer_AddRecipientsPrompt" = "اضغط هنا لاختيار المستلمين من دليل المستخدمين";
+"NotificationComposer_ManageRecipients" = "إدارة القائمة";
+"NotificationComposer_Payload_SectionTitle" = "محتوى وتصنيف الإشعار";
+"NotificationComposer_TitlePlaceholder" = "اكتب عنواناً جذاباً ومختصراً...";
+"NotificationComposer_BodyPlaceholder" = "اكتب تفاصيل الإشعار بوضوح هنا، ليظهر للعميل عند فتح الإشعار أو على شاشة القفل...";
+"NotificationComposer_Simulator_Title" = "محاكي شاشة القفل التفاعلي";
+"NotificationComposer_Simulator_Hint" = "تنعكس الحقول المكتوبة مباشرةً وبدقة البكسل كما ستظهر على هواتف المستخدمين بنظام iOS.";
+"NotificationComposer_Broadcast_Confirm_Title" = "تأكيد إرسال إشعار عام";
+"NotificationComposer_Broadcast_Confirm_Message" = "أنت على وشك إرسال إشعار فوري لجميع الأجهزة النشطة في التطبيق. هل ترغب في المتابعة؟";
+"NotificationComposer_Action_ConfirmBroadcast" = "نعم، بث الإشعار الآن";
+"NotificationComposer_Status_Ready" = "جاهز للبث — اضغط للإرسال الفوري";
+"NotificationComposer_Validation_TitleRequired" = "يرجى كتابة عنوان الإشعار";
+"NotificationComposer_Validation_BodyRequired" = "يرجى كتابة نص محتوى الإشعار";
+"NotificationComposer_Failed_NoRecipients" = "لم يتم العثور على أجهزة نشطة لاستقبال الإشعار.";
+"NotificationComposer_Receipt_SuccessTitle" = "تم بث الإشعار بنجاح!";
+"NotificationComposer_Receipt_Key" = "معرف العملية";
+"NotificationComposer_Receipt_Recipients" = "الأجهزة المستهدفة";
+"NotificationComposer_Receipt_Pruned" = "أجهزة غير نشطة";
+"NotificationComposer_Action_SendAnother" = "إنشاء إشعار آخر";
+"NotificationComposer_Action_ReturnToDashboard" = "العودة إلى لوحة التحكم";
+"NotificationComposer_Templates_ModalTitle" = "نماذج الإشعارات السريعة";
+"SearchUsers" = "بحث بالاسم أو الهاتف أو البريد أو المعرف...";
+"UsersAvailable" = "مستخدم متاح";
+"Selected" = "محدد";
+"SelectAll" = "تحديد الكل";
+"ClearSelection" = "إلغاء التحديد";
+"ClearAll" = "مسح الكل";
+"ConfirmRecipients" = "تأكيد المستلمين";
+"SelectUsers" = "اختيار المستلمين";
+"LivePreview" = "معاينة فورية";
 
 /* Notifications screen */
 "NotificationsTitle" = "الإشعارات";
@@ -2300,6 +2346,24 @@
 "NotificationSettings_CategoryWarningSubtitle" = "تحذيرات قد تحتاج إلى انتباه المسؤول.";
 "NotificationSettings_EnabledCount_Format" = "%ld من %ld فئات مفعلة";
 "NotificationSettings_SessionNote" = "تحتفظ عناصر التحكم بقيمها الحالية ما دامت شاشة الإعدادات هذه مفتوحة.";
+"NotificationSettings_Title" = "إعدادات وقنوات الإشعارات";
+"NotificationSettings_Gateway_Title" = "بوابة إشعارات النظام (APNs)";
+"NotificationSettings_Action_TestPush" = "فحص تشخيصي";
+"NotificationSettings_EnableInSettings_Prompt" = "الإشعارات معطلة في إعدادات iOS — اضغط لتفعيلها";
+"NotificationSettings_Channels_Title" = "قنوات الإشعارات الإدارية";
+"NotificationSettings_Audio_SectionTitle" = "الأصوات والتغذية اللمسية وساعات الهدوء";
+"NotificationSettings_Sound_Title" = "أصوات التنبيه المخصصة";
+"NotificationSettings_Sound_Sub" = "تشغيل نغمة صوتية عند استلام إشعار جديد";
+"NotificationSettings_Haptics_Title" = "الاهتزاز والتغذية اللمسية";
+"NotificationSettings_Haptics_Sub" = "نبضات فيزيائية لمسية تنبيهية فورية";
+"NotificationSettings_QuietHours_Title" = "وضع الهدوء المجدول (DND)";
+"NotificationSettings_QuietHours_Sub" = "كتم التنبيهات غير الحرجة أثناء ساعات الراحة";
+"NotificationSettings_Action_Sync" = "مزامنة التفضيلات";
+"NotificationSettings_Action_Reset" = "استعادة الافتراضي";
+"NotificationSettings_Action_SyncWithCloud" = "حفظ ومزامنة التفضيلات مع السحابة";
+"NotificationSettings_Action_ResetDefaults" = "استعادة الإعدادات الافتراضية للقنوات";
+"NotificationSettings_Reset_Confirm_Title" = "إعادة ضبط إعدادات القنوات";
+"NotificationSettings_Reset_Confirm_Message" = "هل ترغب في إعادة جميع إعدادات القنوات والأصوات إلى وضعها الافتراضي؟";
 
 "AddStaffMember" = "إنشاء عضو فريق";
 "AddStaffMemberSubtitle" = "أنشئ حساب فريق بوصول مضبوط.";
@@ -3572,6 +3636,12 @@
 "AdminCommandCenter_Role" = "الدور";
 "AdminCommandCenter_NotConfirmed" = "غير مؤكد";
 "AdminCommandCenter_Refresh" = "تحديث";
+
+/* Command Center workplace header */
+"AdminCommandCenter_Header_WorkingBranch" = "فرع العمل";
+"AdminCommandCenter_Header_Switch" = "تبديل";
+"AdminCommandCenter_Header_FixedBranchHint" = "لا يتوفر فرع آخر للتبديل إليه.";
+"AdminCommandCenter_Header_Language_Format" = "التبديل إلى %@";
 "AdminCommandCenter_Retry" = "إعادة المحاولة";
 "AdminCommandCenter_SourceIssue_SheetTitle" = "تفاصيل مشكلة المصدر";
 "AdminCommandCenter_SourceIssue_SheetDetail" = "تعذّر على لوحة العمليات تأكيد البيانات الحالية من هذه المصادر. تبقى مسارات العمل الأخرى المتاحة قابلة للاستخدام.";
@@ -3637,6 +3707,9 @@
 "AdminQuickActions_Users_Subtitle" = "الحسابات والصلاحيات";
 "AdminQuickActions_POS" = "نقطة البيع";
 "AdminQuickActions_POS_Subtitle" = "بيع فوري وكاشير";
+"AdminQuickActions_POS_Action" = "ابدأ البيع";
+"AdminQuickActions_POS_Tag" = "كاشير • باركود";
+"AdminQuickActions_POS_Live" = "مباشر";
 "AdminQuickActions_Notifications" = "الإشعارات";
 "AdminQuickActions_Broadcast" = "إرسال إشعار";
 "AdminQuickActions_Broadcast_Subtitle" = "بث فوري للجميع";
@@ -5335,7 +5408,27 @@
 "StaffRole_Sales" = "مبيعات";
 "StaffRole_PaymentsManager" = "مدير المدفوعات";
 "StaffRole_SupportAgent" = "وكيل دعم";
+"StaffRole_ContentEditor" = "محرر محتوى";
+"StaffRole_ContentPublisher" = "ناشر محتوى";
 "StaffRole_Viewer" = "مشاهد";
+"StaffRole_SecurityAdmin" = "مسؤول الأمان";
+"StaffRole_ComplianceAuditor" = "مدقق الامتثال";
+
+"StaffRole_SUPER_ADMIN" = "مدير عام";
+"StaffRole_OWNER" = "مالك النظام";
+"StaffRole_OPERATIONS_MANAGER" = "مدير العمليات";
+"StaffRole_BRANCH_MANAGER" = "مدير فرع";
+"StaffRole_INVENTORY_MANAGER" = "مدير المخزون";
+"StaffRole_ACCOUNTANT" = "محاسب";
+"StaffRole_WAREHOUSE" = "مسؤول مستودع";
+"StaffRole_SALES" = "مبيعات";
+"StaffRole_PAYMENTS_MANAGER" = "مدير المدفوعات";
+"StaffRole_SUPPORT_AGENT" = "وكيل دعم";
+"StaffRole_CONTENT_EDITOR" = "محرر محتوى";
+"StaffRole_CONTENT_PUBLISHER" = "ناشر محتوى";
+"StaffRole_VIEWER" = "مشاهد";
+"StaffRole_SECURITY_ADMIN" = "مسؤول الأمان";
+"StaffRole_COMPLIANCE_AUDITOR" = "مدقق الامتثال";
 
 /* Working Branch Scope & Permissions */
 "Staff_Branch_Scope_Title" = "نطاق العمل وفروع الصلاحيات";
