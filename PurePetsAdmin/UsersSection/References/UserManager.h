@@ -1,17 +1,17 @@
 
 
+#import <Foundation/Foundation.h>
+#import "../SecFil/PPRolePermission.h"
+
 // In UserManager.h
 extern NSString * _Nullable const UserManagerAuthStateDidChangeNotification;
 extern NSString * _Nullable const LanguageDidChangeNotification;
-
-
 
 typedef NS_ENUM(NSInteger, PPUserCachePolicy) {
     PPUserCachePolicyMemoryFirstThenServer = 0,  // default: memory → disk → Firestore
     PPUserCachePolicyCacheOnly,                  // memory/disk only (no network)
     PPUserCachePolicyServerOnly                 // skip caches; fetch Firestore and refresh caches
 };
-
 
 @class UserModel;
 @class LOTAnimationView;

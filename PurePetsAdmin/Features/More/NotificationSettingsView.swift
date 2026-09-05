@@ -109,7 +109,7 @@ final class AdminNotificationSettingsViewModel: ObservableObject {
 
     func refreshSystemStatus() {
         isCheckingPermissions = true
-        PPNotificationsManager.sharedManager().checkNotificationPermissions { [weak self] granted, provisional in
+        PPNotificationsManager.shared().checkNotificationPermissions { [weak self] granted, provisional in
             guard let self = self else { return }
             Task { @MainActor in
                 self.systemPermissionGranted = granted
@@ -118,8 +118,8 @@ final class AdminNotificationSettingsViewModel: ObservableObject {
             }
         }
 
-        self.isTokenAvailable = PPNotificationsManager.sharedManager().isTokenAvailable
-        self.deviceTokenString = PPNotificationsManager.sharedManager().deviceToken
+        self.isTokenAvailable = PPNotificationsManager.shared().isTokenAvailable
+        self.deviceTokenString = PPNotificationsManager.shared().deviceToken
     }
 
     func openSystemSettings() {
@@ -200,43 +200,49 @@ struct AdminNotificationSettingsView: View {
 
     var body: some View {
         ZStack {
-            AdminSurface.background.ignoresSafeArea()
-
-            VStack(spacing: 0) {
-                sovereignNavigationBar
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.sectionSpacing) {
-                        // Toast Banners
-                        if let toast = viewModel.diagnosticSuccessToast {
-                            toastBanner(message: toast, isSuccess: true)
-                        }
-                        if let toast = viewModel.syncSuccessToast {
-                            toastBanner(message: toast, isSuccess: true)
-                        }
-
-                        // HUB 1: APNs Gateway & Permissions Cockpit
-                        apnsGatewayCockpitSection
-
-                        // Summary Telemetry Pill
-                        summaryTelemetryBar
-
-                        // HUB 2: Core Notification Channels Bento Matrix
-                        channelsBentoMatrixSection
-
-                        // HUB 3: Tactical Sound, Haptics & Quiet Hours
-                        audioAndQuietHoursSection
-
-                        // HUB 4: Cloud Sync & Factory Reset Actions
-                        actionsFooterSection
-
-                        Spacer(minLength: 40)
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: AdminSpacing.sectionSpacing) {
+                    // Toast Banners
+                    if let toast = viewModel.diagnosticSuccessToast {
+                        toastBanner(message: toast, isSuccess: true)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.md)
+                    if let toast = viewModel.syncSuccessToast {
+                        toastBanner(message: toast, isSuccess: true)
+                    }
+
+                    // HUB 1: APNs Gateway & Permissions Cockpit
+                    apnsGatewayCockpitSection
+
+                    // Summary Telemetry Pill
+                    summaryTelemetryBar
+
+                    // HUB 2: Core Notification Channels Bento Matrix
+                    channelsBentoMatrixSection
+
+                    // HUB 3: Tactical Sound, Haptics & Quiet Hours
+                    audioAndQuietHoursSection
+
+                    // HUB 4: Cloud Sync & Factory Reset Actions
+                    actionsFooterSection
+
+                    Spacer(minLength: 40)
                 }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, AdminSpacing.md)
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                sovereignNavigationBar
+                    .background(
+                        AdminSurface.background
+                            .ignoresSafeArea(edges: .top)
+                    )
+                    .overlay(
+                        Divider().background(AdminSurface.hairline),
+                        alignment: .bottom
+                    )
             }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .alert(
             Language.get("NotificationSettings_Reset_Confirm_Title", alter: "إعادة ضبط إعدادات القنوات"),

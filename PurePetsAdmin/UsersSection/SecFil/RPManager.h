@@ -14,6 +14,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "PPRolePermission.h"
 
 @class FIRCollectionReference;
 @class FIRDocumentReference;

@@ -12,7 +12,7 @@
 #import "PPStaffAuth.h"
 
 NS_ASSUME_NONNULL_BEGIN
-typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError * _Nullable error) NS_SWIFT_SENDABLE;
+typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError * _Nullable error);
 
 @interface AdminService : NSObject
 

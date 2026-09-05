@@ -441,7 +441,21 @@ public struct AdminPetsHotelReservationCard: View {
 public struct AdminPetsHotelReservationDetailSheet: View {
     let reservation: AdminHotelReservation
     @ObservedObject var viewModel: AdminPetsHotelViewModel
+    public var isPushMode: Bool = true
+    public var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    public init(
+        reservation: AdminHotelReservation,
+        viewModel: AdminPetsHotelViewModel,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.reservation = reservation
+        self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
 
     @State private var isExtending: Bool = false
     @State private var newDepartureDate: Date = Date()
@@ -489,6 +503,7 @@ public struct AdminPetsHotelReservationDetailSheet: View {
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $isExtending) {
             AdminPetsHotelExtendStayDialog(reservation: reservation, viewModel: viewModel)
@@ -505,8 +520,14 @@ public struct AdminPetsHotelReservationDetailSheet: View {
             title: reservation.reservationNumber.isEmpty ? Language.get("Hotel_Res_DetailTitle", alter: "تفاصيل الحجز") : reservation.reservationNumber,
             subtitle: "\(reservation.petName) • \(reservation.wing.title)",
             statusDotColor: reservation.status.color,
-            isModal: true,
-            onBack: { dismiss() }
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack = onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
+            }
         ) {
             HStack(spacing: 4) {
                 Circle()

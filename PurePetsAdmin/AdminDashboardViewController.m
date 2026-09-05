@@ -333,20 +333,19 @@ UIViewController *PPAdminCreateCommandSpineDashboardController(void) {
     BOOL isDark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
     UIColor *canvas = PPAdminDashboardCanvasColor(self.traitCollection);
     UIColor *secondary = AppBackgroundClrDarker;
-    UIColor *signature = AppPrimaryClr;
-    UIColor *warm = AppPrimaryClrShiner;
+    UIColor *neutralLight = isDark ? [UIColor colorWithWhite:1.0 alpha:0.04] : [UIColor colorWithWhite:0.0 alpha:0.02];
 
     self.backgroundColor = canvas;
     self.baseLayer.colors = @[(id)canvas.CGColor, (id)secondary.CGColor, (id)canvas.CGColor];
     self.baseLayer.locations = @[@0.0, @0.55, @1.0];
     self.topLightLayer.colors = @[
-        (id)[signature colorWithAlphaComponent:isDark ? 0.11 : 0.075].CGColor,
-        (id)[signature colorWithAlphaComponent:isDark ? 0.035 : 0.020].CGColor,
+        (id)neutralLight.CGColor,
+        (id)[neutralLight colorWithAlphaComponent:0.008].CGColor,
         (id)AppClearClr.CGColor
     ];
     self.lowerLightLayer.colors = @[
-        (id)[warm colorWithAlphaComponent:isDark ? 0.065 : 0.050].CGColor,
-        (id)[warm colorWithAlphaComponent:0.018].CGColor,
+        (id)neutralLight.CGColor,
+        (id)[neutralLight colorWithAlphaComponent:0.008].CGColor,
         (id)AppClearClr.CGColor
     ];
 }

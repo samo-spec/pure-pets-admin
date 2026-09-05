@@ -59,6 +59,7 @@
 #import "ServicesSection/PPServicesListViewController.h"
 #import "ThirdParty/PPCells/PPChatsViewController.h"
 #import "ThirdParty/PPCells/PPSettingsViewController.h"
+#import "UsersSection/SecFil/PPRolePermission.h"
 #import "UsersSection/References/UserManager.h"
 #import "UsersSection/UserController/PPStaffManagementViewController.h"
 #import "UsersSection/UserController/UserManagementController.h"
@@ -67,8 +68,8 @@
 #import "BranchSection/PPBranchContextManager.h"
 #import "BranchSection/PPBranchEditorViewController.h"
 #import "UsersSection/SecFil/RPManager.h"
-#import "UsersSection/SecFil/PPRolePermission.h"
 #import "UsersSection/SecFil/AdminService.h"
+#import "UsersSection/SecFil/PPStaffAuthCatalog.generated.h"
 #import "UsersSection/SecFil/PPStaffAuth.h"
 #import "UsersSection/References/UserModel.h"
 FOUNDATION_EXPORT UIViewController * _Nonnull PPAdminCreateCommandSpineDashboardController(void);

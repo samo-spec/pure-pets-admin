@@ -90,22 +90,30 @@ extension PetAccessory {
         isLivePet && (inventoryMode?.uppercased() == kPOSIndividualInventoryMode)
     }
 
+    /// Authoritative stock for the active branch, honoring branchInventory documents
+    /// for both live pets and standard items, falling back to catalog attributes only when unsegmented.
+    @MainActor
+    func pos_branchStock(activeBranch: String? = nil) -> Int {
+        guard active && !isBlocked && !isDeleted && !isDisabled && !isArchived && !noStock else {
+            return 0
+        }
+        let branchId = (activeBranch ?? BranchContextStore.shared.activeBranch?.branchID)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let branchId, !branchId.isEmpty {
+            if let branchRecord = PPBranchInventoryService.shared.inventory(for: accessoryID) {
+                return branchRecord.availableQuantity
+            }
+            let itemBranch = (storeID ?? branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != branchId {
+                return 0
+            }
+        }
+        return PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
+    }
+
     /// Console parity: `isPosCatalogSellable` (per active branch).
     @MainActor
     var pos_isSellable: Bool {
-        guard active && !isBlocked && !isDeleted && !isDisabled && !isArchived else { return false }
-        if isLivePet {
-            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
-            if let activeBranch, !activeBranch.isEmpty {
-                let itemBranch = storeID ?? branchID ?? ""
-                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
-                    return false
-                }
-            }
-            return quantity > 0 && !noStock
-        }
-        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
-        return branchStock > 0 && !noStock
+        pos_branchStock() > 0
     }
 
     /// The canonical catalog unit price the server validates against.
@@ -288,10 +296,23 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     let unitID: String
     let ringTag: String
     let sellingPrice: Double
+    let currentBranchId: String
 
     var id: String { unitID }
     var label: String { ringTag.isEmpty ? unitID : ringTag }
-    var isSelectable: Bool { sellingPrice > 0 }
+    func isSelectable(in activeBranch: String?) -> Bool {
+        guard sellingPrice > 0 else { return false }
+        let branch = activeBranch?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let branch, !branch.isEmpty, !currentBranchId.isEmpty {
+            return currentBranchId == branch
+        }
+        return true
+    }
+
+    @MainActor
+    var isSelectable: Bool {
+        isSelectable(in: BranchContextStore.shared.activeBranch?.branchID)
+    }
 }
 
 /// Sendable projection of an Objective-C/Firebase failure. The callable
@@ -407,7 +428,12 @@ final class POSUnitPickerState: ObservableObject {
         PPPOSService.shared().listAvailableUnits(forProductID: productID, cursor: cursor) { [weak self] units, nextCursor, hasMore, error in
             // Project to Sendable values before crossing to the main actor.
             let projected: [POSAnimalUnit] = (units ?? []).map {
-                POSAnimalUnit(unitID: $0.unitID, ringTag: $0.ringTag, sellingPrice: $0.sellingPrice)
+                POSAnimalUnit(
+                    unitID: $0.unitID,
+                    ringTag: $0.ringTag,
+                    sellingPrice: $0.sellingPrice,
+                    currentBranchId: $0.currentBranchId ?? ""
+                )
             }
             let cursorValue = nextCursor
             let hasMoreValue = hasMore
@@ -601,6 +627,7 @@ final class POSFastSellViewModel: ObservableObject {
     ]
 
     func startListening() {
+        PPBranchInventoryService.shared.startListeningIfNeeded()
         listener?.remove()
         listener = nil
         isCatalogLoading = allAccessories.isEmpty
@@ -668,7 +695,7 @@ final class POSFastSellViewModel: ObservableObject {
             ])
             return false
         }
-        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+        let branchStock = accessory.pos_branchStock()
         if let idx = cartIndex(for: accessory.accessoryID) {
             guard cartItems[idx].quantity < branchStock else {
                 POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add more '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
@@ -792,7 +819,7 @@ final class POSFastSellViewModel: ObservableObject {
     func increaseQuantity(_ item: POSCartItem) {
         guard let idx = cartItems.firstIndex(where: { $0.id == item.id }) else { return }
         guard !cartItems[idx].isIndividuallyTracked else { return }
-        let branchStock = PPBranchInventoryService.shared.availableStock(for: cartItems[idx].accessory.accessoryID, fallback: cartItems[idx].accessory.quantity)
+        let branchStock = cartItems[idx].accessory.pos_branchStock()
         guard cartItems[idx].quantity < branchStock else { return }
         cartItems[idx].quantity += 1
         POSLogger.info("cart.quantity_increased", category: "cart", message: "Increased '\(item.accessory.name)' quantity to \(cartItems[idx].quantity)", metadata: [
@@ -3174,7 +3201,7 @@ private struct POSCustomCashSheet: View {
                                         Text(accessory.name)
                                             .font(AdminType.calloutBold)
                                             .foregroundColor(AdminSurface.primaryText)
-                                        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+                                        let branchStock = accessory.pos_branchStock()
                                         Text(stockLabel(for: accessory))
                                             .font(AdminType.caption2)
                                             .foregroundColor(
@@ -3242,7 +3269,7 @@ private struct POSCustomCashSheet: View {
 
     private func stockLabel(for accessory: PetAccessory) -> String {
         let stockTitle = Language.get("Stock", alter: "المخزون")
-        let branchStock = PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+        let branchStock = accessory.pos_branchStock()
         return "\(stockTitle): \(branchStock)"
     }
 }
@@ -3843,10 +3870,14 @@ private struct ApexAnimalSpecimenCard: View {
                                     .font(AdminType.caption2)
                                     .foregroundColor(emeraldReady)
                             }
-                        } else {
+                        } else if unit.sellingPrice <= 0 {
                             Text(Language.get("POS_ExactAnimalPriceRequired", alter: "يحتاج تسعير"))
                                 .font(AdminType.caption2Bold)
                                 .foregroundColor(.orange)
+                        } else {
+                            Text(Language.get("AtAnotherBranch", alter: "في فرع آخر"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(.secondary)
                         }
                     }
                 }
@@ -3863,6 +3894,14 @@ private struct ApexAnimalSpecimenCard: View {
                         Text(Language.get("POS_UnitDirectPrice", alter: "سعر السجل"))
                             .font(.system(size: 10, weight: .regular))
                             .foregroundColor(AdminSurface.secondaryText)
+                    } else if unit.sellingPrice > 0 {
+                        Text(currency(unit.sellingPrice))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        Text(Language.get("POS_UnitDirectPrice", alter: "سعر السجل"))
+                            .font(.system(size: 10, weight: .regular))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
                     } else {
                         Text("—")
                             .font(AdminType.headline)
@@ -3870,6 +3909,7 @@ private struct ApexAnimalSpecimenCard: View {
                     }
                 }
             }
+            .opacity(unit.isSelectable ? 1.0 : 0.55)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(
@@ -3981,17 +4021,7 @@ private struct POSCatalogTile: View {
         if accessory.noStock || accessory.isBlocked || accessory.isDeleted || accessory.isDisabled || accessory.isArchived {
             return 0
         }
-        if accessory.isLivePet {
-            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
-            if let activeBranch, !activeBranch.isEmpty {
-                let itemBranch = accessory.storeID ?? accessory.branchID ?? ""
-                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
-                    return 0
-                }
-            }
-            return accessory.quantity
-        }
-        return PPBranchInventoryService.shared.availableStock(for: accessory.accessoryID, fallback: accessory.quantity)
+        return accessory.pos_branchStock()
     }
 
     @MainActor
@@ -4839,357 +4869,10 @@ struct POSCategoryLensSheet: View {
     }
 }
 
-// MARK: - Permission-Aware Barcode Scanner
+// MARK: - Barcode Scanner Centralized
+// POSBarcodeScannerScreen, POSBarcodeCameraView, and ScannerViewController are centralized in AdminSharedComponents.swift for app-wide reuse across all barcode fields.
 
-private enum POSBarcodeScannerPhase: Equatable {
-    case permissionRequired
-    case requesting
-    case ready
-    case denied
-    case unavailable
-}
 
-struct POSBarcodeScannerScreen: View {
-    let onResult: (String) -> Void
-    let onCancel: () -> Void
-
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var phase: POSBarcodeScannerPhase
-
-    init(onResult: @escaping (String) -> Void, onCancel: @escaping () -> Void) {
-        self.onResult = onResult
-        self.onCancel = onCancel
-        _phase = State(initialValue: Self.phaseForCurrentAuthorization())
-    }
-
-    var body: some View {
-        ZStack {
-            if phase == .ready {
-                POSBarcodeCameraView(
-                    onResult: onResult,
-                    onFailure: { phase = .unavailable }
-                )
-                .ignoresSafeArea()
-                Color.black.opacity(0.24).ignoresSafeArea().allowsHitTesting(false)
-                scannerChrome
-            } else {
-                AdminSurface.background.ignoresSafeArea()
-                scannerStateContent
-            }
-        }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .onAppear { refreshAuthorization() }
-        .onChange(of: scenePhase) { value in
-            if value == .active { refreshAuthorization() }
-        }
-    }
-
-    private var scannerChrome: some View {
-        VStack(spacing: 0) {
-            scannerHeader(dark: true)
-            Spacer()
-
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                .stroke(Color.white.opacity(0.92), lineWidth: 3)
-                .frame(maxWidth: 310, minHeight: 190, maxHeight: 220)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                        .stroke(AdminSurface.primary.opacity(0.9), lineWidth: 1)
-                        .padding(8)
-                )
-                .accessibilityHidden(true)
-
-            Text(Language.get("POS_Scanner_Guidance", alter: "ضع رمز QR أو الباركود بالكامل داخل الإطار"))
-                .font(AdminType.calloutBold)
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, AdminSpacing.base)
-                .padding(.vertical, AdminSpacing.md)
-                .background(Color.black.opacity(0.62), in: Capsule())
-                .padding(.top, AdminSpacing.lg)
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private var scannerStateContent: some View {
-        VStack(spacing: AdminSpacing.lg) {
-            scannerHeader(dark: false)
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(AdminSurface.primarySoft)
-                    .frame(width: 104, height: 104)
-                Image(systemName: scannerStateIcon)
-                    .font(.system(size: 42, weight: .light))
-                    .foregroundColor(AdminSurface.primary)
-            }
-
-            VStack(spacing: AdminSpacing.sm) {
-                Text(scannerStateTitle)
-                    .font(AdminType.title2)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .multilineTextAlignment(.center)
-                Text(scannerStateSubtitle)
-                    .font(AdminType.body)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.horizontal, AdminSpacing.xl)
-
-            scannerStateAction
-                .padding(.horizontal, AdminSpacing.screenMargin)
-
-            Spacer()
-            Spacer()
-        }
-    }
-
-    private func scannerHeader(dark: Bool) -> some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Button { onCancel() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(dark ? .white : AdminSurface.primary)
-                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                    .background(dark ? Color.black.opacity(0.55) : AdminSurface.control, in: Circle())
-            }
-            .accessibilityLabel(Language.get("POS_Close", alter: "إغلاق"))
-
-            Text(Language.get("POS_Scanner_Title", alter: "مسح رمز المنتج"))
-                .font(AdminType.headline)
-                .foregroundColor(dark ? .white : AdminSurface.primaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, AdminSpacing.sm)
-    }
-
-    @ViewBuilder
-    private var scannerStateAction: some View {
-        switch phase {
-        case .permissionRequired:
-            scannerActionButton(Language.get("POS_Scanner_Allow", alter: "السماح بالكاميرا"), icon: "camera.fill") {
-                requestCameraAccess()
-            }
-        case .requesting:
-            HStack(spacing: AdminSpacing.sm) {
-                ProgressView().tint(AdminSurface.primary)
-                Text(Language.get("POS_Scanner_Requesting", alter: "بانتظار إذن الكاميرا…"))
-                    .font(AdminType.calloutBold)
-                    .foregroundColor(AdminSurface.secondaryText)
-            }
-            .frame(minHeight: 52)
-        case .denied:
-            scannerActionButton(Language.get("POS_Scanner_OpenSettings", alter: "فتح الإعدادات"), icon: "gearshape.fill") {
-                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(url)
-            }
-        case .unavailable:
-            scannerActionButton(Language.get("POS_Scanner_Retry", alter: "إعادة فحص الكاميرا"), icon: "arrow.clockwise") {
-                refreshAuthorization()
-            }
-        case .ready:
-            EmptyView()
-        }
-    }
-
-    private func scannerActionButton(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: icon)
-                .font(AdminType.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
-        }
-    }
-
-    private var scannerStateIcon: String {
-        switch phase {
-        case .permissionRequired, .requesting: return "camera.viewfinder"
-        case .denied: return "camera.fill.badge.xmark"
-        case .unavailable: return "exclamationmark.triangle.fill"
-        case .ready: return "barcode.viewfinder"
-        }
-    }
-
-    private var scannerStateTitle: String {
-        switch phase {
-        case .permissionRequired, .requesting:
-            return Language.get("POS_Scanner_PermissionTitle", alter: "استخدم الكاميرا لمسح الرمز")
-        case .denied:
-            return Language.get("POS_Scanner_DeniedTitle", alter: "الوصول إلى الكاميرا متوقف")
-        case .unavailable:
-            return Language.get("POS_Scanner_UnavailableTitle", alter: "الماسح غير متاح")
-        case .ready:
-            return Language.get("POS_Scanner_Title", alter: "مسح رمز المنتج")
-        }
-    }
-
-    private var scannerStateSubtitle: String {
-        switch phase {
-        case .permissionRequired, .requesting:
-            return Language.get("POS_Scanner_PermissionSubtitle", alter: "تُستخدم الكاميرا لقراءة رمز المنتج فقط، ثم يُبحث عنه في الكتالوج الحالي.")
-        case .denied:
-            return Language.get("POS_Scanner_DeniedSubtitle", alter: "فعّل الكاميرا للتطبيق من الإعدادات، ثم عُد للمسح.")
-        case .unavailable:
-            return Language.get("POS_Scanner_UnavailableSubtitle", alter: "تعذر تشغيل كاميرا أو قارئ رموز متوافق على هذا الجهاز.")
-        case .ready:
-            return ""
-        }
-    }
-
-    private func requestCameraAccess() {
-        phase = .requesting
-        AVCaptureDevice.requestAccess(for: .video) { granted in
-            DispatchQueue.main.async {
-                phase = granted ? .ready : .denied
-            }
-        }
-    }
-
-    private func refreshAuthorization() {
-        phase = Self.phaseForCurrentAuthorization()
-    }
-
-    private static func phaseForCurrentAuthorization() -> POSBarcodeScannerPhase {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: return .ready
-        case .notDetermined: return .permissionRequired
-        case .denied, .restricted: return .denied
-        @unknown default: return .unavailable
-        }
-    }
-}
-
-private struct POSBarcodeCameraView: UIViewControllerRepresentable {
-    let onResult: (String) -> Void
-    let onFailure: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onResult: onResult) }
-
-    func makeUIViewController(context: Context) -> ScannerViewController {
-        let controller = ScannerViewController()
-        controller.metadataDelegate = context.coordinator
-        controller.onFailure = onFailure
-        return controller
-    }
-
-    func updateUIViewController(_ uiViewController: ScannerViewController, context: Context) {
-        context.coordinator.onResult = onResult
-        uiViewController.onFailure = onFailure
-    }
-
-    final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
-        var onResult: (String) -> Void
-        private var didEmitResult = false
-
-        init(onResult: @escaping (String) -> Void) {
-            self.onResult = onResult
-        }
-
-        func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
-            guard !didEmitResult,
-                  let readable = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-                  let value = readable.stringValue,
-                  !value.isEmpty else { return }
-            didEmitResult = true
-            AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-            onResult(value)
-        }
-    }
-}
-
-final class ScannerViewController: UIViewController {
-    private let captureSession = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "com.purepets.admin.pos.scanner", qos: .userInitiated)
-    private var previewLayer: AVCaptureVideoPreviewLayer?
-    private var isConfigured = false
-
-    weak var metadataDelegate: AVCaptureMetadataOutputObjectsDelegate?
-    var onFailure: (() -> Void)?
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        view.backgroundColor = .black
-        configureCapture()
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        previewLayer?.frame = view.bounds
-    }
-
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        startSessionIfPossible()
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        sessionQueue.async { [weak self] in
-            guard let self, self.captureSession.isRunning else { return }
-            self.captureSession.stopRunning()
-        }
-    }
-
-    private func configureCapture() {
-        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized,
-              let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device),
-              captureSession.canAddInput(input) else {
-            failConfiguration()
-            return
-        }
-
-        let output = AVCaptureMetadataOutput()
-        guard captureSession.canAddOutput(output) else {
-            failConfiguration()
-            return
-        }
-
-        captureSession.beginConfiguration()
-        captureSession.addInput(input)
-        captureSession.addOutput(output)
-        captureSession.commitConfiguration()
-
-        output.setMetadataObjectsDelegate(metadataDelegate, queue: .main)
-        let supported: [AVMetadataObject.ObjectType] = [.qr, .ean8, .ean13, .pdf417, .code128]
-        let available = Set(output.availableMetadataObjectTypes)
-        let enabled = supported.filter { available.contains($0) }
-        guard !enabled.isEmpty else {
-            failConfiguration()
-            return
-        }
-        output.metadataObjectTypes = enabled
-
-        let layer = AVCaptureVideoPreviewLayer(session: captureSession)
-        layer.videoGravity = .resizeAspectFill
-        layer.frame = view.bounds
-        view.layer.addSublayer(layer)
-        previewLayer = layer
-        isConfigured = true
-        startSessionIfPossible()
-    }
-
-    private func startSessionIfPossible() {
-        guard isConfigured else { return }
-        sessionQueue.async { [weak self] in
-            guard let self, !self.captureSession.isRunning else { return }
-            self.captureSession.startRunning()
-        }
-    }
-
-    private func failConfiguration() {
-        DispatchQueue.main.async { [weak self] in
-            self?.onFailure?()
-        }
-    }
-}
 
 // MARK: - POS Deep Diagnostic Logging Inspector
 

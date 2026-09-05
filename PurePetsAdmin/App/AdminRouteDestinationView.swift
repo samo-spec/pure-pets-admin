@@ -16,6 +16,10 @@ struct AdminRouteDestinationView: View {
             AdminNotificationSettingsView {
                 router.presentedRoute = nil
             }
+        case .moderation:
+            AdminModerationView {
+                router.presentedRoute = nil
+            }
         default:
             AdminLegacyRouteView(
                 route: route,

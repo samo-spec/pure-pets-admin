@@ -629,14 +629,25 @@ struct AdminUsersListView: View {
                     EmptyView()
                 }
                 .hidden()
+
+                NavigationLink(
+                    destination: AdminAddCustomerSheet(
+                        viewModel: viewModel,
+                        isPushMode: true,
+                        onBack: {
+                            viewModel.isAddCustomerSheetPresented = false
+                        }
+                    ),
+                    isActive: $viewModel.isAddCustomerSheetPresented
+                ) {
+                    EmptyView()
+                }
+                .hidden()
             }
             .navigationBarHidden(true)
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(isPresented: $viewModel.isAddCustomerSheetPresented) {
-            AdminAddCustomerSheet(viewModel: viewModel)
-        }
     }
 
     // MARK: - 1. Liquid Navigation Bar (Sovereign Team Members UI Pattern)
@@ -1966,7 +1977,19 @@ struct AdminCustomerDossierView: View {
 
 struct AdminAddCustomerSheet: View {
     @ObservedObject var viewModel: AdminCustomerAccountsViewModel
+    var isPushMode: Bool = true
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    init(
+        viewModel: AdminCustomerAccountsViewModel,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
 
     @State private var name: String = ""
     @State private var phone: String = ""
@@ -1980,8 +2003,8 @@ struct AdminAddCustomerSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sovereign Modal Header with balanced trailing close action
-            modalHeader
+            // Sovereign Navigation Bar with balanced back/close action
+            navigationBar
 
             ScrollView {
                 VStack(spacing: 16) {
@@ -2174,37 +2197,24 @@ struct AdminAddCustomerSheet: View {
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    private var modalHeader: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"))
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3))
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(Color(uiColor: .ppSuccess))
-                        .frame(width: 6, height: 6)
-                    Text(Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • بطاقة جديدة"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption2))
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
-                        .lineLimit(1)
+    private var navigationBar: some View {
+        AdminSovereignNavigationBar(
+            title: Language.get("NewCustomer_Title", alter: "تسجيل عميل جديد"),
+            subtitle: Language.get("CommandCenter_Customers_Workspace", alter: "عمليات العملاء • بطاقة جديدة"),
+            statusDotColor: Color(uiColor: .ppSuccess),
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack = onBack {
+                    onBack()
+                } else {
+                    dismiss()
                 }
             }
-
-            Spacer(minLength: 8)
-
-            AdminSquircleCloseButton {
-                dismiss()
-            }
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.top, 14)
-        .padding(.bottom, 8)
+        )
     }
 
     private func errorBanner(_ error: String) -> some View {
@@ -2361,7 +2371,11 @@ struct AdminAddCustomerSheet: View {
             isSubmitting = false
             if success {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                dismiss()
+                if let onBack = onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
             } else {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                     formError = errDesc ?? Language.get("Error_Customer_Failed", alter: "تعذر إنشاء الحساب")

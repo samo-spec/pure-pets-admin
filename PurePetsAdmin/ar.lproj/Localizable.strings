@@ -526,6 +526,7 @@
 "General" = "عام";
 "Order" = "طلب";
 "Ad Review" = "مراجعة إعلان";
+"AdReview" = "الإعلانات";
 "Warning" = "تحذير";
 
 /* Target section */
@@ -651,6 +652,7 @@
 "ConfirmRecipients" = "تأكيد المستلمين";
 "SelectUsers" = "اختيار المستلمين";
 "LivePreview" = "معاينة فورية";
+"ViewAll" = "عرض الكل";
 
 /* Notifications screen */
 "NotificationsTitle" = "الإشعارات";
@@ -2990,6 +2992,25 @@
 "Categories_Toggled_Visible" = "تم تفعيل ظهور التصنيف للمستخدمين";
 "Categories_Toggled_Hidden" = "تم إخفاء التصنيف من واجهة المستخدمين";
 "Categories_Reordered_Success" = "تم حفظ الترتيب الجديد للفئات بنجاح";
+"CatalogIntake_AllCategoriesUniversal" = "جميع الفئات • لكل الحيوانات";
+"CatalogIntake_AllSubCategoriesUniversal" = "جميع التصنيفات الفرعية";
+"CatalogIntake_AllCategoriesPrompt" = "جميع الفئات • مناسب لكل الحيوانات";
+"CatalogIntake_AllCategoriesSub" = "مناسب للكلاب، القطط، الطيور، وجميع الحيوانات الأليفة";
+"CatalogIntake_AllSubcategoriesPrompt" = "جميع السلالات والتصنيفات الفرعية";
+"CatalogIntake_AllSubcategoriesSub" = "شامل لكل السلالات والتفريعات بدون استثناء";
+"CatalogIntake_SelectedCountFormat" = "تم تحديد %ld";
+"Confirm_Selection" = "تأكيد الاختيار";
+"Stock_Transfer_Action" = "نقل كمية إلى فرع آخر";
+"Stock_Transfer_Title" = "نقل مخزون الصنف بين الفروع";
+"Stock_Transfer_Sub" = "تحويل كمية محددة من هذا الصنف إلى عهدة فرع آخر مع توثيق الحركة.";
+"Stock_Transfer_Success" = "تم نقل المخزون إلى الفرع بنجاح";
+"Stock_Transfer_SourceBranch" = "فرع المصدر (المحول منه)";
+"Stock_Transfer_DestinationBranch" = "فرع الاستلام (المحول إليه)";
+"Stock_Transfer_Quantity" = "الكمية المراد نقلها";
+"Stock_Transfer_Reason" = "سبب النقل والملاحظات";
+"Stock_Transfer_Reason_Placeholder" = "مثال: طلب تعزيز مخزون الفرع، إعادة توازن";
+"Stock_Transfer_Confirm" = "تأكيد ترحيل ونقل المخزون";
+"Stock_Transfer_NoOtherBranches" = "لا توجد فروع أخرى نشطة للنقل إليها";
 "Categories_Upload_Prompt" = "اختر صورة أو أيقونة من المعرض";
 "Categories_Upload_Hint" = "PNG أو JPEG • سيتم الرفع تلقائياً وتحديث الرابط";
 "Categories_Manual_URL" = "تعديل رابط الصورة يدوياً (اختياري)";
@@ -3716,6 +3737,11 @@
 "AdminQuickActions_Chats" = "المحادثات";
 "AdminQuickActions_Chats_Subtitle" = "خدمة العملاء";
 "AdminQuickActions_Moderation" = "الرقابة والمراجعة";
+"AdminQuickActions_POS_History_Short" = "السجل";
+"AdminQuickActions_Listings" = "إعلانات المنصة";
+"AdminQuickActions_Listings_Subtitle" = "مراجعة واعتماد";
+"AdminQuickActions_POS_Capability" = "مدى • باركود • كاش";
+"AdminQuickActions_SignalsCount_Format" = "%d إشارات نشطة";
 
 "POS_CatalogLoadFailed" = "تعذر تحميل المنتجات. حاول مرة أخرى.";
 
@@ -4443,6 +4469,20 @@
 "LivePet_Group_Exact_Action_Hint" = "الحجز الفردي والنقل والوفاة لكل حيوان تتطلب التتبع الفردي.";
 "LivePet_Adjustment_Reason" = "سبب المطابقة";
 "LivePet_Validation_TargetQuantity" = "أدخل كمية فعلية صحيحة لا تقل عن صفر.";
+"LivePet_Customer_Phone_Prompt" = "رقم هاتف العميل (مطلوب - ٦ أرقام على الأقل)";
+"LivePet_Quarantine_Reason_Prompt" = "سبب وتفاصيل الإدخال إلى الحجر (مطلوب - ٣ أحرف على الأقل)";
+"LivePet_Release_Quarantine_Reason_Prompt" = "تقرير وتفاصيل الإخراج من الحجر (مطلوب - ٣ أحرف على الأقل)";
+"LivePet_Mortality_Reason_Prompt" = "تقرير وتفاصيل الوفاة (مطلوب - ٣ أحرف على الأقل)";
+"LivePet_Remove_Reason_Prompt" = "سبب الشطب من المخزون (مطلوب - ٣ أحرف على الأقل)";
+"LivePet_NoOtherBranches" = "لا توجد فروع أخرى مسجلة أو مصرح بها للنقل إليها.";
+"LivePet_Reservation_Branch_Locked_Hint" = "فرع الحجز محدد تلقائياً بنفس مقر تواجد الحيوان الفعلي.";
+"LivePet_Reservation_SellingPrice_Title" = "سعر البيع المعتمد للحجز";
+"LivePet_Edit_Price_Desc_Quarantine" = "تحديث السعر المعتمد للحيوان خلال فترة العزل";
+"LivePet_Quarantine_Biosecurity_Notice" = "سيتم عزل هذا الحيوان طبياً وفصل سجله فوراً عن قنوات العرض والبيع حتى إصدار إذن إخراج معتمد.";
+"LivePet_Release_Medical_Clearance_Notice" = "سيُعاد الحيوان إلى المخزون المتاح للبيع ويُعاد حساب متوسطات أسعار العرض بالكتالوج.";
+"LivePet_Remove_Audit_Notice" = "إزالة السجل المتاح من المخزون مع توثيق الحركة في سجل التدقيق المالي والإداري.";
+"LivePet_Mortality_Finality_Notice" = "تسجيل حالة الوفاة هو إجراء نهائي لا يمكن الرجوع عنه، ويقوم الخادم تلقائياً بإسقاط العهدة وتسوية أي حجز نشط.";
+"LivePet_Reservation_Expired_Warning" = "انتهت صلاحية هذا الحجز. يجب تحرير الحجز أولاً ليعود الحيوان إلى المخزون المتاح.";
 "LivePet_Operation_Processing" = "جارٍ التأكيد من الخادم...";
 "LivePet_Exact_Quantity_Derived" = "أدر مخزون الحيوانات الحية من تفاصيل الصنف حتى تُسجل الهوية أو الكمية الفعلية وسبب الإجراء بأمان.";
 "LivePet_Availability_ServerOwned" = "يتغير توفر الحيوان من خلال البيع أو الحجر أو النقل أو الوفاة، وليس بمفتاح يدوي.";
@@ -5994,3 +6034,17 @@
 "Inventory_No_Filter_Matches" = "لا توجد نتائج مطابقة للبحث أو التصفية";
 "Inventory_No_Results_For_Query" = "لم نجد أي أصناف تطابق «%@». جرب البحث باسم آخر أو كود الصنف.";
 "Inventory_No_Results_Filter_Hint" = "لا توجد عناصر تطابق الفلتر المحدد حالياً في هذا القسم.";
+
+/* Categories Taxonomy Level 3 & 4 */
+"Categories_SubSubKinds_Existing" = "التفريعات الفرعية المسجلة";
+"Categories_Items_Existing" = "المواصفات والعناصر المسجلة";
+"Categories_No_SubSub_Yet" = "لا توجد تفريعات فرعية مضافة بعد.";
+"Categories_No_Items_Yet" = "لا توجد مواصفات أو عناصر مسجلة بعد.";
+"Categories_SubSub_Manager_Title" = "إدارة تفريعات السلالة";
+"Categories_Items_Manager_Title" = "إدارة مواصفات وعناصر السلالة";
+"Categories_Add_SubSub" = "إضافة تفريع فرعي";
+"Categories_Add_Item" = "إضافة مواصفة جديدة";
+"Categories_Items_Level4" = "المستوى الرابع في شجرة التصنيف (Items)";
+"SubSub_Delete_Confirm_Title" = "تأكيد حذف التفريع الفرعي";
+"KindItem_Delete_Confirm_Title" = "تأكيد حذف المواصفة / العنصر";
+"Manage" = "إدارة";

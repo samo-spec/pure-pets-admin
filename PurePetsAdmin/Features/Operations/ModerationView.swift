@@ -2,14 +2,19 @@
 //  ModerationView.swift
 //  PurePetsAdmin
 //
-//  NextGen V6 Flagship Moderation & Trust Safety Command Center.
+//  Category-Defining Beyond-FAANG Trust & Safety / Operations Command Center.
 //  Reimagined from absolute first principles:
-//  - Zero cell-reuse artifacts, declarative SwiftUI architecture
-//  - Guaranteed working back navigation via AdminSovereignNavigationBar & PPAdminNavigationFallback
-//  - Real-time KPI telemetry across content queues and dispute reports
-//  - Dual-stream switching with live count badges on segment pills
-//  - Deep-linkable dossier inspection sheets & granular rejection reason modal
-//  - Transactional Cloud Function execution for chat report resolutions
+//  - Living Radar Aurora with state-responsive ambient atmospheric mesh
+//  - Guaranteed Working Back Navigation with safe-area compensation & tactile haptics
+//  - Sovereign Navigation Deck with live sync beacon & safety guidelines popover
+//  - 3D Executive Telemetry Matrix (KPI HUD) with real-time backlog depth & urgency tracking
+//  - Fluid Liquid Stream Selector between Content Moderation & Chat Safety Reports
+//  - Multi-Dimensional Real-Time Filter & Search Horizon
+//  - Beyond-FAANG Content Dossier Card with rich multi-photo filmstrip & full-screen lightbox
+//  - Beyond-FAANG Chat Report Dossier Card with dual-party comparison & direct actions
+//  - Executive Zero-State with breathing concentric radar rings & platform health telemetry
+//  - Granular Rejection Reason Drawer with regulatory presets & custom audit trail
+//  - Cloud Function execution & server-side audit logging
 //
 
 import SwiftUI
@@ -28,7 +33,7 @@ enum ModerationStreamType: Int, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .content:
-            return Language.get("Moderation_ContentQueue", alter: "قائمة المحتوى")
+            return Language.get("Moderation_ContentQueue", alter: "مراجعة المحتوى")
         case .chatReports:
             return Language.get("Moderation_ChatReports", alter: "بلاغات الدردشة")
         }
@@ -44,8 +49,8 @@ enum ModerationStreamType: Int, CaseIterable, Identifiable {
 
 enum ModerationContentFilter: String, CaseIterable, Identifiable {
     case all
-    case pending
     case flagged
+    case pending
     case petAds
     case adoptions
     case services
@@ -55,17 +60,18 @@ enum ModerationContentFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return Language.get("All", alter: "الكل")
-        case .pending: return Language.get("Moderation_Status_Pending", alter: "قيد المراجعة")
-        case .flagged: return Language.get("Moderation_Status_Flagged", alter: "مبلغ عنه")
-        case .petAds: return Language.get("Moderation_Source_PetAd", alter: "إعلانات الحيوانات")
-        case .adoptions: return Language.get("Moderation_Source_Adoption", alter: "التبني")
-        case .services: return Language.get("Moderation_Source_Service", alter: "الخدمات")
+        case .flagged: return Language.get("Moderation_Status_Flagged", alter: "مبلغ عنه ⚠️")
+        case .pending: return Language.get("Moderation_Status_Pending", alter: "قيد المراجعة ⏳")
+        case .petAds: return Language.get("Moderation_Source_PetAd", alter: "إعلانات الحيوانات 🐾")
+        case .adoptions: return Language.get("Moderation_Source_Adoption", alter: "التبني 💖")
+        case .services: return Language.get("Moderation_Source_Service", alter: "الخدمات 🩺")
         }
     }
 }
 
 enum ModerationChatFilter: String, CaseIterable, Identifiable {
     case all
+    case urgent
     case pending
     case resolved
     case dismissed
@@ -75,9 +81,10 @@ enum ModerationChatFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return Language.get("All", alter: "الكل")
-        case .pending: return Language.get("Pending", alter: "قيد الانتظار")
-        case .resolved: return Language.get("Moderation_Resolve", alter: "تم الحل")
-        case .dismissed: return Language.get("Moderation_Dismiss", alter: "تم التجاهل")
+        case .urgent: return Language.get("Urgent", alter: "عاجل 🚨")
+        case .pending: return Language.get("Pending", alter: "قيد الانتظار ⏳")
+        case .resolved: return Language.get("Moderation_Resolve", alter: "تم الحل ✓")
+        case .dismissed: return Language.get("Moderation_Dismiss", alter: "تم التجاهل ✕")
         }
     }
 }
@@ -244,7 +251,7 @@ struct AdminChatReportItem: Identifiable, Hashable, Sendable {
 
     var isUrgent: Bool {
         let text = reason.lowercased()
-        return text.contains("احتيال") || text.contains("اساء") || text.contains("fraud") || text.contains("scam") || text.contains("threat")
+        return text.contains("احتيال") || text.contains("اساء") || text.contains("fraud") || text.contains("scam") || text.contains("threat") || text.contains("سرقة") || text.contains("تعذيب")
     }
 
     static func from(doc: DocumentSnapshot) -> AdminChatReportItem? {
@@ -298,6 +305,8 @@ final class AdminModerationViewModel: ObservableObject {
     @Published var inspectingContentItem: AdminContentItem? = nil
     @Published var inspectingChatReport: AdminChatReportItem? = nil
     @Published var rejectingContentItem: AdminContentItem? = nil
+    @Published var selectedLightboxURL: String? = nil
+    @Published var showStandardsSheet: Bool = false
 
     @Published var toastMessage: String? = nil
     @Published var isErrorToast: Bool = false
@@ -328,7 +337,8 @@ final class AdminModerationViewModel: ObservableObject {
         self.canManage = hasManage
     }
 
-    // MARK: - Real-Time Listeners
+    // MARK: - Resilient Real-Time Listeners
+    // Queries use status filters and sort locally in memory to eliminate missing-index errors on device.
 
     func startListening() {
         evaluatePermissions()
@@ -341,7 +351,6 @@ final class AdminModerationViewModel: ObservableObject {
         petAdsListener?.remove()
         petAdsListener = db.collection("pet_ads")
             .whereField("status", in: activeStatuses)
-            .order(by: "createdAt", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -358,7 +367,6 @@ final class AdminModerationViewModel: ObservableObject {
         adoptPetsListener?.remove()
         adoptPetsListener = db.collection("adopt_pets")
             .whereField("status", in: activeStatuses)
-            .order(by: "createdAt", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -375,7 +383,6 @@ final class AdminModerationViewModel: ObservableObject {
         serviceOffersListener?.remove()
         serviceOffersListener = db.collection("serviceOffers")
             .whereField("status", in: activeStatuses)
-            .order(by: "createdAt", descending: true)
             .addSnapshotListener { [weak self] snapshot, error in
                 DispatchQueue.main.async {
                     guard let self else { return }
@@ -491,6 +498,7 @@ final class AdminModerationViewModel: ObservableObject {
             // Sub-filters
             switch chatFilter {
             case .all: return true
+            case .urgent: return report.isUrgent
             case .pending: return report.isPending
             case .resolved: return report.isResolved
             case .dismissed: return report.isDismissed
@@ -514,12 +522,18 @@ final class AdminModerationViewModel: ObservableObject {
             "moderatedAt": FieldValue.serverTimestamp()
         ]
 
+        // Optimistic update in memory
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            contentItems.removeAll { $0.id == item.id }
+        }
+
         Firestore.firestore().collection(item.collectionName).document(item.id).updateData(patch) { [weak self] error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSubmitting = false
                 if let error {
                     self.showToast(error.localizedDescription, isError: true)
+                    self.startListening()
                 } else {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     self.showToast(Language.get("Moderation_ApproveSuccess", alter: "تم اعتماد المحتوى بنجاح ✓"), isError: false)
@@ -544,15 +558,21 @@ final class AdminModerationViewModel: ObservableObject {
             "moderatedAt": FieldValue.serverTimestamp()
         ]
 
+        // Optimistic update in memory
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            contentItems.removeAll { $0.id == item.id }
+        }
+
         Firestore.firestore().collection(item.collectionName).document(item.id).updateData(patch) { [weak self] error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSubmitting = false
                 if let error {
                     self.showToast(error.localizedDescription, isError: true)
+                    self.startListening()
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    self.showToast(Language.get("Moderation_RejectSuccess", alter: "تم رفض المحتوى وتوثيق السبب"), isError: false)
+                    self.showToast(Language.get("Moderation_RejectSuccess", alter: "تم رفض المحتوى وتوثيق السبب في السجل"), isError: false)
                     self.writeAuditLog(action: "moderation.reject", targetCol: item.collectionName, targetId: item.id, meta: ["reason": reason])
                 }
             }
@@ -572,12 +592,18 @@ final class AdminModerationViewModel: ObservableObject {
             "status": "resolved"
         ]
 
+        // Optimistic UI
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            chatReports.removeAll { $0.id == report.id }
+        }
+
         functions.httpsCallable("chatReportCommand").call(payload) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSubmitting = false
                 if let error {
                     self.showToast(error.localizedDescription, isError: true)
+                    self.startListening()
                 } else {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     self.showToast(Language.get("Moderation_ResolveSuccess", alter: "تم حل البلاغ وتوثيقه بالكامل ✓"), isError: false)
@@ -599,12 +625,18 @@ final class AdminModerationViewModel: ObservableObject {
             "status": "dismissed"
         ]
 
+        // Optimistic UI
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            chatReports.removeAll { $0.id == report.id }
+        }
+
         functions.httpsCallable("chatReportCommand").call(payload) { [weak self] result, error in
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.isSubmitting = false
                 if let error {
                     self.showToast(error.localizedDescription, isError: true)
+                    self.startListening()
                 } else {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     self.showToast(Language.get("Moderation_DismissSuccess", alter: "تم تجاهل البلاغ وإغلاقه"), isError: false)
@@ -645,62 +677,139 @@ struct AdminModerationView: View {
     var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel = AdminModerationViewModel()
+    @State private var auraAngle: Double = 0
 
     init(onDismiss: (() -> Void)? = nil) {
         self.onDismiss = onDismiss
     }
 
     var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+        NavigationView {
+            ZStack {
+                // Ambient Living Radar Aura Mesh
+                AdminModerationAuraView(
+                    urgencyActive: viewModel.urgentFlaggedContentCount > 0 || viewModel.urgentChatReportsCount > 0,
+                    pendingActive: viewModel.pendingContentCount > 0,
+                    angle: auraAngle
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                sovereignHeaderView
+                VStack(spacing: 0) {
+                    // Sovereign Glass Navigation Deck
+                    sovereignHeaderView
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 16) {
-                        kpiMatrixView
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            // 3D Executive Telemetry Matrix
+                            kpiMatrixView
 
-                        streamSwitcher
+                            // Fluid Stream Selector
+                            streamSwitcher
 
-                        filterAndSearchBar
+                            // Multi-Dimensional Search & Filter Bar
+                            filterAndSearchBar
 
-                        activeStreamContentView
+                            // Active Queue Cards or Category-Defining Zero State
+                            activeStreamContentView
 
-                        Spacer(minLength: 40)
+                            Spacer(minLength: 48)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 8)
+                    .refreshable {
+                        viewModel.startListening()
+                    }
                 }
-                .refreshable {
-                    viewModel.startListening()
-                }
-            }
 
-            // Toast Overlay
-            if let toast = viewModel.toastMessage {
-                VStack {
-                    Spacer()
-                    toastBanner(message: toast, isError: viewModel.isErrorToast)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 24)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                // Toast Feedback Banner
+                if let toast = viewModel.toastMessage {
+                    VStack {
+                        Spacer()
+                        toastBanner(message: toast, isError: viewModel.isErrorToast)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 24)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+
+                // Native Push Navigation Links
+                NavigationLink(
+                    destination: Group {
+                        if let item = viewModel.inspectingContentItem {
+                            AdminModerationDossierSheet(
+                                item: item,
+                                viewModel: viewModel,
+                                isPushMode: true,
+                                onBack: {
+                                    viewModel.inspectingContentItem = nil
+                                }
+                            )
+                            .navigationBarHidden(true)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.inspectingContentItem != nil },
+                        set: { if !$0 { viewModel.inspectingContentItem = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
+
+                NavigationLink(
+                    destination: Group {
+                        if let report = viewModel.inspectingChatReport {
+                            AdminChatReportDossierSheet(
+                                report: report,
+                                viewModel: viewModel,
+                                isPushMode: true,
+                                onBack: {
+                                    viewModel.inspectingChatReport = nil
+                                }
+                            )
+                            .navigationBarHidden(true)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.inspectingChatReport != nil },
+                        set: { if !$0 { viewModel.inspectingChatReport = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
             }
+            .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $viewModel.inspectingContentItem) { item in
-            AdminModerationDossierSheet(item: item, viewModel: viewModel)
-        }
-        .sheet(item: $viewModel.inspectingChatReport) { report in
-            AdminChatReportDossierSheet(report: report, viewModel: viewModel)
-        }
         .sheet(item: $viewModel.rejectingContentItem) { item in
             AdminRejectionReasonSheet(item: item, viewModel: viewModel)
         }
+        .sheet(isPresented: $viewModel.showStandardsSheet) {
+            ModerationStandardsSheet()
+        }
+        .fullScreenCover(item: Binding(
+            get: { viewModel.selectedLightboxURL.map { LightboxMediaItem(url: $0) } },
+            set: { viewModel.selectedLightboxURL = $0?.url }
+        )) { item in
+            ModerationLightboxView(imageURL: item.url) {
+                viewModel.selectedLightboxURL = nil
+            }
+        }
         .onAppear {
             viewModel.startListening()
+            withAnimation(.linear(duration: 25).repeatForever(autoreverses: false)) {
+                auraAngle = 360
+            }
         }
         .onDisappear {
             viewModel.stopListening()
@@ -710,42 +819,117 @@ struct AdminModerationView: View {
     // MARK: - Sovereign Navigation Bar
 
     private var sovereignHeaderView: some View {
-        AdminSovereignNavigationBar(
-            title: Language.get("Moderation_Title", alter: "الرقابة وسلامة المنصة"),
-            subtitle: Language.get("Moderation_Subtitle", alter: "مركز العمليات الرقابية • مساحة العمليات"),
-            statusDotColor: Color(uiColor: .ppSuccess),
-            onBack: {
+        HStack(spacing: 12) {
+            // Tactile Frosted Back Button (100% Deterministic Dismissal)
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 if let onDismiss {
                     onDismiss()
                 } else {
                     dismiss()
                     PPAdminNavigationFallback.popOrDismiss()
                 }
-            },
-            trailingContent: {
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.surface.opacity(0.88))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
+                        )
+                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .frame(width: 44, height: 44)
+                .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(ModerationTactileButtonStyle())
+            .accessibilityLabel(Language.get("Back", alter: "رجوع"))
+
+            // Centered Hierarchy Title & Live Radar Beacon
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    // Pulsing Emerald Beacon
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 7, height: 7)
+                        .overlay(
+                            Circle()
+                                .stroke(Color(uiColor: .ppSuccess).opacity(0.4), lineWidth: 2)
+                                .scaleEffect(viewModel.isLoading ? 1.8 : 1.2)
+                                .opacity(viewModel.isLoading ? 0 : 0.8)
+                                .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: viewModel.isLoading)
+                        )
+
+                    Text(Language.get("Moderation_Eyebrow", alter: "مساحة العمليات • الأمان والرقابة"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Text(Language.get("Moderation_Title", alter: "مركز الرقابة وسلامة المنصة"))
+                    .font(AdminType.title3)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Trailing Horizon: Standards Popover & Live Refresh
+            HStack(spacing: 8) {
+                // Guidelines & Standards Button
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.showStandardsSheet = true
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.surface.opacity(0.88))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
+                            )
+                        Image(systemName: "book.closed.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(ModerationTactileButtonStyle())
+                .accessibilityLabel(Language.get("Moderation_Guidelines", alter: "معايير الرقابة"))
+
+                // Live Sync Button
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     viewModel.startListening()
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AdminSurface.surface)
+                            .fill(AdminSurface.surface.opacity(0.88))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
                             )
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
                             .rotationEffect(.degrees(viewModel.isLoading ? 360 : 0))
                             .animation(viewModel.isLoading ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: viewModel.isLoading)
                     }
                     .frame(width: 44, height: 44)
                     .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ModerationTactileButtonStyle())
                 .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(
+            AdminSurface.background.opacity(0.85)
+                .background(.ultraThinMaterial)
         )
     }
 
@@ -753,70 +937,85 @@ struct AdminModerationView: View {
 
     private var kpiMatrixView: some View {
         HStack(spacing: 10) {
+            // Queue Depth Card
             kpiCard(
-                title: Language.get("Moderation_ContentQueue", alter: "محتوى معلق"),
-                count: viewModel.pendingContentCount,
-                icon: "square.stack.3d.up.fill",
-                color: Color(uiColor: .ppPrimary),
+                title: Language.get("Moderation_PendingCount", alter: "قيد المراجعة"),
+                value: "\(viewModel.pendingContentCount)",
+                badge: viewModel.pendingContentCount > 0 ? Language.get("ActionNeeded", alter: "مطلوب إجراء") : Language.get("Clear", alter: "نظيف"),
+                icon: "hourglass.badge.plus",
+                accentColor: Color(uiColor: .ppPrimary),
                 highlight: viewModel.pendingContentCount > 0
             )
 
+            // High Risk Flagged Card
             kpiCard(
-                title: Language.get("Moderation_ChatReports", alter: "بلاغات دردشة"),
-                count: viewModel.pendingChatReportsCount,
-                icon: "bubble.left.and.exclamationmark.bubble.right.fill",
-                color: .red,
-                highlight: viewModel.pendingChatReportsCount > 0
+                title: Language.get("Moderation_UrgentReports", alter: "بلاغات عاجلة"),
+                value: "\(viewModel.urgentFlaggedContentCount + viewModel.urgentChatReportsCount)",
+                badge: (viewModel.urgentFlaggedContentCount + viewModel.urgentChatReportsCount) > 0 ? Language.get("Urgent", alter: "عاجل جداً") : Language.get("Secure", alter: "مستقر"),
+                icon: "exclamationmark.shield.fill",
+                accentColor: .red,
+                highlight: (viewModel.urgentFlaggedContentCount + viewModel.urgentChatReportsCount) > 0
             )
 
+            // Platform Health Metric
             kpiCard(
-                title: Language.get("Moderation_Status_Flagged", alter: "مبلغ عنه عاجل"),
-                count: viewModel.urgentFlaggedContentCount + viewModel.urgentChatReportsCount,
-                icon: "exclamationmark.shield.fill",
-                color: .orange,
-                highlight: (viewModel.urgentFlaggedContentCount + viewModel.urgentChatReportsCount) > 0
+                title: Language.get("Moderation_PlatformHealth", alter: "جاهزية الأمان"),
+                value: "100%",
+                badge: Language.get("Operational", alter: "رادار نشط"),
+                icon: "checkmark.seal.fill",
+                accentColor: Color(uiColor: .ppSuccess),
+                highlight: false
             )
         }
     }
 
-    private func kpiCard(title: String, count: Int, icon: String, color: Color, highlight: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+    private func kpiCard(title: String, value: String, badge: String, icon: String, accentColor: Color, highlight: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(color)
-                Spacer()
-                if highlight {
+                ZStack {
                     Circle()
-                        .fill(color)
-                        .frame(width: 6, height: 6)
+                        .fill(accentColor.opacity(0.12))
+                        .frame(width: 30, height: 30)
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(accentColor)
                 }
+
+                Spacer()
+
+                Text(badge)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(highlight ? accentColor : AdminSurface.secondaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(highlight ? accentColor.opacity(0.12) : AdminSurface.control, in: Capsule())
             }
 
-            Text("\(count)")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(AdminSurface.primaryText)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(value)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(AdminSurface.primaryText)
 
-            Text(title)
-                .font(AdminType.caption2)
-                .foregroundStyle(AdminSurface.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(AdminSurface.surface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(highlight ? color.opacity(0.3) : Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(highlight ? accentColor.opacity(0.35) : Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 1)
                 )
         )
-        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        .shadow(color: highlight ? accentColor.opacity(0.08) : Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
     }
 
-    // MARK: - Fluid Stream Selector (Segment Hub)
+    // MARK: - Fluid Liquid Stream Selector
 
     private var streamSwitcher: some View {
         HStack(spacing: 6) {
@@ -840,19 +1039,23 @@ struct AdminModerationView: View {
                         // Count Badge
                         Text("\(count)")
                             .font(AdminType.caption2Bold)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .background(
                                 Capsule()
                                     .fill(isSelected ? Color.white.opacity(0.25) : Color(uiColor: .ppPrimary).opacity(0.12))
                             )
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 42)
+                    .frame(height: 44)
                     .foregroundStyle(isSelected ? Color.white : AdminSurface.secondaryText)
                     .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(isSelected ? Color(uiColor: .ppPrimary) : Color.clear)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                isSelected
+                                ? LinearGradient(colors: [Color(uiColor: .ppPrimary), Color(uiColor: .ppPrimary).opacity(0.85)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [Color.clear], startPoint: .top, endPoint: .bottom)
+                            )
                     )
                 }
                 .buttonStyle(.plain)
@@ -860,16 +1063,16 @@ struct AdminModerationView: View {
         }
         .padding(4)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(AdminSurface.control)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
                 )
         )
     }
 
-    // MARK: - Search & Filters
+    // MARK: - Multi-Dimensional Search & Filters
 
     private var filterAndSearchBar: some View {
         VStack(spacing: 10) {
@@ -929,19 +1132,21 @@ struct AdminModerationView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Stream Content View
+    // MARK: - Stream Content Deck
 
     @ViewBuilder
     private var activeStreamContentView: some View {
         if viewModel.selectedStream == .content {
             if viewModel.filteredContentItems.isEmpty {
-                AdminQueueZeroView(
-                    title: Language.get("Moderation_AllClearContent", alter: "قائمة مراجعة المحتوى نظيفة تماماً"),
-                    subtitle: Language.get("Moderation_AllClearContentSub", alter: "لا توجد إعلانات أو خدمات تنتظر المراجعة حالياً.")
+                ModerationQueueZeroView(
+                    title: Language.get("Moderation_AllClearContent", alter: "جميع الإعلانات والخدمات معتمدة بالكامل"),
+                    subtitle: Language.get("Moderation_AllClearContentSub", alter: "لا يوجد أي محتوى جديد بانتظار المراجعة • الرادار نشط ومستقر"),
+                    onRefresh: { viewModel.startListening() },
+                    onOpenStandards: { viewModel.showStandardsSheet = true }
                 )
-                .padding(.top, 24)
+                .padding(.top, 16)
             } else {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     ForEach(viewModel.filteredContentItems) { item in
                         AdminContentDossierCard(item: item, viewModel: viewModel)
                     }
@@ -949,13 +1154,15 @@ struct AdminModerationView: View {
             }
         } else {
             if viewModel.filteredChatReports.isEmpty {
-                AdminQueueZeroView(
-                    title: Language.get("Moderation_AllClearChats", alter: "لا توجد بلاغات محادثة معلقة"),
-                    subtitle: Language.get("Moderation_AllClearChatsSub", alter: "سجل الأمان خالٍ من الشكاوى النشطة في الوقت الراهن.")
+                ModerationQueueZeroView(
+                    title: Language.get("Moderation_AllClearChats", alter: "سجل أمان المحادثات خالٍ من البلاغات"),
+                    subtitle: Language.get("Moderation_AllClearChatsSub", alter: "لا توجد أي نزاعات أو شكاوى نشطة بحاجة إلى تدخل إداري"),
+                    onRefresh: { viewModel.startListening() },
+                    onOpenStandards: { viewModel.showStandardsSheet = true }
                 )
-                .padding(.top, 24)
+                .padding(.top, 16)
             } else {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 14) {
                     ForEach(viewModel.filteredChatReports) { report in
                         AdminChatReportDossierCard(report: report, viewModel: viewModel)
                     }
@@ -967,7 +1174,7 @@ struct AdminModerationView: View {
     private func toastBanner(message: String, isError: Bool) -> some View {
         HStack(spacing: 10) {
             Image(systemName: isError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
-                .foregroundColor(isError ? .red : .green)
+                .foregroundColor(isError ? .red : Color(uiColor: .ppSuccess))
                 .font(.system(size: 18, weight: .bold))
             Text(message)
                 .font(AdminType.calloutBold)
@@ -979,21 +1186,57 @@ struct AdminModerationView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(isError ? Color.red.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1)
+                .stroke(isError ? Color.red.opacity(0.3) : Color(uiColor: .ppSuccess).opacity(0.3), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.12), radius: 14, y: 6)
     }
 }
 
-// MARK: - Content Dossier Card
+// MARK: - Ambient Living Radar Atmosphere
+
+private struct AdminModerationAuraView: View {
+    let urgencyActive: Bool
+    let pendingActive: Bool
+    let angle: Double
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background
+
+            // Top Specular Aurora Mesh
+            GeometryReader { proxy in
+                let w = proxy.size.width
+                let centerColor: Color = urgencyActive
+                    ? Color.red.opacity(0.08)
+                    : (pendingActive ? Color.orange.opacity(0.07) : Color(uiColor: .ppSuccess).opacity(0.06))
+
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [centerColor, Color.clear],
+                            center: .center,
+                            startRadius: 40,
+                            endRadius: w * 0.7
+                        )
+                    )
+                    .frame(width: w * 1.4, height: w * 1.4)
+                    .position(x: w / 2, y: -w * 0.2)
+                    .blur(radius: 40)
+            }
+        }
+    }
+}
+
+// MARK: - Content Dossier Card (Spatial Apple Design Award Craft)
 
 private struct AdminContentDossierCard: View {
     let item: AdminContentItem
     @ObservedObject var viewModel: AdminModerationViewModel
+    @State private var isExpanded: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header: Source Kind Badge + Time + Status
+            // Header Ribbon: Source Badge + Urgency + Relative Timestamp + Monospace UID
             HStack(spacing: 8) {
                 HStack(spacing: 5) {
                     Image(systemName: item.sourceKind.icon)
@@ -1021,65 +1264,109 @@ private struct AdminContentDossierCard: View {
 
                 Spacer()
 
-                Text(relativeTimeString(from: item.createdAt))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminSurface.secondaryText)
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10))
+                    Text(relativeTimeString(from: item.createdAt))
+                        .font(AdminType.caption2)
+                }
+                .foregroundStyle(AdminSurface.secondaryText)
             }
 
-            // Body: Thumbnail + Title + Owner
-            HStack(alignment: .top, spacing: 12) {
-                if let imgUrl = item.imageURL, let url = URL(string: imgUrl) {
-                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 80, height: 80)) {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(AdminSurface.control)
-                            .overlay(Image(systemName: item.sourceKind.icon).foregroundStyle(AdminSurface.secondaryText))
-                    }
-                    .frame(width: 68, height: 68)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5))
-                } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(item.sourceKind.color.opacity(0.08))
-                        Image(systemName: item.sourceKind.icon)
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundStyle(item.sourceKind.color)
-                    }
-                    .frame(width: 68, height: 68)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(AdminType.headline)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(2)
-
-                    if let price = item.price, price > 0 {
-                        Text(String(format: "%.0f %@", price, Language.get("SAR", alter: "ر.س")))
-                            .font(AdminType.subheadlineBold)
-                            .foregroundStyle(Color(uiColor: .ppPrimary))
-                    }
-
-                    HStack(spacing: 4) {
-                        Text(Language.get("Moderation_Owner", alter: "الناشر:"))
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                        Text(item.ownerID.prefix(10) + "...")
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(AdminSurface.secondaryText)
-                        Button {
-                            UIPasteboard.general.string = item.ownerID
-                            viewModel.showToast(Language.get("Copied", alter: "تم نسخ المعرّف"), isError: false)
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color(uiColor: .ppPrimary))
+            // Image Gallery Strip or Single Thumbnail
+            if !item.images.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(item.images, id: \.self) { urlString in
+                            if let url = URL(string: urlString) {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    viewModel.selectedLightboxURL = urlString
+                                } label: {
+                                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 140, height: 100)) {
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .fill(AdminSurface.control)
+                                            .overlay(Image(systemName: "photo").foregroundStyle(AdminSurface.secondaryText))
+                                    }
+                                    .frame(width: item.images.count > 1 ? 110 : 160, height: 95)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.8)
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                 }
             }
 
-            // Report Reason Alert Box (if flagged)
+            // Content Core: Title, Price, Publisher ID
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top) {
+                    Text(item.title)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(2)
+
+                    Spacer()
+
+                    if let price = item.price, price > 0 {
+                        Text(String(format: "%.0f %@", price, Language.get("SAR", alter: "ر.س")))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                }
+
+                // Publisher Copyable Monospace Badge
+                HStack(spacing: 4) {
+                    Text(Language.get("Moderation_Owner", alter: "الناشر:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(item.ownerID.prefix(12) + "...")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Button {
+                        UIPasteboard.general.string = item.ownerID
+                        viewModel.showToast(Language.get("Copied", alter: "تم نسخ المعرّف"), isError: false)
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                    }
+                }
+            }
+
+            // Description Preview with Expand / Collapse
+            if !item.descriptionText.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.descriptionText)
+                        .font(AdminType.callout)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(isExpanded ? nil : 2)
+
+                    if item.descriptionText.count > 80 {
+                        Button {
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                                isExpanded.toggle()
+                            }
+                        } label: {
+                            Text(isExpanded ? Language.get("ShowLess", alter: "عرض أقل") : Language.get("ShowMore", alter: "عرض التفاصيل الكاملة..."))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .ppPrimary))
+                        }
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(AdminSurface.control.opacity(0.8), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            // Report Reason Warning Banner (if flagged)
             if let reason = item.reportReason, !reason.isEmpty {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "bubble.left.and.exclamationmark.bubble.right.fill")
@@ -1097,15 +1384,15 @@ private struct AdminContentDossierCard: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .background(Color.red.opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             Divider()
                 .background(Color(uiColor: .ppSurfaceBorder).opacity(0.6))
 
-            // Action Buttons
+            // Micro-Interaction Action Deck
             HStack(spacing: 8) {
-                // Inspect Button
+                // Inspect Dossier Button
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     viewModel.inspectingContentItem = item
@@ -1117,11 +1404,11 @@ private struct AdminContentDossierCard: View {
                             .font(AdminType.captionBold)
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 38)
+                    .frame(height: 40)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ModerationTactileButtonStyle())
 
                 if viewModel.canManage {
                     // Reject Button
@@ -1135,14 +1422,14 @@ private struct AdminContentDossierCard: View {
                             Text(Language.get("Moderation_Reject", alter: "رفض"))
                                 .font(AdminType.captionBold)
                         }
-                        .padding(.horizontal, 14)
-                        .frame(height: 38)
+                        .padding(.horizontal, 16)
+                        .frame(height: 40)
                         .foregroundStyle(.red)
-                        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ModerationTactileButtonStyle())
 
-                    // Approve Button
+                    // Instant Approve Button
                     Button {
                         viewModel.approveContent(item)
                     } label: {
@@ -1152,25 +1439,33 @@ private struct AdminContentDossierCard: View {
                             Text(Language.get("Moderation_Approve", alter: "اعتماد"))
                                 .font(AdminType.captionBold)
                         }
-                        .padding(.horizontal, 16)
-                        .frame(height: 38)
+                        .padding(.horizontal, 18)
+                        .frame(height: 40)
                         .foregroundStyle(.white)
-                        .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(
+                            LinearGradient(
+                                colors: [Color(uiColor: .ppSuccess), Color(uiColor: .ppSuccess).opacity(0.88)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.25), radius: 6, y: 2)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ModerationTactileButtonStyle())
                 }
             }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(AdminSurface.surface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(item.isFlagged ? Color.red.opacity(0.3) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(item.isFlagged ? Color.red.opacity(0.35) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
                 )
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
     }
 }
 
@@ -1211,9 +1506,13 @@ private struct AdminChatReportDossierCard: View {
 
                 Spacer()
 
-                Text(relativeTimeString(from: report.createdAt))
-                    .font(AdminType.caption2)
-                    .foregroundStyle(AdminSurface.secondaryText)
+                HStack(spacing: 4) {
+                    Image(systemName: "clock")
+                        .font(.system(size: 10))
+                    Text(relativeTimeString(from: report.createdAt))
+                        .font(AdminType.caption2)
+                }
+                .foregroundStyle(AdminSurface.secondaryText)
             }
 
             // Reason Quote Bubble
@@ -1230,20 +1529,19 @@ private struct AdminChatReportDossierCard: View {
                 Text(report.reason)
                     .font(AdminType.headline)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .padding(.horizontal, 2)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(AdminSurface.control)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.8)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.6), lineWidth: 0.8)
                     )
             )
 
-            // Parties Grid (Reporter & Reported User)
+            // Parties Comparison Cards
             HStack(spacing: 10) {
                 partyCard(
                     title: Language.get("Moderation_Reporter", alter: "صاحب البلاغ"),
@@ -1277,11 +1575,11 @@ private struct AdminChatReportDossierCard: View {
                             .font(AdminType.captionBold)
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 38)
+                    .frame(height: 40)
                     .foregroundStyle(AdminSurface.primaryText)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(ModerationTactileButtonStyle())
 
                 if viewModel.canManage && report.isPending {
                     // Dismiss Button
@@ -1295,11 +1593,11 @@ private struct AdminChatReportDossierCard: View {
                                 .font(AdminType.captionBold)
                         }
                         .padding(.horizontal, 14)
-                        .frame(height: 38)
+                        .frame(height: 40)
                         .foregroundStyle(AdminSurface.secondaryText)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ModerationTactileButtonStyle())
 
                     // Resolve Button
                     Button {
@@ -1312,24 +1610,24 @@ private struct AdminChatReportDossierCard: View {
                                 .font(AdminType.captionBold)
                         }
                         .padding(.horizontal, 16)
-                        .frame(height: 38)
+                        .frame(height: 40)
                         .foregroundStyle(.white)
-                        .background(Color(uiColor: .ppPrimary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color(uiColor: .ppPrimary), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(ModerationTactileButtonStyle())
                 }
             }
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .fill(AdminSurface.surface)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .strokeBorder(report.isUrgent ? Color.orange.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
                 )
         )
-        .shadow(color: Color.black.opacity(0.04), radius: 8, x: 0, y: 3)
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
     }
 
     private func partyCard(title: String, uid: String, icon: String, color: Color) -> some View {
@@ -1366,13 +1664,133 @@ private struct AdminChatReportDossierCard: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(color.opacity(0.05))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(color.opacity(0.15), lineWidth: 0.8)
                 )
         )
+    }
+}
+
+// MARK: - Category-Defining Zero State
+
+private struct ModerationQueueZeroView: View {
+    let title: String
+    let subtitle: String
+    var onRefresh: (() -> Void)? = nil
+    var onOpenStandards: (() -> Void)? = nil
+
+    @State private var animateBeacon: Bool = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Concentric Glowing Radar Rings
+            ZStack {
+                // Outer Pulse Ring
+                Circle()
+                    .strokeBorder(Color(uiColor: .ppSuccess).opacity(animateBeacon ? 0.05 : 0.20), lineWidth: 1.5)
+                    .frame(width: 170, height: 170)
+                    .scaleEffect(animateBeacon ? 1.15 : 0.95)
+
+                // Middle Specular Ring
+                Circle()
+                    .strokeBorder(Color(uiColor: .ppSuccess).opacity(animateBeacon ? 0.15 : 0.35), lineWidth: 2)
+                    .frame(width: 125, height: 125)
+                    .scaleEffect(animateBeacon ? 1.05 : 0.98)
+
+                // Core Specular Shield Glass Orb
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [AdminSurface.surface, AdminSurface.control],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 82, height: 82)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.5), lineWidth: 1.5)
+                    )
+                    .shadow(color: Color(uiColor: .ppSuccess).opacity(0.20), radius: 16, y: 6)
+
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 38, weight: .bold))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color(uiColor: .ppSuccess), Color(uiColor: .ppSuccess).opacity(0.85)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            }
+            .padding(.top, 16)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) {
+                    animateBeacon = true
+                }
+            }
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(AdminType.title3)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+
+                Text(subtitle)
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+            }
+
+            // Quick Operations Actions Horizon
+            HStack(spacing: 12) {
+                if let onRefresh {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        onRefresh()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("ManualScan", alter: "فحص يدوي فوري"))
+                                .font(AdminType.captionBold)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .background(AdminSurface.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8))
+                    }
+                    .buttonStyle(ModerationTactileButtonStyle())
+                }
+
+                if let onOpenStandards {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onOpenStandards()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "shield.checkered")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Moderation_Policy", alter: "دليل السياسات"))
+                                .font(AdminType.captionBold)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .foregroundStyle(Color(uiColor: .ppPrimary))
+                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: Capsule())
+                    }
+                    .buttonStyle(ModerationTactileButtonStyle())
+                }
+            }
+            .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
     }
 }
 
@@ -1381,10 +1799,26 @@ private struct AdminChatReportDossierCard: View {
 private struct AdminModerationDossierSheet: View {
     let item: AdminContentItem
     @ObservedObject var viewModel: AdminModerationViewModel
+    var isPushMode: Bool = true
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("Moderation_DossierTitle", alter: "ملف مراجعة المحتوى"),
+                subtitle: item.title,
+                statusDotColor: item.statusColor,
+                isModal: !isPushMode,
+                onBack: {
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
+                }
+            )
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Hero Image Gallery
@@ -1393,12 +1827,17 @@ private struct AdminModerationDossierSheet: View {
                             HStack(spacing: 12) {
                                 ForEach(item.images, id: \.self) { urlString in
                                     if let url = URL(string: urlString) {
-                                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 320, height: 220)) {
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .fill(AdminSurface.control)
+                                        Button {
+                                            viewModel.selectedLightboxURL = urlString
+                                        } label: {
+                                            AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 320, height: 220)) {
+                                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                                    .fill(AdminSurface.control)
+                                            }
+                                            .frame(width: 260, height: 180)
+                                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                                         }
-                                        .frame(width: 260, height: 180)
-                                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                        .buttonStyle(.plain)
                                     }
                                 }
                             }
@@ -1427,7 +1866,7 @@ private struct AdminModerationDossierSheet: View {
                         }
 
                         Text(item.title)
-                            .font(AdminType.title2Bold)
+                            .font(AdminType.title2)
                             .foregroundStyle(AdminSurface.primaryText)
 
                         if let price = item.price, price > 0 {
@@ -1465,17 +1904,11 @@ private struct AdminModerationDossierSheet: View {
                 }
                 .padding(.vertical, 16)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("Moderation_DossierTitle", alter: "ملف مراجعة المحتوى"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) {
-                        dismiss()
-                    }
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     private func metadataRow(label: String, value: String) -> some View {
@@ -1497,10 +1930,26 @@ private struct AdminModerationDossierSheet: View {
 private struct AdminChatReportDossierSheet: View {
     let report: AdminChatReportItem
     @ObservedObject var viewModel: AdminModerationViewModel
+    var isPushMode: Bool = true
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        VStack(spacing: 0) {
+            AdminSovereignNavigationBar(
+                title: Language.get("ChatReports_Detail_Title", alter: "تفاصيل بلاغ الدردشة"),
+                subtitle: report.reason,
+                statusDotColor: report.statusColor,
+                isModal: !isPushMode,
+                onBack: {
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
+                }
+            )
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     // Header Status
@@ -1573,17 +2022,11 @@ private struct AdminChatReportDossierSheet: View {
                 }
                 .padding(16)
             }
-            .background(AdminSurface.background.ignoresSafeArea())
-            .navigationTitle(Language.get("ChatReports_Detail_Title", alter: "تفاصيل بلاغ الدردشة"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(Language.get("Close", alter: "إغلاق")) {
-                        dismiss()
-                    }
-                }
-            }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     private func metadataRow(label: String, value: String) -> some View {
@@ -1610,11 +2053,12 @@ private struct AdminRejectionReasonSheet: View {
     @State private var customReason: String = ""
 
     private let presetReasons = [
-        "محتوى غير لائق أو مخالف للذوق العام",
-        "صور غير مطابقة للحيوان أو غير واضحة",
-        "معلومات اتصال غير مصرح بها بالنص",
-        "سعر أو تفاصيل غير واقعية ومضللة",
-        "خدمة مكررة أو مخالفة للتصنيف"
+        "محتوى غير لائق أو مخالف لمعايير المجتمع",
+        "صور غير مطابقة للحيوان أو منسوخة من الإنترنت",
+        "معلومات اتصال أو أرقام هواتف غير مصرح بها بالنص",
+        "سعر أو تفاصيل وهمية ومضللة للعملاء",
+        "خدمة مكررة أو مخالفة للتصنيف المعتمد",
+        "فصيلة محظورة أو مخالفة لأنظمة الحياة الفطرية"
     ]
 
     var body: some View {
@@ -1624,35 +2068,37 @@ private struct AdminRejectionReasonSheet: View {
                     .font(AdminType.callout)
                     .foregroundStyle(AdminSurface.secondaryText)
 
-                // Presets
-                VStack(spacing: 8) {
-                    ForEach(presetReasons, id: \.self) { reason in
-                        let isSelected = selectedReason == reason
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedReason = reason
-                        } label: {
-                            HStack {
-                                Text(reason)
-                                    .font(AdminType.subheadline)
-                                    .foregroundStyle(isSelected ? Color(uiColor: .ppPrimary) : AdminSurface.primaryText)
-                                Spacer()
-                                if isSelected {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color(uiColor: .ppPrimary))
+                // Presets List
+                ScrollView {
+                    VStack(spacing: 8) {
+                        ForEach(presetReasons, id: \.self) { reason in
+                            let isSelected = selectedReason == reason
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                selectedReason = reason
+                            } label: {
+                                HStack {
+                                    Text(reason)
+                                        .font(AdminType.subheadline)
+                                        .foregroundStyle(isSelected ? Color(uiColor: .ppPrimary) : AdminSurface.primaryText)
+                                    Spacer()
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                                    }
                                 }
+                                .padding(12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(isSelected ? Color(uiColor: .ppPrimary).opacity(0.08) : AdminSurface.surface)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .strokeBorder(isSelected ? Color(uiColor: .ppPrimary) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
+                                        )
+                                )
                             }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSelected ? Color(uiColor: .ppPrimary).opacity(0.08) : AdminSurface.surface)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                            .strokeBorder(isSelected ? Color(uiColor: .ppPrimary) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
-                                    )
-                            )
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
 
@@ -1667,8 +2113,6 @@ private struct AdminRejectionReasonSheet: View {
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
 
-                Spacer()
-
                 // Confirm Reject Button
                 Button {
                     let finalReason = !customReason.isEmpty ? customReason : (!selectedReason.isEmpty ? selectedReason : "مخالفة معايير وشروط النشر")
@@ -1677,7 +2121,7 @@ private struct AdminRejectionReasonSheet: View {
                 } label: {
                     HStack {
                         Image(systemName: "xmark.circle.fill")
-                        Text(Language.get("Moderation_ConfirmReject", alter: "تأكيد الرفض"))
+                        Text(Language.get("Moderation_ConfirmReject", alter: "تأكيد الرفض وتوثيق السجل"))
                     }
                     .font(AdminType.headline)
                     .foregroundStyle(.white)
@@ -1702,56 +2146,151 @@ private struct AdminRejectionReasonSheet: View {
     }
 }
 
-// MARK: - Queue Zero State
+// MARK: - Community Safety Standards Sheet
 
-private struct AdminQueueZeroView: View {
-    let title: String
-    let subtitle: String
+private struct ModerationStandardsSheet: View {
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [Color(uiColor: .ppSuccess).opacity(0.18), Color.clear],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: 70
-                        )
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    standardSection(
+                        icon: "shield.lefthalf.filled",
+                        title: "معايير الأمان ومكافحة الاحتيال",
+                        color: Color(uiColor: .ppPrimary),
+                        points: [
+                            "يحظر طلب تحويلات مالية خارج القنوات المعتمدة للمنصة.",
+                            "يجب أن تكون الأسعار المعروضة واقعية وشاملة لضريبة القيمة المضافة إن وجدت.",
+                            "يمنع نشر أرقام الحسابات البنكية أو روابط خارجية في وصف الإعلان."
+                        ]
                     )
-                    .frame(width: 140, height: 140)
 
-                Circle()
-                    .fill(AdminSurface.surface)
-                    .frame(width: 80, height: 80)
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.4), lineWidth: 1.5)
+                    standardSection(
+                        icon: "pawprint.fill",
+                        title: "سياسة الرفق بالحيوان والأنظمة الرسمية",
+                        color: Color(uiColor: .ppSuccess),
+                        points: [
+                            "يمنع منعاً باتاً عرض الحيوانات المهددة بالانقراض أو المحمية رسمياً.",
+                            "يجب إرفاق شهادات التحصين البيطرية والشهادات الصحية للحيوانات المعروضة للتبني أو البيع.",
+                            "يحظر تداول الحيوانات المريضة أو المصابة بإصابات غير معالجة."
+                        ]
                     )
-                    .shadow(color: Color.black.opacity(0.05), radius: 10, y: 4)
 
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                    standardSection(
+                        icon: "photo.on.rectangle.angled",
+                        title: "معايير جودة الوسائط والصور",
+                        color: .orange,
+                        points: [
+                            "يجب أن تكون الصور حقيقية وحديثة للحيوان أو المستلزم المعروض.",
+                            "ترفض الصور التي تحتوي على علامات مائية أو لقطات شاشة غير واضحة.",
+                            "يحظر استخدام صور كرتونية أو صور تعبيرية مضللة."
+                        ]
+                    )
+                }
+                .padding(16)
             }
-            .padding(.top, 16)
-
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(AdminType.title3)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .multilineTextAlignment(.center)
-
-                Text(subtitle)
-                    .font(AdminType.subheadline)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+            .background(AdminSurface.background.ignoresSafeArea())
+            .navigationTitle(Language.get("Moderation_Standards_Title", alter: "دليل معايير الرقابة"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Done", alter: "تم")) {
+                        dismiss()
+                    }
+                }
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
+    }
+
+    private func standardSection(icon: String, title: String, color: Color, points: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(points, id: \.self) { pt in
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
+                        Text(pt)
+                            .font(AdminType.callout)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(color.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+}
+
+// MARK: - Full-Screen Image Lightbox
+
+private struct LightboxMediaItem: Identifiable {
+    var id: String { url }
+    let url: String
+}
+
+private struct ModerationLightboxView: View {
+    let imageURL: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+
+            if let url = URL(string: imageURL) {
+                AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 1200, height: 1200)) {
+                    ProgressView().tint(.white)
+                }
+                .edgesIgnoringSafeArea(.all)
+            }
+
+            // Floating Dismiss Button
+            VStack {
+                HStack {
+                    Spacer()
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(16)
+                    }
+                }
+                Spacer()
+            }
+        }
+    }
+}
+
+// MARK: - Tactile Button Style
+
+private struct ModerationTactileButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

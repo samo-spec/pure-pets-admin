@@ -69,6 +69,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _unitID = PPSafeString(dict[@"unitId"] ?: dict[@"id"]);
         _ringTag = PPSafeString(dict[@"ringTag"]);
         _sellingPrice = PPSafeDouble(dict[@"sellingPrice"]);
+        _currentBranchId = PPSafeString(dict[@"currentBranchId"]);
     }
     return self;
 }
@@ -509,6 +510,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         @"pageSize": @(50),
     } mutableCopy];
     if (cursor.length > 0) payload[@"cursor"] = cursor;
+    NSString *activeBranchID = [PPBranchContextManager sharedManager].activeBranch.branchID;
+    if (activeBranchID.length > 0) {
+        payload[@"branchId"] = activeBranchID;
+    }
 
     [self pp_invokeCallable:@"listLivePetInventoryUnits"
                     payload:payload

@@ -399,7 +399,8 @@ struct AdminInventoryView: View {
         VStack(spacing: AdminSpacing.sm) {
             AdminSearchField(
                 text: $viewModel.searchText,
-                placeholder: Language.get("Inventory_Search", alter: "\u{0627}\u{0628}\u{062d}\u{062b}...")
+                placeholder: Language.get("Inventory_Search", alter: "\u{0627}\u{0628}\u{062d}\u{062b}..."),
+                showBarcodeScanner: true
             )
             .padding(.horizontal, AdminSpacing.screenMargin)
 

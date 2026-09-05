@@ -35,6 +35,9 @@ struct POSReservedPetCardModel: Identifiable, Hashable, Sendable {
     let purchaseCost: Double?
     let currency: String
 
+    var title: String { animalName }
+    var categoryName: String { branchName }
+
     var isExpired: Bool {
         guard let validUntil else { return false }
         return validUntil < Date()
@@ -329,33 +332,62 @@ struct POSReservedLivePetsView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Deep background gradient — spatial depth
-            LinearGradient(
-                colors: [
-                    Color(uiColor: .systemBackground),
-                    Color(uiColor: .secondarySystemBackground).opacity(0.6),
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-            .ignoresSafeArea()
+        NavigationView {
+            ZStack(alignment: .top) {
+                // Deep background gradient — spatial depth
+                LinearGradient(
+                    colors: [
+                        Color(uiColor: .systemBackground),
+                        Color(uiColor: .secondarySystemBackground).opacity(0.6),
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                morphicHeader
-                filterOrb
-                scrollContent
+                VStack(spacing: 0) {
+                    morphicHeader
+                    filterOrb
+                    scrollContent
+                }
+
+                // Floating success toast
+                toastOverlay
             }
-
-            // Floating success toast
-            toastOverlay
+            .background(
+                NavigationLink(
+                    destination: Group {
+                        if let item = vm.activeDossierItem {
+                            POSReservedPetDossierSheet(
+                                item: item,
+                                viewModel: vm,
+                                onCompleteSale: onCompleteSale,
+                                isPushMode: true,
+                                onBack: {
+                                    vm.activeDossierItem = nil
+                                }
+                            )
+                            .navigationBarHidden(true)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: Binding(
+                        get: { vm.activeDossierItem != nil },
+                        set: { if !$0 { vm.activeDossierItem = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
+            )
+            .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task {
             vm.updateAccessories(allAccessories)
             await vm.loadData()
-        }
-        .sheet(item: $vm.activeDossierItem) { item in
-            POSReservedPetDossierSheet(item: item, viewModel: vm, onCompleteSale: onCompleteSale)
         }
         .sheet(item: $vm.extendingItem) { item in
             POSExtendReservationSheet(item: item, viewModel: vm)
@@ -1264,7 +1296,23 @@ struct POSReservedPetDossierSheet: View {
     let item: POSReservedPetCardModel
     var viewModel: POSReservedLivePetsViewModel? = nil
     var onCompleteSale: ((POSReservedPetCardModel) -> Void)? = nil
+    var isPushMode: Bool = true
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    init(
+        item: POSReservedPetCardModel,
+        viewModel: POSReservedLivePetsViewModel? = nil,
+        onCompleteSale: ((POSReservedPetCardModel) -> Void)? = nil,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.viewModel = viewModel
+        self.onCompleteSale = onCompleteSale
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
 
     @State private var copiedNotice: String? = nil
     @State private var appeared: Bool = false
@@ -1335,6 +1383,9 @@ struct POSReservedPetDossierSheet: View {
             }
         }
         .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
                 pulsePill = true
@@ -1348,19 +1399,20 @@ struct POSReservedPetDossierSheet: View {
     // MARK: - Subviews
 
     private var sheetHeader: some View {
-        VStack(spacing: 8) {
-            Capsule()
-                .fill(Color.secondary.opacity(0.25))
-                .frame(width: 38, height: 4.5)
-                .padding(.top, 8)
-
-            HStack(alignment: .center) {
-                AdminSquircleCloseButton {
+        AdminSovereignNavigationBar(
+            title: item.animalName,
+            subtitle: item.ringTag.isEmpty ? item.branchName : (item.branchName.isEmpty ? "#\(item.ringTag)" : "\(item.branchName) • #\(item.ringTag)"),
+            statusDotColor: urgencyColor,
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack = onBack {
+                    onBack()
+                } else {
                     dismiss()
                 }
-
-                Spacer()
-
+            }
+        ) {
+            HStack(spacing: 8) {
                 // Live Hold Status Badge
                 HStack(spacing: 6) {
                     Circle()
@@ -1380,33 +1432,16 @@ struct POSReservedPetDossierSheet: View {
                         .strokeBorder(urgencyColor.opacity(0.2), lineWidth: 0.75)
                 )
 
-                Spacer()
-
                 // Share / Copy All Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                AdminSquircleActionButton(
+                    systemImage: "square.and.arrow.up",
+                    isLoading: false,
+                    accessibilityLabel: Language.get("Copy", alter: "نسخ")
+                ) {
                     copyDossierSummary()
-                } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(AdminSurface.surface)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-                    .frame(width: 44, height: 44)
-                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
         }
-        .padding(.bottom, 4)
-        .background(Color(uiColor: .systemGroupedBackground))
     }
 
     private var heroShowcaseCard: some View {

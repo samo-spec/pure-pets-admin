@@ -543,7 +543,17 @@ import SwiftUI
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
-            PPAdminNavigationFallback.popOrDismiss(from: self)
+            if let nav = self.navigationController, nav.viewControllers.count > 1 {
+                nav.popViewController(animated: true)
+            } else if let presenting = self.presentingViewController {
+                presenting.dismiss(animated: true)
+            } else if let parentNav = self.parent?.navigationController, parentNav.viewControllers.count > 1 {
+                parentNav.popViewController(animated: true)
+            } else if let parentPresenting = self.parent?.presentingViewController {
+                parentPresenting.dismiss(animated: true)
+            } else {
+                PPAdminNavigationFallback.popOrDismiss(from: self)
+            }
         })
         addChild(host)
         view.addSubview(host.view)
@@ -584,6 +594,8 @@ import SwiftUI
 }
 
 @objc public final class AdminNotificationComposerHostingController: UIViewController {
+    private var priorNavigationBarHidden: Bool?
+
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
@@ -608,11 +620,21 @@ import SwiftUI
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        priorNavigationBarHidden = navigationController?.isNavigationBarHidden
         navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if let prior = priorNavigationBarHidden {
+            navigationController?.setNavigationBarHidden(prior, animated: animated)
+        }
     }
 }
 
 @objc public final class AdminNotificationSettingsHostingController: UIViewController {
+    private var priorNavigationBarHidden: Bool?
+
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
@@ -637,7 +659,15 @@ import SwiftUI
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        priorNavigationBarHidden = navigationController?.isNavigationBarHidden
         navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if let prior = priorNavigationBarHidden {
+            navigationController?.setNavigationBarHidden(prior, animated: animated)
+        }
     }
 }
 

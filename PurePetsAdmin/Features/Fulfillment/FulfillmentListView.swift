@@ -1046,6 +1046,10 @@ struct AdminFulfillmentListView: View {
                     }
                     .buttonStyle(.plain)
                 }
+
+                AdminBarcodeScanButton { scanned in
+                    viewModel.searchText = scanned
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)

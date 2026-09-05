@@ -529,9 +529,32 @@ public struct PPListingsCommandCenterScreen: View {
             // Sovereign Glassmorphic Navigation Bar
             sovereignNavigationBar
         }
-        .sheet(item: $viewModel.selectedListingForDossier) { listing in
-            PPListingDetailDossierSheet(item: listing, viewModel: viewModel)
-        }
+        .background(
+            NavigationLink(
+                isActive: Binding(
+                    get: { viewModel.selectedListingForDossier != nil },
+                    set: { if !$0 { viewModel.selectedListingForDossier = nil } }
+                ),
+                destination: {
+                    if let listing = viewModel.selectedListingForDossier {
+                        PPListingDetailDossierSheet(
+                            item: listing,
+                            viewModel: viewModel,
+                            isPushMode: true,
+                            onBack: {
+                                viewModel.selectedListingForDossier = nil
+                            }
+                        )
+                    } else {
+                        EmptyView()
+                    }
+                },
+                label: { EmptyView() }
+            )
+            .hidden()
+        )
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -923,7 +946,21 @@ public struct PPListingsCommandCenterScreen: View {
 public struct PPListingDetailDossierSheet: View {
     public let item: PPListingModerationModel
     @ObservedObject public var viewModel: PPListingsCommandCenterViewModel
+    public var isPushMode: Bool = true
+    public var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+
+    public init(
+        item: PPListingModerationModel,
+        viewModel: PPListingsCommandCenterViewModel,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -931,8 +968,14 @@ public struct PPListingDetailDossierSheet: View {
                     title: Language.get("ListingDossierTitle", alter: "ملف فحص الإعلان"),
                     subtitle: item.title,
                     statusDotColor: item.statusColor,
-                    isModal: true,
-                    onBack: { dismiss() }
+                    isModal: !isPushMode,
+                    onBack: {
+                        if let onBack = onBack {
+                            onBack()
+                        } else {
+                            dismiss()
+                        }
+                    }
                 )
 
                 ZStack(alignment: .bottom) {
@@ -1146,7 +1189,11 @@ public struct PPListingDetailDossierSheet: View {
             if viewModel.canManage && item.status != 4 {
                 Button {
                     viewModel.archiveListing(item)
-                    dismiss()
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
                 } label: {
                     Image(systemName: "archivebox.fill")
                         .font(.system(size: 16, weight: .bold))
@@ -1168,6 +1215,9 @@ public struct PPListingDetailDossierSheet: View {
                     Divider().background(Color(uiColor: .ppSurfaceBorder).opacity(0.6))
                 }
         )
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1176,7 +1226,13 @@ public struct PPListingDetailDossierSheet: View {
 @objc @MainActor public final class PPListingsCommandCenterHostingBridge: NSObject {
     @objc(makeViewControllerWithOnDismiss:) public static func makeViewController(onDismiss: @escaping @Sendable () -> Void) -> UIViewController {
         let viewModel = PPListingsCommandCenterViewModel(onDismiss: onDismiss)
-        let host = UIHostingController(rootView: PPListingsCommandCenterScreen(viewModel: viewModel))
+        let root = NavigationView {
+            PPListingsCommandCenterScreen(viewModel: viewModel)
+        }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+
+        let host = UIHostingController(rootView: root)
         host.view.backgroundColor = .clear
         return host
     }

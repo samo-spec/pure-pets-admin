@@ -165,7 +165,14 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
         purchaseCost = PPLivePetInventoryService.optionalNumber(dictionary["purchaseCost"])
         supplier = PPLivePetInventoryService.string(dictionary["supplier"])
         notes = PPLivePetInventoryService.string(dictionary["notes"])
-        currentBranchID = PPLivePetInventoryService.string(dictionary["currentBranchId"])
+        currentBranchID = PPLivePetInventoryService.string(
+            dictionary["currentBranchId"]
+            ?? dictionary["currentBranchID"]
+            ?? dictionary["branchId"]
+            ?? dictionary["branchID"]
+            ?? dictionary["storeId"]
+            ?? dictionary["storeID"]
+        )
         reservationTransactionID = PPLivePetInventoryService.string(dictionary["reservationTransactionId"])
         reservationCustomerName = PPLivePetInventoryService.string(dictionary["reservationCustomerName"])
         reservationCustomerPhone = PPLivePetInventoryService.string(dictionary["reservationCustomerPhone"])
@@ -472,6 +479,59 @@ enum PPLivePetInventoryService {
 
     static func branch(for id: String) -> PPInventoryBranchOption? {
         cachedBranches.first { $0.id == id }
+    }
+
+    static func canonicalBranch(for identifier: String, in branches: [PPInventoryBranchOption]) -> PPInventoryBranchOption? {
+        let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        // 1. Exact match by Document ID
+        if let match = branches.first(where: { $0.id == trimmed }) {
+            return match
+        }
+
+        // 2. Exact match by Code (case-insensitive)
+        if let match = branches.first(where: { !$0.code.isEmpty && $0.code.caseInsensitiveCompare(trimmed) == .orderedSame }) {
+            return match
+        }
+
+        // 3. Match by nameAr, nameEn, or displayName (case-insensitive)
+        if let match = branches.first(where: {
+            (!$0.nameAr.isEmpty && $0.nameAr.caseInsensitiveCompare(trimmed) == .orderedSame) ||
+            (!$0.nameEn.isEmpty && $0.nameEn.caseInsensitiveCompare(trimmed) == .orderedSame) ||
+            (!$0.displayName.isEmpty && $0.displayName.caseInsensitiveCompare(trimmed) == .orderedSame)
+        }) {
+            return match
+        }
+
+        // 4. Match cached branches
+        if let cached = cachedBranches.first(where: {
+            $0.id == trimmed ||
+            (!$0.code.isEmpty && $0.code.caseInsensitiveCompare(trimmed) == .orderedSame) ||
+            (!$0.nameAr.isEmpty && $0.nameAr.caseInsensitiveCompare(trimmed) == .orderedSame) ||
+            (!$0.nameEn.isEmpty && $0.nameEn.caseInsensitiveCompare(trimmed) == .orderedSame) ||
+            (!$0.displayName.isEmpty && $0.displayName.caseInsensitiveCompare(trimmed) == .orderedSame)
+        }) {
+            return cached
+        }
+
+        // 5. Match PPBranchContextManager model
+        if let b = PPBranchContextManager.shared().branch(withID: trimmed) {
+            if let match = branches.first(where: { $0.id == b.branchID }) {
+                return match
+            }
+        }
+
+        // 6. Substring match (e.g. if identifier contains the branch name or code)
+        let substringMatches = branches.filter {
+            ($0.displayName.count >= 3 && trimmed.contains($0.displayName)) ||
+            ($0.code.count >= 3 && trimmed.contains($0.code))
+        }
+        if substringMatches.count == 1 {
+            return substringMatches[0]
+        }
+
+        return nil
     }
 
     static func listBranches() async throws -> [PPInventoryBranchOption] {
@@ -1159,12 +1219,13 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             throw PPLivePetOperationValidationError.invalidRing
         }
         return try drafts.map { draft in
-            let sellingText = draft.sellingPriceText.replacingOccurrences(of: ",", with: ".")
+            let sellingText = draft.sellingPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
             guard let price = Double(sellingText), price > 0, price <= 999_999_999.99,
                   abs(price * 100 - (price * 100).rounded()) < 0.000_001 else {
                 throw PPLivePetOperationValidationError.invalidPrice
             }
-            let purchaseCost = Double(draft.purchaseCostText.replacingOccurrences(of: ",", with: "."))
+            let purchaseCostText = draft.purchaseCostText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+            let purchaseCost = Double(purchaseCostText)
             if canViewCosts {
                 let cleanCost = draft.purchaseCostText.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !cleanCost.isEmpty,
@@ -1312,6 +1373,7 @@ enum CatalogHorizonTab: Int, CaseIterable, Identifiable {
 final class PPInventoryListViewModel: ObservableObject {
     @Published private(set) var allItems: [PetAccessory] = []
     @Published private(set) var filteredItems: [PetAccessory] = []
+    @Published var branches: [PPInventoryBranchOption] = []
     @Published var searchText: String = ""
     @Published fileprivate var activeFilter: InventoryFilter = .all
     @Published var activeTab: CatalogHorizonTab
@@ -1325,15 +1387,15 @@ final class PPInventoryListViewModel: ObservableObject {
     private var pendingDebounceWorkItems: [String: DispatchWorkItem] = [:]
 
     func effectiveStock(for item: PetAccessory) -> Int {
-        if item.isLivePet {
-            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
-            if let activeBranch, !activeBranch.isEmpty {
-                let itemBranch = item.storeID ?? item.branchID ?? ""
-                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
-                    return 0
-                }
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let activeBranch, !activeBranch.isEmpty {
+            if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
+                return branchRecord.availableQuantity
             }
-            return item.quantity
+            let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                return 0
+            }
         }
         return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
@@ -1394,6 +1456,13 @@ final class PPInventoryListViewModel: ObservableObject {
     func startListening() {
         isLoading = true
         errorMessage = nil
+        Task { [weak self] in
+            if let loaded = try? await PPLivePetInventoryService.listBranches() {
+                await MainActor.run {
+                    self?.branches = loaded
+                }
+            }
+        }
         listener = AccessoryManager.shared().observeAccessories(of: currentKind) { [weak self] items, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -2125,6 +2194,11 @@ public struct PPInventoryListView: View {
                             .foregroundStyle(AdminCommandInk.tertiary)
                     }
                 }
+
+                AdminBarcodeScanButton { scanned in
+                    viewModel.searchText = scanned
+                    isSearchFocused = false
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
@@ -2734,15 +2808,15 @@ private struct FlagshipInventoryCard: View {
     }
 
     private var displayQuantity: Int {
-        if item.isLivePet {
-            let activeBranch = BranchContextStore.shared.activeBranch?.branchID
-            if let activeBranch, !activeBranch.isEmpty {
-                let itemBranch = item.storeID ?? item.branchID ?? ""
-                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
-                    return 0
-                }
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let activeBranch, !activeBranch.isEmpty {
+            if let branchRecord = PPBranchInventoryService.shared.inventory(for: item.accessoryID) {
+                return branchRecord.availableQuantity
             }
-            return item.quantity
+            let itemBranch = (item.storeID ?? item.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != activeBranch {
+                return 0
+            }
         }
         return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
@@ -3201,6 +3275,8 @@ public struct PPInventoryItemDetailView: View {
     @State private var currentQuantity: Int = 0
     @State private var showQuantityInputAlert: Bool = false
     @State private var quantityInputText: String = ""
+    @State private var showTransferSheet: Bool = false
+    @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -3223,9 +3299,7 @@ public struct PPInventoryItemDetailView: View {
         self.onToggleStock = onToggleStock
         self.onDelete = onDelete
         _liveModel = StateObject(wrappedValue: PPLivePetOperationsViewModel(item: item))
-        let initialStock = item.isLivePet && item.quantity > 0
-            ? item.quantity
-            : PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        let initialStock = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
         _currentQuantity = State(initialValue: initialStock)
     }
 
@@ -3272,6 +3346,32 @@ public struct PPInventoryItemDetailView: View {
 
             // Persistent Floating Command Dock
             floatingMasterCommandDock
+
+            // Sovereign Live Pet Specimen Action Portal Deck
+            if let unit = activeCommandUnit {
+                PPLivePetActionPortalDeck(
+                    unit: unit,
+                    liveModel: liveModel,
+                    onDismiss: {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                            activeCommandUnit = nil
+                        }
+                    },
+                    onSelectOperation: { op in
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                            activeCommandUnit = nil
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            liveModel.operation = op
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .bottom)),
+                    removal: .opacity.combined(with: .move(edge: .bottom))
+                ))
+                .zIndex(100)
+            }
         }
         .environment(\.layoutDirection, .rightToLeft)
         .onAppear {
@@ -3299,7 +3399,10 @@ public struct PPInventoryItemDetailView: View {
                 }
             }
         }
-        .onChange(of: liveModel.units) { _ in
+        .onChange(of: liveModel.units) { updatedUnits in
+            if let current = activeCommandUnit, let fresh = updatedUnits.first(where: { $0.id == current.id }) {
+                activeCommandUnit = fresh
+            }
             if item.isLivePet && liveModel.mode == .individual {
                 let count = effectiveAvailableUnitsCount
                 currentQuantity = count
@@ -3332,6 +3435,20 @@ public struct PPInventoryItemDetailView: View {
             Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
         } message: {
             Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
+        }
+        .sheet(isPresented: $showTransferSheet) {
+            PPStockTransferSheet(
+                item: item,
+                currentBranchID: BranchContextStore.shared.activeBranch?.branchID ?? item.storeID ?? "main_store",
+                availableQuantity: currentQuantity,
+                branches: (viewModel?.branches.isEmpty == false ? viewModel?.branches : nil) ?? PPLivePetInventoryService.cachedBranches,
+                onComplete: {
+                    if let branchId = BranchContextStore.shared.activeBranch?.branchID {
+                        currentQuantity = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+                    }
+                    viewModel?.applyFilter()
+                }
+            )
         }
     }
 
@@ -3398,6 +3515,14 @@ public struct PPInventoryItemDetailView: View {
                 }
 
                 if !item.isLivePet {
+                    if currentQuantity > 0 {
+                        Button {
+                            showTransferSheet = true
+                        } label: {
+                            Label(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"), systemImage: "arrow.left.arrow.right")
+                        }
+                    }
+
                     Button {
                         toggleStockVisibility()
                     } label: {
@@ -3759,6 +3884,24 @@ public struct PPInventoryItemDetailView: View {
                         RoundedRectangle(cornerRadius: 8, style: .continuous)
                             .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
                     )
+
+                    if currentQuantity > 0 {
+                        Button {
+                            showTransferSheet = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"))
+                                    .font(Font.custom("Beiruti-Bold", size: 11))
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                            .foregroundStyle(AdminSurface.primary)
+                        }
+                        .padding(.top, 2)
+                    }
                 }
             }
             .padding(AdminSpacing.md)
@@ -3959,28 +4102,24 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private var effectiveAvailableUnitsCount: Int {
-        let activeBranch = BranchContextStore.shared.activeBranch?.branchID
+        let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
         return liveModel.units.filter { unit in
             guard unit.status == "AVAILABLE" else { return false }
             if let activeBranch, !activeBranch.isEmpty {
-                return unit.currentBranchID.isEmpty || unit.currentBranchID == activeBranch
+                let unitBranch = unit.currentBranchID.isEmpty ? (item.resolvedBranchID() ?? item.storeID ?? "") : unit.currentBranchID
+                return unitBranch.isEmpty || unitBranch == "main_store" || unitBranch == activeBranch
             }
             return true
         }.count
     }
 
     private var displayedQuantity: Int {
-        if item.isLivePet {
-            if liveModel.mode == .individual {
-                if !liveModel.units.isEmpty || !liveModel.isLoading {
-                    return effectiveAvailableUnitsCount
-                }
-                return max(currentQuantity, item.quantity)
-            } else {
-                return currentQuantity
+        if item.isLivePet && liveModel.mode == .individual {
+            if !liveModel.units.isEmpty || !liveModel.isLoading {
+                return effectiveAvailableUnitsCount
             }
         }
-        return currentQuantity
+        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
 
     private var stockTone: Color {
@@ -4544,11 +4683,12 @@ public struct PPInventoryItemDetailView: View {
                             tint: statusColor
                         )
 
-                        if !unit.currentBranchID.isEmpty {
+                        let unitBranchID = unit.currentBranchID.isEmpty ? (item.resolvedBranchID() ?? item.storeID ?? "") : unit.currentBranchID
+                        if !unitBranchID.isEmpty {
                             HStack(spacing: 3) {
                                 Image(systemName: "building.2")
                                     .font(.system(size: 9))
-                                Text(localizedBranchName(unit.currentBranchID, id: unit.currentBranchID))
+                                Text(localizedBranchName(unitBranchID, id: unitBranchID))
                                     .font(Font.custom("Beiruti-Regular", size: 11))
                             }
                             .foregroundStyle(AdminSurface.secondaryText)
@@ -4576,12 +4716,14 @@ public struct PPInventoryItemDetailView: View {
                     Menu {
                         livePetUnitActions(unit)
                     } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(AdminSurface.primary)
-                            .frame(width: 34, height: 34)
-                            .background(AdminSurface.primary.opacity(0.10), in: Circle())
-                            .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75))
+                        HStack(spacing: 2.5) {
+                            Circle().fill(AdminSurface.primary).frame(width: 3.5, height: 3.5)
+                            Circle().fill(AdminSurface.primary).frame(width: 3.5, height: 3.5)
+                            Circle().fill(AdminSurface.primary).frame(width: 3.5, height: 3.5)
+                        }
+                        .frame(width: 34, height: 34)
+                        .background(AdminSurface.primary.opacity(0.12), in: Circle())
+                        .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
                     }
                     .disabled(liveModel.isMutating)
                     .accessibilityLabel(String(
@@ -4622,38 +4764,55 @@ public struct PPInventoryItemDetailView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(statusColor.opacity(0.25), lineWidth: 0.75)
         )
+        .contentShape(Rectangle())
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                activeCommandUnit = unit
+            }
+        }
+        .contextMenu {
+            livePetUnitActions(unit)
+        }
+    }
+
+    private func selectUnitAction(_ op: PPLivePetOperationContext) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            liveModel.operation = op
+        }
     }
 
     @ViewBuilder
     private func livePetUnitActions(_ unit: PPLivePetInventoryUnit) -> some View {
         if unit.status == "AVAILABLE" {
-            Button { liveModel.operation = .reserve(unit) } label: {
+            Button { selectUnitAction(.reserve(unit)) } label: {
                 Label(Language.get("LivePet_Reserve_Action", alter: "حجز لعميل"), systemImage: "calendar.badge.plus")
             }
             .disabled(!liveModel.canSell)
-            Button { liveModel.operation = .transfer(unit) } label: {
+            Button { selectUnitAction(.transfer(unit)) } label: {
                 Label(Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
             }
             .disabled(!liveModel.canManageStock)
-            Button { liveModel.operation = .quarantine(unit) } label: {
+            Button { selectUnitAction(.quarantine(unit)) } label: {
                 Label(Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر"), systemImage: "cross.case")
             }
             .disabled(!liveModel.canManageStock)
-            Button { liveModel.operation = .price(unit) } label: {
+            Button { selectUnitAction(.price(unit)) } label: {
                 Label(Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
             }
             .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { liveModel.operation = .remove(unit) } label: {
+            Button(role: .destructive) { selectUnitAction(.remove(unit)) } label: {
                 Label(Language.get("LivePet_Remove_Action", alter: "إزالة من المخزون"), systemImage: "minus.circle")
             }
             .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { liveModel.operation = .mortality(unit) } label: {
+            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
                 Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
         } else if unit.status == "RESERVED" {
             if let reservation = liveModel.reservation(for: unit) {
-                Button { liveModel.operation = .reservation(reservation) } label: {
+                Button { selectUnitAction(.reservation(reservation)) } label: {
                     Label(Language.get("LivePet_Manage_Reservation", alter: "إدارة الحجز"), systemImage: "creditcard")
                 }
             } else {
@@ -4661,20 +4820,24 @@ public struct PPInventoryItemDetailView: View {
                     Label(Language.get("Refresh", alter: "تحديث"), systemImage: "arrow.clockwise")
                 }
             }
-            Button(role: .destructive) { liveModel.operation = .mortality(unit) } label: {
+            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
                 Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة وإلغاء الحجز"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
         } else if unit.status == "QUARANTINED" {
-            Button { liveModel.operation = .releaseQuarantine(unit) } label: {
+            Button { selectUnitAction(.releaseQuarantine(unit)) } label: {
                 Label(Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر"), systemImage: "checkmark.shield")
             }
             .disabled(!liveModel.canReleaseQuarantine)
-            Button { liveModel.operation = .transfer(unit) } label: {
+            Button { selectUnitAction(.transfer(unit)) } label: {
                 Label(Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
             }
             .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { liveModel.operation = .mortality(unit) } label: {
+            Button { selectUnitAction(.price(unit)) } label: {
+                Label(Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
+            }
+            .disabled(!liveModel.canManageStock)
+            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
                 Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
@@ -4684,11 +4847,15 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private func localizedBranchName(_ name: String, id: String) -> String {
-        if id == "main_store" || name.lowercased() == "main_store" || name.lowercased() == "main store" {
+        let lookupKey = id.isEmpty ? name : id
+        if lookupKey == "main_store" || lookupKey.lowercased() == "main_store" || lookupKey.lowercased() == "main store" {
             return Language.get("MainStore", alter: "المتجر الرئيسي")
         }
-        if name.lowercased().contains("reservation") || id.lowercased().contains("reservation") {
+        if lookupKey.lowercased().contains("reservation") {
             return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if let canonical = PPLivePetInventoryService.canonicalBranch(for: lookupKey, in: liveModel.branches) {
+            return canonical.fullMeaningfulTitle
         }
         if let branch = liveModel.branches.first(where: { $0.id == id }) {
             return branch.fullMeaningfulTitle
@@ -4790,6 +4957,754 @@ public struct PPInventoryItemDetailView: View {
         case .some(.quantity): return Color(uiColor: .ppInfo)
         case .none: return Color(uiColor: .ppWarning)
         }
+    }
+}
+
+// MARK: - Sovereign Action Portal Shapes & Styles
+
+private struct PPSheetTopRoundedShape: Shape {
+    var radius: CGFloat = 32
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addArc(
+            center: CGPoint(x: rect.minX + radius, y: rect.minY + radius),
+            radius: radius,
+            startAngle: Angle(degrees: 180),
+            endAngle: Angle(degrees: 270),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - radius, y: rect.minY + radius),
+            radius: radius,
+            startAngle: Angle(degrees: 270),
+            endAngle: Angle(degrees: 0),
+            clockwise: false
+        )
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct PPLivePetActionPortalCard: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let iconTint: Color
+    let iconBackground: Color
+    var badge: String? = nil
+    var badgeTint: Color? = nil
+    var trailingPill: String? = nil
+    var isDestructive: Bool = false
+    var isHero: Bool = false
+    var isLocked: Bool = false
+    var lockReason: String? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: {
+            if !isLocked {
+                action()
+            }
+        }) {
+            HStack(alignment: .center, spacing: 14) {
+                // Leading Icon Vessel
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(iconBackground)
+                    Image(systemName: icon)
+                        .font(.system(size: isHero ? 20 : 17, weight: .bold))
+                        .foregroundStyle(iconTint)
+                }
+                .frame(width: isHero ? 46 : 42, height: isHero ? 46 : 42)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(iconTint.opacity(0.25), lineWidth: 0.75)
+                )
+
+                // Title & Subtitle Stack
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(Font.custom("Beiruti-Bold", size: isHero ? 16 : 15))
+                            .foregroundStyle(isDestructive ? Color(uiColor: .ppError) : AdminSurface.primaryText)
+
+                        if let badge = badge {
+                            Text(badge)
+                                .font(Font.custom("Beiruti-Bold", size: 10))
+                                .foregroundStyle(badgeTint ?? iconTint)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background((badgeTint ?? iconTint).opacity(0.12), in: Capsule(style: .continuous))
+                        }
+
+                        if isLocked {
+                            HStack(spacing: 3) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 9))
+                                if let lockReason = lockReason {
+                                    Text(lockReason)
+                                        .font(Font.custom("Beiruti-Regular", size: 10))
+                                }
+                            }
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        }
+                    }
+
+                    Text(subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                // Optional Trailing Badge or Price Pill
+                if let trailingPill = trailingPill {
+                    Text(trailingPill)
+                        .font(Font.custom("Beiruti-Bold", size: 13))
+                        .foregroundStyle(iconTint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(iconTint.opacity(0.10), in: Capsule(style: .continuous))
+                }
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(isDestructive ? Color(uiColor: .ppError).opacity(0.6) : AdminCommandInk.tertiary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, isHero ? 14 : 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                isHero
+                    ? iconTint.opacity(0.06)
+                    : (isDestructive ? Color(uiColor: .ppError).opacity(0.04) : AdminSurface.control),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        isHero
+                            ? iconTint.opacity(0.35)
+                            : (isDestructive ? Color(uiColor: .ppError).opacity(0.20) : AdminSurface.hairline),
+                        lineWidth: isHero ? 1.0 : 0.75
+                    )
+            )
+            .opacity(isLocked ? 0.55 : 1.0)
+        }
+        .buttonStyle(CatalogPressStyle())
+        .disabled(isLocked)
+    }
+}
+
+// MARK: - Sovereign Live Pet Action Portal & Command Deck (Reimagined from First Principles)
+
+private struct PPLivePetActionPortalDeck: View {
+    let unit: PPLivePetInventoryUnit
+    @ObservedObject var liveModel: PPLivePetOperationsViewModel
+    let onDismiss: () -> Void
+    let onSelectOperation: (PPLivePetOperationContext) -> Void
+
+    @State private var hasCopiedTag: Bool = false
+    @State private var dragOffset: CGFloat = 0
+
+    private var identity: String {
+        unit.ringTag.isEmpty ? unit.id : unit.ringTag
+    }
+
+    private var statusTitle: String {
+        switch unit.status {
+        case "AVAILABLE": return Language.get("LivePet_Status_Available", alter: "متاح بالمخزون")
+        case "RESERVED": return Language.get("LivePet_Status_Reserved", alter: "محجوز لعميل")
+        case "SOLD": return Language.get("LivePet_Status_Sold", alter: "مباع ومسلّم")
+        case "QUARANTINED": return Language.get("LivePet_Status_Quarantined", alter: "في الحجر الصحي")
+        case "DECEASED": return Language.get("LivePet_Status_Deceased", alter: "متوفى")
+        case "TRANSFERRED": return Language.get("LivePet_Status_Transferred", alter: "منقول لفرع آخر")
+        default: return Language.get("LivePet_Status_Removed", alter: "مزال من المخزون")
+        }
+    }
+
+    private var statusColor: Color {
+        switch unit.status {
+        case "AVAILABLE": return Color(uiColor: .ppSuccess)
+        case "RESERVED": return Color(uiColor: .ppWarning)
+        case "QUARANTINED": return Color(uiColor: .ppInfo)
+        case "SOLD", "TRANSFERRED": return AdminCommandInk.secondary
+        default: return Color(uiColor: .ppError)
+        }
+    }
+
+    private var statusSymbol: String {
+        switch unit.status {
+        case "AVAILABLE": return "checkmark.circle.fill"
+        case "RESERVED": return "calendar.badge.clock"
+        case "SOLD": return "checkmark.seal.fill"
+        case "QUARANTINED": return "cross.case.fill"
+        case "DECEASED": return "heart.slash.fill"
+        case "TRANSFERRED": return "arrow.left.arrow.right.circle.fill"
+        default: return "minus.circle.fill"
+        }
+    }
+
+    private func localizedBranchName(_ name: String, id: String) -> String {
+        let lookupKey = id.isEmpty ? name : id
+        if lookupKey == "main_store" || lookupKey.lowercased() == "main_store" || lookupKey.lowercased() == "main store" {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        if lookupKey.lowercased().contains("reservation") {
+            return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if let canonical = PPLivePetInventoryService.canonicalBranch(for: lookupKey, in: liveModel.branches) {
+            return canonical.fullMeaningfulTitle
+        }
+        if let branch = liveModel.branches.first(where: { $0.id == id }) {
+            return branch.fullMeaningfulTitle
+        }
+        if let cached = PPLivePetInventoryService.branch(for: id) {
+            return cached.fullMeaningfulTitle
+        }
+        if let b = PPBranchContextManager.shared().branch(withID: id) {
+            return b.localizedName()
+        }
+        return name.isEmpty ? id : name
+    }
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            // High-Performance Ambient Scrim
+            Color.black.opacity(0.48)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDismiss()
+                }
+
+            // Sovereign Sheet Deck Vessel
+            VStack(spacing: 0) {
+                // Drag Capsule
+                Capsule()
+                    .fill(Color.white.opacity(0.35))
+                    .frame(width: 44, height: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 12)
+
+                VStack(spacing: 16) {
+                    // Specimen Sovereign Telemetry Card
+                    specimenTelemetryHUD
+
+                    // Active Reservation Banner if Reserved
+                    if unit.status == "RESERVED" {
+                        activeReservationBanner
+                    }
+
+                    // Active Quarantine Notice if Quarantined
+                    if unit.status == "QUARANTINED" {
+                        activeQuarantineNotice
+                    }
+
+                    // Tactical Action Sectors
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 18) {
+                            if unit.status == "AVAILABLE" {
+                                commercialMovementsSector
+                                careAndGovernanceSector
+                                terminalGuardSector
+                            } else if unit.status == "RESERVED" {
+                                reservedStateSector
+                                terminalGuardSector
+                            } else if unit.status == "QUARANTINED" {
+                                quarantinedStateSector
+                                terminalGuardSector
+                            } else {
+                                terminalReadOnlySector
+                            }
+                        }
+                        .padding(.bottom, 24)
+                    }
+                    .frame(maxHeight: UIScreen.main.bounds.height * 0.54)
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+            }
+            .padding(.bottom, 24)
+            .background(
+                AdminSurface.surface
+                    .clipShape(PPSheetTopRoundedShape(radius: 32))
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .overlay(
+                PPSheetTopRoundedShape(radius: 32)
+                    .stroke(AdminSurface.hairline, lineWidth: 1)
+                    .ignoresSafeArea(edges: .bottom)
+            )
+            .shadow(color: Color.black.opacity(0.28), radius: 24, x: 0, y: -8)
+            .offset(y: max(0, dragOffset))
+            .gesture(
+                DragGesture()
+                    .onChanged { val in
+                        if val.translation.height > 0 {
+                            dragOffset = val.translation.height
+                        }
+                    }
+                    .onEnded { val in
+                        if val.translation.height > 80 {
+                            onDismiss()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+            )
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - Specimen Sovereign Telemetry Card (HUD)
+
+    private var specimenTelemetryHUD: some View {
+        VStack(spacing: 12) {
+            // Top ID & Close Bar
+            HStack(alignment: .center, spacing: 10) {
+                // Identity Jewel
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(statusColor.opacity(0.14))
+                    Image(systemName: statusSymbol)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(statusColor)
+                }
+                .frame(width: 42, height: 42)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(identity)
+                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Button {
+                            UIPasteboard.general.string = identity
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
+                                hasCopiedTag = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                                withAnimation {
+                                    hasCopiedTag = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: hasCopiedTag ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 10, weight: .bold))
+                                Text(hasCopiedTag ? Language.get("Copied", alter: "تم النسخ") : Language.get("Copy", alter: "نسخ"))
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                            }
+                            .foregroundStyle(hasCopiedTag ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(
+                                (hasCopiedTag ? Color(uiColor: .ppSuccess) : AdminSurface.primary).opacity(0.10),
+                                in: Capsule(style: .continuous)
+                            )
+                        }
+                    }
+
+                    Text(Language.get("LivePet_Command_Hub_Subtitle", alter: "لوحة التحكم السريعة في دورة حياة السجل"))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Spacer(minLength: 0)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.control, in: Circle())
+                }
+            }
+
+            // Telemetry Bento Strip
+            HStack(spacing: 8) {
+                // Status Pill
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 7, height: 7)
+                    Text(statusTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundStyle(statusColor)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+                .background(statusColor.opacity(0.10), in: Capsule(style: .continuous))
+
+                // Branch Location
+                let displayBranchID = unit.currentBranchID.isEmpty ? (liveModel.item.resolvedBranchID() ?? liveModel.item.storeID ?? "") : unit.currentBranchID
+                if !displayBranchID.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 10))
+                        Text(localizedBranchName(displayBranchID, id: displayBranchID))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control, in: Capsule(style: .continuous))
+                }
+
+                Spacer(minLength: 0)
+
+                // Selling Price
+                if let price = unit.sellingPrice {
+                    HStack(spacing: 4) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 10))
+                        Text(PetAccessory.formatCurrency(NSNumber(value: price)))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Active Reservation Banner
+
+    private var activeReservationBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.text.rectangle.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color(uiColor: .ppWarning))
+                .frame(width: 32, height: 32)
+                .background(Color(uiColor: .ppWarning).opacity(0.14), in: Circle())
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(unit.reservationCustomerName.isEmpty ? unit.reservationCustomerPhone : unit.reservationCustomerName)
+                    .font(Font.custom("Beiruti-Bold", size: 14))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                if let validUntil = unit.reservationValidUntil {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 10))
+                        Text(String(format: Language.get("LivePet_Reservation_Until_Format", alter: "الحجز صالح حتى %@"), validUntil.formatted(date: .abbreviated, time: .shortened)))
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                    }
+                    .foregroundStyle(validUntil <= Date() ? Color(uiColor: .ppError) : AdminCommandInk.secondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color(uiColor: .ppWarning).opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppWarning).opacity(0.24), lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Active Quarantine Notice
+
+    private var activeQuarantineNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "cross.case.fill")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color(uiColor: .ppInfo))
+                .frame(width: 32, height: 32)
+                .background(Color(uiColor: .ppInfo).opacity(0.14), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("LivePet_Quarantine_Notice_Title", alter: "الحيوان خاضع للعزل البيطري"))
+                    .font(Font.custom("Beiruti-Bold", size: 14))
+                    .foregroundStyle(AdminSurface.primaryText)
+                Text(Language.get("LivePet_Quarantine_Notice_Desc", alter: "تم إيقاف عرض هذا الحيوان من نقاط البيع لحين التحقق من التعافي وإصدار إذن خروج."))
+                    .font(Font.custom("Beiruti-Regular", size: 11))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(Color(uiColor: .ppInfo).opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppInfo).opacity(0.24), lineWidth: 0.75)
+        )
+    }
+
+    // MARK: - Tactical Sectors
+
+    // Commercial Movements (Tier 1)
+    private var commercialMovementsSector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "bag.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePet_Sector_Commercial", alter: "حركات الحجز واللوجستيات"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            VStack(spacing: 8) {
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Reserve_Action", alter: "حجز لعميل"),
+                    subtitle: Language.get("LivePet_Reserve_Action_Desc", alter: "تخصيص هذا الحيوان حصرياً لعميل محدد وتجميده من المعارض"),
+                    icon: "calendar.badge.plus",
+                    iconTint: Color(uiColor: .ppWarning),
+                    iconBackground: Color(uiColor: .ppWarning).opacity(0.12),
+                    badge: Language.get("Badge_Exclusive", alter: "تخصيص فوري"),
+                    isHero: true,
+                    isLocked: !liveModel.canSell,
+                    lockReason: !liveModel.canSell ? Language.get("Stock_Perm_Required", alter: "صلاحية البيع مطلوبة") : nil
+                ) {
+                    triggerAction(.reserve(unit))
+                }
+
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع آخر"),
+                    subtitle: Language.get("LivePet_Transfer_Action_Desc", alter: "ترحيل العهدة والحيازة إلى معرض أو مستودع أو فرع جديد"),
+                    icon: "arrow.left.arrow.right",
+                    iconTint: AdminSurface.primary,
+                    iconBackground: AdminSurface.primary.opacity(0.12),
+                    badge: Language.get("Badge_Logistics", alter: "حركة مخزنية"),
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.transfer(unit))
+                }
+            }
+        }
+    }
+
+    // Care & Governance (Tier 2)
+    private var careAndGovernanceSector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "cross.case.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(uiColor: .ppInfo))
+                Text(Language.get("LivePet_Sector_Care_Pricing", alter: "الرعاية الصحية وحوكمة الأسعار"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            VStack(spacing: 8) {
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر الصحي"),
+                    subtitle: Language.get("LivePet_Quarantine_Action_Desc", alter: "عزل بيطري فوري وفصل السجل عن قنوات العرض والبيع"),
+                    icon: "cross.case",
+                    iconTint: Color(uiColor: .ppInfo),
+                    iconBackground: Color(uiColor: .ppInfo).opacity(0.12),
+                    badge: Language.get("Badge_Biosecurity", alter: "أمان حيوي"),
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.quarantine(unit))
+                }
+
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"),
+                    subtitle: Language.get("LivePet_Edit_Price_Action_Desc", alter: "تحديث السعر الفردي المعتمد لهذا الحيوان"),
+                    icon: "tag",
+                    iconTint: AdminSurface.primary,
+                    iconBackground: AdminSurface.primary.opacity(0.12),
+                    trailingPill: unit.sellingPrice != nil ? PetAccessory.formatCurrency(NSNumber(value: unit.sellingPrice!)) : nil,
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.price(unit))
+                }
+            }
+        }
+    }
+
+    // Terminal Safety Guard (Tier 3)
+    private var terminalGuardSector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(uiColor: .ppError))
+                Text(Language.get("LivePet_Sector_Terminal", alter: "الإجراءات النهائية وإسقاط العهدة"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(Color(uiColor: .ppError).opacity(0.85))
+            }
+
+            VStack(spacing: 8) {
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Remove_Action", alter: "إزالة من المخزون"),
+                    subtitle: Language.get("LivePet_Remove_Action_Desc", alter: "شطب إداري للسجل وتحديث إجمالي الكميات المسجلة"),
+                    icon: "minus.circle",
+                    iconTint: Color(uiColor: .ppError),
+                    iconBackground: Color(uiColor: .ppError).opacity(0.12),
+                    isDestructive: true,
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.remove(unit))
+                }
+
+                PPLivePetActionPortalCard(
+                    title: unit.status == "RESERVED"
+                        ? Language.get("LivePet_Mortality_Cancel_Action", alter: "تسجيل وفاة وإلغاء الحجز")
+                        : Language.get("LivePet_Mortality_Action", alter: "تسجيل حالة وفاة"),
+                    subtitle: Language.get("LivePet_Mortality_Action_Desc", alter: "توثيق السبب البيطري والإسقاط النهائي من الدورة الحية"),
+                    icon: "heart.slash",
+                    iconTint: Color(uiColor: .ppError),
+                    iconBackground: Color(uiColor: .ppError).opacity(0.12),
+                    isDestructive: true,
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.mortality(unit))
+                }
+            }
+        }
+    }
+
+    // Reserved State Sector
+    private var reservedStateSector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "creditcard.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(uiColor: .ppWarning))
+                Text(Language.get("LivePet_Sector_Reservation_Active", alter: "إدارة الحجز القائم"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            VStack(spacing: 8) {
+                if let reservation = liveModel.reservation(for: unit) {
+                    PPLivePetActionPortalCard(
+                        title: Language.get("LivePet_Manage_Reservation", alter: "إدارة وتسوية الحجز"),
+                        subtitle: Language.get("LivePet_Manage_Reservation_Desc", alter: "إتمام عملية البيع أو الإلغاء واسترداد الحيوان للمخزون"),
+                        icon: "creditcard",
+                        iconTint: Color(uiColor: .ppWarning),
+                        iconBackground: Color(uiColor: .ppWarning).opacity(0.14),
+                        badge: Language.get("Badge_Active_Hold", alter: "حجز نشط"),
+                        isHero: true
+                    ) {
+                        triggerAction(.reservation(reservation))
+                    }
+                } else {
+                    PPLivePetActionPortalCard(
+                        title: Language.get("Refresh", alter: "تحديث السجلات"),
+                        subtitle: Language.get("LivePet_Refresh_Hint", alter: "إعادة جلب حالة الحجز والمطابقة من السحابة"),
+                        icon: "arrow.clockwise",
+                        iconTint: AdminSurface.primary,
+                        iconBackground: AdminSurface.primary.opacity(0.12)
+                    ) {
+                        Task { await liveModel.load() }
+                        onDismiss()
+                    }
+                }
+            }
+        }
+    }
+
+    // Quarantined State Sector
+    private var quarantinedStateSector: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "cross.case.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(uiColor: .ppInfo))
+                Text(Language.get("LivePet_Sector_Quarantine_Protocol", alter: "بروتوكول الفحص البيطري والحجر"))
+                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            VStack(spacing: 8) {
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر الصحي"),
+                    subtitle: Language.get("LivePet_Release_Quarantine_Desc", alter: "إعادة إتاحة الحيوان للبيع بعد التأكد من سلامته البيطرية"),
+                    icon: "checkmark.shield",
+                    iconTint: Color(uiColor: .ppSuccess),
+                    iconBackground: Color(uiColor: .ppSuccess).opacity(0.14),
+                    badge: Language.get("Badge_Medical_Clearance", alter: "تصريح طبي"),
+                    isHero: true,
+                    isLocked: !liveModel.canReleaseQuarantine,
+                    lockReason: !liveModel.canReleaseQuarantine ? Language.get("Stock_Perm_Required", alter: "صلاحية الفحص الطبي") : nil
+                ) {
+                    triggerAction(.releaseQuarantine(unit))
+                }
+
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع آخر"),
+                    subtitle: Language.get("LivePet_Transfer_Action_Desc", alter: "نقل الحيوان إلى مصحة الفرع أو العيادة المعتمدة"),
+                    icon: "arrow.left.arrow.right",
+                    iconTint: AdminSurface.primary,
+                    iconBackground: AdminSurface.primary.opacity(0.12),
+                    badge: Language.get("Badge_Logistics", alter: "حركة مخزن"),
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.transfer(unit))
+                }
+
+                PPLivePetActionPortalCard(
+                    title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"),
+                    subtitle: Language.get("LivePet_Edit_Price_Desc_Quarantine", alter: "تحديث السعر المعتمد للحيوان خلال فترة العزل"),
+                    icon: "tag",
+                    iconTint: AdminSurface.primary,
+                    iconBackground: AdminSurface.primary.opacity(0.12),
+                    trailingPill: unit.sellingPrice != nil ? PetAccessory.formatCurrency(NSNumber(value: unit.sellingPrice!)) : nil,
+                    isLocked: !liveModel.canManageStock,
+                    lockReason: !liveModel.canManageStock ? Language.get("Stock_Perm_Required", alter: "صلاحية إدارة المخزون") : nil
+                ) {
+                    triggerAction(.price(unit))
+                }
+            }
+        }
+    }
+
+    // Terminal Read-Only Sector
+    private var terminalReadOnlySector: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(AdminCommandInk.secondary)
+            Text(Language.get("LivePet_Terminal_No_Actions", alter: "هذه حالة نهائية للعرض والتدقيق فقط"))
+                .font(Font.custom("Beiruti-Bold", size: 15))
+                .foregroundStyle(AdminSurface.primaryText)
+            Text(Language.get("LivePet_Terminal_No_Actions_Hint", alter: "لا يمكن تنفيذ إجراءات تشغيلية إضافية على الحيوانات المباعة أو المتوفاة."))
+                .font(Font.custom("Beiruti-Regular", size: 12))
+                .foregroundStyle(AdminCommandInk.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.vertical, 24)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func triggerAction(_ operation: PPLivePetOperationContext) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        onSelectOperation(operation)
     }
 }
 
@@ -4959,6 +5874,33 @@ private struct PPLivePetOperationSheet: View {
     @State private var isBranchPickerPresented: Bool = false
     @State private var branchPickerExcludedID: String? = nil
 
+    private var currentLiveUnit: PPLivePetInventoryUnit? {
+        switch context {
+        case .reserve(let unit), .transfer(let unit), .quarantine(let unit), .releaseQuarantine(let unit), .mortality(let unit), .price(let unit), .remove(let unit):
+            return model.units.first(where: { $0.id == unit.id }) ?? unit
+        default:
+            return nil
+        }
+    }
+
+    private func effectiveCurrentBranchID(for unit: PPLivePetInventoryUnit) -> String {
+        let raw = unit.currentBranchID.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !raw.isEmpty {
+            if let canonical = PPLivePetInventoryService.canonicalBranch(for: raw, in: model.branches) {
+                return canonical.id
+            }
+            return raw
+        }
+        let itemBranch = (model.item.resolvedBranchID() ?? model.item.storeID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !itemBranch.isEmpty {
+            if let canonical = PPLivePetInventoryService.canonicalBranch(for: itemBranch, in: model.branches) {
+                return canonical.id
+            }
+            return itemBranch
+        }
+        return ""
+    }
+
     init(context: PPLivePetOperationContext, model: PPLivePetOperationsViewModel) {
         self.context = context
         self.model = model
@@ -4977,18 +5919,36 @@ private struct PPLivePetOperationSheet: View {
         })
 
         switch context {
+        case .price(let unit):
+            let liveUnit = model.units.first(where: { $0.id == unit.id }) ?? unit
+            if let unitPrice = liveUnit.sellingPrice, unitPrice > 0 {
+                _standardPriceText = State(initialValue: String(format: "%g", unitPrice))
+            } else if standardPrice > 0 {
+                _standardPriceText = State(initialValue: String(format: "%g", standardPrice))
+            }
         case .reserve(let unit):
-            _selectedBranchID = State(initialValue: unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID)
+            let liveUnit = model.units.first(where: { $0.id == unit.id }) ?? unit
+            let rawBranch = liveUnit.currentBranchID.isEmpty ? (model.item.resolvedBranchID() ?? model.item.storeID ?? "") : liveUnit.currentBranchID
+            let canonical = PPLivePetInventoryService.canonicalBranch(for: rawBranch, in: model.branches)?.id ?? rawBranch
+            _selectedBranchID = State(initialValue: canonical)
         case .transfer(let unit):
-            _selectedBranchID = State(initialValue: unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID)
+            let liveUnit = model.units.first(where: { $0.id == unit.id }) ?? unit
+            let rawBranch = liveUnit.currentBranchID.isEmpty ? (model.item.resolvedBranchID() ?? model.item.storeID ?? "") : liveUnit.currentBranchID
+            let canonicalCurrent = PPLivePetInventoryService.canonicalBranch(for: rawBranch, in: model.branches)?.id ?? rawBranch
+            let targetBranch = model.branches.first(where: {
+                let bCanonical = PPLivePetInventoryService.canonicalBranch(for: $0.id, in: model.branches)?.id ?? $0.id
+                return bCanonical != canonicalCurrent
+            })?.id ?? ""
+            _selectedBranchID = State(initialValue: targetBranch)
         case .reservation(let reservation):
             _selectedBranchID = State(initialValue: reservation.branchID)
             _customerName = State(initialValue: reservation.customerName)
             _customerPhone = State(initialValue: reservation.customerPhone)
             _cashReceivedText = State(initialValue: String(format: "%.2f", reservation.total))
         case .intake:
-            let defaultBranch = BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? ""
-            _selectedBranchID = State(initialValue: defaultBranch)
+            let defaultBranch = (model.item.resolvedBranchID() ?? model.item.storeID ?? BranchContextStore.shared.activeBranch?.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let canonicalDefault = PPLivePetInventoryService.canonicalBranch(for: defaultBranch, in: model.branches)?.id ?? defaultBranch
+            _selectedBranchID = State(initialValue: canonicalDefault)
             _selectedMode = State(initialValue: model.mode ?? .individual)
         default:
             break
@@ -5049,6 +6009,9 @@ private struct PPLivePetOperationSheet: View {
             normalizeBranchSelection()
         }
         .onChange(of: model.branches) { _ in
+            normalizeBranchSelection()
+        }
+        .onChange(of: model.units) { _ in
             normalizeBranchSelection()
         }
     }
@@ -5160,11 +6123,45 @@ private struct PPLivePetOperationSheet: View {
                     textField(Language.get("LivePet_Group_Notes_Placeholder", alter: "ملاحظات الإدخال (اختيارية)"), text: $notes, icon: "note.text")
                 }
 
-            case .reserve(let unit):
+            case .reserve(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
+
+                // Approved Reservation Price Banner
+                let unitPrice = unit.sellingPrice ?? model.item.standardSellingPrice?.doubleValue ?? model.item.price.doubleValue
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(unitPrice > 0 ? AdminSurface.primary.opacity(0.12) : Color(uiColor: .ppError).opacity(0.12))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: unitPrice > 0 ? "tag.fill" : "exclamationmark.triangle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(unitPrice > 0 ? AdminSurface.primary : Color(uiColor: .ppError))
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("LivePet_Reservation_SellingPrice_Title", alter: "سعر البيع المعتمد للحجز"))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(unitPrice > 0 ? PetAccessory.formatCurrency(NSNumber(value: unitPrice)) : Language.get("LivePet_Error_MissingUnitPrice", alter: "حدد سعر بيع صالحاً للحيوان قبل حجزه أو بيعه."))
+                            .font(Font.custom("Beiruti-Bold", size: 16))
+                            .foregroundStyle(unitPrice > 0 ? AdminSurface.primaryText : Color(uiColor: .ppError))
+                    }
+                    Spacer()
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(unitPrice > 0 ? AdminSurface.hairline : Color(uiColor: .ppError).opacity(0.3), lineWidth: 0.75))
+
                 textField(Language.get("LivePet_Customer_Name", alter: "اسم العميل"), text: $customerName, icon: "person.fill")
-                textField(Language.get("LivePet_Customer_Phone", alter: "رقم هاتف العميل"), text: $customerPhone, icon: "phone.fill", keyboard: .phonePad)
-                branchPicker(excluding: nil)
+                textField(Language.get("LivePet_Customer_Phone_Prompt", alter: "رقم هاتف العميل (مطلوب - ٦ أرقام على الأقل)"), text: $customerPhone, icon: "phone.fill", keyboard: .phonePad)
+
+                // Physical branch lock to prevent POS_INVENTORY_UNIT_BRANCH_MISMATCH
+                let currentBranch = effectiveCurrentBranchID(for: unit)
+                currentBranchDossierCard(currentBranch)
+                Text(Language.get("LivePet_Reservation_Branch_Locked_Hint", alter: "فرع الحجز محدد تلقائياً بنفس مقر تواجد الحيوان الفعلي."))
+                    .font(Font.custom("Beiruti-Regular", size: 11))
+                    .foregroundStyle(AdminCommandInk.secondary)
+
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 5) {
                         Image(systemName: "clock.badge.checkmark")
@@ -5185,8 +6182,27 @@ private struct PPLivePetOperationSheet: View {
                 }
 
             case .reservation(let reservation):
+                let isExpired = reservation.validUntil != nil && reservation.validUntil! <= Date()
+                if isExpired {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color(uiColor: .ppError))
+                            .frame(width: 32, height: 32)
+                            .background(Color(uiColor: .ppError).opacity(0.12), in: Circle())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(Language.get("LivePet_Reservation_Expired_Warning", alter: "انتهت صلاحية هذا الحجز. يجب تحرير الحجز أولاً ليعود الحيوان إلى المخزون المتاح."))
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                                .foregroundStyle(Color(uiColor: .ppError))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(uiColor: .ppError).opacity(0.20), lineWidth: 0.75))
+                }
                 reservationSummary(reservation)
-                if reservation.paymentMethod == "cash" {
+                if reservation.paymentMethod == "cash" && !isExpired {
                     decimalField(Language.get("LivePet_Cash_Received", alter: "المبلغ النقدي المستلم"), text: $cashReceivedText)
                 }
                 if !model.canReleaseReservations {
@@ -5196,19 +6212,101 @@ private struct PPLivePetOperationSheet: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-            case .transfer(let unit):
+            case .transfer(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
-                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
+                let currentBranch = effectiveCurrentBranchID(for: unit)
                 currentBranchDossierCard(currentBranch)
-                branchPicker(excluding: currentBranch)
+                let canonicalCurrent = PPLivePetInventoryService.canonicalBranch(for: currentBranch, in: model.branches)?.id ?? currentBranch
+                let otherBranches = model.branches.filter {
+                    let bCanonical = PPLivePetInventoryService.canonicalBranch(for: $0.id, in: model.branches)?.id ?? $0.id
+                    return bCanonical != canonicalCurrent
+                }
+                if otherBranches.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                        Text(Language.get("LivePet_NoOtherBranches", alter: "لا توجد فروع أخرى مسجلة أو مصرح بها للنقل إليها."))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(Color(uiColor: .ppWarning))
+                    }
+                    .padding(12)
+                    .background(Color(uiColor: .ppWarning).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                } else {
+                    branchPicker(excluding: canonicalCurrent)
+                }
                 textField(Language.get("LivePet_Transfer_Reason_Prompt", alter: "سبب النقل (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "arrow.left.arrow.right")
 
-            case .quarantine(let unit), .releaseQuarantine(let unit), .remove(let unit):
+            case .quarantine(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
-                textField(Language.get("LivePet_Operation_Reason", alter: "سبب الإجراء"), text: $reason, icon: "questionmark.circle")
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "cross.case.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppInfo))
+                        .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppInfo).opacity(0.12), in: Circle())
+                    Text(Language.get("LivePet_Quarantine_Biosecurity_Notice", alter: "سيتم عزل هذا الحيوان طبياً وفصل سجله فوراً عن قنوات العرض والبيع حتى إصدار إذن إخراج معتمد."))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color(uiColor: .ppInfo).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                textField(Language.get("LivePet_Quarantine_Reason_Prompt", alter: "سبب وتفاصيل الإدخال إلى الحجر (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "cross.case")
 
-            case .mortality(let unit):
+            case .releaseQuarantine(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Circle())
+                    Text(Language.get("LivePet_Release_Medical_Clearance_Notice", alter: "سيُعاد الحيوان إلى المخزون المتاح للبيع ويُعاد حساب متوسطات أسعار العرض بالكتالوج."))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color(uiColor: .ppSuccess).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                textField(Language.get("LivePet_Release_Quarantine_Reason_Prompt", alter: "تقرير وتفاصيل الإخراج من الحجر (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "checkmark.shield")
+
+            case .remove(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                unitIdentity(unit)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppError))
+                        .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppError).opacity(0.12), in: Circle())
+                    Text(Language.get("LivePet_Remove_Audit_Notice", alter: "إزالة السجل المتاح من المخزون مع توثيق الحركة في سجل التدقيق المالي والإداري."))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                textField(Language.get("LivePet_Remove_Reason_Prompt", alter: "سبب الشطب من المخزون (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "minus.circle")
+
+            case .mortality(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                unitIdentity(unit)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "heart.slash.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppError))
+                        .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppError).opacity(0.12), in: Circle())
+                    Text(Language.get("LivePet_Mortality_Finality_Notice", alter: "تسجيل حالة الوفاة هو إجراء نهائي لا يمكن الرجوع عنه، ويقوم الخادم تلقائياً بإسقاط العهدة وتسوية أي حجز نشط."))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 5) {
                         Image(systemName: "heart.slash")
@@ -5256,11 +6354,12 @@ private struct PPLivePetOperationSheet: View {
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
                 }
-                textField(Language.get("LivePet_Mortality_Reason", alter: "وصف السبب"), text: $reason, icon: "text.alignleft")
+                textField(Language.get("LivePet_Mortality_Reason_Prompt", alter: "تقرير وتفاصيل الوفاة (مطلوب - ٣ أحرف على الأقل)"), text: $reason, icon: "text.alignleft")
                 textField(Language.get("LivePet_Mortality_Notes", alter: "ملاحظات داخلية (اختيارية)"), text: $notes, icon: "note.text")
                 textField(Language.get("LivePet_Mortality_VetReference", alter: "مرجع الطبيب البيطري (اختياري)"), text: $veterinaryReference, icon: "cross.case")
 
-            case .price(let unit):
+            case .price(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
                 unitIdentity(unit)
                 decimalField(Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع الجديد"), text: $standardPriceText)
 
@@ -5296,10 +6395,11 @@ private struct PPLivePetOperationSheet: View {
                     Text(liveUnitStatus(unit.status))
                         .font(Font.custom("Beiruti-Bold", size: 12))
                         .foregroundStyle(liveUnitStatusColor(unit.status))
-                    if !unit.currentBranchID.isEmpty {
+                    let unitBranchID = effectiveCurrentBranchID(for: unit)
+                    if !unitBranchID.isEmpty {
                         Text("•")
                             .foregroundStyle(AdminCommandInk.tertiary)
-                        Text(localizedBranchName(unit.currentBranchID, id: unit.currentBranchID))
+                        Text(localizedBranchName(unitBranchID, id: unitBranchID))
                             .font(Font.custom("Beiruti-Regular", size: 12))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
@@ -5314,11 +6414,15 @@ private struct PPLivePetOperationSheet: View {
     }
 
     private func localizedBranchName(_ name: String, id: String) -> String {
-        if id == "main_store" || name.lowercased() == "main_store" || name.lowercased() == "main store" {
+        let lookupKey = id.isEmpty ? name : id
+        if lookupKey == "main_store" || lookupKey.lowercased() == "main_store" || lookupKey.lowercased() == "main store" {
             return Language.get("MainStore", alter: "المتجر الرئيسي")
         }
-        if name.lowercased().contains("reservation") || id.lowercased().contains("reservation") {
+        if lookupKey.lowercased().contains("reservation") {
             return Language.get("ReservationBranch", alter: "فرع الحجوزات")
+        }
+        if let canonical = PPLivePetInventoryService.canonicalBranch(for: lookupKey, in: model.branches) {
+            return canonical.fullMeaningfulTitle
         }
         if let branch = model.branches.first(where: { $0.id == id }) {
             return branch.fullMeaningfulTitle
@@ -5326,14 +6430,35 @@ private struct PPLivePetOperationSheet: View {
         if let cached = PPLivePetInventoryService.branch(for: id) {
             return cached.fullMeaningfulTitle
         }
+        if let b = PPBranchContextManager.shared().branch(withID: id) {
+            return b.localizedName()
+        }
         return name.isEmpty ? id : name
     }
 
     private func currentBranchDossierCard(_ branchID: String) -> some View {
-        let branch = model.branches.first(where: { $0.id == branchID }) ?? PPLivePetInventoryService.branch(for: branchID)
-        let branchTitle = branch?.displayName ?? (branchID.isEmpty ? Language.get("MainStore", alter: "المتجر الرئيسي") : branchID)
-        let branchCode = branch?.code ?? ""
-        let branchAddress = branch?.address ?? ""
+        let branch = PPLivePetInventoryService.canonicalBranch(for: branchID, in: model.branches)
+        let branchTitle: String
+        let branchCode: String
+        let branchAddress: String
+
+        if let branch {
+            branchTitle = branch.displayName
+            branchCode = branch.code
+            branchAddress = branch.address
+        } else if branchID.isEmpty || branchID == "main_store" {
+            branchTitle = Language.get("MainStore", alter: "المتجر الرئيسي")
+            branchCode = ""
+            branchAddress = ""
+        } else {
+            var clean = branchID
+            if let parenIdx = clean.range(of: " (") {
+                clean = String(clean[..<parenIdx.lowerBound])
+            }
+            branchTitle = clean
+            branchCode = ""
+            branchAddress = ""
+        }
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
@@ -5357,7 +6482,7 @@ private struct PPLivePetOperationSheet: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(localizedBranchName(branchTitle, id: branchID))
+                        Text(branchTitle)
                             .font(Font.custom("Beiruti-Bold", size: 15))
                             .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(1)
@@ -5448,38 +6573,65 @@ private struct PPLivePetOperationSheet: View {
     @ViewBuilder
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                performAction()
-            } label: {
-                HStack(spacing: 10) {
-                    if model.isMutating {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Image(systemName: operationActionIcon)
-                            .font(.system(size: 16, weight: .bold))
+            if case .reservation(let reservation) = context,
+               let validUntil = reservation.validUntil, validUntil <= Date() {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    Task {
+                        let ok = await model.cancel(reservation: reservation)
+                        if ok { dismiss() }
                     }
-                    Text(model.isMutating ? Language.get("LivePet_Operation_Processing", alter: "جارٍ التأكيد من الخادم...") : actionTitle)
-                        .font(Font.custom("Beiruti-Bold", size: 17))
+                } label: {
+                    HStack(spacing: 8) {
+                        if model.isMutating {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        Text(Language.get("LivePet_Release_Reservation", alter: "تحرير الحجز"))
+                            .font(Font.custom("Beiruti-Bold", size: 17))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(Color(uiColor: .ppWarning), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, minHeight: 52)
-                .background(
-                    LinearGradient(
-                        colors: [operationColor, operationColor.opacity(0.85)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
-                .shadow(color: operationColor.opacity(0.35), radius: 8, x: 0, y: 3)
-            }
-            .buttonStyle(CatalogPressStyle())
-            .disabled(model.isMutating)
+                .buttonStyle(CatalogPressStyle())
+                .disabled(!model.canReleaseReservations || model.isMutating)
+            } else {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    performAction()
+                } label: {
+                    HStack(spacing: 10) {
+                        if model.isMutating {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: operationActionIcon)
+                                .font(.system(size: 16, weight: .bold))
+                        }
+                        Text(model.isMutating ? Language.get("LivePet_Operation_Processing", alter: "جارٍ التأكيد من الخادم...") : actionTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 17))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(
+                        LinearGradient(
+                            colors: [operationColor, operationColor.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .shadow(color: operationColor.opacity(0.35), radius: 8, x: 0, y: 3)
+                }
+                .buttonStyle(CatalogPressStyle())
+                .disabled(model.isMutating)
 
-            if case .reservation = context {
-                releaseReservationButton
+                if case .reservation = context {
+                    releaseReservationButton
+                }
             }
         }
     }
@@ -5605,13 +6757,21 @@ private struct PPLivePetOperationSheet: View {
                     .font(Font.custom("Beiruti-SemiBold", size: 13))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
-            TextField(title, text: text)
-                .keyboardType(keyboard)
-                .font(Font.custom("Beiruti-Regular", size: 16))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            HStack(spacing: 8) {
+                TextField(title, text: text)
+                    .keyboardType(keyboard)
+                    .font(Font.custom("Beiruti-Regular", size: 16))
+
+                if icon == "barcode.viewfinder" {
+                    AdminBarcodeScanButton { scanned in
+                        text.wrappedValue = scanned
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -5688,7 +6848,10 @@ private struct PPLivePetOperationSheet: View {
     }
 
     private func branchPicker(excluding excludedID: String?) -> some View {
-        let selectedBranch = model.branches.first(where: { $0.id == selectedBranchID }) ?? PPLivePetInventoryService.branch(for: selectedBranchID)
+        let canonicalExcluded = excludedID.flatMap { PPLivePetInventoryService.canonicalBranch(for: $0, in: model.branches)?.id ?? $0 }
+        let canonicalSelected = PPLivePetInventoryService.canonicalBranch(for: selectedBranchID, in: model.branches)?.id ?? selectedBranchID
+        let isExcluded = canonicalExcluded != nil && !canonicalSelected.isEmpty && canonicalSelected == canonicalExcluded
+        let selectedBranch = isExcluded ? nil : PPLivePetInventoryService.canonicalBranch(for: selectedBranchID, in: model.branches)
 
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 5) {
@@ -5715,7 +6878,7 @@ private struct PPLivePetOperationSheet: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                branchPickerExcludedID = excludedID
+                branchPickerExcludedID = canonicalExcluded
                 isBranchPickerPresented = true
             } label: {
                 if let b = selectedBranch {
@@ -5807,11 +6970,14 @@ private struct PPLivePetOperationSheet: View {
             }
             .buttonStyle(CatalogPressStyle())
             .contextMenu {
-                ForEach(model.branches.filter { $0.id != excludedID }) { branch in
+                ForEach(model.branches.filter {
+                    let bCanonical = PPLivePetInventoryService.canonicalBranch(for: $0.id, in: model.branches)?.id ?? $0.id
+                    return bCanonical != canonicalExcluded
+                }) { branch in
                     Button {
                         selectedBranchID = branch.id
                     } label: {
-                        Text(branch.fullMeaningfulTitle)
+                        Text(branch.displayName)
                         if selectedBranchID == branch.id {
                             Image(systemName: "checkmark")
                         }
@@ -5909,14 +7075,26 @@ private struct PPLivePetOperationSheet: View {
     }
 
     private func normalizeBranchSelection() {
-        if selectedBranchID.isEmpty {
-            if case .transfer(let unit) = context {
-                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
-                if let next = model.branches.first(where: { $0.id != currentBranch })?.id {
+        if case .transfer(let contextUnit) = context {
+            let unit = currentLiveUnit ?? contextUnit
+            let currentBranch = effectiveCurrentBranchID(for: unit)
+            let canonicalCurrent = PPLivePetInventoryService.canonicalBranch(for: currentBranch, in: model.branches)?.id ?? currentBranch
+            let canonicalSelected = PPLivePetInventoryService.canonicalBranch(for: selectedBranchID, in: model.branches)?.id ?? selectedBranchID
+
+            if canonicalSelected.isEmpty || canonicalSelected == canonicalCurrent {
+                if let next = model.branches.first(where: {
+                    let bCanonical = PPLivePetInventoryService.canonicalBranch(for: $0.id, in: model.branches)?.id ?? $0.id
+                    return bCanonical != canonicalCurrent
+                })?.id {
                     selectedBranchID = next
+                } else {
+                    selectedBranchID = ""
                 }
-            } else if let active = BranchContextStore.shared.activeBranch?.branchID, !active.isEmpty {
-                selectedBranchID = active
+            }
+        } else if selectedBranchID.isEmpty {
+            if let active = BranchContextStore.shared.activeBranch?.branchID, !active.isEmpty {
+                let canonicalActive = PPLivePetInventoryService.canonicalBranch(for: active, in: model.branches)?.id ?? active
+                selectedBranchID = canonicalActive
             } else if let first = model.branches.first?.id {
                 selectedBranchID = first
             }
@@ -5929,7 +7107,8 @@ private struct PPLivePetOperationSheet: View {
             let ok: Bool
             switch context {
             case .migrate:
-                let price = Double(standardPriceText) ?? 0
+                let cleanPriceText = standardPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+                let price = Double(cleanPriceText) ?? 0
                 ok = await model.migrate(
                     mode: selectedMode,
                     units: selectedMode == .individual ? unitDrafts : [],
@@ -5938,103 +7117,168 @@ private struct PPLivePetOperationSheet: View {
             case .intake:
                 let targetBranch = selectedBranchID.isEmpty ? (BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? "") : selectedBranchID
                 if model.mode == .individual {
-                    let cost = Double(unitDrafts[0].purchaseCostText) ?? 0
+                    let cleanCostText = unitDrafts[0].purchaseCostText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+                    let cost = Double(cleanCostText) ?? 0
                     ok = await model.intake(
                         mode: .individual,
                         unit: unitDrafts[0],
                         quantity: 1,
                         cost: cost,
-                        supplier: unitDrafts[0].supplier,
-                        notes: unitDrafts[0].notes,
+                        supplier: unitDrafts[0].supplier.trimmingCharacters(in: .whitespacesAndNewlines),
+                        notes: unitDrafts[0].notes.trimmingCharacters(in: .whitespacesAndNewlines),
                         branchID: targetBranch
                     )
                 } else {
-                    let qty = Int(quantityText) ?? 0
+                    let cleanQty = quantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let qty = Int(cleanQty) ?? 0
                     guard qty > 0 else {
-                        validationMessage = Language.get("LivePet_Quantity_Invalid", alter: "أدخل كمية صحيحة أكبر من صفر")
+                        validationMessage = Language.get("LivePet_Validation_GroupQuantity", alter: "أدخل كمية صحيحة لا تقل عن حيوان واحد.")
                         return
                     }
-                    let cost = Double(costText) ?? 0
+                    let cleanCostText = costText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+                    let cost = Double(cleanCostText) ?? 0
                     ok = await model.intake(
                         mode: .quantity,
                         unit: unitDrafts[0],
                         quantity: qty,
                         cost: cost,
-                        supplier: supplier,
-                        notes: notes,
+                        supplier: supplier.trimmingCharacters(in: .whitespacesAndNewlines),
+                        notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
                         branchID: targetBranch
                     )
                 }
-            case .reserve(let unit):
-                guard !customerName.isEmpty || !customerPhone.isEmpty else {
-                    validationMessage = Language.get("LivePet_Customer_Required", alter: "أدخل اسم العميل أو رقم هاتفه")
+            case .reserve(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let cleanPhone = customerPhone.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard cleanPhone.count >= 6 else {
+                    validationMessage = Language.get("LivePet_Validation_CustomerPhone", alter: "أدخل رقم هاتف صالحاً للعميل.")
                     return
                 }
-                guard !selectedBranchID.isEmpty else {
-                    validationMessage = Language.get("LivePet_Branch_Required", alter: "اختر الفرع المراد ربط الحجز به")
+                let cleanCustomerName = customerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? Language.get("POS_Default_Customer_Name", alter: "عميل نقطة بيع")
+                    : customerName.trimmingCharacters(in: .whitespacesAndNewlines)
+                let unitPrice = unit.sellingPrice ?? model.item.standardSellingPrice?.doubleValue ?? model.item.price.doubleValue
+                guard unitPrice > 0 else {
+                    validationMessage = Language.get("LivePet_Error_MissingUnitPrice", alter: "حدد سعر بيع صالحاً للحيوان قبل حجزه أو بيعه.")
+                    return
+                }
+                let currentBranch = effectiveCurrentBranchID(for: unit)
+                let targetBranch = PPLivePetInventoryService.canonicalBranch(for: currentBranch, in: model.branches)?.id ?? currentBranch
+                guard !targetBranch.isEmpty else {
+                    validationMessage = Language.get("LivePet_Validation_Branch", alter: "اختر فرع الحجز.")
                     return
                 }
                 ok = await model.reserve(
                     unit: unit,
-                    customerName: customerName,
-                    phone: customerPhone,
-                    branchID: selectedBranchID,
+                    customerName: cleanCustomerName,
+                    phone: cleanPhone,
+                    branchID: targetBranch,
                     validUntil: reservationValidUntil
                 )
             case .reservation(let reservation):
-                let cash = Double(cashReceivedText) ?? reservation.total
-                ok = await model.complete(reservation: reservation, cashReceived: cash)
-            case .transfer(let unit):
-                guard !selectedBranchID.isEmpty else {
-                    validationMessage = Language.get("LivePet_Branch_Required", alter: "اختر الفرع المنقول إليه")
+                if let validUntil = reservation.validUntil, validUntil <= Date() {
+                    validationMessage = Language.get("LivePet_Error_ReservationExpired", alter: "انتهت صلاحية الحجز. حرره ثم أنشئ حجزاً جديداً.")
                     return
                 }
-                let currentBranch = unit.currentBranchID.isEmpty ? (model.item.storeID ?? "") : unit.currentBranchID
-                guard selectedBranchID != currentBranch else {
-                    validationMessage = Language.get("LivePet_Transfer_SameBranch", alter: "الفرع المختار هو نفس الفرع الحالي")
+                let cleanCashText = cashReceivedText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+                let cash = Double(cleanCashText) ?? reservation.total
+                if reservation.paymentMethod == "cash" && cash < reservation.total {
+                    validationMessage = Language.get("LivePet_Validation_Cash", alter: "يجب أن يغطي المبلغ النقدي إجمالي الحجز.")
+                    return
+                }
+                ok = await model.complete(reservation: reservation, cashReceived: cash)
+            case .transfer(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let currentBranch = effectiveCurrentBranchID(for: unit)
+                let canonicalCurrent = PPLivePetInventoryService.canonicalBranch(for: currentBranch, in: model.branches)?.id ?? currentBranch
+                let canonicalTarget = PPLivePetInventoryService.canonicalBranch(for: selectedBranchID, in: model.branches)?.id ?? selectedBranchID
+
+                guard !canonicalTarget.isEmpty else {
+                    validationMessage = Language.get("LivePet_Validation_TransferBranch", alter: "اختر فرعاً مختلفاً عن الفرع الحالي.")
+                    return
+                }
+                guard canonicalTarget != canonicalCurrent else {
+                    validationMessage = Language.get("LivePet_Validation_TransferBranch", alter: "اختر فرعاً مختلفاً عن الفرع الحالي.")
                     return
                 }
                 let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard trimmedReason.count >= 3 else {
-                    validationMessage = Language.get("LivePet_Transfer_Reason_Required", alter: "يرجى كتابة سبب النقل (٣ أحرف على الأقل)")
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
                 ok = await model.transfer(
                     unit: unit,
-                    sourceBranchID: currentBranch,
-                    destinationBranchID: selectedBranchID,
+                    sourceBranchID: canonicalCurrent,
+                    destinationBranchID: canonicalTarget,
                     reason: trimmedReason
                 )
-            case .quarantine(let unit):
-                ok = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: reason)
-            case .releaseQuarantine(let unit):
-                ok = await model.lifecycle(action: "release_quarantine", unit: unit, reason: reason)
-            case .mortality(let unit):
+            case .quarantine(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
+                    return
+                }
+                ok = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: trimmedReason)
+            case .releaseQuarantine(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
+                    return
+                }
+                ok = await model.lifecycle(action: "release_quarantine", unit: unit, reason: trimmedReason)
+            case .mortality(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
+                    return
+                }
                 ok = await model.lifecycle(
                     action: "record_mortality",
                     unit: unit,
-                    reason: reason,
+                    reason: trimmedReason,
                     causeCode: causeCode,
-                    notes: notes,
-                    veterinaryReference: veterinaryReference,
+                    notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                    veterinaryReference: veterinaryReference.trimmingCharacters(in: .whitespacesAndNewlines),
                     observedDeathAt: observedDeathAt
                 )
-            case .price(let unit):
-                guard let price = Double(standardPriceText), price >= 0 else {
-                    validationMessage = Language.get("LivePet_Price_Invalid", alter: "أدخل سعراً صحيحاً")
+            case .price(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let cleanPriceText = standardPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
+                guard let price = Double(cleanPriceText), price > 0, price <= 999_999_999.99 else {
+                    validationMessage = Language.get("LivePet_Validation_UnitPrice", alter: "حدد سعر بيع صالحاً لكل حيوان وبحد أقصى منزلتين عشريتين.")
                     return
                 }
                 ok = await model.updatePrice(unit: unit, price: price)
-            case .remove(let unit):
-                ok = await model.remove(unit: unit, reason: reason)
-            case .groupAdjustment:
-                guard let target = Int(quantityText), target >= 0 else {
-                    validationMessage = Language.get("LivePet_Quantity_Invalid", alter: "أدخل كمية صحيحة")
+            case .remove(let contextUnit):
+                let unit = currentLiveUnit ?? contextUnit
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.adjustGroup(targetQuantity: target, reason: reason)
+                ok = await model.remove(unit: unit, reason: trimmedReason)
+            case .groupAdjustment:
+                let cleanQty = quantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard let target = Int(cleanQty), target >= 0 else {
+                    validationMessage = Language.get("LivePet_Validation_TargetQuantity", alter: "أدخل كمية فعلية صحيحة لا تقل عن صفر.")
+                    return
+                }
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
+                    return
+                }
+                ok = await model.adjustGroup(targetQuantity: target, reason: trimmedReason)
             case .archive(let target):
-                ok = await model.archive(target, reason: reason)
+                let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmedReason.count >= 3 else {
+                    validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
+                    return
+                }
+                ok = await model.archive(target, reason: trimmedReason)
             }
 
             if ok {
@@ -6136,8 +7380,12 @@ private struct PPBranchSelectionStudioSheet: View {
     }
 
     private func branchOptionCard(_ branch: PPInventoryBranchOption) -> some View {
-        let isSelected = selectedBranchID == branch.id
-        let isCurrent = branch.id == excludedBranchID
+        let canonicalSelected = PPLivePetInventoryService.canonicalBranch(for: selectedBranchID, in: branches)?.id ?? selectedBranchID
+        let canonicalExcluded = excludedBranchID.flatMap { PPLivePetInventoryService.canonicalBranch(for: $0, in: branches)?.id ?? $0 }
+        let canonicalBranchId = PPLivePetInventoryService.canonicalBranch(for: branch.id, in: branches)?.id ?? branch.id
+
+        let isSelected = !canonicalSelected.isEmpty && canonicalSelected == canonicalBranchId
+        let isCurrent = canonicalExcluded != nil && !canonicalExcluded!.isEmpty && canonicalBranchId == canonicalExcluded!
 
         return Button {
             if !isCurrent {
@@ -6281,6 +7529,367 @@ private struct PPBranchSelectionStudioSheet: View {
     }
 }
 
+// MARK: - Sovereign Accessory & Food Branch Stock Transfer Sheet
+
+private struct PPStockTransferSheet: View {
+    let item: PetAccessory
+    let currentBranchID: String
+    let availableQuantity: Int
+    @State var branches: [PPInventoryBranchOption] = []
+    let onComplete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedBranchID: String = ""
+    @State private var transferQuantity: Int = 1
+    @State private var reason: String = ""
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
+
+    private var canonicalSourceBranchID: String {
+        PPLivePetInventoryService.canonicalBranch(for: currentBranchID, in: branches)?.id ?? currentBranchID
+    }
+
+    private var otherBranches: [PPInventoryBranchOption] {
+        let sourceID = canonicalSourceBranchID
+        return branches.filter {
+            let branchCanonicalID = PPLivePetInventoryService.canonicalBranch(for: $0.id, in: branches)?.id ?? $0.id
+            return branchCanonicalID != sourceID && $0.id != currentBranchID
+        }
+    }
+
+    private var currentBranchName: String {
+        if let canonical = PPLivePetInventoryService.canonicalBranch(for: currentBranchID, in: branches) {
+            return canonical.displayName
+        }
+        return branches.first(where: { $0.id == currentBranchID })?.displayName ??
+        (currentBranchID.isEmpty || currentBranchID == "main_store" ? Language.get("MainStore", alter: "المتجر الرئيسي") : currentBranchID)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 12) {
+                AdminSquircleCloseButton {
+                    dismiss()
+                }
+
+                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                    Text(Language.get("Stock_Transfer_Title", alter: "نقل مخزون الصنف بين الفروع"))
+                        .font(Font.custom("Beiruti-Bold", size: 18))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(Language.get("Stock_Transfer_Sub", alter: "تحويل كمية محددة من هذا الصنف إلى عهدة فرع آخر مع توثيق الحركة."))
+                        .font(Font.custom("Beiruti-Regular", size: 11.5))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 14)
+            .padding(.bottom, 8)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 14) {
+                    // Item Banner
+                    HStack(spacing: 10) {
+                        Image(systemName: item.isFood ? "fork.knife.circle.fill" : "shippingbox.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                            Text(item.name)
+                                .font(Font.custom("Beiruti-Bold", size: 15))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            let catDisplay = item.accessoryCategoryName ?? item.category ?? (item.petMainCategoryID > 0 ? (MainKindsModel.kindName(forID: item.petMainCategoryID) ?? "") : (item.storeName ?? ""))
+                            if !catDisplay.isEmpty {
+                                Text(catDisplay)
+                                    .font(Font.custom("Beiruti-Regular", size: 12))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
+                            Text("\(availableQuantity)")
+                                .font(.system(size: 18, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Text(Language.get("InStock", alter: "متاح بالفرع"))
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                    .padding(12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+
+                    if let err = errorMessage {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(Color(uiColor: .ppError))
+                            Text(err)
+                                .font(Font.custom("Beiruti-Bold", size: 12.5))
+                                .foregroundColor(Color(uiColor: .ppError))
+                            Spacer()
+                        }
+                        .padding(10)
+                        .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    // Source Branch (Locked)
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                        Text(Language.get("Stock_Transfer_SourceBranch", alter: "فرع المصدر (المحول منه)"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "building.2.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(currentBranchName)
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Spacer()
+                            Text(Language.get("Current", alter: "الفرع الحالي"))
+                                .font(Font.custom("Beiruti-Medium", size: 11))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
+                    }
+
+                    // Destination Branch Picker
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                        Text(Language.get("Stock_Transfer_DestinationBranch", alter: "فرع الاستلام (المحول إليه)"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        if otherBranches.isEmpty {
+                            Text(Language.get("Stock_Transfer_NoOtherBranches", alter: "لا توجد فروع أخرى نشطة للنقل إليها"))
+                                .font(Font.custom("Beiruti-Medium", size: 12))
+                                .foregroundStyle(Color.orange)
+                                .padding(12)
+                        } else {
+                            Menu {
+                                ForEach(otherBranches) { b in
+                                    Button {
+                                        selectedBranchID = b.id
+                                    } label: {
+                                        Text(b.displayName)
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrowshape.turn.up.right.fill")
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(AdminSurface.primary)
+                                    Text(otherBranches.first(where: { $0.id == selectedBranchID })?.displayName ?? Language.get("SelectBranch", alter: "اختر فرع الاستلام..."))
+                                        .font(Font.custom("Beiruti-Bold", size: 14))
+                                        .foregroundStyle(selectedBranchID.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                }
+                                .padding(12)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(selectedBranchID.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.35)))
+                            }
+                        }
+                    }
+
+                    // Transfer Quantity Stepper
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                        HStack {
+                            Text(Language.get("Stock_Transfer_Quantity", alter: "الكمية المراد نقلها"))
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Spacer()
+                            Text(String(format: Language.get("Stock_Transfer_MaxFormat", alter: "الحد الأقصى: %ld"), availableQuantity))
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+
+                        HStack(spacing: 12) {
+                            Button {
+                                if transferQuantity > 1 {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    transferQuantity -= 1
+                                }
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .frame(width: 44, height: 44)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
+                                    .foregroundStyle(transferQuantity > 1 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
+                            }
+                            .disabled(transferQuantity <= 1)
+
+                            Spacer()
+
+                            Text("\(transferQuantity)")
+                                .font(.system(size: 26, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            Spacer()
+
+                            Button {
+                                if transferQuantity < availableQuantity {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    transferQuantity += 1
+                                }
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .frame(width: 44, height: 44)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
+                                    .foregroundStyle(transferQuantity < availableQuantity ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+                            }
+                            .disabled(transferQuantity >= availableQuantity)
+                        }
+                        .padding(10)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AdminSurface.hairline))
+
+                        // Quick Presets
+                        HStack(spacing: 8) {
+                            ForEach([1, 5, 10], id: \.self) { val in
+                                if val <= availableQuantity {
+                                    Button("\(val)") {
+                                        transferQuantity = val
+                                    }
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(transferQuantity == val ? AdminSurface.primary : AdminSurface.control, in: Capsule())
+                                    .foregroundStyle(transferQuantity == val ? .white : AdminSurface.primaryText)
+                                }
+                            }
+                            Button(Language.get("All", alter: "الكل")) {
+                                transferQuantity = availableQuantity
+                            }
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(transferQuantity == availableQuantity ? AdminSurface.primary : AdminSurface.control, in: Capsule())
+                            .foregroundStyle(transferQuantity == availableQuantity ? .white : AdminSurface.primaryText)
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    // Reason Text Field
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
+                        Text(Language.get("Stock_Transfer_Reason", alter: "سبب النقل والملاحظات"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(AdminSurface.secondaryText)
+
+                        TextField(Language.get("Stock_Transfer_Reason_Placeholder", alter: "مثال: طلب تعزيز مخزون الفرع، إعادة توازن"), text: $reason)
+                            .font(Font.custom("Beiruti-Regular", size: 13.5))
+                            .padding(12)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
+                    }
+
+                    // Submit Action Button
+                    Button {
+                        submitTransfer()
+                    } label: {
+                        HStack(spacing: 8) {
+                            if isSubmitting {
+                                ProgressView().tint(.white)
+                            } else {
+                                Image(systemName: "arrow.left.arrow.right")
+                                    .font(.system(size: 14, weight: .bold))
+                            }
+                            Text(isSubmitting ? Language.get("Saving", alter: "جاري المعالجة...") : Language.get("Stock_Transfer_Confirm", alter: "تأكيد ترحيل ونقل المخزون"))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(red: 0.75, green: 0.08, blue: 0.22)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.3), radius: 8, y: 3)
+                    }
+                    .disabled(isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity)
+                    .opacity((isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity) ? 0.6 : 1.0)
+                    .padding(.top, 8)
+                }
+                .padding(18)
+            }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onAppear {
+            if let first = otherBranches.first {
+                selectedBranchID = first.id
+            }
+        }
+        .task {
+            if branches.isEmpty {
+                if let loaded = try? await PPLivePetInventoryService.listBranches() {
+                    branches = loaded
+                    if selectedBranchID.isEmpty, let first = otherBranches.first {
+                        selectedBranchID = first.id
+                    }
+                } else if !PPLivePetInventoryService.cachedBranches.isEmpty {
+                    branches = PPLivePetInventoryService.cachedBranches
+                    if selectedBranchID.isEmpty, let first = otherBranches.first {
+                        selectedBranchID = first.id
+                    }
+                }
+            }
+        }
+    }
+
+    private func submitTransfer() {
+        guard !selectedBranchID.isEmpty, transferQuantity >= 1 else { return }
+        isSubmitting = true
+        errorMessage = nil
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        let cleanReason = reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "admin_branch_stock_transfer"
+            : reason.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        PPBranchInventoryService.shared.transferStock(
+            productId: item.accessoryID,
+            sourceBranchId: canonicalSourceBranchID,
+            destinationBranchId: selectedBranchID,
+            quantity: transferQuantity,
+            reason: cleanReason,
+            notes: "Transferred from admin item detail"
+        ) { result in
+            DispatchQueue.main.async {
+                self.isSubmitting = false
+                switch result {
+                case .success:
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    self.onComplete()
+                    self.dismiss()
+                case .failure(let error):
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    self.errorMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+}
 
 // MARK: - Press Style
 

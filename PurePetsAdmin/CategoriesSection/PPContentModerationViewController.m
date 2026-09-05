@@ -171,7 +171,17 @@ static NSString *const kChatReportCellID = @"ChatReportCell";
 
 - (void)didTapBack {
     [[[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight] impactOccurred];
-    [PPAdminNavigationFallback popOrDismissFrom:self];
+    if (self.navigationController && self.navigationController.viewControllers.count > 1) {
+        [self.navigationController popViewControllerAnimated:YES];
+    } else if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    } else if (self.parentViewController && self.parentViewController.navigationController && self.parentViewController.navigationController.viewControllers.count > 1) {
+        [self.parentViewController.navigationController popViewControllerAnimated:YES];
+    } else if (self.parentViewController && self.parentViewController.presentingViewController) {
+        [self.parentViewController dismissViewControllerAnimated:YES completion:nil];
+    } else {
+        [PPAdminNavigationFallback popOrDismissFrom:self];
+    }
 }
 
 - (void)viewWillAppear:(BOOL)animated {

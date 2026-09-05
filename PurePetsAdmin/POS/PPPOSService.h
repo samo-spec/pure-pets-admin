@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *unitID;
 @property (nonatomic, copy) NSString *ringTag;
 @property (nonatomic, assign) double sellingPrice;
+@property (nonatomic, copy) NSString *currentBranchId;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 

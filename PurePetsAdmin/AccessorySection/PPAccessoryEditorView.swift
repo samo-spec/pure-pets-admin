@@ -162,6 +162,51 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
     @Published var selectedSubKind: SubKindModel? = nil { didSet { updateUnsavedChanges() } }
     @Published var dynamicSubKinds: [SubKindModel] = []
+
+    // Multi-category & Multi-subcategory Support (Accessories & Food)
+    @Published var selectedMainKinds: Set<Int> = [] {
+        didSet {
+            if isAllCategoriesSelected || selectedMainKinds.isEmpty {
+                selectedMainKind = nil
+            } else if let firstID = selectedMainKinds.first, let match = availableMainKinds.first(where: { $0.id == firstID }) {
+                selectedMainKind = match
+            }
+            if oldValue != selectedMainKinds {
+                selectedSubKinds = []
+                selectedSubKind = nil
+                isAllSubCategoriesSelected = false
+            }
+            updateUnsavedChanges()
+        }
+    }
+    @Published var isAllCategoriesSelected: Bool = false {
+        didSet {
+            if isAllCategoriesSelected {
+                selectedMainKinds = []
+                selectedMainKind = nil
+            }
+            updateUnsavedChanges()
+        }
+    }
+    @Published var selectedSubKinds: Set<Int> = [] {
+        didSet {
+            if isAllSubCategoriesSelected {
+                selectedSubKind = nil
+            } else if let firstID = selectedSubKinds.first, let match = availableSubKinds.first(where: { $0.id == firstID }) {
+                selectedSubKind = match
+            }
+            updateUnsavedChanges()
+        }
+    }
+    @Published var isAllSubCategoriesSelected: Bool = false {
+        didSet {
+            if isAllSubCategoriesSelected {
+                selectedSubKinds = []
+                selectedSubKind = nil
+            }
+            updateUnsavedChanges()
+        }
+    }
     
     // Live Pet Specific Lifecycle & Bio-Security Fields
     @Published var ringTag: String = "" { didSet { updateUnsavedChanges() } }
@@ -347,6 +392,29 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             urls: existingImageURLs,
             metadata: acc.imageMeta ?? []
         )
+
+        if acc.isAllCategories {
+            isAllCategoriesSelected = true
+            selectedMainKinds = []
+        } else if let ids = acc.petMainCategoryIDs as? [NSNumber], !ids.isEmpty {
+            selectedMainKinds = Set(ids.map { $0.intValue })
+            isAllCategoriesSelected = false
+        } else if acc.petMainCategoryID > 0 {
+            selectedMainKinds = [acc.petMainCategoryID]
+            isAllCategoriesSelected = false
+        }
+
+        if acc.isAllSubCategories {
+            isAllSubCategoriesSelected = true
+            selectedSubKinds = []
+        } else if let ids = acc.petSubCategoryIDs as? [NSNumber], !ids.isEmpty {
+            selectedSubKinds = Set(ids.map { $0.intValue })
+            isAllSubCategoriesSelected = false
+        } else if acc.petSubCategoryID > 0 {
+            selectedSubKinds = [acc.petSubCategoryID]
+            isAllSubCategoriesSelected = false
+        }
+
         isPopulatingInitialValues = false
     }
 
@@ -568,12 +636,39 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
 
         guard let acc = editingAccessory else { return }
-        if acc.petMainCategoryID > 0 {
+        if acc.isAllCategories {
+            self.isAllCategoriesSelected = true
+            self.selectedMainKinds = []
+            self.selectedMainKind = nil
+        } else if let ids = acc.petMainCategoryIDs as? [NSNumber], !ids.isEmpty {
+            self.selectedMainKinds = Set(ids.map { $0.intValue })
+            self.isAllCategoriesSelected = false
+            if let firstID = ids.first?.intValue {
+                self.selectedMainKind = availableMainKinds.first(where: { $0.id == firstID })
+            }
+        } else if acc.petMainCategoryID > 0 {
             if let matchedMain = availableMainKinds.first(where: { $0.id == acc.petMainCategoryID }) {
                 self.selectedMainKind = matchedMain
-                if acc.petSubCategoryID > 0, let subList = matchedMain.subKindsArray as? [SubKindModel] {
-                    self.selectedSubKind = subList.first(where: { $0.id == acc.petSubCategoryID })
-                }
+                self.selectedMainKinds = [acc.petMainCategoryID]
+                self.isAllCategoriesSelected = false
+            }
+        }
+
+        if acc.isAllSubCategories {
+            self.isAllSubCategoriesSelected = true
+            self.selectedSubKinds = []
+            self.selectedSubKind = nil
+        } else if let ids = acc.petSubCategoryIDs as? [NSNumber], !ids.isEmpty {
+            self.selectedSubKinds = Set(ids.map { $0.intValue })
+            self.isAllSubCategoriesSelected = false
+            if let firstID = ids.first?.intValue {
+                self.selectedSubKind = availableSubKinds.first(where: { $0.id == firstID })
+            }
+        } else if acc.petSubCategoryID > 0 {
+            self.selectedSubKinds = [acc.petSubCategoryID]
+            self.isAllSubCategoriesSelected = false
+            if let subList = selectedMainKind?.subKindsArray as? [SubKindModel] {
+                self.selectedSubKind = subList.first(where: { $0.id == acc.petSubCategoryID })
             }
         }
     }
@@ -811,7 +906,77 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if !dynamicSubKinds.isEmpty {
             return dynamicSubKinds
         }
+        if !isLivePet {
+            if isAllCategoriesSelected {
+                var aggregated: [SubKindModel] = []
+                var seenIDs = Set<Int>()
+                for kind in availableMainKinds {
+                    if let subs = kind.subKindsArray as? [SubKindModel] {
+                        for sub in subs where !seenIDs.contains(sub.id) {
+                            seenIDs.insert(sub.id)
+                            aggregated.append(sub)
+                        }
+                    }
+                }
+                return aggregated
+            } else if !selectedMainKinds.isEmpty {
+                var aggregated: [SubKindModel] = []
+                var seenIDs = Set<Int>()
+                for kind in availableMainKinds where selectedMainKinds.contains(kind.id) {
+                    if let subs = kind.subKindsArray as? [SubKindModel] {
+                        for sub in subs where !seenIDs.contains(sub.id) {
+                            seenIDs.insert(sub.id)
+                            aggregated.append(sub)
+                        }
+                    }
+                }
+                return aggregated
+            }
+        }
         return (selectedMainKind?.subKindsArray as? [SubKindModel]) ?? []
+    }
+
+    var hasNoCategorySelected: Bool {
+        if isLivePet {
+            return selectedMainKind == nil
+        }
+        return !isAllCategoriesSelected && selectedMainKinds.isEmpty && selectedMainKind == nil
+    }
+
+    var selectedCategoryDisplayTitle: String? {
+        if isLivePet {
+            return selectedMainKind?.kindName
+        }
+        if isAllCategoriesSelected {
+            return Language.get("CatalogIntake_AllCategoriesUniversal", alter: "جميع الفئات • لكل الحيوانات")
+        }
+        if !selectedMainKinds.isEmpty {
+            let names = availableMainKinds.filter { selectedMainKinds.contains($0.id) }.map { $0.kindName }
+            if names.count == 1 {
+                return names.first
+            } else if names.count > 1 {
+                return names.prefix(3).joined(separator: "، ") + (names.count > 3 ? " (+\(names.count - 3))" : "")
+            }
+        }
+        return selectedMainKind?.kindName
+    }
+
+    var selectedSubCategoryDisplayTitle: String? {
+        if isLivePet {
+            return selectedSubKind?.subKindName
+        }
+        if isAllSubCategoriesSelected {
+            return Language.get("CatalogIntake_AllSubCategoriesUniversal", alter: "جميع التصنيفات الفرعية")
+        }
+        if !selectedSubKinds.isEmpty {
+            let names = availableSubKinds.filter { selectedSubKinds.contains($0.id) }.map { $0.subKindName }
+            if names.count == 1 {
+                return names.first
+            } else if names.count > 1 {
+                return names.prefix(3).joined(separator: "، ") + (names.count > 3 ? " (+\(names.count - 3))" : "")
+            }
+        }
+        return selectedSubKind?.subKindName
     }
 
     // MARK: - Pricing Calculations
@@ -1219,8 +1384,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         if trimmedName.isEmpty || basePrice <= 0 {
             return (false, Language.get("Name and price are required.", alter: "يرجى إدخال اسم وسعر المنتج بدقة."))
         }
-        if selectedMainKind == nil {
-            return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
+        if !isLivePet {
+            if hasNoCategorySelected {
+                return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
+            }
+        } else {
+            if selectedMainKind == nil {
+                return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
+            }
         }
         if !isValidWeightInput() {
             return (false, Language.get(
@@ -1362,8 +1533,21 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.isNew = (accessory.condition != .used)
         accessory.accessKindType = selectedKind
         
-        accessory.petMainCategoryID = selectedMainKind?.id ?? 0
-        accessory.petSubCategoryID = selectedSubKind?.id ?? 0
+        if isLivePet {
+            accessory.petMainCategoryID = selectedMainKind?.id ?? 0
+            accessory.petSubCategoryID = selectedSubKind?.id ?? 0
+            accessory.isAllCategories = false
+            accessory.isAllSubCategories = false
+            accessory.petMainCategoryIDs = nil
+            accessory.petSubCategoryIDs = nil
+        } else {
+            accessory.isAllCategories = isAllCategoriesSelected
+            accessory.isAllSubCategories = isAllSubCategoriesSelected
+            accessory.petMainCategoryIDs = isAllCategoriesSelected ? [] : Array(selectedMainKinds).map { NSNumber(value: $0) }
+            accessory.petSubCategoryIDs = isAllSubCategoriesSelected ? [] : Array(selectedSubKinds).map { NSNumber(value: $0) }
+            accessory.petMainCategoryID = isAllCategoriesSelected ? 0 : (selectedMainKind?.id ?? selectedMainKinds.first ?? 0)
+            accessory.petSubCategoryID = isAllSubCategoriesSelected ? 0 : (selectedSubKind?.id ?? selectedSubKinds.first ?? 0)
+        }
         
         let defaultActiveBranch = BranchContextStore.shared.activeBranch?.branchID ?? "main_store"
         let branchIdToSave = (selectedStoreID.isEmpty || selectedStoreID == "main_store") && defaultActiveBranch != "main_store"
@@ -1582,10 +1766,23 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
                 self.commitSavedAccessory(accessory)
 
-                if let branchId = accessory.branchID, !branchId.isEmpty, accessory.quantity > 0 {
+                let resolvedBranchId: String = {
+                    if let bid = accessory.branchID, !bid.isEmpty, bid != "main_store" {
+                        if let matched = PPBranchContextManager.shared().branch(withID: bid) {
+                            return matched.branchID
+                        }
+                        return bid
+                    }
+                    if let activeId = BranchContextStore.shared.activeBranch?.branchID, !activeId.isEmpty, activeId != "main_store" {
+                        return activeId
+                    }
+                    return accessory.branchID ?? ""
+                }()
+
+                if !resolvedBranchId.isEmpty && resolvedBranchId != "main_store" && accessory.quantity > 0 {
                     PPBranchInventoryService.shared.adjustStock(
                         productId: accessory.accessoryID ?? "",
-                        branchId: branchId,
+                        branchId: resolvedBranchId,
                         newQuantity: accessory.quantity,
                         type: "purchase",
                         referenceId: "catalog_init",
@@ -3129,12 +3326,29 @@ struct PPAccessoryEditorScreen: View {
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
 
-                TextField("QA-RING-000", text: binding.ringTag)
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
-                    .textInputAutocapitalization(.characters)
-                    .padding(12)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .environment(\.layoutDirection, .leftToRight)
+                HStack(spacing: 8) {
+                    TextField("QA-RING-000", text: binding.ringTag)
+                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .textInputAutocapitalization(.characters)
+                        .environment(\.layoutDirection, .leftToRight)
+
+                    if !binding.ringTag.wrappedValue.isEmpty {
+                        Button {
+                            binding.ringTag.wrappedValue = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+
+                    AdminBarcodeScanButton { scanned in
+                        binding.ringTag.wrappedValue = scanned
+                    }
+                }
+                .padding(.horizontal, 12)
+                .frame(minHeight: 44)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
             // Inline Price and Cost
@@ -6283,6 +6497,11 @@ private struct PPLivePetIntakeJourney: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(tr("LivePetIntake_ClearIdentity", "مسح رقم الحلقة"))
                 }
+
+                AdminBarcodeScanButton { scanned in
+                    binding.ringTag.wrappedValue = scanned
+                    focusedField = nil
+                }
             }
         }
     }
@@ -7956,6 +8175,282 @@ private struct PPLivePetChoice: Identifiable {
     let symbol: String
 }
 
+private struct PPCatalogMultiChoiceSheet: View {
+    let title: String
+    let subtitle: String
+    let searchPrompt: String
+    let allOptionTitle: String
+    let allOptionSubtitle: String?
+    let allOptionSymbol: String
+    let choices: [PPLivePetChoice]
+    @Binding var isAllSelected: Bool
+    @Binding var selectedIDs: Set<String>
+    var onRefresh: (() -> Void)? = nil
+    let onConfirm: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var filteredChoices: [PPLivePetChoice] {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return choices }
+        return choices.filter {
+            $0.title.localizedCaseInsensitiveContains(query) || ($0.subtitle?.localizedCaseInsensitiveContains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                        Text(title)
+                            .font(AdminType.title2)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(subtitle)
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.sm)
+
+                    // Search Field
+                    HStack(spacing: AdminSpacing.sm) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        TextField(searchPrompt, text: $query)
+                            .font(AdminType.body)
+                            .submitLabel(.search)
+                        if !query.isEmpty {
+                            Button {
+                                query = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+                            }
+                            .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                        }
+                    }
+                    .padding(.leading, AdminSpacing.md)
+                    .frame(minHeight: AdminTouchTarget.expanded)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                    )
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.sm)
+
+                    ScrollView {
+                        LazyVStack(spacing: AdminSpacing.sm) {
+                            // "ALL" Option Card
+                            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                allOptionCard
+                            }
+
+                            if filteredChoices.isEmpty {
+                                VStack(spacing: AdminSpacing.md) {
+                                    Image(systemName: "magnifyingglass.circle")
+                                        .font(.system(size: 42, weight: .light))
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                    Text(Language.get("CatalogIntake_NoCategories", alter: "لا توجد نتائج مطابقة"))
+                                        .font(AdminType.headline)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                .padding(.top, AdminSpacing.xxl)
+                            } else {
+                                ForEach(filteredChoices) { choice in
+                                    choiceRow(choice)
+                                }
+                            }
+                        }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.sm)
+                        .padding(.bottom, 90)
+                    }
+                    .refreshable {
+                        onRefresh?()
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) { dismiss() }
+                        .font(AdminType.calloutBold)
+                }
+                if let onRefresh {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onRefresh()
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
+                    }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                confirmActionBar
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var allOptionCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                if isAllSelected {
+                    isAllSelected = false
+                } else {
+                    isAllSelected = true
+                    selectedIDs.removeAll()
+                }
+            }
+        } label: {
+            HStack(spacing: AdminSpacing.md) {
+                Image(systemName: allOptionSymbol)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(isAllSelected ? .white : AdminSurface.primary)
+                    .frame(width: 44, height: 44)
+                    .background(isAllSelected ? AdminSurface.primary : AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(allOptionTitle)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    if let sub = allOptionSubtitle {
+                        Text(sub)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: isAllSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(isAllSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, 12)
+            .background(
+                isAllSelected ? AdminSurface.primary.opacity(0.08) : AdminSurface.surface,
+                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(isAllSelected ? AdminSurface.primary.opacity(0.4) : AdminSurface.hairline, lineWidth: isAllSelected ? 1.5 : 0.75)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func choiceRow(_ choice: PPLivePetChoice) -> some View {
+        let isSelected = !isAllSelected && selectedIDs.contains(choice.id)
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+                if isAllSelected {
+                    isAllSelected = false
+                    selectedIDs = [choice.id]
+                } else if selectedIDs.contains(choice.id) {
+                    selectedIDs.remove(choice.id)
+                } else {
+                    selectedIDs.insert(choice.id)
+                }
+            }
+        } label: {
+            HStack(spacing: AdminSpacing.md) {
+                Image(systemName: choice.symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                    .frame(width: 42, height: 42)
+                    .background(isSelected ? AdminSurface.primary : AdminSurface.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+
+                VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                    Text(choice.title)
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    if let subtitle = choice.subtitle {
+                        Text(subtitle)
+                            .font(AdminType.caption1)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.35))
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, 10)
+            .background(
+                isSelected ? AdminSurface.primary.opacity(0.06) : AdminSurface.surface,
+                in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(isSelected ? AdminSurface.primary.opacity(0.35) : AdminSurface.hairline, lineWidth: isSelected ? 1.2 : 0.75)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var confirmActionBar: some View {
+        VStack(spacing: 0) {
+            Divider().background(AdminSurface.hairline)
+
+            HStack(spacing: 12) {
+                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                    if isAllSelected {
+                        Text(allOptionTitle)
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primary)
+                    } else if !selectedIDs.isEmpty {
+                        Text(String(format: Language.get("CatalogIntake_SelectedCountFormat", alter: "تم تحديد %ld"), selectedIDs.count))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    } else {
+                        Text(Language.get("CatalogIntake_NoSelection", alter: "لم يتم التحديد"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onConfirm()
+                    dismiss()
+                } label: {
+                    Text(Language.get("Confirm_Selection", alter: "تأكيد الاختيار"))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.primary, in: Capsule())
+                }
+                .disabled(!isAllSelected && selectedIDs.isEmpty)
+                .opacity((!isAllSelected && selectedIDs.isEmpty) ? 0.5 : 1.0)
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.vertical, 12)
+            .background(AdminSurface.surface.ignoresSafeArea(edges: .bottom))
+        }
+    }
+}
+
 private struct PPLivePetChoiceSheet: View {
     let title: String
     let subtitle: String
@@ -8494,12 +8989,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
             }
         }
         .sheet(isPresented: $viewModel.showSpeciesPicker) {
-            PPLivePetChoiceSheet(
-                title: tr("CatalogIntake_SelectCategory", "اختر الفئة الرئيسية"),
-                subtitle: tr("CatalogIntake_SelectCategorySub", "ابحث في تصنيف الكتالوج المعتمد."),
+            PPCatalogMultiChoiceSheet(
+                title: tr("CatalogIntake_SelectCategory", "اختر فئات الحيوانات"),
+                subtitle: tr("CatalogIntake_SelectCategorySub", "اختر فئة واحدة أو عدة فئات، أو حدد جميع الفئات."),
                 searchPrompt: tr("CatalogIntake_SearchCategory", "ابحث عن فئة"),
-                emptyTitle: tr("CatalogIntake_NoCategories", "لا توجد فئات مطابقة"),
-                selectedID: viewModel.selectedMainKind.map { String($0.id) },
+                allOptionTitle: tr("CatalogIntake_AllCategoriesPrompt", "جميع الفئات • مناسب لكل الحيوانات"),
+                allOptionSubtitle: tr("CatalogIntake_AllCategoriesSub", "مناسب للكلاب، القطط، الطيور، وجميع الحيوانات الأليفة"),
+                allOptionSymbol: "globe",
                 choices: viewModel.availableMainKinds.map { kind in
                     PPLivePetChoice(
                         id: String(kind.id),
@@ -8511,12 +9007,22 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: viewModel.isFood ? "fork.knife.circle.fill" : "shippingbox.fill"
                     )
                 },
+                isAllSelected: $viewModel.isAllCategoriesSelected,
+                selectedIDs: Binding(
+                    get: { Set(viewModel.selectedMainKinds.map { String($0) }) },
+                    set: { newSet in
+                        viewModel.selectedMainKinds = Set(newSet.compactMap { Int($0) })
+                    }
+                ),
                 onRefresh: {
                     viewModel.loadMainKinds(forceServer: true)
                 },
-                onSelect: { selectedID in
-                    viewModel.selectedMainKind = viewModel.availableMainKinds.first { String($0.id) == selectedID }
-                    viewModel.showSpeciesPicker = false
+                onConfirm: {
+                    if viewModel.isAllCategoriesSelected {
+                        viewModel.selectedMainKind = nil
+                    } else if let firstID = viewModel.selectedMainKinds.first {
+                        viewModel.selectedMainKind = viewModel.availableMainKinds.first(where: { $0.id == firstID })
+                    }
                 }
             )
             .onAppear {
@@ -8524,12 +9030,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
             }
         }
         .sheet(isPresented: $viewModel.showBreedPicker) {
-            PPLivePetChoiceSheet(
-                title: tr("CatalogIntake_SelectSubcategory", "اختر التصنيف الفرعي"),
-                subtitle: tr("CatalogIntake_SelectSubcategorySub", "التصنيف الفرعي اختياري ويمكن تغييره لاحقاً."),
+            PPCatalogMultiChoiceSheet(
+                title: tr("CatalogIntake_SelectSubcategory", "اختر التصنيفات الفرعية"),
+                subtitle: tr("CatalogIntake_SelectSubcategorySub", "اختر تصنيفاً واحداً أو عدة تصنيفات، أو حدد جميع التصنيفات."),
                 searchPrompt: tr("CatalogIntake_SearchSubcategory", "ابحث عن تصنيف فرعي"),
-                emptyTitle: tr("CatalogIntake_NoSubcategories", "لا توجد تصنيفات فرعية مطابقة"),
-                selectedID: viewModel.selectedSubKind.map { String($0.id) },
+                allOptionTitle: tr("CatalogIntake_AllSubcategoriesPrompt", "جميع السلالات والتصنيفات الفرعية"),
+                allOptionSubtitle: tr("CatalogIntake_AllSubcategoriesSub", "شامل لكل السلالات والتفريعات بدون استثناء"),
+                allOptionSymbol: "tag.fill",
                 choices: viewModel.availableSubKinds.map { subkind in
                     PPLivePetChoice(
                         id: String(subkind.id),
@@ -8538,6 +9045,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: "tag.fill"
                     )
                 },
+                isAllSelected: $viewModel.isAllSubCategoriesSelected,
+                selectedIDs: Binding(
+                    get: { Set(viewModel.selectedSubKinds.map { String($0) }) },
+                    set: { newSet in
+                        viewModel.selectedSubKinds = Set(newSet.compactMap { Int($0) })
+                    }
+                ),
                 onRefresh: {
                     if let main = viewModel.selectedMainKind {
                         viewModel.fetchFreshSubKinds(for: main)
@@ -8545,9 +9059,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         viewModel.loadMainKinds(forceServer: true)
                     }
                 },
-                onSelect: { selectedID in
-                    viewModel.selectedSubKind = viewModel.availableSubKinds.first { String($0.id) == selectedID }
-                    viewModel.showBreedPicker = false
+                onConfirm: {
+                    if viewModel.isAllSubCategoriesSelected {
+                        viewModel.selectedSubKind = nil
+                    } else if let firstID = viewModel.selectedSubKinds.first {
+                        viewModel.selectedSubKind = viewModel.availableSubKinds.first(where: { $0.id == firstID })
+                    }
                 }
             )
             .onAppear {
@@ -8885,14 +9402,36 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                     VStack(alignment: .leading, spacing: AdminSpacing.sm) {
                         fieldLabel(tr("CatalogIntake_BarcodeLabel", "الباركود"), required: false)
-                        TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
-                            .font(AdminType.body)
-                            .englishNumericInput(text: $viewModel.barcode, allowsDecimal: false)
-                            .focused($focusedField, equals: .barcode)
-                            .padding(.horizontal, AdminSpacing.md)
-                            .frame(minHeight: AdminTouchTarget.expanded)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                            .overlay(fieldFocusBorder(focusedField == .barcode))
+                        HStack(spacing: AdminSpacing.xs) {
+                            TextField(tr("CatalogIntake_BarcodePlaceholder", "امسح أو اكتب الباركود"), text: $viewModel.barcode)
+                                .font(AdminType.body)
+                                .englishNumericInput(text: $viewModel.barcode, allowsDecimal: false)
+                                .focused($focusedField, equals: .barcode)
+
+                            if !viewModel.barcode.isEmpty {
+                                Button {
+                                    viewModel.barcode = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundStyle(AdminSurface.secondaryText)
+                                        .frame(width: 30, height: AdminTouchTarget.minimum)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                            }
+
+                            AdminBarcodeScanButton { scanned in
+                                viewModel.barcode = scanned
+                                focusedField = nil
+                            }
+                        }
+                        .padding(.leading, AdminSpacing.md)
+                        .padding(.trailing, AdminSpacing.xs)
+                        .frame(minHeight: AdminTouchTarget.expanded)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                        .overlay(fieldFocusBorder(focusedField == .barcode))
                     }
                 }
             }
@@ -9074,7 +9613,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
             VStack(spacing: AdminSpacing.sectionSpacing) {
                 taxonomyButton(
                     title: tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"),
-                    value: viewModel.selectedMainKind?.kindName,
+                    value: viewModel.selectedCategoryDisplayTitle,
                     placeholder: tr("CatalogIntake_CategoryPlaceholder", "اختر الفئة المطلوبة"),
                     symbol: viewModel.isFood ? "fork.knife" : "shippingbox",
                     required: true,
@@ -9085,13 +9624,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 taxonomyButton(
                     title: tr("CatalogIntake_SubcategoryLabel", "التصنيف الفرعي"),
-                    value: viewModel.selectedSubKind?.subKindName,
-                    placeholder: viewModel.selectedMainKind == nil
+                    value: viewModel.selectedSubCategoryDisplayTitle,
+                    placeholder: viewModel.hasNoCategorySelected
                         ? tr("CatalogIntake_SelectCategoryFirst", "اختر الفئة الرئيسية أولاً")
                         : tr("CatalogIntake_SubcategoryPlaceholder", "اختياري"),
                     symbol: "tag",
                     required: false,
-                    disabled: viewModel.selectedMainKind == nil
+                    disabled: viewModel.hasNoCategorySelected
                 ) {
                     viewModel.showBreedPicker = true
                 }

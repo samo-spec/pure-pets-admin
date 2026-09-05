@@ -95,6 +95,55 @@ public struct AdminPetsHotelHubView: View {
                 ) {
                     EmptyView()
                 }
+                NavigationLink(
+                    destination: Group {
+                        if let stay = viewModel.selectedStayDetail {
+                            AdminPetsHotelStayDetailSheet(
+                                stay: stay,
+                                viewModel: viewModel,
+                                isPushMode: true,
+                                onBack: {
+                                    viewModel.selectedStayDetail = nil
+                                }
+                            )
+                            .navigationBarHidden(true)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.selectedStayDetail != nil },
+                        set: { if !$0 { viewModel.selectedStayDetail = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
+                .hidden()
+                .accessibilityHidden(true)
+
+                NavigationLink(
+                    destination: Group {
+                        if let res = viewModel.selectedReservationDetail {
+                            AdminPetsHotelReservationDetailSheet(
+                                reservation: res,
+                                viewModel: viewModel,
+                                isPushMode: true,
+                                onBack: {
+                                    viewModel.selectedReservationDetail = nil
+                                }
+                            )
+                            .navigationBarHidden(true)
+                        } else {
+                            EmptyView()
+                        }
+                    },
+                    isActive: Binding(
+                        get: { viewModel.selectedReservationDetail != nil },
+                        set: { if !$0 { viewModel.selectedReservationDetail = nil } }
+                    )
+                ) {
+                    EmptyView()
+                }
                 .hidden()
                 .accessibilityHidden(true)
             }
@@ -102,14 +151,6 @@ public struct AdminPetsHotelHubView: View {
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $viewModel.selectedStayDetail) { stay in
-            AdminPetsHotelStayDetailSheet(stay: stay, viewModel: viewModel)
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
-        .sheet(item: $viewModel.selectedReservationDetail) { res in
-            AdminPetsHotelReservationDetailSheet(reservation: res, viewModel: viewModel)
-                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        }
         .sheet(item: $viewModel.suiteEditorModalAccommodation) { acc in
             AdminPetsHotelSuiteEditorSheet(accommodation: acc, viewModel: viewModel)
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)

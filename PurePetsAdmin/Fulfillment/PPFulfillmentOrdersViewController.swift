@@ -1065,6 +1065,9 @@ private struct PPFulfillmentOrdersScreen: View {
                     }
                     .accessibilityLabel(PPFulfillmentL10n.text("Fulfillment_ClearSearch"))
                 }
+                AdminBarcodeScanButton { scanned in
+                    viewModel.searchText = scanned
+                }
             }
             .padding(.horizontal, PPFulfillmentTokens.spaceBase)
             .frame(minHeight: 52)

@@ -524,6 +524,7 @@
 "General" = "General";
 "Order" = "Order";
 "Ad Review" = "Ad Review";
+"AdReview" = "Listings";
 "Warning" = "Warning";
 
 /* Target section */
@@ -648,6 +649,7 @@
 "ConfirmRecipients" = "Confirm Recipients";
 "SelectUsers" = "Select Recipients";
 "LivePreview" = "Live Preview";
+"ViewAll" = "View All";
 
 /* Notifications screen */
 "NotificationsTitle" = "Notifications";
@@ -2940,6 +2942,25 @@
 "Categories_Toggled_Visible" = "Category is now live on storefront";
 "Categories_Toggled_Hidden" = "Category is now hidden from storefront";
 "Categories_Reordered_Success" = "Category display order updated successfully";
+"CatalogIntake_AllCategoriesUniversal" = "All Categories • Universal";
+"CatalogIntake_AllSubCategoriesUniversal" = "All Subcategories";
+"CatalogIntake_AllCategoriesPrompt" = "All Categories • Suitable for all pets";
+"CatalogIntake_AllCategoriesSub" = "Suitable for dogs, cats, birds, and all pets";
+"CatalogIntake_AllSubcategoriesPrompt" = "All Breeds & Subcategories";
+"CatalogIntake_AllSubcategoriesSub" = "Applies to all breeds and subcategories without exception";
+"CatalogIntake_SelectedCountFormat" = "%ld selected";
+"Confirm_Selection" = "Confirm Selection";
+"Stock_Transfer_Action" = "Transfer Stock to Another Branch";
+"Stock_Transfer_Title" = "Transfer Product Stock Between Branches";
+"Stock_Transfer_Sub" = "Transfer a specific quantity of this item to another branch.";
+"Stock_Transfer_Success" = "Stock transferred to branch successfully";
+"Stock_Transfer_SourceBranch" = "Source Branch (From)";
+"Stock_Transfer_DestinationBranch" = "Destination Branch (To)";
+"Stock_Transfer_Quantity" = "Quantity to Transfer";
+"Stock_Transfer_Reason" = "Transfer Reason & Notes";
+"Stock_Transfer_Reason_Placeholder" = "e.g. Branch replenishment, rebalance";
+"Stock_Transfer_Confirm" = "Confirm Stock Transfer";
+"Stock_Transfer_NoOtherBranches" = "No other active branches available for transfer";
 "Categories_Upload_Prompt" = "Pick Image or Icon from Library";
 "Categories_Upload_Hint" = "PNG or JPEG • Automatically uploaded and linked";
 "Categories_Manual_URL" = "Edit Image URL Manually (Optional)";
@@ -3712,6 +3733,11 @@
 "AdminQuickActions_Chats" = "Support Chats";
 "AdminQuickActions_Chats_Subtitle" = "Live Messages";
 "AdminQuickActions_Moderation" = "Moderation";
+"AdminQuickActions_POS_History_Short" = "History";
+"AdminQuickActions_Listings" = "Market Listings";
+"AdminQuickActions_Listings_Subtitle" = "Audit & Review";
+"AdminQuickActions_POS_Capability" = "QIB • SCAN • CASH";
+"AdminQuickActions_SignalsCount_Format" = "%d Active Signals";
 
 /* ===================== Currency ===================== */
 "QAR" = "QAR";
@@ -4382,6 +4408,20 @@
 "LivePet_Group_Exact_Action_Hint" = "Per-animal reservation, transfer, and mortality require individual tracking.";
 "LivePet_Adjustment_Reason" = "Reconciliation reason";
 "LivePet_Validation_TargetQuantity" = "Enter a valid physical quantity of zero or more.";
+"LivePet_Customer_Phone_Prompt" = "Customer phone number (Required - min 6 digits)";
+"LivePet_Quarantine_Reason_Prompt" = "Quarantine reason & clinical details (Required - min 3 characters)";
+"LivePet_Release_Quarantine_Reason_Prompt" = "Quarantine clearance report & details (Required - min 3 characters)";
+"LivePet_Mortality_Reason_Prompt" = "Mortality report & incident details (Required - min 3 characters)";
+"LivePet_Remove_Reason_Prompt" = "Stock removal reason & justification (Required - min 3 characters)";
+"LivePet_NoOtherBranches" = "No other active branches available for custody transfer.";
+"LivePet_Reservation_Branch_Locked_Hint" = "Reservation branch is automatically locked to the animal's physical custody location.";
+"LivePet_Reservation_SellingPrice_Title" = "Approved Unit Reservation Price";
+"LivePet_Edit_Price_Desc_Quarantine" = "Update the approved selling price during quarantine isolation";
+"LivePet_Quarantine_Biosecurity_Notice" = "This animal will be medically isolated and removed from sales channels until an authorized clearance is issued.";
+"LivePet_Release_Medical_Clearance_Notice" = "The animal will be returned to active inventory and catalog price projections will be recalculated.";
+"LivePet_Remove_Audit_Notice" = "Removes this available unit from active inventory while logging an immutable financial audit trail.";
+"LivePet_Mortality_Finality_Notice" = "Recording mortality is irreversible. The server will discharge custody and safely cancel any active hold.";
+"LivePet_Reservation_Expired_Warning" = "This reservation hold has expired. It must be released before the animal can return to active inventory.";
 "LivePet_Operation_Processing" = "Confirming with the server...";
 "LivePet_Exact_Quantity_Derived" = "Manage live-animal inventory from item details so identity or physical quantity and the operational reason are recorded safely.";
 "LivePet_Availability_ServerOwned" = "Animal availability changes through sale, quarantine, transfer, or mortality—not a manual switch.";
@@ -5933,3 +5973,17 @@
 "Inventory_No_Filter_Matches" = "No Matching Inventory Items";
 "Inventory_No_Results_For_Query" = "No items match «%@». Try another keyword or SKU.";
 "Inventory_No_Results_Filter_Hint" = "No items match the currently active filter in this section.";
+
+/* Categories Taxonomy Level 3 & 4 */
+"Categories_SubSubKinds_Existing" = "Registered SubSubKinds";
+"Categories_Items_Existing" = "Registered Items & Attributes";
+"Categories_No_SubSub_Yet" = "No SubSubKinds added yet.";
+"Categories_No_Items_Yet" = "No items or attributes added yet.";
+"Categories_SubSub_Manager_Title" = "Manage Breed SubSubKinds";
+"Categories_Items_Manager_Title" = "Manage Breed Items & Attributes";
+"Categories_Add_SubSub" = "Add SubSubKind";
+"Categories_Add_Item" = "Add Item";
+"Categories_Items_Level4" = "Level 4 in Category Taxonomy (Items)";
+"SubSub_Delete_Confirm_Title" = "Confirm Delete SubSubKind";
+"KindItem_Delete_Confirm_Title" = "Confirm Delete Item";
+"Manage" = "Manage";

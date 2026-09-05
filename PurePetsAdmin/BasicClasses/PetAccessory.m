@@ -300,6 +300,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     // Categories
     dict[@"petMainCategoryID"] = @(self.petMainCategoryID);
     dict[@"petSubCategoryID"] = @(self.petSubCategoryID);
+    if (self.petMainCategoryIDs.count > 0) {
+        dict[@"petMainCategoryIDs"] = self.petMainCategoryIDs;
+    }
+    if (self.petSubCategoryIDs.count > 0) {
+        dict[@"petSubCategoryIDs"] = self.petSubCategoryIDs;
+    }
+    dict[@"isAllCategories"] = @(self.isAllCategories);
+    dict[@"isAllSubCategories"] = @(self.isAllSubCategories);
     if (self.AccessoryCategoryID) dict[@"AccessoryCategoryID"] = self.AccessoryCategoryID;
     dict[@"cityID"] = @(self.cityID);
 
@@ -538,6 +546,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         }
         _petMainCategoryID = [dict[@"petMainCategoryID"] integerValue];
         _petSubCategoryID = [dict[@"petSubCategoryID"] integerValue];
+        if ([dict[@"petMainCategoryIDs"] isKindOfClass:NSArray.class]) {
+            _petMainCategoryIDs = dict[@"petMainCategoryIDs"];
+        }
+        if ([dict[@"petSubCategoryIDs"] isKindOfClass:NSArray.class]) {
+            _petSubCategoryIDs = dict[@"petSubCategoryIDs"];
+        }
+        _isAllCategories = [dict[@"isAllCategories"] boolValue];
+        _isAllSubCategories = [dict[@"isAllSubCategories"] boolValue];
         _AccessoryCategoryID = [dict[@"AccessoryCategoryID"] isKindOfClass:NSString.class] ? dict[@"AccessoryCategoryID"] : nil;
         _cityID = [dict[@"cityID"] ?: @(0) integerValue];
         
@@ -640,6 +656,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.blurHash = [source.blurHash copy];
     copy.petMainCategoryID = source.petMainCategoryID;
     copy.petSubCategoryID = source.petSubCategoryID;
+    copy.petMainCategoryIDs = [source.petMainCategoryIDs copy];
+    copy.petSubCategoryIDs = [source.petSubCategoryIDs copy];
+    copy.isAllCategories = source.isAllCategories;
+    copy.isAllSubCategories = source.isAllSubCategories;
     copy.AccessoryCategoryID = [source.AccessoryCategoryID copy];
     copy.cityID = source.cityID;
     copy.condition = source.condition;
@@ -896,6 +916,20 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         return self.branchCode;
     }
     return [Language isRTL] ? @"المتجر الرئيسي" : @"Main Store";
+}
+
+#pragma mark - Category Helpers
+
+- (NSString *)accessoryCategoryName {
+    if (self.petMainCategoryID > 0) {
+        NSString *name = [MainKindsModel kindNameForID:self.petMainCategoryID];
+        if (name.length > 0) return name;
+    }
+    return self.storeName ?: @"";
+}
+
+- (NSString *)category {
+    return [self accessoryCategoryName];
 }
 
 @end

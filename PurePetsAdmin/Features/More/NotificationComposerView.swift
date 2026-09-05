@@ -9,6 +9,8 @@
 import SwiftUI
 import UIKit
 
+extension UserModel: @unchecked Sendable {}
+
 // MARK: - Notification Template Model
 
 struct AdminNotificationTemplate: Identifiable {
@@ -30,7 +32,7 @@ struct AdminNotificationTemplate: Identifiable {
 
 // MARK: - Dispatch Telemetry Receipt
 
-struct AdminNotificationReceipt: Identifiable {
+struct AdminNotificationReceipt: Identifiable, Equatable {
     let id = UUID()
     let idempotencyKey: String
     let recipientCount: Int
@@ -38,7 +40,7 @@ struct AdminNotificationReceipt: Identifiable {
     let requestFailureCount: Int
     let audience: PPNotificationAudience
     let type: PPNotificationType
-    let title: String
+    let title: String      
     let body: String
     let dispatchedAt: Date
 }
@@ -240,11 +242,12 @@ final class AdminNotificationComposerViewModel: ObservableObject {
         guard allUsers.isEmpty, !isLoadingUsers else { return }
         isLoadingUsers = true
         UserManager.shared().fetchAllUsers { [weak self] users, error in
-            guard let self = self else { return }
-            Task { @MainActor in
+            nonisolated(unsafe) let fetchedUsers = users
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
                 self.isLoadingUsers = false
-                if let users = users {
-                    self.allUsers = users
+                if let fetchedUsers = fetchedUsers {
+                    self.allUsers = fetchedUsers
                 }
             }
         }
@@ -356,16 +359,16 @@ final class AdminNotificationComposerViewModel: ObservableObject {
             userIDs: userIDs,
             idempotencyKey: idempotencyKey
         ) { [weak self] response, error in
-            guard let self = self else { return }
+            let recipientCount = (response?["recipientCount"] as? NSNumber)?.intValue ?? 0
+            let failureCount = (response?["failureCount"] as? NSNumber)?.intValue ?? 0
+            let requestFailureCount = (response?["requestFailureCount"] as? NSNumber)?.intValue ?? 0
+            let errorDescription = error?.localizedDescription
 
-            Task { @MainActor in
-                let recipientCount = (response?["recipientCount"] as? NSNumber)?.intValue ?? 0
-                let failureCount = (response?["failureCount"] as? NSNumber)?.intValue ?? 0
-                let requestFailureCount = (response?["requestFailureCount"] as? NSNumber)?.intValue ?? 0
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
 
-                if let error = error {
-                    let errDesc = error.localizedDescription
-                    self.dispatchState = .error(errDesc.isEmpty ? Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار") : errDesc)
+                if let errorDescription = errorDescription {
+                    self.dispatchState = .error(errorDescription.isEmpty ? Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار") : errorDescription)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
                     return
@@ -422,47 +425,51 @@ struct AdminNotificationComposerView: View {
 
     var body: some View {
         ZStack {
-            AdminSurface.background.ignoresSafeArea()
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: AdminSpacing.sectionSpacing) {
+                    // ZONE 1: Dispatch Readiness Beacon & Live Reach Pulse
+                    readinessBeaconAndReachSection
 
-            VStack(spacing: 0) {
-                sovereignNavigationBar
+                    // Quick-Fire Flagship Templates Carousel
+                    quickTemplatesSection
 
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: AdminSpacing.sectionSpacing) {
-                        // ZONE 1: Dispatch Readiness Beacon & Live Reach Pulse
-                        readinessBeaconAndReachSection
+                    // ZONE 2: Audience Vector Hub (Bento Matrix)
+                    audienceVectorSection
 
-                        // Quick-Fire Flagship Templates Carousel
-                        quickTemplatesSection
-
-                        // ZONE 2: Audience Vector Hub (Bento Matrix)
-                        audienceVectorSection
-
-                        // Targeted Precision User Tray (if Specific selected)
-                        if viewModel.selectedAudience == .specificUsers {
-                            targetedRecipientTraySection
-                        }
-
-                        // ZONE 3: Payload Studio & Live Apple Simulator
-                        payloadStudioSection
-
-                        // Live iOS Lock Screen Simulation Card
-                        liveSimulatorSection
-
-                        // Extra bottom spacing so content doesn't collide with bottom dock
-                        Spacer(minLength: 120)
+                    // Targeted Precision User Tray (if Specific selected)
+                    if viewModel.selectedAudience == .specificUsers {
+                        targetedRecipientTraySection
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.md)
-                }
-            }
 
-            // ZONE 4: Tactical Dispatch Dock (Floating Bottom Rail)
-            VStack(spacing: 0) {
-                Spacer()
-                tacticalDispatchDock
+                    // ZONE 3: Payload Studio & Live Apple Simulator
+                    payloadStudioSection
+
+                    // Live iOS Lock Screen Simulation Card
+                    liveSimulatorSection
+
+                    Spacer(minLength: 24)
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, AdminSpacing.md)
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                sovereignNavigationBar
+                    .background(
+                        AdminSurface.background
+                            .ignoresSafeArea(edges: .top)
+                    )
+                    .overlay(
+                        Divider().background(AdminSurface.hairline),
+                        alignment: .bottom
+                    )
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                tacticalDispatchDock
+                    .background(
+                        AdminSurface.surface
+                            .ignoresSafeArea(edges: .bottom)
+                    )
+            }
 
             // Success / Telemetry Receipt Overlay Modal
             if case .success(let receipt) = viewModel.dispatchState {
@@ -473,6 +480,7 @@ struct AdminNotificationComposerView: View {
                 }
             }
         }
+        .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $viewModel.isUserPickerPresented) {
             AdminRecipientPickerSheet(viewModel: viewModel)
@@ -1264,7 +1272,7 @@ struct AdminNotificationComposerView: View {
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
             .padding(.top, 10)
-            .padding(.bottom, 24)
+            .padding(.bottom, 12)
             .background(
                 AdminSurface.surface
                     .ignoresSafeArea(edges: .bottom)
@@ -1516,7 +1524,7 @@ struct AdminTemplatesSheet: View {
 
                                         Spacer()
 
-                                        Image(systemName: "chevron.left")
+                                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                                             .font(.system(size: 12, weight: .semibold))
                                             .foregroundStyle(AdminSurface.secondaryText)
                                     }

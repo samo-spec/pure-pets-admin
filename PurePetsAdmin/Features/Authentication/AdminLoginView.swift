@@ -967,12 +967,12 @@ private struct AdminLoginAtmosphere: View {
                 AdminSurface.background
 
                 Circle()
-                    .fill(AdminSurface.primary.opacity(0.075))
+                    .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.20))
                     .frame(width: max(geometry.size.width * 0.86, 520), height: max(geometry.size.width * 0.86, 520))
                     .offset(x: geometry.size.width * 0.42, y: -geometry.size.height * 0.42)
 
                 RoundedRectangle(cornerRadius: 96, style: .continuous)
-                    .fill(AdminSurface.primarySoft.opacity(0.20))
+                    .fill(Color(uiColor: .ppElevatedSurface).opacity(0.60))
                     .frame(width: max(geometry.size.width * 0.78, 420), height: 180)
                     .rotationEffect(.degrees(-17))
                     .offset(x: -geometry.size.width * 0.46, y: geometry.size.height * 0.39)
@@ -980,7 +980,7 @@ private struct AdminLoginAtmosphere: View {
                 VStack(spacing: 10) {
                     ForEach(0 ..< 7, id: \.self) { _ in
                         Circle()
-                            .fill(AdminSurface.primary.opacity(0.13))
+                            .fill(Color(uiColor: .ppTextTertiary).opacity(0.10))
                             .frame(width: 4, height: 4)
                     }
                 }

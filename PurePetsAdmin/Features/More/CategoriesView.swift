@@ -960,8 +960,10 @@ public struct AdminCategoriesView: View {
                     EmptyView()
                 }
                 .hidden()
-            }
-            .navigationBarHidden(true)
+        }
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -1048,20 +1050,19 @@ public struct AdminCategoriesView: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 5) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                            )
                         Image(systemName: viewModel.viewMode.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(viewModel.viewMode.title)
-                            .font(AdminType.captionBold)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
                     }
-                    .foregroundColor(AdminSurface.primaryText)
-                    .padding(.horizontal, 10)
-                    .frame(height: 38)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                    )
+                    .frame(width: 44, height: 44)
+                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
 
                 // Reorder Mode Toggle
@@ -1071,16 +1072,21 @@ public struct AdminCategoriesView: View {
                             viewModel.isReorderMode.toggle()
                         }
                     } label: {
-                        Image(systemName: viewModel.isReorderMode ? "checkmark" : "arrow.up.arrow.down")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(viewModel.isReorderMode ? .white : AdminSurface.primaryText)
-                            .frame(width: 38, height: 38)
-                            .background(viewModel.isReorderMode ? AdminSurface.primary : AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-                            )
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(viewModel.isReorderMode ? AdminSurface.primary : AdminSurface.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(viewModel.isReorderMode ? Color.white.opacity(0.18) : Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                )
+                            Image(systemName: viewModel.isReorderMode ? "checkmark" : "arrow.up.arrow.down")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(viewModel.isReorderMode ? Color.white : AdminSurface.primaryText)
+                        }
+                        .frame(width: 44, height: 44)
+                        .shadow(color: viewModel.isReorderMode ? AdminSurface.primary.opacity(0.32) : Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Language.get("Categories_Reorder_Mode", alter: "إعادة الترتيب"))
                 }
 
@@ -2150,7 +2156,7 @@ struct AdminCategoryStudioView: View {
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
                 .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
             } else {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 10) {
                     ForEach(subKindsList) { breed in
                         breedRowView(breed)
                     }
@@ -2160,116 +2166,19 @@ struct AdminCategoryStudioView: View {
     }
 
     private func breedRowView(_ breed: AdminSubKindItem) -> some View {
-        HStack(spacing: 12) {
-            // Breed Icon
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color(uiColor: .ppPrimary).opacity(0.12))
-                    .frame(width: 44, height: 44)
-
-                if !breed.iconUrl.isEmpty, let url = URL(string: breed.iconUrl) {
-                    AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 44, height: 44)) {
-                        Color.clear
-                    }
-                    .frame(width: 32, height: 32)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                } else {
-                    Image(systemName: "pawprint.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(Color(uiColor: .ppPrimary))
-                }
+        AdminBreedSpecimenCard(
+            breed: breed,
+            accentColor: builtDraft.accentColor,
+            canManage: viewModel.canManage,
+            onSelect: {
+                selectedSubKindForStudio = breed
+            },
+            onEdit: {
+                editingBreedItem = breed
+            },
+            onDelete: {
+                breedToDelete = breed
             }
-
-            // Breed Titles & Capabilities
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(breed.localizedName)
-                        .font(AdminType.calloutBold)
-                        .foregroundColor(AdminSurface.primaryText)
-
-                    Text("#\(breed.numericID)")
-                        .font(.system(size: 10, weight: .bold).monospacedDigit())
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(AdminSurface.control, in: Capsule())
-                }
-
-                if !breed.secondaryName.isEmpty {
-                    Text(breed.secondaryName)
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-                }
-
-                HStack(spacing: 6) {
-                    Text(String(format: Language.get("Categories_Breed_Adulthood", alter: "سن البلوغ: %ld شهر"), breed.adultHood))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
-
-                    if breed.haveSubSub == 1 {
-                        Text("•")
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.4))
-                        Text(Language.get("Categories_Has_SubSub", alter: "تفريعات فرعية"))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(uiColor: .ppInfo))
-                    }
-
-                    if breed.haveItems == 1 {
-                        Text("•")
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.4))
-                        Text(Language.get("Categories_Has_Items", alter: "مواصفات وجنس"))
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                    }
-                }
-                .padding(.top, 2)
-            }
-
-            Spacer()
-
-            // Actions
-            HStack(spacing: 6) {
-                if viewModel.canManage {
-                    Button {
-                        editingBreedItem = breed
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .frame(width: 32, height: 32)
-                            .background(AdminSurface.control, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        breedToDelete = breed
-                    } label: {
-                        Image(systemName: "trash")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(Color(uiColor: .ppError))
-                            .frame(width: 32, height: 32)
-                            .background(Color(uiColor: .ppError).opacity(0.1), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Button {
-                    selectedSubKindForStudio = breed
-                } label: {
-                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 32, height: 32)
-                        .background(AdminSurface.control, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(12)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
         )
     }
 
@@ -2564,6 +2473,294 @@ struct AdminCategoryStudioView: View {
     }
 }
 
+// MARK: - 7.5 Sovereign Breed Specimen Card (NextGen V6)
+
+@MainActor
+struct AdminBreedSpecimenCard: View {
+    let breed: AdminSubKindItem
+    let accentColor: Color
+    let canManage: Bool
+    let onSelect: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Interactive Specimen Portal & Identity Deck
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelect()
+            } label: {
+                HStack(spacing: 12) {
+                    // Specimen Portal (Hero Avatar)
+                    specimenPortal
+
+                    // Nomenclature & Capabilities Horizon
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Level 1: Primary Name + Zoological Index Chip
+                        HStack(alignment: .center, spacing: 6) {
+                            Text(breed.localizedName)
+                                .font(AdminType.calloutBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(String(format: "#%02d", breed.numericID))
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(AdminSurface.control, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(AdminSurface.hairline.opacity(0.8), lineWidth: 0.5)
+                                )
+                        }
+
+                        // Level 2: Secondary Scientific / Localized Nomenclature
+                        if !breed.secondaryName.isEmpty {
+                            Text(breed.secondaryName)
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        // Level 3: Telemetry Deck (Adulthood Milestone + Capabilities)
+                        telemetryDeck
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .buttonStyle(AdminSpecimenPressStyle())
+
+            // Curator Action Cluster
+            actionCluster
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            AdminSurface.surface,
+            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.75), lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.035), radius: 6, x: 0, y: 2)
+        .contextMenu {
+            Button {
+                onSelect()
+            } label: {
+                Label(Language.get("Categories_SubKind_Manage_Tree", alter: "إدارة التفريعات والمواصفات"), systemImage: "point.3.connected.trianglepath.dotted")
+            }
+
+            if canManage {
+                Button {
+                    onEdit()
+                } label: {
+                    Label(Language.get("Edit", alter: "تعديل السلالة"), systemImage: "pencil")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label(Language.get("Delete", alter: "حذف السلالة"), systemImage: "trash")
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(breed.localizedName), \(breed.secondaryName)")
+        .accessibilityHint(Language.get("Categories_Breed_Card_Accessibility_Hint", alter: "اضغط مرتين لفتح وإدارة السلالة"))
+    }
+
+    // MARK: - Subviews
+
+    private var specimenPortal: some View {
+        ZStack {
+            // Luminous Multi-stop Specimen Well
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            accentColor.opacity(0.14),
+                            accentColor.opacity(0.05)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .frame(width: 52, height: 52)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(accentColor.opacity(0.24), lineWidth: 0.8)
+                )
+
+            if !breed.iconUrl.isEmpty, let url = URL(string: breed.iconUrl) {
+                AdminRemoteImage(url: url, contentMode: .fit, targetSize: CGSize(width: 100, height: 100)) {
+                    Image(systemName: "pawprint.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(accentColor.opacity(0.4))
+                }
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                Image(systemName: !breed.iconName.isEmpty ? breed.iconName : "pawprint.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundColor(accentColor)
+            }
+        }
+    }
+
+    private var telemetryDeck: some View {
+        ViewThatFits(in: .horizontal) {
+            // Full Telemetry Chips
+            HStack(spacing: 5) {
+                adulthoodChip(full: true)
+                if breed.haveSubSub == 1 {
+                    subSubChip(full: true)
+                }
+                if breed.haveItems == 1 {
+                    itemsChip(full: true)
+                }
+            }
+
+            // Compact Telemetry Chips (for narrow viewports)
+            HStack(spacing: 4) {
+                adulthoodChip(full: false)
+                if breed.haveSubSub == 1 {
+                    subSubChip(full: false)
+                }
+                if breed.haveItems == 1 {
+                    itemsChip(full: false)
+                }
+            }
+        }
+    }
+
+    private func adulthoodChip(full: Bool) -> some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 8.5, weight: .semibold))
+            Text(full
+                 ? String(format: Language.get("Categories_Breed_Adulthood", alter: "سن البلوغ: %ld شهر"), breed.adultHood)
+                 : String(format: Language.get("Categories_Breed_Adulthood_Short", alter: "%ld شهر"), breed.adultHood)
+            )
+            .font(AdminType.caption2)
+        }
+        .foregroundColor(AdminSurface.secondaryText)
+        .padding(.horizontal, 6.5)
+        .padding(.vertical, 2.5)
+        .background(AdminSurface.control, in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(AdminSurface.hairline.opacity(0.6), lineWidth: 0.5)
+        )
+    }
+
+    private func subSubChip(full: Bool) -> some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(.system(size: 8.5, weight: .bold))
+            Text(full
+                 ? Language.get("Categories_Has_SubSub", alter: "تفريعات فرعية")
+                 : Language.get("Categories_Has_SubSub_Short", alter: "تفريعات")
+            )
+            .font(.system(size: 9.5, weight: .bold))
+        }
+        .foregroundColor(Color(uiColor: .ppInfo))
+        .padding(.horizontal, 6.5)
+        .padding(.vertical, 2.5)
+        .background(Color(uiColor: .ppInfo).opacity(0.10), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Color(uiColor: .ppInfo).opacity(0.25), lineWidth: 0.5)
+        )
+    }
+
+    private func itemsChip(full: Bool) -> some View {
+        HStack(spacing: 3.5) {
+            Image(systemName: "slider.horizontal.2.square")
+                .font(.system(size: 8.5, weight: .bold))
+            Text(full
+                 ? Language.get("Categories_Has_Items", alter: "مواصفات وجنس")
+                 : Language.get("Categories_Has_Items_Short", alter: "مواصفات")
+            )
+            .font(.system(size: 9.5, weight: .bold))
+        }
+        .foregroundColor(Color(uiColor: .ppSuccess))
+        .padding(.horizontal, 6.5)
+        .padding(.vertical, 2.5)
+        .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Capsule())
+        .overlay(
+            Capsule()
+                .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.25), lineWidth: 0.5)
+        )
+    }
+
+    private var actionCluster: some View {
+        HStack(spacing: 6) {
+            if canManage {
+                // Quick Edit Trigger
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onEdit()
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 32, height: 32)
+                        .background(AdminSurface.control, in: Circle())
+                        .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Edit", alter: "تعديل"))
+
+                // Restrained Destructive Action
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onDelete()
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppError))
+                        .frame(width: 32, height: 32)
+                        .background(Color(uiColor: .ppError).opacity(0.08), in: Circle())
+                        .overlay(Circle().strokeBorder(Color(uiColor: .ppError).opacity(0.20), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Delete", alter: "حذف"))
+            }
+
+            // Directional Drill-down Navigation Indicator
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onSelect()
+            } label: {
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .frame(width: 32, height: 32)
+                    .background(AdminSurface.control, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("Open", alter: "فتح"))
+        }
+    }
+}
+
+// MARK: - Specimen Card Press Style
+
+struct AdminSpecimenPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
 // MARK: - 8. Flagship Breed & SubSubKind Studio: AdminSubKindStudioView (Tier 2 & Tier 3)
 
 @MainActor
@@ -2695,6 +2892,8 @@ struct AdminSubKindStudioView: View {
             .hidden()
         }
         .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $isAddingSubSubSheet) {
             let nextID = (subSubKindsList.map { $0.numericID }.max() ?? 0) + 1
             AdminSubSubKindEditorSheet(
@@ -3235,6 +3434,9 @@ struct AdminSubSubKindStudioView: View {
                 Text(String(format: Language.get("Item_Delete_Confirm_Body", alter: "هل أنت متأكد من حذف مواصفة \"%@\" نهائياً؟"), itm.localizedName))
             }
         }
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         .onAppear {
             startListeningItems()
         }
@@ -4102,6 +4304,9 @@ struct AdminSubKindEditorSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }
 
@@ -4359,5 +4564,8 @@ struct AdminItemEditorSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 }

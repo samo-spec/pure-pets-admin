@@ -17,16 +17,20 @@ struct AdminListingsView: View {
     }
 
     var body: some View {
-        PPListingsCommandCenterScreen(
-            viewModel: PPListingsCommandCenterViewModel(
-                onDismiss: {
-                    if let onDismiss {
-                        onDismiss()
-                    } else {
-                        dismiss()
+        NavigationView {
+            PPListingsCommandCenterScreen(
+                viewModel: PPListingsCommandCenterViewModel(
+                    onDismiss: {
+                        if let onDismiss {
+                            onDismiss()
+                        } else {
+                            dismiss()
+                        }
                     }
-                }
+                )
             )
-        )
+        }
+        .navigationViewStyle(.stack)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }

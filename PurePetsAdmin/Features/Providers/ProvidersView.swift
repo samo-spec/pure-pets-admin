@@ -71,15 +71,19 @@ public struct AdminProvidersView: View {
     }
 
     public var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
+        NavigationView {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                dossierHeaderView
-                providerTabPicker
-                providerTabContent
+                VStack(spacing: 0) {
+                    dossierHeaderView
+                    providerTabPicker
+                    providerTabContent
+                }
             }
+            .navigationBarHidden(true)
         }
+        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -348,9 +352,33 @@ public struct AdminProviderApplicationsView: View {
                 }
             }
         }
-        .sheet(item: $viewModel.selectedDetailApp) { app in
-            AdminProviderApplicationDetailView(application: app, viewModel: viewModel)
-        }
+        .background(
+            NavigationLink(
+                destination: Group {
+                    if let app = viewModel.selectedDetailApp {
+                        AdminProviderApplicationDetailView(
+                            application: app,
+                            viewModel: viewModel,
+                            isPushMode: true,
+                            onBack: {
+                                viewModel.selectedDetailApp = nil
+                            }
+                        )
+                        .navigationBarHidden(true)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: Binding(
+                    get: { viewModel.selectedDetailApp != nil },
+                    set: { if !$0 { viewModel.selectedDetailApp = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+            .accessibilityHidden(true)
+        )
         .sheet(item: $viewModel.reviewTargetApp) { app in
             ProviderReviewDecisionSheet(application: app, viewModel: viewModel)
         }
@@ -866,13 +894,22 @@ private struct PPProviderApplicationCard: View {
 public struct AdminProviderApplicationDetailView: View {
     let application: PPProviderApplication
     @ObservedObject var viewModel: ProviderApplicationsViewModel
+    var isPushMode: Bool = true
+    var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var showingReviewSheet = false
     @State private var copiedField: String? = nil
     
-    init(application: PPProviderApplication, viewModel: ProviderApplicationsViewModel) {
+    init(
+        application: PPProviderApplication,
+        viewModel: ProviderApplicationsViewModel,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
         self.application = application
         self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
     }
     
     public var body: some View {
@@ -909,6 +946,8 @@ public struct AdminProviderApplicationDetailView: View {
         .sheet(isPresented: $showingReviewSheet) {
             ProviderReviewDecisionSheet(application: application, viewModel: viewModel)
         }
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
     
@@ -918,7 +957,14 @@ public struct AdminProviderApplicationDetailView: View {
         AdminSovereignNavigationBar(
             title: resolvedName,
             subtitle: Language.get("Providers_Dossier_Breadcrumb", alter: "ملف طلب المزود"),
-            onBack: { dismiss() }
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack = onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
+            }
         )
     }
     

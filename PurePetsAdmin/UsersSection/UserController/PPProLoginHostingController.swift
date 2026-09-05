@@ -198,13 +198,13 @@ private struct PPProLoginScreen: View {
             .ignoresSafeArea()
 
             Circle()
-                .fill(Color.pp("AppPrimaryClr").opacity(0.16))
+                .fill(Color.white.opacity(0.06))
                 .frame(width: 240, height: 240)
                 .blur(radius: 18)
                 .offset(x: drift ? 116 : 72, y: -190)
 
             Circle()
-                .fill(Color.pp("AppPrimaryClrShiner").opacity(0.18))
+                .fill(Color.white.opacity(0.04))
                 .frame(width: 180, height: 180)
                 .blur(radius: 20)
                 .offset(x: drift ? -114 : -72, y: 210)

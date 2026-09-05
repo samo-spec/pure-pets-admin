@@ -11,8 +11,22 @@ import SwiftUI
 public struct AdminPetsHotelStayDetailSheet: View {
     let stay: AdminHotelStay
     @ObservedObject var viewModel: AdminPetsHotelViewModel
+    public var isPushMode: Bool = true
+    public var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+
+    public init(
+        stay: AdminHotelStay,
+        viewModel: AdminPetsHotelViewModel,
+        isPushMode: Bool = true,
+        onBack: (() -> Void)? = nil
+    ) {
+        self.stay = stay
+        self.viewModel = viewModel
+        self.isPushMode = isPushMode
+        self.onBack = onBack
+    }
 
     private var activeStay: AdminHotelStay {
         if let current = viewModel.selectedStayDetail, current.id == stay.id {
@@ -64,6 +78,7 @@ public struct AdminPetsHotelStayDetailSheet: View {
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .task {
             if viewModel.canViewCare {
@@ -78,8 +93,14 @@ public struct AdminPetsHotelStayDetailSheet: View {
             title: activeStay.petName,
             subtitle: "\(activeStay.wing.title) • \(activeStay.roomNumber)",
             statusDotColor: activeStay.guestStatus.color,
-            isModal: true,
-            onBack: { dismiss() }
+            isModal: !isPushMode,
+            onBack: {
+                if let onBack = onBack {
+                    onBack()
+                } else {
+                    dismiss()
+                }
+            }
         ) {
             HStack(spacing: 4) {
                 Image(systemName: activeStay.guestStatus.icon)
