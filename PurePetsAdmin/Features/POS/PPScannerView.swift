@@ -52,26 +52,43 @@ public struct PPScannedCheque: Identifiable, Sendable, Equatable {
 // MARK: - Scanner Button Style
 
 private struct ScannerButtonPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.14), value: configuration.isPressed)
     }
 }
 
 // MARK: - Scanner State Phase
 
 public enum PPScannerPhase: Equatable {
+    case starting
     case scanning
     case autoCapturing(progress: CGFloat)
+    case processingImage
     case reviewing(PPScannedCheque)
     case permissionDenied
     case error(String)
 }
 
+// MARK: - Scanner Visual Language
+
+private enum PPScannerVisual {
+    static let accent = Color(uiColor: .ppWarning)
+    static let ready = Color(uiColor: .ppSuccess)
+    static let danger = Color(uiColor: .ppError)
+    static let chrome = Color.black.opacity(0.72)
+    static let chromeRaised = Color.black.opacity(0.82)
+    static let hairline = Color.white.opacity(0.16)
+    static let secondaryText = Color.white.opacity(0.68)
+}
+
 // MARK: - Visual Focus Indicator
 
 private struct PPScannerFocusIndicator: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scale: CGFloat = 1.35
     @State private var opacity: Double = 1.0
 
@@ -88,6 +105,13 @@ private struct PPScannerFocusIndicator: View {
         .scaleEffect(scale)
         .opacity(opacity)
         .onAppear {
+            guard !reduceMotion else {
+                scale = 1.0
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                    opacity = 0.0
+                }
+                return
+            }
             withAnimation(.easeOut(duration: 0.25)) {
                 scale = 1.0
             }
@@ -106,8 +130,10 @@ public struct PPScannerView: View {
     let onDismiss: () -> Void
 
     @StateObject private var engine = PPScannerEngine()
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var phase: PPScannerPhase = .scanning
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var phase: PPScannerPhase = .starting
     @State private var isShowingPhotoPicker = false
     @State private var focusTapTrigger: UUID = UUID()
 
@@ -135,29 +161,64 @@ public struct PPScannerView: View {
                     cheque: cheque,
                     cartTotal: cartTotal,
                     onRetake: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                            phase = .scanning
+                        withAnimation(phaseAnimation) {
+                            phase = .starting
                             engine.resume()
                         }
                     },
                     onConfirm: { confirmedCheque in
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                         onAttach(confirmedCheque)
                     }
                 )
-            case .scanning, .autoCapturing:
+            case .processingImage:
+                processingImageView
+            case .starting, .scanning, .autoCapturing:
                 liveScannerDeck
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
+            engine.onCameraReady = {
+                guard phase == .starting else { return }
+                withAnimation(phaseAnimation) {
+                    phase = .scanning
+                }
+            }
+            engine.onPermissionDenied = {
+                withAnimation(phaseAnimation) {
+                    phase = .permissionDenied
+                }
+            }
+            engine.onCameraUnavailable = {
+                withAnimation(phaseAnimation) {
+                    phase = .error(
+                        Language.get(
+                            "PPScanner_CameraUnavailable",
+                            alter: "تعذر تشغيل الكاميرا. حاول مجدداً أو اختر صورة شيك."
+                        )
+                    )
+                }
+            }
             engine.onCaptureComplete = { capturedCheque in
-                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    self.phase = .reviewing(capturedCheque)
+                switch phase {
+                case .starting, .scanning, .autoCapturing, .processingImage:
+                    engine.stop()
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    withAnimation(phaseAnimation) {
+                        self.phase = .reviewing(capturedCheque)
+                    }
+                case .reviewing, .permissionDenied, .error:
+                    break
                 }
             }
             engine.onAutoCaptureProgress = { progress in
+                switch phase {
+                case .reviewing, .processingImage, .permissionDenied, .error:
+                    return
+                case .starting, .scanning, .autoCapturing:
+                    break
+                }
                 if progress >= 1.0 {
                     self.phase = .autoCapturing(progress: 1.0)
                 } else if progress > 0.0 {
@@ -170,18 +231,57 @@ public struct PPScannerView: View {
         }
         .onDisappear {
             engine.stop()
+            engine.onCameraReady = nil
+            engine.onPermissionDenied = nil
+            engine.onCameraUnavailable = nil
+            engine.onCaptureComplete = nil
+            engine.onAutoCaptureProgress = nil
         }
-        .sheet(isPresented: $isShowingPhotoPicker) {
+        .onChange(of: scenePhase) { _, newPhase in
+            switch newPhase {
+            case .active:
+                switch phase {
+                case .permissionDenied where AVCaptureDevice.authorizationStatus(for: .video) == .authorized:
+                    phase = .starting
+                    engine.checkPermissionsAndStart()
+                case .starting, .scanning, .autoCapturing:
+                    phase = .starting
+                    engine.checkPermissionsAndStart()
+                case .processingImage, .reviewing, .permissionDenied, .error:
+                    break
+                }
+            case .inactive, .background:
+                engine.stop()
+            @unknown default:
+                break
+            }
+        }
+        .sheet(isPresented: $isShowingPhotoPicker, onDismiss: {
+            switch phase {
+            case .starting, .scanning, .autoCapturing:
+                phase = .starting
+                engine.resume()
+            case .processingImage, .reviewing, .permissionDenied, .error:
+                break
+            }
+        }) {
             PPPhotoPickerRepresentable { selectedImage in
+                isShowingPhotoPicker = false
                 if let selectedImage {
+                    phase = .processingImage
                     engine.processImportedImage(selectedImage) { parsedCheque in
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        engine.stop()
+                        withAnimation(phaseAnimation) {
                             self.phase = .reviewing(parsedCheque)
                         }
                     }
                 }
             }
         }
+    }
+
+    private var phaseAnimation: Animation? {
+        reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.88)
     }
 
     // MARK: - Live Scanner Deck
@@ -191,19 +291,12 @@ public struct PPScannerView: View {
             let screenSize = proxy.size
             let safeArea = proxy.safeAreaInsets
             let rSize = reticleSize(for: screenSize)
-            // Optical Center: Ergonomically positioned at 42% of screen height
-            let reticleCenterY = screenSize.height * 0.42
-            let reticleRect = CGRect(
-                x: (screenSize.width - rSize.width) / 2.0,
-                y: reticleCenterY - (rSize.height / 2.0),
-                width: rSize.width,
-                height: rSize.height
-            )
+            let isLandscape = screenSize.width > screenSize.height
 
             ZStack {
-                // 1. Full-Bleed Camera Viewport with Tap-to-Focus & Pinch-to-Zoom
                 PPScannerCameraPreview(session: engine.session)
                     .ignoresSafeArea()
+                    .accessibilityHidden(true)
                     .contentShape(Rectangle())
                     .gesture(
                         MagnificationGesture()
@@ -220,51 +313,129 @@ public struct PPScannerView: View {
                         focusTapTrigger = UUID()
                     }
 
-                // 2. Translucent Optical Mask & Vignette (coincident with reticle)
-                PPScannerVignetteMask(reticleRect: reticleRect)
+                scannerAtmosphere
                     .ignoresSafeArea()
 
-                // 3. Central Spatial Reticle (locked to exact reticleRect)
-                PPScannerReticle(
-                    size: rSize,
-                    isLocked: engine.isChequeDetected,
-                    autoCaptureProgress: autoCaptureProgress
-                )
-                .position(x: screenSize.width / 2.0, y: reticleCenterY)
-
-                // 4. Telemetry Gauges (pinned directly above the reticle)
-                telemetryGauges
-                    .position(x: screenSize.width / 2.0, y: reticleRect.minY - 26)
-
-                // 5. Live Recognized Field HUD (pinned directly below the reticle)
-                if let detected = engine.detectedPreviewText, !detected.isEmpty {
-                    liveFieldHUD(text: detected)
-                        .position(x: screenSize.width / 2.0, y: reticleRect.maxY + 28)
-                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-                }
-
-                // 6. Interactive Focus Indicator
                 if let pt = engine.focusPoint {
                     PPScannerFocusIndicator()
                         .position(pt)
                         .id(focusTapTrigger)
+                        .allowsHitTesting(false)
                 }
 
-                // 7. Bottom Flight Deck Controls (pinned to bottom safe area)
-                VStack {
-                    Spacer()
-                    bottomControls
-                        .padding(.bottom, max(safeArea.bottom, 16) + 10)
+                if isLandscape {
+                    landscapeScannerLayout(
+                        safeArea: safeArea,
+                        screenSize: screenSize,
+                        reticleSize: rSize
+                    )
+                } else {
+                    portraitScannerLayout(
+                        safeArea: safeArea,
+                        reticleSize: rSize
+                    )
                 }
-                .ignoresSafeArea(edges: .bottom)
-
-                // 8. Sovereign Frosted Navigation Bar Chrome (pinned to top safe area)
-                VStack {
-                    sovereignNavigationBar(topInset: max(safeArea.top, 44) + 6)
-                    Spacer()
-                }
-                .ignoresSafeArea(edges: .top)
             }
+            .ignoresSafeArea()
+        }
+    }
+
+    private var scannerAtmosphere: some View {
+        ZStack {
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.76),
+                    Color.black.opacity(0.12),
+                    Color.black.opacity(0.04),
+                    Color.black.opacity(0.78)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            RadialGradient(
+                colors: [.clear, Color.black.opacity(0.34)],
+                center: .center,
+                startRadius: 120,
+                endRadius: 520
+            )
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func portraitScannerLayout(
+        safeArea: EdgeInsets,
+        reticleSize: CGSize
+    ) -> some View {
+        VStack(spacing: 0) {
+            scannerTopBar
+                .padding(.top, max(safeArea.top, 8) + 8)
+                .padding(.horizontal, 16)
+
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 8 : 16)
+
+            scannerStageCluster(size: reticleSize)
+
+            Spacer(minLength: dynamicTypeSize.isAccessibilitySize ? 8 : 16)
+
+            captureDock
+                .padding(.horizontal, 14)
+                .padding(.bottom, max(safeArea.bottom, 10) + 8)
+        }
+    }
+
+    private func landscapeScannerLayout(
+        safeArea: EdgeInsets,
+        screenSize: CGSize,
+        reticleSize: CGSize
+    ) -> some View {
+        VStack(spacing: 8) {
+            scannerTopBar
+                .padding(.top, max(safeArea.top, 6) + 4)
+                .padding(.horizontal, 16)
+
+            HStack(spacing: 16) {
+                scannerStageCluster(size: reticleSize)
+                    .frame(maxWidth: .infinity)
+
+                captureDock
+                    .frame(width: min(310, screenSize.width * 0.38))
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, max(safeArea.bottom, 6) + 6)
+        }
+    }
+
+    private func scannerStageCluster(size: CGSize) -> some View {
+        VStack(spacing: 10) {
+            PPScannerReticle(
+                size: size,
+                isLocked: isCaptureReady,
+                isLowLight: engine.isLowLight,
+                isSteady: engine.isDeviceSteady,
+                autoCaptureProgress: autoCaptureProgress
+            )
+            .allowsHitTesting(false)
+
+            scannerSignalRail
+
+            ZStack {
+                Color.clear
+                if let detected = engine.detectedPreviewText, !detected.isEmpty {
+                    liveFieldHUD(text: detected)
+                        .transition(
+                            reduceMotion
+                                ? .opacity
+                                : .move(edge: .bottom).combined(with: .opacity)
+                        )
+                }
+            }
+            .frame(height: 38)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.24),
+                value: engine.isChequeDetected
+            )
         }
     }
 
@@ -275,375 +446,598 @@ public struct PPScannerView: View {
         return 0.0
     }
 
-    private func reticleSize(for screenSize: CGSize) -> CGSize {
-        // Standard Cheque Aspect Ratio is ~2.18 : 1
-        let maxWidth = min(screenSize.width - 32, 520)
-        let height = maxWidth / 2.18
-        return CGSize(width: maxWidth, height: height)
+    private var isCaptureReady: Bool {
+        phase != .starting &&
+        engine.isChequeDetected &&
+        !engine.isLowLight &&
+        engine.isDeviceSteady
     }
 
-    // MARK: - Sovereign Navigation Bar
+    private func reticleSize(for screenSize: CGSize) -> CGSize {
+        let isLandscape = screenSize.width > screenSize.height
+        let horizontalAllowance: CGFloat = dynamicTypeSize.isAccessibilitySize ? 48 : 28
+        let widthLimit = isLandscape
+            ? min(screenSize.width * 0.56, 620)
+            : min(screenSize.width - horizontalAllowance, 520)
+        let heightLimit = isLandscape
+            ? max(108, screenSize.height - 220)
+            : max(132, screenSize.height * 0.26)
+        let height = min(widthLimit / 2.18, heightLimit)
+        return CGSize(width: height * 2.18, height: height)
+    }
 
-    private func sovereignNavigationBar(topInset: CGFloat) -> some View {
-        HStack(spacing: 12) {
-            // Dismiss Button (42x42 squircle)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onDismiss()
-            } label: {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .fill(Color.black.opacity(0.40))
-                    RoundedRectangle(cornerRadius: 13, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .frame(width: 42, height: 42)
-            }
-            .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+    // MARK: - Scanner Identity Bar
 
-            Spacer(minLength: 4)
-
-            // Title and Intelligence Subtitle
-            VStack(spacing: 2) {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.text.viewfinder")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(Color(red: 0.96, green: 0.62, blue: 0.04))
-                    Text(Language.get("PPScanner_Title", alter: "ماسح الشيكات"))
-                        .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
-                        .foregroundColor(.white)
-                    
-                    // Live OCR Engine Activity Pulse
-                    Circle()
-                        .fill(engine.isChequeDetected ? Color.green : Color(red: 0.96, green: 0.62, blue: 0.04))
-                        .frame(width: 6, height: 6)
-                        .shadow(
-                            color: (engine.isChequeDetected ? Color.green : Color(red: 0.96, green: 0.62, blue: 0.04)).opacity(0.8),
-                            radius: 3
-                        )
-                }
-
-                Text(Language.get("PPScanner_Subtitle", alter: "محرك المسح المالي الضوئي"))
-                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                    .foregroundColor(Color.white.opacity(0.70))
-            }
-
-            Spacer(minLength: 4)
-
-            // Trailing Actions Cluster (Gallery & Torch)
-            HStack(spacing: 8) {
-                // Photo Gallery Import Button
+    private var scannerTopBar: some View {
+        ZStack {
+            HStack {
+                // Native close affordance remains isolated from camera telemetry.
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    isShowingPhotoPicker = true
+                    onDismiss()
                 } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .fill(Color.black.opacity(0.40))
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
-                        Image(systemName: "photo.on.rectangle.angled")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.white)
-                    }
-                    .frame(width: 42, height: 42)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(PPScannerVisual.chrome, in: Circle())
+                        .overlay(Circle().strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75))
                 }
-                .accessibilityLabel(Language.get("PPScanner_Gallery", alter: "من ألبوم الصور"))
+                .buttonStyle(ScannerButtonPressStyle())
+                .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
+                .accessibilityHint(Language.get("PPScanner_CloseHint", alter: "إغلاق ماسح الشيك والعودة إلى نقطة البيع"))
 
-                // Torch Toggle Button with Amber Sovereign Glow
+                Spacer(minLength: 120)
+
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     engine.toggleTorch()
                 } label: {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .fill(
-                                engine.isTorchOn
-                                    ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35)
-                                    : Color.black.opacity(0.40)
+                    Image(systemName: engine.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(engine.isTorchOn ? PPScannerVisual.accent : .white)
+                        .frame(width: 48, height: 48)
+                        .background(
+                            engine.isTorchOn
+                                ? PPScannerVisual.accent.opacity(0.18)
+                                : PPScannerVisual.chrome,
+                            in: Circle()
+                        )
+                        .overlay(
+                            Circle().strokeBorder(
+                                engine.isTorchOn ? PPScannerVisual.accent.opacity(0.72) : PPScannerVisual.hairline,
+                                lineWidth: 0.75
                             )
-                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(
-                                engine.isTorchOn
-                                    ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.80)
-                                    : Color.white.opacity(0.18),
-                                lineWidth: 0.8
-                            )
-                        Image(systemName: engine.isTorchOn ? "bolt.fill" : "bolt.slash.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(engine.isTorchOn ? Color(red: 0.96, green: 0.62, blue: 0.04) : .white)
-                    }
-                    .frame(width: 42, height: 42)
-                    .shadow(
-                        color: engine.isTorchOn ? Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.55) : .clear,
-                        radius: 8
-                    )
+                        )
                 }
+                .buttonStyle(ScannerButtonPressStyle())
+                .disabled(!engine.isTorchAvailable || phase == .starting)
                 .accessibilityLabel(Language.get("PPScanner_Torch", alter: "إضاءة الفلاش"))
+                .accessibilityValue(
+                    engine.isTorchOn
+                        ? Language.get("On", alter: "مفعّلة")
+                        : Language.get("Off", alter: "متوقفة")
+                )
+                .accessibilityHint(Language.get("PPScanner_TorchHint", alter: "تبديل إضاءة الكاميرا"))
             }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background {
-            // Sovereign Glass Container with guaranteed zero material bleed
-            ZStack {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .fill(Color.black.opacity(0.65))
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.18), lineWidth: 0.8)
+
+            HStack(spacing: 9) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(PPScannerVisual.accent.opacity(0.16))
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(PPScannerVisual.accent)
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("PPScanner_Title", alter: "ماسح الشيكات"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Text(Language.get("PPScanner_OnDevice", alter: "معالجة خاصة على الجهاز"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(PPScannerVisual.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
             }
+            .padding(.horizontal, 12)
+            .frame(minHeight: 48)
+            .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+            .background(PPScannerVisual.chrome, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75))
+            .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? 176 : 230)
+            .accessibilityElement(children: .combine)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .padding(.horizontal, 14)
-        .padding(.top, topInset)
+        .frame(maxWidth: .infinity, minHeight: 50)
     }
 
-    // MARK: - Telemetry Gauges
+    // MARK: - Readiness Rail
 
-    private var telemetryGauges: some View {
-        HStack(spacing: 8) {
-            // Lighting Gauge
-            HStack(spacing: 4) {
-                Image(systemName: engine.isLowLight ? "sun.min.fill" : "sun.max.fill")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(engine.isLowLight ? .orange : .green)
-                Text(engine.isLowLight
-                    ? Language.get("PPScanner_LowLight", alter: "إضاءة خافتة")
-                    : Language.get("PPScanner_GoodLight", alter: "إضاءة مثالية"))
-                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.45), in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+    private var scannerSignalRail: some View {
+        HStack(spacing: 0) {
+            scannerSignal(
+                icon: engine.isLowLight ? "sun.haze.fill" : "sun.max.fill",
+                title: Language.get("PPScanner_SignalLight", alter: "الإضاءة"),
+                isReady: !engine.isLowLight
+            )
 
-            // Alignment Confidence Gauge
-            HStack(spacing: 4) {
-                Image(systemName: "viewfinder")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(engine.isChequeDetected ? .green : .yellow)
-                Text(engine.isChequeDetected
-                    ? Language.get("PPScanner_Aligned", alter: "متطابق 96%")
-                    : Language.get("PPScanner_Aligning", alter: "جاري المحاذاة"))
-                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.45), in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+            scannerSignalDivider
 
-            // Stability Gauge
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(engine.isDeviceSteady ? Color.green : Color.orange)
-                    .frame(width: 6, height: 6)
-                Text(engine.isDeviceSteady
-                    ? Language.get("PPScanner_Steady", alter: "ثابت")
-                    : Language.get("PPScanner_HoldStill", alter: "ثبّت الهاتف"))
-                    .font(Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(Color.black.opacity(0.45), in: Capsule(style: .continuous))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.15), lineWidth: 0.5))
+            scannerSignal(
+                icon: engine.isChequeDetected ? "checkmark.square.fill" : "viewfinder",
+                title: Language.get("PPScanner_SignalCheque", alter: "الشيك"),
+                isReady: engine.isChequeDetected
+            )
+
+            scannerSignalDivider
+
+            scannerSignal(
+                icon: engine.isDeviceSteady ? "gyroscope" : "waveform.path",
+                title: Language.get("PPScanner_SignalStability", alter: "الثبات"),
+                isReady: engine.isDeviceSteady
+            )
         }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 520)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(PPScannerVisual.chrome, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private func scannerSignal(icon: String, title: String, isReady: Bool) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isReady ? PPScannerVisual.ready : PPScannerVisual.accent)
+                .frame(width: 24, height: 24)
+                .background(
+                    (isReady ? PPScannerVisual.ready : PPScannerVisual.accent).opacity(0.14),
+                    in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+                )
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+
+                Text(
+                    isReady
+                        ? Language.get("PPScanner_Ready", alter: "جاهز")
+                        : Language.get("PPScanner_Adjust", alter: "يحتاج ضبطاً")
+                )
+                .font(AdminType.caption2)
+                .foregroundStyle(PPScannerVisual.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(
+            isReady
+                ? Language.get("PPScanner_Ready", alter: "جاهز")
+                : Language.get("PPScanner_Adjust", alter: "يحتاج ضبطاً")
+        )
+    }
+
+    private var scannerSignalDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.12))
+            .frame(width: 1, height: 28)
+            .padding(.horizontal, 6)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Live Field Recognition HUD
 
     private func liveFieldHUD(text: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundColor(Color(red: 0.96, green: 0.62, blue: 0.04))
+        HStack(spacing: 9) {
+            Image(systemName: "text.viewfinder")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PPScannerVisual.ready)
 
             Text(text)
-                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                .foregroundColor(.white)
+                .font(AdminType.captionBold)
+                .foregroundStyle(.white)
                 .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .environment(\.layoutDirection, .leftToRight)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
-        .background {
-            ZStack {
-                Capsule(style: .continuous)
-                    .fill(.ultraThinMaterial)
-                Capsule(style: .continuous)
-                    .fill(Color.black.opacity(0.70))
-                Capsule(style: .continuous)
-                    .strokeBorder(Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.65), lineWidth: 1)
-            }
-        }
-        .clipShape(Capsule(style: .continuous))
-        .shadow(color: Color(red: 0.96, green: 0.62, blue: 0.04).opacity(0.35), radius: 8, x: 0, y: 2)
+        .padding(.horizontal, 13)
+        .frame(minHeight: 34)
+        .background(PPScannerVisual.ready.opacity(0.15), in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(PPScannerVisual.ready.opacity(0.44), lineWidth: 0.75)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("PPScanner_ChequeDetected", alter: "تم التعرف على الشيك"))
+        .accessibilityValue(text)
     }
 
-    // MARK: - Bottom Controls Bar
+    // MARK: - Capture Dock
 
-    private var bottomControls: some View {
+    private var captureDock: some View {
         VStack(spacing: 12) {
-            // Status Guidance Subtitle
-            Text(guidanceText)
-                .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .subheadline))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .shadow(color: .black, radius: 4, x: 0, y: 2)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isCaptureReady ? "checkmark.circle.fill" : "scope")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(isCaptureReady ? PPScannerVisual.ready : PPScannerVisual.accent)
 
-            // Kinetic Dual-Ring Shutter & Zoom Selector Cluster
-            HStack(spacing: 24) {
-                // Quick Zoom Macro Toggle Pill
+                        Text(guidanceText)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(.white)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    }
+
+                    Text(guidanceDetail)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(PPScannerVisual.secondaryText)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+
+                Spacer(minLength: 4)
+
+                if cartTotal > 0, !dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(Language.get("PPScanner_SaleTotal", alter: "إجمالي البيع"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(PPScannerVisual.secondaryText)
+
+                        Text("\(String(format: "%.2f", cartTotal)) \(Language.get("QAR", alter: "ر.ق"))")
+                            .font(AdminType.caption1Bold)
+                            .foregroundStyle(.white)
+                            .monospacedDigit()
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityElement(children: .combine)
+                }
+            }
+
+            HStack(spacing: 14) {
+                Button {
+                    openPhotoPicker()
+                } label: {
+                    scannerDockTool(
+                        icon: "photo.on.rectangle",
+                        label: Language.get("PPScanner_Gallery", alter: "الصور")
+                    )
+                }
+                .buttonStyle(ScannerButtonPressStyle())
+                .accessibilityLabel(Language.get("PPScanner_Gallery", alter: "من ألبوم الصور"))
+                .accessibilityHint(Language.get("PPScanner_GalleryHint", alter: "اختيار صورة شيك موجودة على الجهاز"))
+
+                Spacer(minLength: 0)
+
+                Button {
+                    guard phase != .starting else { return }
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    withAnimation(phaseAnimation) {
+                        phase = .processingImage
+                    }
+                    engine.capturePhotoManually()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.26), lineWidth: 3)
+                            .frame(width: 82, height: 82)
+
+                        Circle()
+                            .trim(from: 0, to: max(autoCaptureProgress, 0.002))
+                            .stroke(
+                                engine.isChequeDetected ? PPScannerVisual.ready : PPScannerVisual.accent,
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                            )
+                            .rotationEffect(.degrees(-90))
+                            .frame(width: 82, height: 82)
+
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 66, height: 66)
+                            .overlay(
+                                Image(systemName: engine.isChequeDetected ? "doc.viewfinder.fill" : "camera.fill")
+                                    .font(.system(size: 21, weight: .semibold))
+                                    .foregroundStyle(Color.black.opacity(0.82))
+                            )
+                            .shadow(color: Color.black.opacity(0.36), radius: 7, x: 0, y: 3)
+                    }
+                }
+                .buttonStyle(ScannerButtonPressStyle())
+                .disabled(phase == .starting)
+                .accessibilityLabel(Language.get("PPScanner_ManualCapture", alter: "التقاط يدوي"))
+                .accessibilityValue(
+                    isCaptureReady
+                        ? Language.get("PPScanner_Ready", alter: "جاهز")
+                        : Language.get("PPScanner_Adjust", alter: "يحتاج ضبطاً")
+                )
+                .accessibilityHint(Language.get("PPScanner_ManualCaptureHint", alter: "التقاط صورة الشيك الآن ومراجعة البيانات"))
+
+                Spacer(minLength: 0)
+
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     engine.toggleZoomLevel()
                 } label: {
-                    Text(String(format: "%.0fx", engine.currentZoom))
-                        .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .caption))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.black.opacity(0.45), in: Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 0.8))
-                }
-                .accessibilityLabel(Language.get("PPScanner_Zoom", alter: "درجة التقريب"))
-
-                // Shutter Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                    engine.capturePhotoManually()
-                } label: {
-                    ZStack {
-                        // Outer Ambient Ring
-                        Circle()
-                            .stroke(Color.white.opacity(0.35), lineWidth: 4)
-                            .frame(width: 76, height: 76)
-
-                        // Kinetic Auto-Capture Progress Fill
-                        if autoCaptureProgress > 0 {
-                            Circle()
-                                .trim(from: 0, to: autoCaptureProgress)
-                                .stroke(
-                                    Color(red: 0.96, green: 0.62, blue: 0.04),
-                                    style: StrokeStyle(lineWidth: 4.5, lineCap: .round)
-                                )
-                                .rotationEffect(.degrees(-90))
-                                .frame(width: 76, height: 76)
-                        }
-
-                        // Inner Core Shutter
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 62, height: 62)
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.black.opacity(0.12), lineWidth: 1.5)
-                            )
-                            .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 3)
-                    }
+                    scannerDockTool(
+                        icon: "plus.magnifyingglass",
+                        label: String(format: "%.0fx", engine.currentZoom),
+                        forceLTR: true
+                    )
                 }
                 .buttonStyle(ScannerButtonPressStyle())
-                .accessibilityLabel(Language.get("PPScanner_ManualCapture", alter: "التقاط يدوي"))
-
-                // Gallery Shortcut Duplicate on Flight Deck
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    isShowingPhotoPicker = true
-                } label: {
-                    Image(systemName: "photo")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 44, height: 44)
-                        .background(Color.black.opacity(0.45), in: Circle())
-                        .overlay(Circle().stroke(Color.white.opacity(0.20), lineWidth: 0.8))
-                }
-                .accessibilityLabel(Language.get("PPScanner_Gallery", alter: "من ألبوم الصور"))
+                .disabled(phase == .starting)
+                .accessibilityLabel(Language.get("PPScanner_Zoom", alter: "درجة التقريب"))
+                .accessibilityValue(String(format: "%.0fx", engine.currentZoom))
+                .accessibilityHint(Language.get("PPScanner_ZoomHint", alter: "التبديل بين التقريب العادي والمزدوج"))
             }
         }
+        .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(PPScannerVisual.chromeRaised, in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(0.34), radius: 24, x: 0, y: 12)
+    }
+
+    private func scannerDockTool(icon: String, label: String, forceLTR: Bool = false) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+
+            Text(label)
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(PPScannerVisual.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .environment(\.layoutDirection, forceLTR ? .leftToRight : (Language.isRTL() ? .rightToLeft : .leftToRight))
+        }
+        .frame(minWidth: 56, minHeight: 52)
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.75)
+        )
+    }
+
+    private func openPhotoPicker() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        engine.stop()
+        isShowingPhotoPicker = true
     }
 
     private var guidanceText: String {
-        if engine.isChequeDetected {
-            return Language.get("PPScanner_ReadyToCapture", alter: "تم ضبط الشيك • جاري الالتقاط التلقائي...")
+        if phase == .starting {
+            return Language.get("PPScanner_PreparingCamera", alter: "جارٍ تجهيز الكاميرا")
+        } else if engine.isLowLight {
+            return Language.get("PPScanner_LowLight", alter: "الإضاءة منخفضة")
         } else if !engine.isDeviceSteady {
             return Language.get("PPScanner_HoldSteady", alter: "ثبّت الكاميرا فوق الشيك للتركيز")
+        } else if isCaptureReady {
+            return Language.get("PPScanner_ReadyToCapture", alter: "تم ضبط الشيك • جاري الالتقاط التلقائي...")
         } else {
             return Language.get("PPScanner_AlignCheque", alter: "وجّه الشيك داخل الإطار المخصص")
+        }
+    }
+
+    private var guidanceDetail: String {
+        if phase == .starting {
+            return Language.get("PPScanner_PreparingCameraHint", alter: "سيبدأ المسح البصري بعد اتصال الكاميرا")
+        } else if engine.isLowLight {
+            return Language.get("PPScanner_LightHint", alter: "أضف إضاءة ناعمة وتجنب انعكاس الضوء على الشيك")
+        } else if !engine.isDeviceSteady {
+            return Language.get("PPScanner_StabilityHint", alter: "قرّب الهاتف قليلاً وثبّت الحواف داخل مجال الرؤية")
+        } else if isCaptureReady {
+            return Language.get("PPScanner_AutoCaptureHint", alter: "اثبت للحظة؛ سيتم الالتقاط تلقائياً عند اكتمال القراءة")
+        } else {
+            return Language.get("PPScanner_FrameHint", alter: "أظهر الحواف الأربع واجعل سطر MICR بمحاذاة المسار السفلي")
         }
     }
 
     // MARK: - Permission Denied View
 
     private var permissionDeniedView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "camera.fill")
-                .font(.system(size: 48, weight: .bold))
-                .foregroundColor(.orange)
-
-            Text(Language.get("PPScanner_CameraPermissionRequired", alter: "مطلوب إذن استخدام الكاميرا"))
-                .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
-                .foregroundColor(.white)
-
-            Text(Language.get("PPScanner_CameraPermissionDesc", alter: "يرجى تمكين إذن الكاميرا من إعدادات الجهاز لمسح الشيكات البنكية."))
-                .font(Font.custom("Beiruti-Regular", size: 14, relativeTo: .body))
-                .foregroundColor(Color.white.opacity(0.7))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-
-            Button {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
-            } label: {
-                Text(Language.get("Settings", alter: "فتح الإعدادات"))
-                    .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
-                    .foregroundColor(.black)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.white, in: Capsule())
-            }
-            .padding(.top, 8)
-
-            Button {
-                onDismiss()
-            } label: {
-                Text(Language.get("Cancel", alter: "إلغاء"))
-                    .font(Font.custom("Beiruti-Medium", size: 14, relativeTo: .callout))
-                    .foregroundColor(.white.opacity(0.8))
-            }
-            .padding(.top, 4)
-        }
+        scannerRecoveryView(
+            icon: "camera.fill",
+            tint: PPScannerVisual.accent,
+            title: Language.get("PPScanner_CameraPermissionRequired", alter: "مطلوب إذن استخدام الكاميرا"),
+            message: Language.get(
+                "PPScanner_CameraPermissionDesc",
+                alter: "اسمح باستخدام الكاميرا لمسح الشيك، أو اختر صورة موجودة من الجهاز."
+            ),
+            primaryTitle: Language.get("Settings", alter: "فتح الإعدادات"),
+            primaryIcon: "gearshape.fill",
+            primaryAction: {
+                guard let url = URL(string: UIApplication.openSettingsURLString),
+                      UIApplication.shared.canOpenURL(url) else { return }
+                UIApplication.shared.open(url)
+            },
+            secondaryTitle: Language.get("PPScanner_Gallery", alter: "اختيار صورة"),
+            secondaryIcon: "photo.on.rectangle",
+            secondaryAction: openPhotoPicker
+        )
     }
 
     // MARK: - Error View
 
     private func errorView(_ message: String) -> some View {
-        VStack(spacing: 14) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 42, weight: .bold))
-                .foregroundColor(.red)
+        scannerRecoveryView(
+            icon: "exclamationmark.triangle.fill",
+            tint: PPScannerVisual.danger,
+            title: Language.get("PPScanner_CameraErrorTitle", alter: "تعذر بدء المسح"),
+            message: message,
+            primaryTitle: Language.get("PPScanner_Retry", alter: "إعادة المحاولة"),
+            primaryIcon: "arrow.clockwise",
+            primaryAction: {
+                withAnimation(phaseAnimation) {
+                    phase = .starting
+                }
+                engine.checkPermissionsAndStart()
+            },
+            secondaryTitle: Language.get("PPScanner_Gallery", alter: "اختيار صورة"),
+            secondaryIcon: "photo.on.rectangle",
+            secondaryAction: openPhotoPicker
+        )
+    }
 
-            Text(message)
-                .font(Font.custom("Beiruti-Medium", size: 15, relativeTo: .body))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+    private var processingImageView: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            RadialGradient(
+                colors: [PPScannerVisual.accent.opacity(0.18), .clear],
+                center: .center,
+                startRadius: 0,
+                endRadius: 320
+            )
+            .ignoresSafeArea()
 
-            Button {
-                onDismiss()
-            } label: {
-                Text(Language.get("Close", alter: "إغلاق"))
-                    .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.2), in: Capsule())
+            VStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(PPScannerVisual.accent.opacity(0.12))
+                        .frame(width: 86, height: 86)
+
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(PPScannerVisual.accent)
+                }
+
+                Text(Language.get("PPScanner_Processing", alter: "جارٍ قراءة بيانات الشيك"))
+                    .font(AdminType.title3)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+
+                Text(Language.get("PPScanner_ProcessingHint", alter: "يتم تحليل الصورة على هذا الجهاز قبل عرضها للمراجعة"))
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(PPScannerVisual.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(Language.get("Cancel", alter: "إلغاء")) {
+                    onDismiss()
+                }
+                .font(AdminType.calloutBold)
+                .foregroundStyle(.white)
+                .frame(minWidth: 96, minHeight: 44)
+                .background(Color.white.opacity(0.10), in: Capsule(style: .continuous))
+                .padding(.top, 4)
             }
+            .padding(28)
+            .frame(maxWidth: 360)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .background(PPScannerVisual.chromeRaised, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75)
+            )
+            .padding(20)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func scannerRecoveryView(
+        icon: String,
+        tint: Color,
+        title: String,
+        message: String,
+        primaryTitle: String,
+        primaryIcon: String,
+        primaryAction: @escaping () -> Void,
+        secondaryTitle: String,
+        secondaryIcon: String,
+        secondaryAction: @escaping () -> Void
+    ) -> some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            RadialGradient(
+                colors: [tint.opacity(0.18), .clear],
+                center: .center,
+                startRadius: 0,
+                endRadius: 360
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 18) {
+                Image(systemName: icon)
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(tint)
+                    .frame(width: 72, height: 72)
+                    .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+
+                VStack(spacing: 7) {
+                    Text(title)
+                        .font(AdminType.title3)
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+
+                    Text(message)
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(PPScannerVisual.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: 10) {
+                    Button(action: primaryAction) {
+                        Label(primaryTitle, systemImage: primaryIcon)
+                            .font(AdminType.calloutBold)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .foregroundStyle(.black)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(ScannerButtonPressStyle())
+
+                    Button(action: secondaryAction) {
+                        Label(secondaryTitle, systemImage: secondaryIcon)
+                            .font(AdminType.calloutBold)
+                            .frame(maxWidth: .infinity, minHeight: 50)
+                            .foregroundStyle(.white)
+                            .background(Color.white.opacity(0.09), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75)
+                            )
+                    }
+                    .buttonStyle(ScannerButtonPressStyle())
+                }
+
+                Button(Language.get("Cancel", alter: "إلغاء")) {
+                    onDismiss()
+                }
+                .font(AdminType.calloutBold)
+                .foregroundStyle(PPScannerVisual.secondaryText)
+                .frame(minWidth: 88, minHeight: 44)
+            }
+            .padding(24)
+            .frame(maxWidth: 390)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .background(PPScannerVisual.chromeRaised, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                    .strokeBorder(PPScannerVisual.hairline, lineWidth: 0.75)
+            )
+            .padding(20)
         }
     }
 }
@@ -653,72 +1047,122 @@ public struct PPScannerView: View {
 private struct PPScannerReticle: View {
     let size: CGSize
     let isLocked: Bool
+    let isLowLight: Bool
+    let isSteady: Bool
     let autoCaptureProgress: CGFloat
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scanPhase: CGFloat = 0
 
     private var accentColor: Color {
-        isLocked ? Color.green : Color(red: 0.96, green: 0.62, blue: 0.04)
+        isLocked ? PPScannerVisual.ready : PPScannerVisual.accent
+    }
+
+    private var accessibilityState: String {
+        if isLocked {
+            return Language.get("PPScanner_ReadyToCapture", alter: "جاهز للالتقاط")
+        } else if isLowLight {
+            return Language.get("PPScanner_LowLight", alter: "الإضاءة منخفضة")
+        } else if !isSteady {
+            return Language.get("PPScanner_HoldStill", alter: "ثبّت الهاتف")
+        } else {
+            return Language.get("PPScanner_AlignCheque", alter: "وجّه الشيك داخل الإطار")
+        }
     }
 
     var body: some View {
         ZStack {
-            // Reticle Border
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(isLocked ? 0.08 : 0.15))
+
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(
-                    accentColor.opacity(isLocked ? 0.9 : 0.4),
-                    lineWidth: isLocked ? 2.0 : 1.2
-                )
-                .background(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(accentColor.opacity(isLocked ? 0.08 : 0.02))
+                    LinearGradient(
+                        colors: [accentColor.opacity(0.92), accentColor.opacity(0.30), accentColor.opacity(0.78)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: isLocked ? 1.8 : 1.0
                 )
 
-            // Chamfered Laser Corner Brackets
-            PPScannerCornerBrackets(color: accentColor, cornerLength: 26, thickness: 3.5)
+            PPScannerCornerBrackets(color: accentColor, cornerLength: 30, thickness: 3.2)
 
-            // Animated Laser Scanning Beam
-            GeometryReader { geo in
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.clear, accentColor.opacity(0.65), .clear],
-                            startPoint: .top,
-                            endPoint: .bottom
+            if !reduceMotion && !isLocked {
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, accentColor.opacity(0.92), .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
                         )
-                    )
-                    .frame(height: 2)
-                    .offset(y: scanPhase * (geo.size.height - 4))
+                        .frame(height: 1.5)
+                        .shadow(color: accentColor.opacity(0.55), radius: 5)
+                        .offset(y: 14 + scanPhase * max(0, geo.size.height - 52))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+
+            VStack {
+                HStack(spacing: 4) {
+                    ForEach(0..<5, id: \.self) { index in
+                        Capsule(style: .continuous)
+                            .fill(accentColor.opacity(index == 2 ? 0.76 : 0.28))
+                            .frame(width: index == 2 ? 18 : 6, height: 2)
+                    }
+                }
+                .padding(.top, 10)
+
+                Spacer()
+
+                HStack(spacing: 7) {
+                    Image(systemName: "waveform.path.ecg.rectangle")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(Language.get("PPScanner_MICRTrack", alter: "شريط التشفير المغناطيسي MICR"))
+                        .font(AdminType.caption2Bold)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .foregroundStyle(accentColor)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .background(PPScannerVisual.chromeRaised)
+                .overlay(alignment: .top) {
+                    Rectangle()
+                        .fill(accentColor.opacity(0.48))
+                        .frame(height: 1)
+                }
             }
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            // Lower MICR Readout Baseline
-            VStack {
-                Spacer()
-
-                HStack(spacing: 8) {
-                    Text("⑆")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    Text(Language.get("PPScanner_MICRTrack", alter: "شريط التشفير المغناطيسي MICR"))
-                        .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                    Text("⑈")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                }
-                .foregroundColor(accentColor.opacity(0.85))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(Color.black.opacity(0.65))
-                )
-                .padding(.bottom, 10)
+            if autoCaptureProgress > 0 {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .trim(from: 0, to: min(max(autoCaptureProgress, 0), 1))
+                    .stroke(
+                        PPScannerVisual.ready,
+                        style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                    )
+                    .shadow(color: PPScannerVisual.ready.opacity(0.42), radius: 6)
             }
         }
         .frame(width: size.width, height: size.height)
+        .shadow(color: accentColor.opacity(isLocked ? 0.20 : 0.10), radius: 18)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Language.get("PPScanner_CaptureFrame", alter: "إطار التقاط الشيك"))
+        .accessibilityValue(accessibilityState)
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                scanPhase = 1.0
-            }
+            startScanningAnimationIfNeeded()
+        }
+        .onChange(of: reduceMotion) { _, _ in
+            scanPhase = 0
+            startScanningAnimationIfNeeded()
+        }
+    }
+
+    private func startScanningAnimationIfNeeded() {
+        guard !reduceMotion else { return }
+        withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+            scanPhase = 1.0
         }
     }
 }
@@ -758,29 +1202,6 @@ private struct PPScannerCornerBrackets: View {
             }
             .stroke(color, style: StrokeStyle(lineWidth: thickness, lineCap: .round, lineJoin: .round))
         }
-    }
-}
-
-// MARK: - Vignette Mask (100% Geometry Matched to Reticle)
-
-private struct PPScannerVignetteMask: View {
-    let reticleRect: CGRect
-
-    var body: some View {
-        Canvas { context, size in
-            // Outer darkened ambient mask
-            context.fill(
-                Path(CGRect(origin: .zero, size: size)),
-                with: .color(Color.black.opacity(0.55))
-            )
-            // Cutout window - perfectly coincident with reticleRect
-            context.blendMode = .destinationOut
-            context.fill(
-                Path(roundedRect: reticleRect, cornerRadius: 18),
-                with: .color(.black)
-            )
-        }
-        .allowsHitTesting(false)
     }
 }
 
@@ -851,7 +1272,7 @@ private struct PPScannerReviewFlightDeck: View {
                         title: Language.get("PPScanner_ChequeNumber", alter: "رقم الشيك"),
                         icon: "number",
                         text: $editedChequeNumber,
-                        placeholder: "004821"
+                        placeholder: Language.get("PPScanner_ChequeNumberPlaceholder", alter: "مثال: 004821")
                     )
 
                     Divider().background(AdminSurface.hairline)
@@ -861,7 +1282,7 @@ private struct PPScannerReviewFlightDeck: View {
                         title: Language.get("PPScanner_BankName", alter: "اسم البنك"),
                         icon: "building.columns.fill",
                         text: $editedBankName,
-                        placeholder: "QNB / البنك الوطني"
+                        placeholder: Language.get("PPScanner_BankNamePlaceholder", alter: "مثال: بنك قطر الوطني")
                     )
 
                     Divider().background(AdminSurface.hairline)
@@ -1026,32 +1447,36 @@ private struct PPPhotoPickerRepresentable: UIViewControllerRepresentable {
         Coordinator(onImageSelected: onImageSelected)
     }
 
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        configuration.preferredAssetRepresentationMode = .current
+        let picker = PHPickerViewController(configuration: configuration)
         picker.delegate = context.coordinator
-        picker.sourceType = .photoLibrary
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
 
-    final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
         let onImageSelected: (UIImage?) -> Void
 
         init(onImageSelected: @escaping (UIImage?) -> Void) {
             self.onImageSelected = onImageSelected
         }
 
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            let image = info[.originalImage] as? UIImage
-            picker.dismiss(animated: true) {
-                self.onImageSelected(image)
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let provider = results.first?.itemProvider,
+                  provider.canLoadObject(ofClass: UIImage.self) else {
+                onImageSelected(nil)
+                return
             }
-        }
 
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true) {
-                self.onImageSelected(nil)
+            provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+                DispatchQueue.main.async {
+                    self?.onImageSelected(object as? UIImage)
+                }
             }
         }
     }
@@ -1131,11 +1556,15 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
     @Published var detectedPreviewText: String? = nil
     @Published var focusPoint: CGPoint? = nil
     @Published var currentZoom: CGFloat = 1.0
+    @Published var isTorchAvailable: Bool = false
 
     private var baseZoomFactor: CGFloat = 1.0
 
     var onCaptureComplete: ((PPScannedCheque) -> Void)?
     var onAutoCaptureProgress: ((CGFloat) -> Void)?
+    var onCameraReady: (() -> Void)?
+    var onPermissionDenied: (() -> Void)?
+    var onCameraUnavailable: (() -> Void)?
 
     private var isAnalyzing = false
     private nonisolated(unsafe) var lastFrameTime: TimeInterval = 0
@@ -1175,62 +1604,103 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 DispatchQueue.main.async {
                     if granted {
                         self?.configureAndStart()
+                    } else {
+                        self?.onPermissionDenied?()
                     }
                 }
             }
         default:
-            break
+            onPermissionDenied?()
         }
     }
 
     private func configureAndStart() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+
+            if self.session.isRunning {
+                DispatchQueue.main.async {
+                    self.onCameraReady?()
+                }
+                return
+            }
+
+            if !self.session.inputs.isEmpty {
+                self.session.startRunning()
+                DispatchQueue.main.async {
+                    self.isTorchAvailable = self.videoDevice?.hasTorch == true
+                    self.onCameraReady?()
+                }
+                return
+            }
+
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo
 
             guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
                   let input = try? AVCaptureDeviceInput(device: device) else {
                 self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.onCameraUnavailable?()
+                }
+                return
+            }
+
+            guard self.session.canAddInput(input),
+                  self.session.canAddOutput(self.videoOutput),
+                  self.session.canAddOutput(self.photoOutput) else {
+                self.session.commitConfiguration()
+                DispatchQueue.main.async {
+                    self.onCameraUnavailable?()
+                }
                 return
             }
 
             self.videoDevice = device
-
-            if self.session.canAddInput(input) {
-                self.session.addInput(input)
-            }
-
+            self.session.addInput(input)
             self.videoOutput.alwaysDiscardsLateVideoFrames = true
             self.videoOutput.setSampleBufferDelegate(self, queue: self.visionQueue)
-            if self.session.canAddOutput(self.videoOutput) {
-                self.session.addOutput(self.videoOutput)
-            }
-
-            if self.session.canAddOutput(self.photoOutput) {
-                self.session.addOutput(self.photoOutput)
-            }
+            self.session.addOutput(self.videoOutput)
+            self.session.addOutput(self.photoOutput)
 
             self.session.commitConfiguration()
             self.session.startRunning()
+            DispatchQueue.main.async {
+                self.isTorchAvailable = device.hasTorch
+                self.onCameraReady?()
+            }
         }
     }
 
     func stop() {
         sessionQueue.async { [weak self] in
-            self?.session.stopRunning()
+            guard let self else { return }
+            if let device = self.videoDevice, device.hasTorch, device.torchMode == .on {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch {
+                    // Session shutdown must continue even when torch state cannot be changed.
+                }
+            }
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+            DispatchQueue.main.async {
+                self.isTorchOn = false
+            }
         }
     }
 
     func resume() {
-        sessionQueue.async { [weak self] in
-            if let running = self?.session.isRunning, !running {
-                self?.session.startRunning()
-            }
-        }
         consecutiveValidFrames = 0
         autoCaptureStartTime = nil
         latestCandidateCheque = nil
+        detectedPreviewText = nil
+        isChequeDetected = false
+        focusPoint = nil
+        checkPermissionsAndStart()
     }
 
     func toggleTorch() {
@@ -1380,14 +1850,21 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
             if hasValidChequeSignals {
                 var preview = ""
                 if !parsed.chequeNumber.isEmpty {
-                    preview = "شيك #\(parsed.chequeNumber)"
+                    preview = String(
+                        format: Language.get("PPScanner_DetectedNumber", alter: "شيك رقم %@"),
+                        parsed.chequeNumber
+                    )
                 }
                 if !parsed.bankName.isEmpty {
                     let bankShort = parsed.bankName.components(separatedBy: " • ").first ?? parsed.bankName
                     preview += (preview.isEmpty ? "" : " • ") + bankShort
                 }
                 if let amt = parsed.amount {
-                    preview += String(format: " • %.2f ر.ق", amt)
+                    preview += String(
+                        format: " • %.2f %@",
+                        amt,
+                        Language.get("QAR", alter: "ر.ق")
+                    )
                 }
                 self.detectedPreviewText = preview.isEmpty ? Language.get("PPScanner_ChequeDetected", alter: "تم التعرف على الشيك") : preview
 
@@ -1406,7 +1883,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
                 }
 
                 // Handle Auto-Capture Timeline
-                if self.isDeviceSteady, self.consecutiveValidFrames >= 3 {
+                if self.isDeviceSteady, !self.isLowLight, self.consecutiveValidFrames >= 3 {
                     if self.autoCaptureStartTime == nil {
                         self.autoCaptureStartTime = Date()
                     }
@@ -1535,12 +2012,21 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
 
     // Manual Shutter Photo Capture
     func capturePhotoManually() {
+        guard session.isRunning else {
+            onCameraUnavailable?()
+            return
+        }
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
     }
 
     nonisolated public func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else { return }
+        guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else {
+            Task { @MainActor [weak self] in
+                self?.onCameraUnavailable?()
+            }
+            return
+        }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
