@@ -339,6 +339,47 @@ public final class PPBranchInventoryService: ObservableObject {
         return fallbackPrice
     }
 
+    /// Updates or inserts a local in-memory branch inventory record for immediate UI reactivity.
+    public func updateAvailableStockLocally(for productId: String, branchId: String, newQuantity: Int) {
+        let cleanBranch = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanBranch.isEmpty, currentBranchId == cleanBranch else { return }
+        let clamped = max(0, newQuantity)
+        if let existing = inventoryMap[productId] {
+            let updated = PPBranchInventory(
+                id: existing.id,
+                branchId: existing.branchId,
+                productId: existing.productId,
+                productName: existing.productName,
+                sku: existing.sku,
+                barcode: existing.barcode,
+                category: existing.category,
+                quantity: clamped,
+                reservedQuantity: existing.reservedQuantity,
+                availableQuantity: max(0, clamped - existing.reservedQuantity),
+                minimumStock: existing.minimumStock,
+                maximumStock: existing.maximumStock,
+                shelfLocation: existing.shelfLocation,
+                costPrice: existing.costPrice,
+                sellingPrice: existing.sellingPrice,
+                noStock: clamped <= 0,
+                updatedAt: Date()
+            )
+            inventoryMap[productId] = updated
+        } else {
+            let newRecord = PPBranchInventory(
+                id: "\(cleanBranch)_\(productId)",
+                branchId: cleanBranch,
+                productId: productId,
+                quantity: clamped,
+                reservedQuantity: 0,
+                availableQuantity: clamped,
+                noStock: clamped <= 0,
+                updatedAt: Date()
+            )
+            inventoryMap[productId] = newRecord
+        }
+    }
+
     /// Adjust stock callable via backend Cloud Function
     public func adjustStock(
         productId: String,
@@ -368,13 +409,26 @@ public final class PPBranchInventoryService: ObservableObject {
         }
 
         let callable = Functions.functions().httpsCallable("adjustBranchStock")
-        callable.call(["payload": payload]) { result, error in
+        callable.call(["payload": payload]) { [weak self] result, error in
             if let error = error {
                 completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
-            completion?(.success(data))
+            Task { @MainActor [weak self] in
+                guard let self = self else {
+                    completion?(.success(data))
+                    return
+                }
+                if let newQtyNum = (data["newQuantity"] as? NSNumber) ?? (data["targetBranchQty"] as? NSNumber) {
+                    self.updateAvailableStockLocally(
+                        for: productId,
+                        branchId: branchId,
+                        newQuantity: newQtyNum.intValue
+                    )
+                }
+                completion?(.success(data))
+            }
         }
     }
 
@@ -399,13 +453,33 @@ public final class PPBranchInventoryService: ObservableObject {
         ]
 
         let callable = Functions.functions().httpsCallable("transferBranchStock")
-        callable.call(["payload": payload]) { result, error in
+        callable.call(["payload": payload]) { [weak self] result, error in
             if let error = error {
                 completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
-            completion?(.success(data))
+            Task { @MainActor [weak self] in
+                guard let self = self else {
+                    completion?(.success(data))
+                    return
+                }
+                if let sourceNewQtyNum = data["sourceNewQuantity"] as? NSNumber {
+                    self.updateAvailableStockLocally(
+                        for: productId,
+                        branchId: sourceBranchId,
+                        newQuantity: sourceNewQtyNum.intValue
+                    )
+                }
+                if let destNewQtyNum = data["destNewQuantity"] as? NSNumber {
+                    self.updateAvailableStockLocally(
+                        for: productId,
+                        branchId: destinationBranchId,
+                        newQuantity: destNewQtyNum.intValue
+                    )
+                }
+                completion?(.success(data))
+            }
         }
     }
 }

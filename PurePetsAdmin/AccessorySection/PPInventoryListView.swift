@@ -2988,6 +2988,19 @@ private struct FlagshipInventoryCard: View {
                                     .foregroundColor(AdminCommandInk.tertiary)
                                     .strikethrough()
                             }
+
+                            if let wp = item.wholesalePrice?.doubleValue, wp > 0 {
+                                HStack(spacing: 3) {
+                                    Text(Language.get("Wholesale_Short", alter: "جملة:"))
+                                        .font(.system(size: 10, weight: .bold))
+                                    Text(String(format: "%.0f %@", wp, Language.get("QAR", alter: "ر.ق")))
+                                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                                }
+                                .foregroundColor(Color(uiColor: .systemTeal))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                            }
                         }
                     }
                 }
@@ -3104,21 +3117,30 @@ private struct FlagshipInventoryCard: View {
                 Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
             }
         }
-        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityAlert) {
-            TextField(Language.get("Quantity", alter: "الكمية"), text: $inputQuantityText)
-                .englishNumericInput(text: $inputQuantityText, allowsDecimal: false)
-            Button(Language.get("Save", alter: "حفظ")) {
-                if let val = Int(inputQuantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
-                    let sanitized = max(0, val)
-                    let delta = sanitized - displayQuantity
-                    if delta != 0 {
-                        onAdjustQuantity(delta)
-                    }
+    }
+
+    private func promptQuantityEdit() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PPAlertHelper.showTextPrompt(
+            in: nil,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
+            placeholder: Language.get("Quantity", alter: "الكمية"),
+            initialText: "\(displayQuantity)",
+            confirmText: Language.get("Save", alter: "حفظ"),
+            cancelText: Language.get("Cancel", alter: "إلغاء"),
+            secureEntry: false,
+            keyboardType: .numberPad
+        ) { text in
+            guard let text else { return }
+            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(normalized) {
+                let sanitized = max(0, val)
+                let delta = sanitized - displayQuantity
+                if delta != 0 {
+                    onAdjustQuantity(delta)
                 }
             }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -3261,8 +3283,7 @@ private struct FlagshipInventoryCard: View {
                 .contentTransition(.numericText())
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    inputQuantityText = "\(displayQuantity)"
-                    showQuantityAlert = true
+                    promptQuantityEdit()
                 }
 
             // Increment (+)
@@ -3339,17 +3360,15 @@ public struct PPInventoryItemDetailView: View {
     let onToggleStock: (() -> Void)?
     let onDelete: (() -> Void)?
 
+    @ObservedObject private var branchInventory = PPBranchInventoryService.shared
     @StateObject private var liveModel: PPLivePetOperationsViewModel
     @State private var selectedImageIndex: Int = 0
     @State private var isDescriptionExpanded: Bool = false
-    @State private var showDeleteConfirm: Bool = false
     @State private var copiedField: String? = nil
     @State private var copiedTask: Task<Void, Never>? = nil
     @State private var hasAppeared: Bool = false
     @State private var isLightboxPresented: Bool = false
     @State private var currentQuantity: Int = 0
-    @State private var showQuantityInputAlert: Bool = false
-    @State private var quantityInputText: String = ""
     @State private var showTransferSheet: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -3382,45 +3401,67 @@ public struct PPInventoryItemDetailView: View {
         ZStack(alignment: .bottom) {
             AdminSurface.background.ignoresSafeArea()
 
-            // Dynamic Ambient Aura
+            // Dynamic Ambient Aura reacting to stock health
             ambientLuminousAura
 
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 16) {
-                    // Custom Sovereign Navigation Bar (Symmetrical Jewels & Beiruti-Bold Title)
-                    apexNavigationBar
+                    // Top spacing clearance for floating apex bar
+                    Color.clear.frame(height: 52)
 
-                    // Flagship Specimen Identity Deck (Squircle Vessel + Live Beacon + Metadata)
-                    flagshipSpecimenIdentityDeck
+                    // Flagship Hero Specimen Stage (Expansive Vessel with Carousel / Lightbox / 3D Emblems)
+                    heroSpecimenStage
 
-                    // Executive Valuation & Stock Velocity Bento Matrix
-                    executiveBentoMatrix
+                    // Sovereign Nomenclature & Identification Deck (Title, Condition, Tracking, Interactive SKU Cryptopill)
+                    sovereignIdentificationDeck
 
-                    // Technical Specifications Matrix
-                    operationalDossierGrid
+                    // Unified Commerce & Stock Velocity Engine (Valuation, Margins, Stock Gauge, Precision Stepper)
+                    unifiedCommerceAndStockInstrument
 
-                    // Expandable Description Chamber
+                    // Specimen Telemetry Ribbon (Sculpted 2x2 Glass Grid: Branch, Condition, Weight, Category)
+                    specimenTelemetryRibbon
+
+                    // Specimen Narrative Deck (Typographic Description with Expandable Fold)
                     if !item.desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        specimenDescriptionSection
+                        specimenNarrativeDeck
                     }
 
-                    // Live Pet Lifecycle Operations Chamber
+                    // Live Pet Lifecycle Operations Hub
                     if item.isLivePet {
                         livePetOperationsSection
                     }
 
-                    // Bottom clearance
-                    Color.clear.frame(height: 100)
+                    // Bottom clearance for floating command dock
+                    Color.clear.frame(height: 105)
                 }
                 .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, AdminSpacing.xs)
                 .padding(.bottom, AdminSpacing.base)
                 .opacity(hasAppeared ? 1 : 0)
                 .offset(y: accessibilityReduceMotion || hasAppeared ? 0 : 8)
             }
 
-            // Persistent Floating Command Dock
+            // Persistent Floating Master Command Dock
             floatingMasterCommandDock
+
+            // Floating Apex Navigation Bar
+            VStack {
+                apexNavigationBar
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, 6)
+                    .background(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.background.opacity(0.98),
+                                AdminSurface.background.opacity(0.85),
+                                AdminSurface.background.opacity(0.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .ignoresSafeArea(edges: .top)
+                    )
+                Spacer()
+            }
 
             // Sovereign Live Pet Specimen Action Portal Deck
             if let unit = activeCommandUnit {
@@ -3491,57 +3532,89 @@ public struct PPInventoryItemDetailView: View {
         .sheet(isPresented: $isLightboxPresented) {
             specimenLightboxView
         }
-        .alert(Language.get("DeleteConfirm_Title", alter: "تأكيد حذف الصنف"), isPresented: $showDeleteConfirm) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
-                onDelete?()
-            }
-        } message: {
-            Text(Language.get("DeleteConfirm_Message", alter: "هل أنت متأكد من حذف هذا الصنف من المخزون نهائياً؟"))
-        }
-        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityInputAlert) {
-            TextField(Language.get("Quantity", alter: "الكمية"), text: $quantityInputText)
-                .englishNumericInput(text: $quantityInputText, allowsDecimal: false)
-            Button(Language.get("Save", alter: "حفظ")) {
-                if let val = Int(quantityInputText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
-                    setExactQuantity(val)
-                }
-            }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
-        }
         .sheet(isPresented: $showTransferSheet) {
             PPStockTransferSheet(
                 item: item,
                 currentBranchID: BranchContextStore.shared.activeBranch?.branchID ?? item.storeID ?? "main_store",
                 availableQuantity: currentQuantity,
                 branches: (viewModel?.branches.isEmpty == false ? viewModel?.branches : nil) ?? PPLivePetInventoryService.cachedBranches,
-                onComplete: {
+                onComplete: { newQuantity in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        currentQuantity = newQuantity
+                        item.quantity = newQuantity
+                        item.noStock = (newQuantity <= 0)
+                    }
                     if let branchId = BranchContextStore.shared.activeBranch?.branchID {
-                        currentQuantity = PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+                        branchInventory.updateAvailableStockLocally(
+                            for: item.accessoryID,
+                            branchId: branchId,
+                            newQuantity: newQuantity
+                        )
                     }
                     viewModel?.applyFilter()
                 }
             )
         }
+        .onChange(of: branchInventory.inventoryMap) { _ in
+            if !item.isLivePet {
+                let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
+                if currentQuantity != fresh {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        currentQuantity = fresh
+                        item.quantity = fresh
+                        item.noStock = (fresh <= 0)
+                    }
+                }
+            }
+        }
+        .onChange(of: branchInventory.currentBranchId) { _ in
+            if !item.isLivePet {
+                let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: item.quantity)
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    currentQuantity = fresh
+                    item.quantity = fresh
+                    item.noStock = (fresh <= 0)
+                }
+            }
+        }
     }
 
-    // MARK: - Ambient Luminous Aura
+    private func promptQuantityEdit() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PPAlertHelper.showTextPrompt(
+            in: nil,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
+            placeholder: Language.get("Quantity", alter: "الكمية"),
+            initialText: "\(currentQuantity)",
+            confirmText: Language.get("Save", alter: "حفظ"),
+            cancelText: Language.get("Cancel", alter: "إلغاء"),
+            secureEntry: false,
+            keyboardType: .numberPad
+        ) { text in
+            guard let text else { return }
+            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(normalized) {
+                setExactQuantity(val)
+            }
+        }
+    }
+
+    // MARK: - Dynamic Ambient Luminous Aura
 
     private var ambientLuminousAura: some View {
         VStack {
             RadialGradient(
                 colors: [
-                    AdminSurface.primary.opacity(0.14),
-                    (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.06),
+                    stockTone.opacity(0.14),
+                    AdminSurface.primary.opacity(0.08),
                     Color.clear
                 ],
                 center: .top,
-                startRadius: 10,
-                endRadius: 360
+                startRadius: 15,
+                endRadius: 420
             )
-            .frame(height: 380)
+            .frame(height: 420)
             .ignoresSafeArea()
             Spacer()
         }
@@ -3559,23 +3632,23 @@ public struct PPInventoryItemDetailView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(Language.get("ItemDetails", alter: "تفاصيل الصنف"))
-                    .font(AdminType.title3)
+                    .font(Font.custom("Beiruti-Bold", size: 18))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(item.noStock || currentQuantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .fill(stockTone)
                         .frame(width: 6, height: 6)
-                    Text(item.name)
-                        .font(AdminType.caption2)
-                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(stockStatusText)
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(stockTone)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Quick Actions / Edit Jewel
+            // Quick Actions / Context Menu Jewel
             Menu {
                 Button {
                     onOpenFullEditor()
@@ -3622,7 +3695,7 @@ public struct PPInventoryItemDetailView: View {
                 Divider()
 
                 Button(role: .destructive) {
-                    showDeleteConfirm = true
+                    promptDeleteConfirm()
                 } label: {
                     Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
                 }
@@ -3634,165 +3707,173 @@ public struct PPInventoryItemDetailView: View {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
                         )
-                    Image(systemName: "pencil")
+                    Image(systemName: "ellipsis")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(AdminSurface.primary)
                 }
                 .frame(width: 44, height: 44)
                 .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
             }
-            .accessibilityLabel(Language.get("Edit", alter: "تعديل الصنف"))
+            .accessibilityLabel(Language.get("MoreActions", alter: "إجراءات إضافية"))
         }
         .padding(.vertical, 4)
     }
 
-    // MARK: - Flagship Specimen Identity Deck
+    private func promptDeleteConfirm() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("DeleteConfirm_Title", alter: "تأكيد حذف الصنف"),
+            subtitle: Language.get("DeleteConfirm_Message", alter: "هل أنت متأكد من حذف هذا الصنف من المخزون نهائياً؟"),
+            confirmButton: Language.get("Delete", alter: "حذف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                onDelete?()
+            },
+            cancelBlock: nil
+        )
+    }
 
-    private var flagshipSpecimenIdentityDeck: some View {
-        HStack(alignment: .top, spacing: 14) {
-            // Squircle Visual Specimen Vessel (100x100) on Leading (Right in RTL)
-            Button {
-                isLightboxPresented = true
-            } label: {
-                ZStack(alignment: .bottomTrailing) {
-                    if let firstURL = PetAccessory.firstImageURL(for: item) {
-                        AdminRemoteImage(url: firstURL, contentMode: .fill, targetSize: CGSize(width: 100, height: 100)) {
+    // MARK: - Flagship Hero Specimen Stage
+
+    private var specimenImageURLs: [URL] {
+        if let arr = item.imageURLsArray as? [String], !arr.isEmpty {
+            return arr.compactMap { URL(string: $0) }
+        } else if let arr = item.imageURLsArray as? [NSString], !arr.isEmpty {
+            return arr.compactMap { URL(string: $0 as String) }
+        }
+        if let first = PetAccessory.firstImageURL(for: item) {
+            return [first]
+        }
+        return []
+    }
+
+    private var heroSpecimenStage: some View {
+        ZStack(alignment: .bottom) {
+            if !specimenImageURLs.isEmpty {
+                TabView(selection: $selectedImageIndex) {
+                    ForEach(Array(specimenImageURLs.enumerated()), id: \.offset) { index, url in
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 700, height: 700)) {
                             placeholderSpecimenBox
                         }
-                        .frame(width: 100, height: 100)
-                    } else {
-                        placeholderSpecimenBox
-                    }
-
-                    // Live Availability Beacon Dot
-                    Circle()
-                        .fill(item.noStock || currentQuantity <= 0 ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
-                        .padding(6)
-                }
-                .frame(width: 100, height: 100)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.75)
-                )
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
-            }
-            .buttonStyle(CatalogPressStyle())
-
-            // Specimen Lineage, Nomenclature & Telemetry Track (RTL)
-            VStack(alignment: .leading, spacing: 6) {
-                // Top Row: Specimen Name & Condition Pill
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.name)
-                        .font(Font.custom("Beiruti-Bold", size: 22))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    let cond = PetAccessory.conditionText(for: item)
-                    if !cond.isEmpty {
-                        Text(cond)
-                            .font(Font.custom("Beiruti-Bold", size: 11))
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
-                            .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.5))
-                    }
-
-                    Spacer(minLength: 0)
-                }
-
-                // Lineage / Subtitle Description
-                if !item.desc.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(item.desc)
-                        .font(Font.custom("Beiruti-Regular", size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Badges: Tracking Mode + Store
-                HStack(spacing: 6) {
-                    // Tracking Mode Pill
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(inventoryTrackingTint)
-                            .frame(width: 6, height: 6)
-                        Text(inventoryTrackingTitle)
-                            .font(Font.custom("Beiruti-Bold", size: 11))
-                    }
-                    .foregroundStyle(inventoryTrackingTint)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3.5)
-                    .background(inventoryTrackingTint.opacity(0.10), in: Capsule(style: .continuous))
-                    .overlay(Capsule(style: .continuous).strokeBorder(inventoryTrackingTint.opacity(0.25), lineWidth: 0.5))
-
-                    // Store Location Pill
-                    let branchDisplayName = item.resolvedBranchName()
-                    if !branchDisplayName.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "building.2.fill")
-                                .font(.system(size: 9))
-                            Text(branchDisplayName)
-                                .font(Font.custom("Beiruti-Regular", size: 11))
+                        .tag(index)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 230)
+                        .clipped()
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            isLightboxPresented = true
                         }
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3.5)
-                        .background(AdminSurface.control, in: Capsule(style: .continuous))
-                        .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
                     }
                 }
-
-                // Copyable Technical ID Chip
-                Button {
-                    copyToClipboard(item.accessoryID, field: "id")
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: copiedField == "id" ? "checkmark.circle.fill" : "number")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(copiedField == "id" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
-
-                        Text(copiedField == "id" ? Language.get("Copied", alter: "تم النسخ") : "# " + item.accessoryID)
-                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(copiedField == "id" ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
-                }
-                .buttonStyle(CatalogPressStyle())
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 230)
+            } else {
+                placeholderSpecimenBox
+                    .frame(height: 230)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Overlay Controls
+            VStack {
+                HStack {
+                    // Live Availability Beacon Pill
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(stockTone)
+                            .frame(width: 8, height: 8)
+                        Text(stockStatusText)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .foregroundStyle(stockTone)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().strokeBorder(stockTone.opacity(0.35), lineWidth: 0.5))
+
+                    Spacer()
+
+                    // Fullscreen Lightbox Trigger
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        isLightboxPresented = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .padding(8)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(Language.get("InspectSpecimen", alter: "معاينة صورة الصنف"))
+                }
+                .padding(12)
+
+                Spacer()
+
+                // Carousel Indicator Dots
+                if specimenImageURLs.count > 1 {
+                    HStack(spacing: 5) {
+                        ForEach(0..<specimenImageURLs.count, id: \.self) { idx in
+                            Capsule()
+                                .fill(selectedImageIndex == idx ? AdminSurface.primary : Color.white.opacity(0.55))
+                                .frame(width: selectedImageIndex == idx ? 16 : 6, height: 5)
+                                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: selectedImageIndex)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 10)
+                }
+            }
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(AdminSurface.surface)
-                .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 3)
-        )
+        .frame(height: 230)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.75)
         )
+        .shadow(color: Color.black.opacity(0.06), radius: 12, x: 0, y: 4)
     }
 
     private var placeholderSpecimenBox: some View {
         ZStack {
             LinearGradient(
-                colors: [AdminSurface.control, AdminSurface.surface],
+                colors: [
+                    AdminSurface.control,
+                    AdminSurface.surface,
+                    AdminSurface.primary.opacity(0.05)
+                ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
-            Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundStyle(AdminCommandInk.tertiary.opacity(0.6))
+
+            Circle()
+                .strokeBorder(AdminSurface.primary.opacity(0.06), lineWidth: 40)
+                .frame(width: 220, height: 220)
+
+            Circle()
+                .strokeBorder(AdminSurface.primary.opacity(0.04), lineWidth: 20)
+                .frame(width: 140, height: 140)
+
+            VStack(spacing: 8) {
+                Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
+                    .font(.system(size: 48, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [AdminSurface.primary.opacity(0.7), AdminSurface.primary.opacity(0.35)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .shadow(color: AdminSurface.primary.opacity(0.15), radius: 8, x: 0, y: 4)
+
+                Text(item.isLivePet ? Language.get("LivePetSpecimen", alter: "حيوان حي") : Language.get("AccessorySpecimen", alter: "مستلزم حيوانات"))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundStyle(AdminCommandInk.tertiary)
+            }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Lightbox Specimen Gallery
@@ -3801,10 +3882,16 @@ public struct PPInventoryItemDetailView: View {
         NavigationView {
             ZStack {
                 Color.black.ignoresSafeArea()
-                if let firstURL = PetAccessory.firstImageURL(for: item) {
-                    AdminRemoteImage(url: firstURL, contentMode: .fit) {
-                        placeholderSpecimenBox
+                if !specimenImageURLs.isEmpty {
+                    TabView(selection: $selectedImageIndex) {
+                        ForEach(Array(specimenImageURLs.enumerated()), id: \.offset) { index, url in
+                            AdminRemoteImage(url: url, contentMode: .fit) {
+                                placeholderSpecimenBox
+                            }
+                            .tag(index)
+                        }
                     }
+                    .tabViewStyle(.page)
                 } else {
                     placeholderSpecimenBox
                 }
@@ -3826,216 +3913,400 @@ public struct PPInventoryItemDetailView: View {
         }
     }
 
-    // MARK: - Executive Bento Matrix (Valuation & Stock Velocity)
+    // MARK: - Sovereign Nomenclature & Identification Deck
 
-    private var executiveBentoMatrix: some View {
-        HStack(spacing: 12) {
-            // Valuation Pod (Leading / Right in RTL)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: "tag.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("Price", alter: "السعر"))
-                        .font(Font.custom("Beiruti-Bold", size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    Spacer()
-                }
+    private var specimenIdentifierText: String {
+        if let sku = item.sku, !sku.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return sku
+        }
+        if let barcode = item.barcode, !barcode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return barcode
+        }
+        return item.accessoryID
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.inventoryDisplayPrice)
-                        .font(Font.custom("Beiruti-Bold", size: 24))
-                        .foregroundStyle(AdminSurface.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
+    private var sovereignIdentificationDeck: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Full Specimen Name
+            Text(item.name)
+                .font(Font.custom("Beiruti-Bold", size: 24))
+                .foregroundStyle(AdminSurface.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
 
-                    Text(Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"))
-                        .font(Font.custom("Beiruti-Regular", size: 11))
-                        .foregroundStyle(AdminCommandInk.tertiary)
-                        .lineLimit(1)
-                }
-
-                if let orig = originalPriceFormatted {
+            // Smart Badge Cluster: Condition + Tracking Mode + Catalog Status
+            HStack(spacing: 6) {
+                let cond = PetAccessory.conditionText(for: item)
+                if !cond.isEmpty {
                     HStack(spacing: 4) {
-                        Text(orig)
-                            .font(Font.custom("Beiruti-Regular", size: 11))
-                            .strikethrough()
-                            .foregroundStyle(AdminCommandInk.tertiary)
-                        Text(Language.get("DiscountActive", alter: "خصم مفعّل"))
-                            .font(Font.custom("Beiruti-Bold", size: 10))
-                            .foregroundStyle(Color(uiColor: .ppError))
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1.5)
-                            .background(Color(uiColor: .ppError).opacity(0.1), in: Capsule())
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 9))
+                        Text(cond)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
                     }
-                }
-            }
-            .padding(AdminSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .strokeBorder(AdminSurface.primary.opacity(0.18), lineWidth: 0.75)
-            )
-
-            // Stock Health & Live Velocity Pod (Trailing / Left in RTL)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(stockTone)
-                    Text(Language.get("Quantity", alter: "الكمية"))
-                        .font(Font.custom("Beiruti-Bold", size: 13))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                    if let activeBranch = BranchContextStore.shared.activeBranch {
-                        Text(activeBranch.code.isEmpty ? activeBranch.localizedName() : activeBranch.code)
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundStyle(AdminSurface.primary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                    }
-                    Spacer()
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                    .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.5))
                 }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(displayedQuantity)")
-                        .font(.system(size: 24, weight: .bold, design: .monospaced))
-                        .foregroundStyle(stockTone)
-                        .lineLimit(1)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if !item.isLivePet {
-                                quantityInputText = "\(currentQuantity)"
-                                showQuantityInputAlert = true
-                            }
-                        }
+                // Tracking Mode Pill
+                HStack(spacing: 4) {
+                    Image(systemName: inventoryTrackingSymbol)
+                        .font(.system(size: 9))
+                    Text(inventoryTrackingTitle)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                }
+                .foregroundStyle(inventoryTrackingTint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(inventoryTrackingTint.opacity(0.10), in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).strokeBorder(inventoryTrackingTint.opacity(0.22), lineWidth: 0.5))
 
-                    Text(stockStatusText)
+                // Catalog Active Status Pill
+                HStack(spacing: 4) {
+                    Image(systemName: item.noStock ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 9))
+                    Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف") : Language.get("VisibleInCatalog", alter: "معروض"))
                         .font(Font.custom("Beiruti-Regular", size: 11))
-                        .foregroundStyle(AdminCommandInk.tertiary)
-                        .lineLimit(1)
                 }
+                .foregroundStyle(item.noStock ? Color(uiColor: .ppWarning) : AdminSurface.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3.5)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.5))
+            }
 
-                // Interactive Precision Stepper for non-live pets
-                if !item.isLivePet {
-                    HStack(spacing: 0) {
-                        Button {
-                            adjustQuantity(-1)
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 11, weight: .black))
-                                .foregroundStyle(currentQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
-                                .frame(width: 32, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(CatalogPressStyle())
-                        .disabled(currentQuantity <= 0)
+            // Interactive SKU/Barcode Cryptopill
+            Button {
+                copyToClipboard(specimenIdentifierText, field: "sku")
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: copiedField == "sku" ? "checkmark.circle.fill" : "barcode.viewfinder")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
 
-                        Text("\(currentQuantity)")
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundStyle(AdminSurface.primaryText)
-                            .frame(minWidth: 26)
-                            .multilineTextAlignment(.center)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                quantityInputText = "\(currentQuantity)"
-                                showQuantityInputAlert = true
-                            }
+                    Text(copiedField == "sku" ? Language.get("Copied", alter: "تم النسخ بنجاح") : specimenIdentifierText)
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
 
-                        Button {
-                            adjustQuantity(1)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .black))
-                                .foregroundStyle(AdminSurface.primaryText)
-                                .frame(width: 32, height: 28)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(CatalogPressStyle())
+                    Spacer(minLength: 4)
+
+                    if copiedField != "sku" {
+                        Text(Language.get("TapToCopy", alter: "نسخ الكود"))
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .foregroundStyle(AdminSurface.secondaryText)
                     }
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
-                    )
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(copiedField == "sku" ? Color(uiColor: .ppSuccess).opacity(0.5) : AdminSurface.hairline, lineWidth: 0.75)
+                )
+            }
+            .buttonStyle(CatalogPressStyle())
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.035), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+        )
+    }
 
-                    if currentQuantity > 0 {
-                        Button {
-                            showTransferSheet = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.left.arrow.right")
-                                    .font(.system(size: 10, weight: .bold))
-                                Text(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"))
-                                    .font(Font.custom("Beiruti-Bold", size: 11))
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+    // MARK: - Unified Commerce & Stock Velocity Instrument
+
+    private var stockVelocityRatio: CGFloat {
+        let qty = CGFloat(displayedQuantity)
+        if qty <= 0 { return 0.0 }
+        if qty >= 50 { return 1.0 }
+        return max(0.12, qty / 50.0)
+    }
+
+    private var profitMarginInfo: (margin: Double, percent: Double)? {
+        guard let wp = item.wholesalePrice?.doubleValue, wp > 0 else { return nil }
+        let fp = item.finalPrice.doubleValue
+        guard fp > wp else { return nil }
+        let margin = fp - wp
+        let pct = (margin / fp) * 100
+        return (margin, pct)
+    }
+
+    private var unifiedCommerceAndStockInstrument: some View {
+        VStack(spacing: 12) {
+            HStack(alignment: .top, spacing: 14) {
+                // Valuation Wing (Leading)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "tag.fill")
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("Price", alter: "السعر"))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Spacer()
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.inventoryDisplayPrice)
+                            .font(Font.custom("Beiruti-Bold", size: 28))
+                            .foregroundStyle(AdminSurface.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+
+                        if let orig = originalPriceFormatted {
+                            HStack(spacing: 6) {
+                                Text(orig)
+                                    .font(Font.custom("Beiruti-Regular", size: 12))
+                                    .strikethrough()
+                                    .foregroundStyle(AdminCommandInk.tertiary)
+                                if let percent = item.discountPercent, percent.intValue > 0 {
+                                    Text("-\(percent.intValue)%")
+                                        .font(Font.custom("Beiruti-Bold", size: 10))
+                                        .foregroundStyle(Color(uiColor: .ppError))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1.5)
+                                        .background(Color(uiColor: .ppError).opacity(0.12), in: Capsule())
+                                }
+                            }
+                        } else {
+                            Text(Language.get("LivePetDossier_PriceDetail", alter: "سعر البيع المعروض"))
+                                .font(Font.custom("Beiruti-Regular", size: 11))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+
+                    // Wholesale and Margin Telemetry
+                    if let wp = item.wholesalePrice?.doubleValue, wp > 0 {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.2.fill")
+                                    .font(.system(size: 10))
+                                Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.2f ر.ق"), wp))
+                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                            }
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+
+                            if let margin = profitMarginInfo {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "arrow.up.right")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text(String(format: "+%.2f ر.ق (%.0f%%)", margin.margin, margin.percent))
+                                        .font(Font.custom("Beiruti-Bold", size: 11))
+                                }
+                                .foregroundStyle(Color(uiColor: .ppSuccess))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                            }
                         }
                         .padding(.top, 2)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                // Subtle vertical dividing separator
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(width: 1)
+                    .padding(.vertical, 4)
+
+                // Stock Velocity Wing (Trailing)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: item.isLivePet ? "pawprint.fill" : "shippingbox.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(stockTone)
+                        Text(Language.get("Quantity", alter: "الكمية"))
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Spacer()
+                        if let activeBranch = BranchContextStore.shared.activeBranch {
+                            Text(activeBranch.code.isEmpty ? activeBranch.localizedName() : activeBranch.code)
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("\(displayedQuantity)")
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                            .foregroundStyle(stockTone)
+                            .lineLimit(1)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if !item.isLivePet {
+                                    promptQuantityEdit()
+                                }
+                            }
+
+                        // Stock Velocity Gauge Line
+                        GeometryReader { geo in
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(stockTone.opacity(0.16))
+                                    .frame(height: 4)
+                                Capsule()
+                                    .fill(stockTone)
+                                    .frame(width: max(8, geo.size.width * stockVelocityRatio), height: 4)
+                            }
+                        }
+                        .frame(height: 4)
+
+                        Text(stockStatusText)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .foregroundStyle(stockTone)
+                            .lineLimit(1)
+                    }
+
+                    // Precision Stepper
+                    if !item.isLivePet {
+                        HStack(spacing: 0) {
+                            Button {
+                                adjustQuantity(-1)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 12, weight: .black))
+                                    .foregroundStyle(currentQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.4))
+                                    .frame(width: 36, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(CatalogPressStyle())
+                            .disabled(currentQuantity <= 0)
+
+                            Text("\(currentQuantity)")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .frame(minWidth: 32)
+                                .multilineTextAlignment(.center)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    promptQuantityEdit()
+                                }
+
+                            Button {
+                                adjustQuantity(1)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 12, weight: .black))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .frame(width: 36, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(CatalogPressStyle())
+                        }
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+                        )
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(AdminSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
-                    .strokeBorder(stockTone.opacity(0.20), lineWidth: 0.75)
-            )
+
+            // Branch Transfer Bar (if stock available & non-live pet)
+            if !item.isLivePet && currentQuantity > 0 {
+                Button {
+                    showTransferSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                        Spacer()
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(CatalogPressStyle())
+            }
         }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
     }
 
-    // MARK: - Operational Specifications Matrix
+    // MARK: - Specimen Telemetry Ribbon
 
-    private var operationalDossierGrid: some View {
+    private var specimenTelemetryRibbon: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                dossierAttributeCard(
-                    title: Language.get("Store", alter: "المتجر"),
-                    value: item.resolvedBranchName(),
-                    icon: "building.2.fill"
+                telemetryTile(
+                    title: Language.get("Store", alter: "المتجر والفرع"),
+                    value: item.resolvedBranchName().isEmpty ? Language.get("MainStore", alter: "المتجر الرئيسي") : item.resolvedBranchName(),
+                    icon: "building.2.fill",
+                    tint: Color(uiColor: .systemIndigo)
                 )
-                dossierAttributeCard(
-                    title: Language.get("Condition", alter: "الحالة"),
-                    value: PetAccessory.conditionText(for: item),
-                    icon: "checkmark.seal.fill"
+                telemetryTile(
+                    title: Language.get("Condition", alter: "الحالة والضمان"),
+                    value: PetAccessory.conditionText(for: item).isEmpty ? Language.get("OriginalCondition", alter: "أصلي ومضمون") : PetAccessory.conditionText(for: item),
+                    icon: "checkmark.seal.fill",
+                    tint: Color(uiColor: .ppSuccess)
                 )
             }
 
             HStack(spacing: 10) {
-                dossierAttributeCard(
-                    title: Language.get("Weight", alter: "الوزن / المواصفة"),
+                telemetryTile(
+                    title: Language.get("Weight", alter: "الوزن والمواصفة"),
                     value: item.weightText?.isEmpty == false ? item.weightText! : Language.get("StandardUnit", alter: "وحدة قياسية"),
-                    icon: "scalemass.fill"
+                    icon: "scalemass.fill",
+                    tint: Color(uiColor: .systemOrange)
                 )
-                dossierAttributeCard(
-                    title: Language.get("Category", alter: "القسم"),
+                telemetryTile(
+                    title: Language.get("Category", alter: "القسم والتصنيف"),
                     value: item.accessoryCategoryID?.isEmpty == false ? item.accessoryCategoryID! : PetAccessory.typeText(for: item),
-                    icon: "folder.fill"
+                    icon: "folder.fill",
+                    tint: AdminSurface.primary
                 )
             }
         }
     }
 
-    private func dossierAttributeCard(title: String, value: String, icon: String) -> some View {
+    private func telemetryTile(title: String, value: String, icon: String, tint: Color) -> some View {
         HStack(alignment: .center, spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(AdminSurface.primary.opacity(0.09))
-                    .frame(width: 32, height: 32)
+                    .fill(tint.opacity(0.12))
+                    .frame(width: 36, height: 36)
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(AdminSurface.primary)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(tint)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(Font.custom("Beiruti-Regular", size: 12))
+                    .font(Font.custom("Beiruti-Regular", size: 11))
                     .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
                 Text(value)
                     .font(Font.custom("Beiruti-Bold", size: 13))
                     .foregroundStyle(AdminSurface.primaryText)
@@ -4046,23 +4317,23 @@ public struct PPInventoryItemDetailView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
         )
     }
 
-    // MARK: - Specimen Description Chamber
+    // MARK: - Specimen Narrative Deck
 
-    private var specimenDescriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var specimenNarrativeDeck: some View {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "text.alignleft")
-                    .font(.system(size: 12, weight: .bold))
+                Image(systemName: "text.quote")
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
                 Text(Language.get("Description", alter: "الوصف والتفاصيل"))
-                    .font(Font.custom("Beiruti-Bold", size: 13))
+                    .font(Font.custom("Beiruti-Bold", size: 14))
                     .foregroundStyle(AdminSurface.secondaryText)
                 Spacer()
             }
@@ -4074,24 +4345,28 @@ public struct PPInventoryItemDetailView: View {
                 .lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if item.desc.count > 100 {
+            if item.desc.count > 90 {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         isDescriptionExpanded.toggle()
                     }
                 } label: {
-                    Text(isDescriptionExpanded ? Language.get("ShowLess", alter: "عرض أقل") : Language.get("ShowMore", alter: "قراءة المزيد"))
-                        .font(Font.custom("Beiruti-Bold", size: 12))
-                        .foregroundStyle(AdminSurface.primary)
+                    HStack(spacing: 4) {
+                        Text(isDescriptionExpanded ? Language.get("ShowLess", alter: "عرض أقل") : Language.get("ShowMore", alter: "قراءة المزيد"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                        Image(systemName: isDescriptionExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(AdminSpacing.md)
+        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
         )
     }
@@ -4099,35 +4374,53 @@ public struct PPInventoryItemDetailView: View {
     // MARK: - Floating Master Command Dock
 
     private var floatingMasterCommandDock: some View {
-        HStack(spacing: 10) {
-            // Primary POS Checkout / FastSell Trigger
+        HStack(spacing: 12) {
+            // Primary POS FastSell Button
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onOpenPOS()
             } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "cart.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text(Language.get("LivePet_Open_POS", alter: "نقطة البيع (POS)"))
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white.opacity(0.2))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "cart.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+
+                    Text(Language.get("LivePet_Open_POS", alter: "فتح نقطة البيع"))
                         .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundStyle(.white)
+
+                    Spacer(minLength: 4)
+
+                    // Final display price tag pill
+                    Text(item.inventoryDisplayPrice)
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.2), in: Capsule())
                 }
-                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
                 .frame(maxWidth: .infinity)
-                .frame(height: 48)
+                .frame(height: 52)
                 .background(
                     LinearGradient(
                         colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
                 )
-                .shadow(color: AdminSurface.primary.opacity(0.35), radius: 8, x: 0, y: 3)
+                .shadow(color: AdminSurface.primary.opacity(0.32), radius: 10, x: 0, y: 4)
             }
             .buttonStyle(CatalogPressStyle())
             .accessibilityLabel(Language.get("LivePet_Open_POS", alter: "فتح في نقطة البيع"))
 
-            // Secondary Full Catalog Editor Trigger
+            // Secondary Full Editor Button
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onOpenFullEditor()
@@ -4139,11 +4432,11 @@ public struct PPInventoryItemDetailView: View {
                         .font(Font.custom("Beiruti-Bold", size: 15))
                 }
                 .foregroundStyle(AdminSurface.primary)
-                .padding(.horizontal, 16)
-                .frame(height: 48)
-                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .padding(.horizontal, 18)
+                .frame(height: 52)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75)
                 )
                 .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
@@ -4153,7 +4446,7 @@ public struct PPInventoryItemDetailView: View {
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.top, 10)
-        .padding(.bottom, 22)
+        .padding(.bottom, 16)
         .background(
             .ultraThinMaterial,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -4194,7 +4487,7 @@ public struct PPInventoryItemDetailView: View {
                 return effectiveAvailableUnitsCount
             }
         }
-        return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+        return branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
     }
 
     private var stockTone: Color {
@@ -7604,14 +7897,14 @@ private struct PPBranchSelectionStudioSheet: View {
     }
 }
 
-// MARK: - Sovereign Accessory & Food Branch Stock Transfer Sheet
+// MARK: - Sovereign Inter-Branch Logistics Conduit Sheet (NextGen First-Principles)
 
 private struct PPStockTransferSheet: View {
     let item: PetAccessory
     let currentBranchID: String
     let availableQuantity: Int
     @State var branches: [PPInventoryBranchOption] = []
-    let onComplete: () -> Void
+    let onComplete: (Int) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedBranchID: String = ""
@@ -7619,6 +7912,9 @@ private struct PPStockTransferSheet: View {
     @State private var reason: String = ""
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var showBranchPickerModal: Bool = false
+    @State private var branchSearchText: String = ""
+    @State private var conduitPulsing: Bool = false
 
     private var canonicalSourceBranchID: String {
         PPLivePetInventoryService.canonicalBranch(for: currentBranchID, in: branches)?.id ?? currentBranchID
@@ -7632,6 +7928,16 @@ private struct PPStockTransferSheet: View {
         }
     }
 
+    private var filteredBranches: [PPInventoryBranchOption] {
+        let trimmed = branchSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return otherBranches }
+        return otherBranches.filter {
+            $0.displayName.localizedCaseInsensitiveContains(trimmed) ||
+            $0.code.localizedCaseInsensitiveContains(trimmed) ||
+            $0.address.localizedCaseInsensitiveContains(trimmed)
+        }
+    }
+
     private var currentBranchName: String {
         if let canonical = PPLivePetInventoryService.canonicalBranch(for: currentBranchID, in: branches) {
             return canonical.displayName
@@ -7640,279 +7946,88 @@ private struct PPStockTransferSheet: View {
         (currentBranchID.isEmpty || currentBranchID == "main_store" ? Language.get("MainStore", alter: "المتجر الرئيسي") : currentBranchID)
     }
 
+    private var selectedDestinationBranch: PPInventoryBranchOption? {
+        otherBranches.first(where: { $0.id == selectedBranchID })
+    }
+
+    private var destinationBranchDisplayName: String {
+        selectedDestinationBranch?.displayName ?? Language.get("Stock_Transfer_Select_Branch", alter: "اختر فرع الاستلام (المحول إليه)")
+    }
+
+    private var remainingSourceStock: Int {
+        max(0, availableQuantity - transferQuantity)
+    }
+
+    private var transferRatio: Double {
+        guard availableQuantity > 0 else { return 0 }
+        return Double(transferQuantity) / Double(availableQuantity)
+    }
+
+    private var itemThumbnailURL: URL? {
+        PetAccessory.firstImageURL(for: item)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack(spacing: 12) {
-                AdminSquircleCloseButton {
+            // 1. Sovereign Glassmorphic Navigation Bar
+            AdminSovereignNavigationBar(
+                title: Language.get("Stock_Transfer_Title", alter: "نقل مخزون الصنف بين الفروع"),
+                subtitle: Language.get("Stock_Transfer_LiveSync", alter: "مزامنة العهدة الفورية • توثيق الحركة"),
+                statusDotColor: Color(uiColor: .ppSuccess),
+                isModal: true,
+                onBack: {
                     dismiss()
                 }
-
-                VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
-                    Text(Language.get("Stock_Transfer_Title", alter: "نقل مخزون الصنف بين الفروع"))
-                        .font(Font.custom("Beiruti-Bold", size: 18))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-
-                    Text(Language.get("Stock_Transfer_Sub", alter: "تحويل كمية محددة من هذا الصنف إلى عهدة فرع آخر مع توثيق الحركة."))
-                        .font(Font.custom("Beiruti-Regular", size: 11.5))
-                        .foregroundStyle(AdminSurface.secondaryText)
-                        .lineLimit(1)
+            ) {
+                HStack(spacing: 4) {
+                    Image(systemName: "shippingbox.and.arrow.backward")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(Language.get("Logistics_Conduit", alter: "ترحيل فروع"))
+                        .font(Font.custom("Beiruti-Bold", size: 12))
                 }
-
-                Spacer()
+                .foregroundColor(AdminSurface.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 8)
 
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 14) {
-                    // Item Banner
-                    HStack(spacing: 10) {
-                        Image(systemName: item.isFood ? "fork.knife.circle.fill" : "shippingbox.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(AdminSurface.primary)
-
-                        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
-                            Text(item.name)
-                                .font(Font.custom("Beiruti-Bold", size: 15))
-                                .foregroundStyle(AdminSurface.primaryText)
-                                .lineLimit(1)
-
-                            let catDisplay = item.accessoryCategoryName ?? item.category ?? (item.petMainCategoryID > 0 ? (MainKindsModel.kindName(forID: item.petMainCategoryID) ?? "") : (item.storeName ?? ""))
-                            if !catDisplay.isEmpty {
-                                Text(catDisplay)
-                                    .font(Font.custom("Beiruti-Regular", size: 12))
-                                    .foregroundStyle(AdminSurface.secondaryText)
-                            }
-                        }
-
-                        Spacer()
-
-                        VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
-                            Text("\(availableQuantity)")
-                                .font(.system(size: 18, weight: .bold, design: .monospaced))
-                                .foregroundStyle(AdminSurface.primaryText)
-                            Text(Language.get("InStock", alter: "متاح بالفرع"))
-                                .font(Font.custom("Beiruti-Regular", size: 11))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-                    }
-                    .padding(12)
-                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(AdminSurface.hairline))
+                VStack(spacing: 16) {
+                    // 2. Logistics Twin - Physical Specimen Dossier
+                    specimenDigitalTwinCard
 
                     if let err = errorMessage {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.circle.fill")
-                                .foregroundColor(Color(uiColor: .ppError))
-                            Text(err)
-                                .font(Font.custom("Beiruti-Bold", size: 12.5))
-                                .foregroundColor(Color(uiColor: .ppError))
-                            Spacer()
-                        }
-                        .padding(10)
-                        .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+                        errorBanner(err)
                     }
 
-                    // Source Branch (Locked)
-                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
-                        Text(Language.get("Stock_Transfer_SourceBranch", alter: "فرع المصدر (المحول منه)"))
-                            .font(Font.custom("Beiruti-Bold", size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
+                    // 3. The Bilateral Custody Bridge (Two-Node Interactive Conduit)
+                    bilateralCustodyBridge
 
-                        HStack(spacing: 8) {
-                            Image(systemName: "building.2.fill")
-                                .font(.system(size: 13))
-                                .foregroundStyle(AdminSurface.primary)
-                            Text(currentBranchName)
-                                .font(Font.custom("Beiruti-Bold", size: 14))
-                                .foregroundStyle(AdminSurface.primaryText)
-                            Spacer()
-                            Text(Language.get("Current", alter: "الفرع الحالي"))
-                                .font(Font.custom("Beiruti-Medium", size: 11))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
-                                .foregroundStyle(AdminSurface.primary)
-                        }
-                        .padding(12)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
-                    }
+                    // 4. Quantum Quantity Controller & Custody Proportion Bar
+                    quantumQuantityController
 
-                    // Destination Branch Picker
-                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
-                        Text(Language.get("Stock_Transfer_DestinationBranch", alter: "فرع الاستلام (المحول إليه)"))
-                            .font(Font.custom("Beiruti-Bold", size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
-
-                        if otherBranches.isEmpty {
-                            Text(Language.get("Stock_Transfer_NoOtherBranches", alter: "لا توجد فروع أخرى نشطة للنقل إليها"))
-                                .font(Font.custom("Beiruti-Medium", size: 12))
-                                .foregroundStyle(Color.orange)
-                                .padding(12)
-                        } else {
-                            Menu {
-                                ForEach(otherBranches) { b in
-                                    Button {
-                                        selectedBranchID = b.id
-                                    } label: {
-                                        Text(b.displayName)
-                                    }
-                                }
-                            } label: {
-                                HStack {
-                                    Image(systemName: "arrowshape.turn.up.right.fill")
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(AdminSurface.primary)
-                                    Text(otherBranches.first(where: { $0.id == selectedBranchID })?.displayName ?? Language.get("SelectBranch", alter: "اختر فرع الاستلام..."))
-                                        .font(Font.custom("Beiruti-Bold", size: 14))
-                                        .foregroundStyle(selectedBranchID.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
-                                    Spacer()
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundStyle(AdminSurface.secondaryText)
-                                }
-                                .padding(12)
-                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(selectedBranchID.isEmpty ? AdminSurface.hairline : AdminSurface.primary.opacity(0.35)))
-                            }
-                        }
-                    }
-
-                    // Transfer Quantity Stepper
-                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
-                        HStack {
-                            Text(Language.get("Stock_Transfer_Quantity", alter: "الكمية المراد نقلها"))
-                                .font(Font.custom("Beiruti-Bold", size: 12))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                            Spacer()
-                            Text(String(format: Language.get("Stock_Transfer_MaxFormat", alter: "الحد الأقصى: %ld"), availableQuantity))
-                                .font(Font.custom("Beiruti-Regular", size: 11))
-                                .foregroundStyle(AdminSurface.secondaryText)
-                        }
-
-                        HStack(spacing: 12) {
-                            Button {
-                                if transferQuantity > 1 {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    transferQuantity -= 1
-                                }
-                            } label: {
-                                Image(systemName: "minus")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .frame(width: 44, height: 44)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                                    .foregroundStyle(transferQuantity > 1 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.4))
-                            }
-                            .disabled(transferQuantity <= 1)
-
-                            Spacer()
-
-                            Text("\(transferQuantity)")
-                                .font(.system(size: 26, weight: .bold, design: .monospaced))
-                                .foregroundStyle(AdminSurface.primaryText)
-
-                            Spacer()
-
-                            Button {
-                                if transferQuantity < availableQuantity {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    transferQuantity += 1
-                                }
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .frame(width: 44, height: 44)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10))
-                                    .foregroundStyle(transferQuantity < availableQuantity ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.4))
-                            }
-                            .disabled(transferQuantity >= availableQuantity)
-                        }
-                        .padding(10)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(AdminSurface.hairline))
-
-                        // Quick Presets
-                        HStack(spacing: 8) {
-                            ForEach([1, 5, 10], id: \.self) { val in
-                                if val <= availableQuantity {
-                                    Button("\(val)") {
-                                        transferQuantity = val
-                                    }
-                                    .font(Font.custom("Beiruti-Bold", size: 12))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(transferQuantity == val ? AdminSurface.primary : AdminSurface.control, in: Capsule())
-                                    .foregroundStyle(transferQuantity == val ? .white : AdminSurface.primaryText)
-                                }
-                            }
-                            Button(Language.get("All", alter: "الكل")) {
-                                transferQuantity = availableQuantity
-                            }
-                            .font(Font.custom("Beiruti-Bold", size: 12))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(transferQuantity == availableQuantity ? AdminSurface.primary : AdminSurface.control, in: Capsule())
-                            .foregroundStyle(transferQuantity == availableQuantity ? .white : AdminSurface.primaryText)
-                        }
-                        .padding(.top, 4)
-                    }
-
-                    // Reason Text Field
-                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 4) {
-                        Text(Language.get("Stock_Transfer_Reason", alter: "سبب النقل والملاحظات"))
-                            .font(Font.custom("Beiruti-Bold", size: 12))
-                            .foregroundStyle(AdminSurface.secondaryText)
-
-                        TextField(Language.get("Stock_Transfer_Reason_Placeholder", alter: "مثال: طلب تعزيز مخزون الفرع، إعادة توازن"), text: $reason)
-                            .font(Font.custom("Beiruti-Regular", size: 13.5))
-                            .padding(12)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12))
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(AdminSurface.hairline))
-                    }
-
-                    // Submit Action Button
-                    Button {
-                        submitTransfer()
-                    } label: {
-                        HStack(spacing: 8) {
-                            if isSubmitting {
-                                ProgressView().tint(.white)
-                            } else {
-                                Image(systemName: "arrow.left.arrow.right")
-                                    .font(.system(size: 14, weight: .bold))
-                            }
-                            Text(isSubmitting ? Language.get("Saving", alter: "جاري المعالجة...") : Language.get("Stock_Transfer_Confirm", alter: "تأكيد ترحيل ونقل المخزون"))
-                                .font(Font.custom("Beiruti-Bold", size: 16))
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(
-                            LinearGradient(
-                                colors: [AdminSurface.primary, Color(red: 0.75, green: 0.08, blue: 0.22)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        )
-                        .shadow(color: AdminSurface.primary.opacity(0.3), radius: 8, y: 3)
-                    }
-                    .disabled(isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity)
-                    .opacity((isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity) ? 0.6 : 1.0)
-                    .padding(.top, 8)
+                    // 5. Smart Audit Reason & Quick Chips
+                    auditReasonSection
                 }
-                .padding(18)
+                .padding(.horizontal, 18)
+                .padding(.top, 12)
+                .padding(.bottom, 120) // clearance for sovereign bottom action dock
             }
+        }
+        .overlay(alignment: .bottom) {
+            sovereignDispatchDock
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $showBranchPickerModal) {
+            destinationBranchPickerSheet
+        }
         .onAppear {
             if let first = otherBranches.first {
                 selectedBranchID = first.id
+            }
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                conduitPulsing = true
             }
         }
         .task {
@@ -7932,8 +8047,668 @@ private struct PPStockTransferSheet: View {
         }
     }
 
-    private func submitTransfer() {
+    // MARK: - Subviews
+
+    private var specimenDigitalTwinCard: some View {
+        HStack(spacing: 12) {
+            // Visual Specimen Thumbnail
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AdminSurface.control)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                    )
+
+                if let url = itemThumbnailURL {
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 76, height: 76)) {
+                        ProgressView().tint(AdminSurface.primary)
+                    }
+                    .frame(width: 76, height: 76)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    Image(systemName: item.isFood ? "fork.knife.circle.fill" : (item.isLivePet ? "pawprint.fill" : "shippingbox.fill"))
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(AdminSurface.primary.opacity(0.85))
+                }
+            }
+            .frame(width: 76, height: 76)
+            .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+
+            VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 3) {
+                Text(item.name)
+                    .font(Font.custom("Beiruti-Bold", size: 16.5))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                let catDisplay = item.accessoryCategoryName ?? item.category ?? (item.petMainCategoryID > 0 ? (MainKindsModel.kindName(forID: item.petMainCategoryID) ?? "") : (item.storeName ?? ""))
+                HStack(spacing: 6) {
+                    if !catDisplay.isEmpty {
+                        Text(catDisplay)
+                            .font(Font.custom("Beiruti-Medium", size: 11.5))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    if let barcode = item.barcode, !barcode.isEmpty {
+                        Text("#" + barcode)
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.control, in: Capsule())
+                    }
+                }
+
+                // Balance Telemetry Indicator
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 6, height: 6)
+                    Text(String(format: Language.get("Stock_Transfer_CurrentStockFormat", alter: "المتوفر في عهدة الفرع: %ld وحدة"), availableQuantity))
+                        .font(Font.custom("Beiruti-SemiBold", size: 12))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                }
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 4)
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
+    }
+
+    private var bilateralCustodyBridge: some View {
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            HStack {
+                Label(
+                    Language.get("Stock_Transfer_Custody_Bridge", alter: "مسار تحويل العهدة بين الفروع"),
+                    systemImage: "arrow.triangle.swap"
+                )
+                .font(Font.custom("Beiruti-Bold", size: 13))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer()
+
+                Button {
+                    showBranchPickerModal = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(Language.get("Stock_Transfer_Change_Branch", alter: "تغيير الفرع"))
+                            .font(Font.custom("Beiruti-Bold", size: 11.5))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                }
+            }
+
+            // Two-Node Conduit Container
+            VStack(spacing: 8) {
+                // Node 1: Source Branch (Origin)
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(currentBranchName)
+                                .font(Font.custom("Beiruti-Bold", size: 14.5))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(Language.get("Stock_Transfer_SourceTag", alter: "فرع المصدر"))
+                                .font(Font.custom("Beiruti-Bold", size: 10))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+
+                        Text(Language.get("Stock_Transfer_CurrentHolder", alter: "العهدة الحالية المسجل بها الصنف"))
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    // Source Stock Live Projection Pill
+                    VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
+                        HStack(spacing: 3) {
+                            Text("\(availableQuantity)")
+                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                            Text("\(remainingSourceStock)")
+                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                .foregroundStyle(remainingSourceStock <= 0 ? Color(uiColor: .ppError) : AdminSurface.primaryText)
+                        }
+                        Text("-\(transferQuantity)")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color(uiColor: .ppError))
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
+                )
+
+                // Kinetic Transfer Conduit Vector
+                HStack(spacing: 8) {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [AdminSurface.primary.opacity(0.1), AdminSurface.primary.opacity(0.4)],
+                                startPoint: Language.isRTL() ? .trailing : .leading,
+                                endPoint: Language.isRTL() ? .leading : .trailing
+                            )
+                        )
+                        .frame(height: 2)
+
+                    // Floating Pulse Badge
+                    HStack(spacing: 5) {
+                        Image(systemName: Language.isRTL() ? "arrow.down" : "arrow.down")
+                            .font(.system(size: 10, weight: .black))
+                            .foregroundStyle(Color.white)
+                        Text(String(format: Language.get("Stock_Transfer_TransferringCount", alter: "ترحيل %ld قطعة"), transferQuantity))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(Color.white)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .background(
+                        LinearGradient(
+                            colors: [AdminSurface.primary, Color(red: 0.78, green: 0.12, blue: 0.28)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+                    .shadow(color: AdminSurface.primary.opacity(conduitPulsing ? 0.45 : 0.2), radius: conduitPulsing ? 6 : 3, y: 1)
+
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [AdminSurface.primary.opacity(0.4), Color(uiColor: .ppSuccess).opacity(0.4)],
+                                startPoint: Language.isRTL() ? .trailing : .leading,
+                                endPoint: Language.isRTL() ? .leading : .trailing
+                            )
+                        )
+                        .frame(height: 2)
+                }
+                .padding(.vertical, 2)
+
+                // Node 2: Destination Branch (Interactive Recipient)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showBranchPickerModal = true
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color(uiColor: .ppSuccess).opacity(0.14))
+                                .frame(width: 40, height: 40)
+                            Image(systemName: "storefront.fill")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color(uiColor: .ppSuccess))
+                        }
+
+                        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(destinationBranchDisplayName)
+                                    .font(Font.custom("Beiruti-Bold", size: 14.5))
+                                    .foregroundStyle(selectedBranchID.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                                    .lineLimit(1)
+
+                                Text(Language.get("Stock_Transfer_DestTag", alter: "فرع الاستلام"))
+                                    .font(Font.custom("Beiruti-Bold", size: 10))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                            }
+
+                            if let b = selectedDestinationBranch, !b.address.isEmpty {
+                                Text(b.address)
+                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                            } else {
+                                Text(Language.get("Stock_Transfer_TapToChoose", alter: "اضغط لتحديد الفرع المستقبل للشحنة"))
+                                    .font(Font.custom("Beiruti-Regular", size: 11))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        // Incoming Indicator
+                        VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                                Text("+\(transferQuantity)")
+                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                            }
+                            Text(Language.get("Stock_Transfer_IncomingLabel", alter: "رصيد وارد"))
+                                .font(Font.custom("Beiruti-Regular", size: 10.5))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                        }
+                    }
+                    .padding(12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                selectedBranchID.isEmpty
+                                    ? Color(uiColor: .ppSurfaceBorder).opacity(0.7)
+                                    : Color(uiColor: .ppSuccess).opacity(0.5),
+                                lineWidth: 1
+                            )
+                    )
+                }
+                .buttonStyle(CatalogPressStyle())
+            }
+        }
+    }
+
+    private var quantumQuantityController: some View {
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 12) {
+            HStack {
+                Label(
+                    Language.get("Stock_Transfer_Quantity", alter: "الكمية المراد نقلها"),
+                    systemImage: "number.square.fill"
+                )
+                .font(Font.custom("Beiruti-Bold", size: 13))
+                .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer()
+
+                Text(String(format: Language.get("Stock_Transfer_MaxFormat", alter: "الحد الأقصى المتاح: %ld"), availableQuantity))
+                    .font(Font.custom("Beiruti-SemiBold", size: 11.5))
+                    .foregroundStyle(AdminSurface.secondaryText)
+            }
+
+            // Sculptural Stepper Block
+            VStack(spacing: 12) {
+                HStack(spacing: 16) {
+                    // Decrement Button
+                    Button {
+                        if transferQuantity > 1 {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                transferQuantity -= 1
+                            }
+                        }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.control)
+                                .frame(width: 52, height: 52)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                )
+                            Image(systemName: "minus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(transferQuantity > 1 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.35))
+                        }
+                    }
+                    .buttonStyle(CatalogPressStyle())
+                    .disabled(transferQuantity <= 1)
+
+                    Spacer()
+
+                    // Center Numeric Readout
+                    VStack(spacing: 1) {
+                        Text("\(transferQuantity)")
+                            .font(.system(size: 40, weight: .black, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .contentTransition(.numericText())
+
+                        Text(String(format: Language.get("Stock_Transfer_OutOfTotal", alter: "من أصل %ld وحدة"), availableQuantity))
+                            .font(Font.custom("Beiruti-Regular", size: 11.5))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    // Increment Button
+                    Button {
+                        if transferQuantity < availableQuantity {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                transferQuantity += 1
+                            }
+                        }
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.12))
+                                .frame(width: 52, height: 52)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 0.8)
+                                )
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(transferQuantity < availableQuantity ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.35))
+                        }
+                    }
+                    .buttonStyle(CatalogPressStyle())
+                    .disabled(transferQuantity >= availableQuantity)
+                }
+
+                // Custody Proportion Spectrum Bar
+                VStack(spacing: 5) {
+                    GeometryReader { geo in
+                        ZStack(alignment: Language.isRTL() ? .trailing : .leading) {
+                            Capsule()
+                                .fill(AdminSurface.control)
+                                .frame(height: 6)
+
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [AdminSurface.primary, Color(red: 0.85, green: 0.18, blue: 0.35)],
+                                        startPoint: .leading,
+                                        endPoint: .trailing
+                                    )
+                                )
+                                .frame(width: max(8, geo.size.width * CGFloat(transferRatio)), height: 6)
+                                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: transferQuantity)
+                        }
+                    }
+                    .frame(height: 6)
+
+                    HStack {
+                        Text(String(format: Language.get("Stock_Transfer_Ratio_Format", alter: "ترحيل %.0f%% من مخزون الفرع"), transferRatio * 100))
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Spacer()
+                        Text(String(format: Language.get("Stock_Transfer_Remaining_Count", alter: "المتبقي: %ld"), remainingSourceStock))
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .foregroundStyle(remainingSourceStock <= 0 ? Color(uiColor: .ppError) : AdminSurface.primary)
+                    }
+                }
+                .padding(.top, 4)
+
+                // Quick Quantum Presets
+                HStack(spacing: 7) {
+                    ForEach([1, 5, 10], id: \.self) { val in
+                        if val <= availableQuantity {
+                            quantumPresetButton(label: "\(val)", isSelected: transferQuantity == val) {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                    transferQuantity = val
+                                }
+                            }
+                        }
+                    }
+
+                    if availableQuantity >= 20 {
+                        let quarter = max(1, availableQuantity / 4)
+                        quantumPresetButton(label: "25%", isSelected: transferQuantity == quarter) {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                transferQuantity = quarter
+                            }
+                        }
+                    }
+
+                    if availableQuantity >= 4 {
+                        let half = max(1, availableQuantity / 2)
+                        quantumPresetButton(label: "50%", isSelected: transferQuantity == half) {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                transferQuantity = half
+                            }
+                        }
+                    }
+
+                    quantumPresetButton(label: Language.get("All", alter: "الكل"), isSelected: transferQuantity == availableQuantity) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                            transferQuantity = availableQuantity
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
+            )
+            .shadow(color: Color.black.opacity(0.03), radius: 8, x: 0, y: 3)
+        }
+    }
+
+    private func quantumPresetButton(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(Font.custom("Beiruti-Bold", size: 12.5))
+                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .background(
+                    Group {
+                        if isSelected {
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(red: 0.75, green: 0.08, blue: 0.22)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        } else {
+                            AdminSurface.control
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            isSelected ? AdminSurface.primary.opacity(0.5) : Color(uiColor: .ppSurfaceBorder).opacity(0.7),
+                            lineWidth: 0.75
+                        )
+                )
+        }
+        .buttonStyle(CatalogPressStyle())
+    }
+
+    private var auditReasonSection: some View {
+        VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 10) {
+            Label(
+                Language.get("Stock_Transfer_Reason", alter: "سبب النقل وتوثيق الحركة"),
+                systemImage: "doc.text.fill"
+            )
+            .font(Font.custom("Beiruti-Bold", size: 13))
+            .foregroundStyle(AdminSurface.secondaryText)
+
+            // One-Tap Quick Reason Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach([
+                        Language.get("Stock_Transfer_Reason_Sales", alter: "طلب تعزيز مبيعات"),
+                        Language.get("Stock_Transfer_Reason_Rebalance", alter: "إعادة توازن مخزون الفروع"),
+                        Language.get("Stock_Transfer_Reason_VIP", alter: "طلب عميل خاص"),
+                        Language.get("Stock_Transfer_Reason_Liquidation", alter: "تصفية رصيد الفرع"),
+                        Language.get("Stock_Transfer_Reason_Inspection", alter: "معاينة وفحص جودة")
+                    ], id: \.self) { chip in
+                        let isSelected = reason == chip
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            reason = chip
+                        } label: {
+                            Text(chip)
+                                .font(Font.custom(isSelected ? "Beiruti-Bold" : "Beiruti-Medium", size: 12))
+                                .foregroundStyle(isSelected ? AdminSurface.primary : AdminSurface.primaryText)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.surface,
+                                    in: Capsule()
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(
+                                            isSelected ? AdminSurface.primary.opacity(0.4) : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                            lineWidth: 0.8
+                                        )
+                                )
+                        }
+                        .buttonStyle(CatalogPressStyle())
+                    }
+                }
+                .padding(.horizontal, 2)
+            }
+
+            // Reason Text Input Field
+            HStack(spacing: 8) {
+                Image(systemName: "pencil.line")
+                    .font(.system(size: 13))
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                TextField(
+                    Language.get("Stock_Transfer_Reason_Placeholder", alter: "مثال: طلب تعزيز مخزون الفرع، إعادة توازن"),
+                    text: $reason
+                )
+                .font(Font.custom("Beiruti-Regular", size: 13.5))
+                .foregroundStyle(AdminSurface.primaryText)
+
+                if !reason.isEmpty {
+                    Button {
+                        reason = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+                    }
+                }
+            }
+            .padding(12)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+            )
+        }
+    }
+
+    private var sovereignDispatchDock: some View {
+        VStack(spacing: 8) {
+            // Live Transfer Summary Strip
+            if !selectedBranchID.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(String(
+                        format: Language.get("Stock_Transfer_Summary_Format", alter: "ترحيل %ld قطعة إلى %@"),
+                        transferQuantity,
+                        destinationBranchDisplayName
+                    ))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+            }
+
+            // Executive Dispatch Action Button
+            Button {
+                promptTransferConfirmation()
+            } label: {
+                HStack(spacing: 8) {
+                    if isSubmitting {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+
+                    Text(isSubmitting ? Language.get("Saving", alter: "جاري المعالجة...") : Language.get("Stock_Transfer_Confirm", alter: "تأكيد ترحيل ونقل المخزون"))
+                        .font(Font.custom("Beiruti-Bold", size: 16.5))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, Color(red: 0.72, green: 0.08, blue: 0.22)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.35), radius: 10, y: 4)
+            }
+            .buttonStyle(CatalogPressStyle())
+            .disabled(isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity)
+            .opacity((isSubmitting || selectedBranchID.isEmpty || transferQuantity < 1 || transferQuantity > availableQuantity) ? 0.6 : 1.0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 18)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider().background(Color(uiColor: .ppSurfaceBorder).opacity(0.8))
+        }
+    }
+
+    private func promptTransferConfirmation() {
         guard !selectedBranchID.isEmpty, transferQuantity >= 1 else { return }
+
+        // If transferring 100% of branch stock, warn before full depletion
+        if transferQuantity >= availableQuantity {
+            PPAlertHelper.showConfirmation(
+                in: nil,
+                title: Language.get("Stock_Transfer_Warning_Full_Title", alter: "تنبيه: تصفية كامل مخزون الفرع"),
+                subtitle: String(
+                    format: Language.get(
+                        "Stock_Transfer_Warning_Full_Msg",
+                        alter: "أنت على وشك ترحيل كامل رصيد هذا الصنف (%ld قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟"
+                    ),
+                    transferQuantity,
+                    destinationBranchDisplayName
+                ),
+                confirmButton: Language.get("Stock_Transfer_Proceed", alter: "تأكيد ونقل الرصيد"),
+                cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+                confirmBlock: { _, didConfirm in
+                    guard didConfirm else { return }
+                    executeTransfer()
+                },
+                cancelBlock: nil
+            )
+        } else {
+            executeTransfer()
+        }
+    }
+
+    private func executeTransfer() {
         isSubmitting = true
         errorMessage = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -7953,16 +8728,152 @@ private struct PPStockTransferSheet: View {
             DispatchQueue.main.async {
                 self.isSubmitting = false
                 switch result {
-                case .success:
+                case .success(let data):
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    self.onComplete()
+                    let newQty = (data["sourceNewQuantity"] as? NSNumber)?.intValue ?? max(0, self.availableQuantity - self.transferQuantity)
+                    self.onComplete(newQty)
                     self.dismiss()
                 case .failure(let error):
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
                     self.errorMessage = error.localizedDescription
+                    PPAlertHelper.showFail(
+                        in: nil,
+                        title: Language.get("Error", alter: "خطأ في نقل المخزون"),
+                        subtitle: error.localizedDescription,
+                        completion: nil
+                    )
                 }
             }
         }
+    }
+
+    private var destinationBranchPickerSheet: some View {
+        VStack(spacing: 0) {
+            // Sheet Header
+            AdminSovereignNavigationBar(
+                title: Language.get("Stock_Transfer_Select_Branch", alter: "اختر فرع الاستلام (المحول إليه)"),
+                subtitle: Language.get("Stock_Transfer_ActiveBranchesCount", alter: "الفروع المتاحة لاستقبال الشحنة"),
+                isModal: true,
+                onBack: {
+                    showBranchPickerModal = false
+                }
+            ) {
+                EmptyView()
+            }
+
+            // Search Filter
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(AdminSurface.secondaryText)
+                TextField(
+                    Language.get("Stock_Transfer_Search_Branch", alter: "ابحث عن اسم أو كود الفرع..."),
+                    text: $branchSearchText
+                )
+                .font(Font.custom("Beiruti-Regular", size: 14))
+
+                if !branchSearchText.isEmpty {
+                    Button {
+                        branchSearchText = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .padding(10)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
+            // Branch List
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 8) {
+                    if filteredBranches.isEmpty {
+                        VStack(spacing: 8) {
+                            Image(systemName: "building.2.slash")
+                                .font(.system(size: 32))
+                                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                            Text(Language.get("Stock_Transfer_NoOtherBranches", alter: "لا توجد فروع أخرى نشطة للنقل إليها"))
+                                .font(Font.custom("Beiruti-Bold", size: 13.5))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(.top, 40)
+                    } else {
+                        ForEach(filteredBranches) { b in
+                            let isSelected = selectedBranchID == b.id
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                selectedBranchID = b.id
+                                showBranchPickerModal = false
+                            } label: {
+                                HStack(spacing: 12) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
+                                            .frame(width: 38, height: 38)
+                                        Image(systemName: "storefront.fill")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(isSelected ? Color.white : AdminSurface.primary)
+                                    }
+
+                                    VStack(alignment: Language.isRTL() ? .trailing : .leading, spacing: 2) {
+                                        Text(b.displayName)
+                                            .font(Font.custom("Beiruti-Bold", size: 15))
+                                            .foregroundStyle(AdminSurface.primaryText)
+
+                                        if !b.address.isEmpty {
+                                            Text(b.address)
+                                                .font(Font.custom("Beiruti-Regular", size: 11.5))
+                                                .foregroundStyle(AdminSurface.secondaryText)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 18, weight: .bold))
+                                            .foregroundStyle(AdminSurface.primary)
+                                    }
+                                }
+                                .padding(12)
+                                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(
+                                            isSelected ? AdminSurface.primary : Color(uiColor: .ppSurfaceBorder).opacity(0.8),
+                                            lineWidth: isSelected ? 1.5 : 0.8
+                                        )
+                                )
+                            }
+                            .buttonStyle(CatalogPressStyle())
+                        }
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .background(AdminSurface.background.ignoresSafeArea())
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundColor(Color(uiColor: .ppError))
+            Text(message)
+                .font(Font.custom("Beiruti-Bold", size: 12.5))
+                .foregroundColor(Color(uiColor: .ppError))
+            Spacer()
+        }
+        .padding(12)
+        .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color(uiColor: .ppError).opacity(0.3), lineWidth: 0.8)
+        )
     }
 }
 

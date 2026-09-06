@@ -217,6 +217,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
     @Published var dynamicSubKinds: [SubKindModel] = []
+    @Published var dynamicSubKindsByMainKind: [Int: [SubKindModel]] = [:]
     @Published var availableSubSubKinds: [AdminSubSubKindItem] = []
     @Published var subSubKindItemsBySubSubID: [Int: [AdminSubKindItemDetail]] = [:]
     @Published var isLoadingSubSubTaxonomy: Bool = false
@@ -237,6 +238,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 selectedSubKinds = []
                 selectedSubKind = nil
                 isAllSubCategoriesSelected = false
+                fetchFreshSubKindsForSelectedCategories()
             }
             updateUnsavedChanges()
         }
@@ -246,6 +248,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if isAllCategoriesSelected {
                 selectedMainKinds = []
                 selectedMainKind = nil
+                fetchFreshSubKindsForSelectedCategories()
             }
             updateUnsavedChanges()
         }
@@ -459,6 +462,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         if let discAmount = acc.discountAmount, discAmount.doubleValue > 0 {
             discountAmountText = String(format: "%g", discAmount.doubleValue)
+        }
+        if let wp = acc.wholesalePrice, wp.doubleValue > 0 {
+            wholesaleEnabled = true
+            wholesalePriceText = String(format: "%g", wp.doubleValue)
         }
         
         quantity = max(0, acc.quantity)
@@ -701,6 +708,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     for doc in docs {
                         let sub = SubKindModel(snapshot: doc)
                         sub.documentID = doc.documentID
+                        if sub.mainKindID == 0 {
+                            sub.mainKindID = mainKind.id
+                        }
                         items.append(sub)
                     }
                 }
@@ -710,13 +720,33 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
 
                 if !items.isEmpty {
-                    self.dynamicSubKinds = items
                     mainKind.subKindsArray = NSMutableArray(array: items)
+                    self.dynamicSubKindsByMainKind[mainKind.id] = items
+                    if self.selectedMainKinds.count <= 1 && !self.isAllCategoriesSelected {
+                        self.dynamicSubKinds = items
+                    }
                     if let sel = self.selectedSubKind {
                         self.selectedSubKind = items.first(where: { $0.id == sel.id })
                     }
+                    self.objectWillChange.send()
                 }
             }
+        }
+    }
+
+    func fetchFreshSubKindsForSelectedCategories() {
+        let targets: [MainKindsModel]
+        if isAllCategoriesSelected {
+            targets = availableMainKinds
+        } else if !selectedMainKinds.isEmpty {
+            targets = availableMainKinds.filter { selectedMainKinds.contains($0.id) }
+        } else if let main = selectedMainKind {
+            targets = [main]
+        } else {
+            targets = []
+        }
+        for target in targets {
+            fetchFreshSubKinds(for: target)
         }
     }
 
@@ -757,7 +787,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             }
         }
 
-        let mainKind = selectedMainKind ?? availableMainKinds.first(where: { $0.id == subKind.MainKindID })
+        let mainKind = selectedMainKind ?? availableMainKinds.first(where: { $0.id == subKind.mainKindID })
         guard let mainKind = mainKind else { return }
         let mainDocID = mainKind.documentID.isEmpty ? "\(mainKind.id)" : mainKind.documentID
         guard !mainDocID.isEmpty else { return }
@@ -881,17 +911,16 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var canManagePricing: Bool {
-        let staff = PPStaffAuth.shared().cachedCurrentStaff
-        let role = staff?.role?.lowercased() ?? ""
-        if role == "super_admin" || role == "owner" { return true }
-        return staff?.hasPermission("catalog.pricing.manage") ?? false || canManageStock
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return true }
+        if staff.isAdmin() { return true }
+        return staff.hasPermission("catalog.pricing.manage") || canManageStock
     }
 
     var canManageWholesale: Bool {
-        let staff = PPStaffAuth.shared().cachedCurrentStaff
-        let role = staff?.role?.lowercased() ?? ""
-        if role == "super_admin" || role == "owner" { return true }
-        return staff?.hasPermission("catalog.wholesale.manage") ?? false
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return true }
+        if staff.isAdmin() { return true }
+        if staff.hasPermission("catalog.wholesale.manage") { return true }
+        return canManageStock || canManagePricing
     }
 
     func ensureDefaultSingleGroup() {
@@ -1043,9 +1072,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func loadCommerceIfAvailable() {
-        guard let acc = editingAccessory, let accID = acc.accessoryID, !accID.isEmpty, !isLivePet else {
+        guard let acc = editingAccessory, !acc.accessoryID.isEmpty, !isIndividualLivePet else {
             ensureDefaultSingleGroup()
             return
+        }
+        let accID = acc.accessoryID
+        if let wp = acc.wholesalePrice, wp.doubleValue > 0 {
+            wholesaleEnabled = true
+            wholesalePriceText = String(format: "%g", wp.doubleValue)
         }
         isLoadingCommerce = true
         Functions.functions().httpsCallable("getProductCommerce").call(["productId": accID]) { [weak self] result, error in
@@ -1102,7 +1136,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     func persistCommerceRecord(for productID: String) {
-        guard !isLivePet, !productID.isEmpty else { return }
+        guard !isIndividualLivePet, !productID.isEmpty else { return }
         ensureDefaultSingleGroup()
 
         let groupsPayload: [[String: Any]] = quantityGroups.map { g in
@@ -1393,35 +1427,55 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     var availableSubKinds: [SubKindModel] {
-        if !dynamicSubKinds.isEmpty {
-            return dynamicSubKinds
-        }
         if !isLivePet {
             if isAllCategoriesSelected {
                 var aggregated: [SubKindModel] = []
-                var seenIDs = Set<Int>()
+                var seenKeys = Set<String>()
                 for kind in availableMainKinds {
-                    if let subs = kind.subKindsArray as? [SubKindModel] {
-                        for sub in subs where !seenIDs.contains(sub.id) {
-                            seenIDs.insert(sub.id)
+                    let subs = dynamicSubKindsByMainKind[kind.id] ?? (kind.subKindsArray as? [SubKindModel]) ?? []
+                    for sub in subs {
+                        if sub.mainKindID <= 0 {
+                            sub.mainKindID = kind.id
+                        }
+                        let key = "\(sub.mainKindID)_\(sub.id)"
+                        if !seenKeys.contains(key) {
+                            seenKeys.insert(key)
                             aggregated.append(sub)
                         }
                     }
                 }
                 return aggregated
-            } else if !selectedMainKinds.isEmpty {
+            } else if selectedMainKinds.count > 1 {
                 var aggregated: [SubKindModel] = []
-                var seenIDs = Set<Int>()
+                var seenKeys = Set<String>()
                 for kind in availableMainKinds where selectedMainKinds.contains(kind.id) {
-                    if let subs = kind.subKindsArray as? [SubKindModel] {
-                        for sub in subs where !seenIDs.contains(sub.id) {
-                            seenIDs.insert(sub.id)
+                    let subs = dynamicSubKindsByMainKind[kind.id] ?? (kind.subKindsArray as? [SubKindModel]) ?? []
+                    for sub in subs {
+                        if sub.mainKindID <= 0 {
+                            sub.mainKindID = kind.id
+                        }
+                        let key = "\(sub.mainKindID)_\(sub.id)"
+                        if !seenKeys.contains(key) {
+                            seenKeys.insert(key)
                             aggregated.append(sub)
                         }
                     }
                 }
                 return aggregated
+            } else if selectedMainKinds.count == 1, let firstID = selectedMainKinds.first {
+                if let kind = availableMainKinds.first(where: { $0.id == firstID }) {
+                    if let subs = dynamicSubKindsByMainKind[firstID], !subs.isEmpty {
+                        return subs
+                    }
+                    if !dynamicSubKinds.isEmpty && selectedMainKind?.id == firstID {
+                        return dynamicSubKinds
+                    }
+                    return (kind.subKindsArray as? [SubKindModel]) ?? []
+                }
             }
+        }
+        if !dynamicSubKinds.isEmpty {
+            return dynamicSubKinds
         }
         return (selectedMainKind?.subKindsArray as? [SubKindModel]) ?? []
     }
@@ -1441,11 +1495,19 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return Language.get("CatalogIntake_AllCategoriesUniversal", alter: "جميع الفئات • لكل الحيوانات")
         }
         if !selectedMainKinds.isEmpty {
-            let names = availableMainKinds.filter { selectedMainKinds.contains($0.id) }.map { $0.kindName }
-            if names.count == 1 {
-                return names.first
-            } else if names.count > 1 {
-                return names.prefix(3).joined(separator: "، ") + (names.count > 3 ? " (+\(names.count - 3))" : "")
+            var names: [String] = []
+            for id in selectedMainKinds.sorted() {
+                if let match = availableMainKinds.first(where: { $0.id == id }) {
+                    names.append(match.kindName)
+                } else {
+                    let fallback = MainKindsModel.kindName(forID: id)
+                    if !fallback.isEmpty {
+                        names.append(fallback)
+                    }
+                }
+            }
+            if !names.isEmpty {
+                return names.joined(separator: "، ")
             }
         }
         return selectedMainKind?.kindName
@@ -1459,11 +1521,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return Language.get("CatalogIntake_AllSubCategoriesUniversal", alter: "جميع التصنيفات الفرعية")
         }
         if !selectedSubKinds.isEmpty {
-            let names = availableSubKinds.filter { selectedSubKinds.contains($0.id) }.map { $0.subKindName }
-            if names.count == 1 {
-                return names.first
-            } else if names.count > 1 {
-                return names.prefix(3).joined(separator: "، ") + (names.count > 3 ? " (+\(names.count - 3))" : "")
+            var names: [String] = []
+            for id in selectedSubKinds.sorted() {
+                if let match = availableSubKinds.first(where: { $0.id == id }) {
+                    names.append(match.subKindName)
+                }
+            }
+            if !names.isEmpty {
+                return names.joined(separator: "، ")
             }
         }
         return selectedSubKind?.subKindName
@@ -1633,6 +1698,29 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func livePetUnitPhoto(for unitID: String) -> UIImage? {
         livePetUnitPhotos[unitID]?.image
+    }
+
+    var firstLivePetPhoto: UIImage? {
+        if let first = pickedImages.first {
+            return first
+        }
+        for unit in livePetUnits {
+            if let photo = livePetUnitPhotos[unit.id]?.image {
+                return photo
+            }
+        }
+        return nil
+    }
+
+    var firstLivePetUnitPhotoURL: String? {
+        for unit in livePetUnits {
+            if let draft = livePetUnitPhotos[unit.id],
+               let url = draft.uploadedURL,
+               !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return url
+            }
+        }
+        return nil
     }
 
     /// Replaces only this draft animal's local identity photo. Upload is deferred
@@ -2030,6 +2118,18 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         accessory.discountPercent = discountPercent > 0 ? NSNumber(value: discountPercent) : nil
         accessory.discountAmount = discountAmount > 0 ? NSNumber(value: discountAmount) : nil
         accessory.hasOffer = discountPercent > 0 || discountAmount > 0
+        if wholesaleEnabled {
+            let wpVal: Double = {
+                if let defaultW = quantityGroups.first(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) ?? quantityGroups.first(where: { $0.wholesaleEnabled }), defaultW.wholesalePrice > 0 {
+                    return defaultW.wholesalePrice
+                }
+                return decimalValue(wholesalePriceText) ?? 0.0
+            }()
+            accessory.wholesalePrice = wpVal > 0 ? NSNumber(value: wpVal) : nil
+        } else {
+            accessory.wholesalePrice = nil
+        }
+        accessory.hasCommerceConfig = true
         accessory.quantity = max(0, quantity)
         accessory.noStock = (quantity <= 0)
         
@@ -2325,6 +2425,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.barcode = saved.barcode
         original.costPrice = saved.costPrice
         original.price = saved.price
+        original.wholesalePrice = saved.wholesalePrice
+        original.hasCommerceConfig = saved.hasCommerceConfig
         original.discountPercent = saved.discountPercent
         original.discountAmount = saved.discountAmount
         original.weightText = saved.weightText
@@ -2438,6 +2540,17 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
         submitProgress = 0
 
+        let allUnitURLs = unitMediaURLsByID.values.flatMap { $0 }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        var resolvedImageURLs = (accessory.imageURLsArray ?? []).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if resolvedImageURLs.isEmpty && !allUnitURLs.isEmpty {
+            resolvedImageURLs = allUnitURLs
+            accessory.imageURLsArray = resolvedImageURLs
+            if existingImageURLs.isEmpty {
+                existingImageURLs = resolvedImageURLs
+            }
+        }
+        pendingSavedAccessoryDraft = accessory
+
         let productID = editingAccessory?.accessoryID ?? ""
         let actorUID = Auth.auth().currentUser?.uid ?? ""
         var catalogValues: [String: Any] = [
@@ -2455,16 +2568,25 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             "accessKindType": 3,
             "product_type": "live",
             "category": "Live Pets",
-            "imageURLsArray": accessory.imageURLsArray ?? [],
+            "imageURLsArray": resolvedImageURLs,
             "active": accessory.active,
             "showInAppMarket": !isDraft,
             "isNew": true,
             "updatedBy": actorUID,
         ]
+        if let primaryImageURL = resolvedImageURLs.first {
+            catalogValues["imageUrl"] = primaryImageURL
+            catalogValues["image"] = primaryImageURL
+            catalogValues["images"] = resolvedImageURLs
+        }
         if liveInventoryMode == .quantity {
             catalogValues["discountPercent"] = accessory.discountPercent ?? NSNull()
             catalogValues["discountAmount"] = accessory.discountAmount ?? NSNull()
             catalogValues["hasOffer"] = accessory.hasOffer
+            if let wp = accessory.wholesalePrice, wp.doubleValue > 0 {
+                catalogValues["wholesalePrice"] = wp
+            }
+            catalogValues["hasCommerceConfig"] = true
         }
 
         let unitPayloads: [[String: Any]] = livePetUnits.map { unit in
@@ -2517,7 +2639,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "accessKindType": 3,
                 "petMainCategoryID": accessory.petMainCategoryID,
                 "petSubCategoryID": accessory.petSubCategoryID,
-                "imageURLsArray": accessory.imageURLsArray ?? [],
+                "imageURLsArray": resolvedImageURLs,
                 "isNew": true,
                 "hasOffer": liveInventoryMode == .individual ? false : accessory.hasOffer,
                 "showInAppMarket": !isDraft,
@@ -2531,6 +2653,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "reorderLevel": 5,
                 "units": liveInventoryMode == .individual ? unitPayloads : [],
             ]
+            if let primaryImageURL = resolvedImageURLs.first {
+                mutationPayload["imageUrl"] = primaryImageURL
+                mutationPayload["image"] = primaryImageURL
+                mutationPayload["images"] = resolvedImageURLs
+            }
             if liveInventoryMode == .individual {
                 mutationPayload["standardSellingPrice"] = basePrice
             }
@@ -2764,6 +2891,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 commitSavedAccessory(confirmedDraft)
             } else {
                 commitConfirmedLivePetForm(retainedURLs: retainedURLs)
+            }
+            if liveInventoryMode == .quantity {
+                persistCommerceRecord(for: acceptedProductID)
             }
             completeSuccessfulSave(message: confirmedSuccessMessage)
         } catch {
@@ -3006,6 +3136,125 @@ struct PPBilingualSegmentedCapsule: View {
     }
 }
 
+// MARK: - Forced Keyboard Language Helpers
+
+enum PPKeyboardLanguage {
+    case arabic
+    case english
+
+    var code: String {
+        switch self {
+        case .arabic: return "ar"
+        case .english: return "en"
+        }
+    }
+
+    var identifier: String {
+        switch self {
+        case .arabic: return "pp_force_ar"
+        case .english: return "pp_force_en"
+        }
+    }
+}
+
+private final class PPKeyboardLanguageProbeView: UIView {
+    var onAttach: ((UIView) -> Void)?
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        if superview != nil {
+            onAttach?(self)
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            onAttach?(self)
+        }
+    }
+}
+
+private struct PPKeyboardLanguageIntrospector: UIViewRepresentable {
+    let language: PPKeyboardLanguage
+
+    func makeUIView(context: Context) -> PPKeyboardLanguageProbeView {
+        let view = PPKeyboardLanguageProbeView(frame: .zero)
+        view.isHidden = true
+        view.isUserInteractionEnabled = false
+        view.onAttach = { [language] probe in
+            Self.apply(from: probe, language: language)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: PPKeyboardLanguageProbeView, context: Context) {
+        uiView.onAttach = { [language] probe in
+            Self.apply(from: probe, language: language)
+        }
+        DispatchQueue.main.async {
+            Self.apply(from: uiView, language: language)
+        }
+    }
+
+    static func apply(from probe: UIView, language: PPKeyboardLanguage) {
+        let langCode = language.code
+        let ident = language.identifier
+
+        var current: UIView? = probe
+        while let parent = current?.superview {
+            if let tf = findTextField(in: parent) {
+                let needsCycle = tf.isFirstResponder && tf.pp_forcedKeyboardLanguage != langCode
+                tf.pp_forcedKeyboardLanguage = langCode
+                tf.accessibilityIdentifier = ident
+                if language == .english {
+                    tf.keyboardType = .asciiCapable
+                }
+                if needsCycle {
+                    tf.resignFirstResponder()
+                    tf.becomeFirstResponder()
+                }
+                return
+            }
+            if let tv = findTextView(in: parent) {
+                let needsCycle = tv.isFirstResponder && tv.pp_forcedKeyboardLanguage != langCode
+                tv.pp_forcedKeyboardLanguage = langCode
+                tv.accessibilityIdentifier = ident
+                if needsCycle {
+                    tv.resignFirstResponder()
+                    tv.becomeFirstResponder()
+                }
+                return
+            }
+            current = parent
+        }
+    }
+
+    private static func findTextField(in root: UIView) -> UITextField? {
+        if let tf = root as? UITextField { return tf }
+        for sub in root.subviews {
+            if let found = findTextField(in: sub) { return found }
+        }
+        return nil
+    }
+
+    private static func findTextView(in root: UIView) -> UITextView? {
+        if let tv = root as? UITextView { return tv }
+        for sub in root.subviews {
+            if let found = findTextView(in: sub) { return found }
+        }
+        return nil
+    }
+}
+
+extension View {
+    func forceKeyboardLanguage(_ language: PPKeyboardLanguage) -> some View {
+        self
+            .accessibilityIdentifier(language.identifier)
+            .background(PPKeyboardLanguageIntrospector(language: language))
+    }
+}
+
 // MARK: - Bilingual Single-Line Input Field
 
 struct PPBilingualInputField: View {
@@ -3069,6 +3318,9 @@ struct PPBilingualInputField: View {
                     .textContentType(.name)
                     .submitLabel(.next)
                     .onSubmit { onSubmit?() }
+                    .forceKeyboardLanguage(.arabic)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .trailing)
+                    .contentShape(Rectangle())
                     .opacity(selectedLanguage == .arabic ? 1 : 0)
                     .allowsHitTesting(selectedLanguage == .arabic)
 
@@ -3078,8 +3330,12 @@ struct PPBilingualInputField: View {
                     .environment(\.layoutDirection, .leftToRight)
                     .multilineTextAlignment(.leading)
                     .textContentType(.name)
+                    .keyboardType(.asciiCapable)
                     .submitLabel(.next)
                     .onSubmit { onSubmit?() }
+                    .forceKeyboardLanguage(.english)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
+                    .contentShape(Rectangle())
                     .opacity(selectedLanguage == .english ? 1 : 0)
                     .allowsHitTesting(selectedLanguage == .english)
             }
@@ -3090,6 +3346,16 @@ struct PPBilingualInputField: View {
                 RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
                     .strokeBorder((isFocused || isFieldFocused) ? AdminSurface.primary : AdminSurface.hairline.opacity(0.7), lineWidth: (isFocused || isFieldFocused) ? 1.5 : 0.75)
             )
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .onTapGesture {
+                if !isFieldFocused {
+                    if selectedLanguage == .arabic {
+                        isArabicFocused = true
+                    } else {
+                        isEnglishFocused = true
+                    }
+                }
+            }
             .onChange(of: isArabicFocused) { _ in
                 onFocusChange?(isFieldFocused)
             }
@@ -3110,12 +3376,16 @@ struct PPBilingualInputField: View {
             }
             .onChange(of: selectedLanguage) { newLang in
                 if isFieldFocused {
-                    if newLang == .arabic {
-                        isArabicFocused = true
-                        isEnglishFocused = false
-                    } else {
-                        isEnglishFocused = true
-                        isArabicFocused = false
+                    // Dismiss current field first so SwiftUI can complete
+                    // the opacity/hitTesting swap before re-focusing.
+                    isArabicFocused = false
+                    isEnglishFocused = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        if newLang == .arabic {
+                            isArabicFocused = true
+                        } else {
+                            isEnglishFocused = true
+                        }
                     }
                 }
             }
@@ -3142,9 +3412,11 @@ struct PPBilingualInputField: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         selectedLanguage = .english
                     }
-                    isEnglishFocused = true
-                    isArabicFocused = false
                     UISelectionFeedbackGenerator().selectionChanged()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isEnglishFocused = true
+                        isArabicFocused = false
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3167,9 +3439,11 @@ struct PPBilingualInputField: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         selectedLanguage = .arabic
                     }
-                    isArabicFocused = true
-                    isEnglishFocused = false
                     UISelectionFeedbackGenerator().selectionChanged()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3274,10 +3548,13 @@ struct PPBilingualTextEditorField: View {
                         .focused($isArabicFocused)
                         .environment(\.layoutDirection, .rightToLeft)
                         .multilineTextAlignment(.trailing)
-                        .frame(minHeight: minHeight)
+                        .frame(maxWidth: .infinity, minHeight: minHeight)
                         .padding(AdminSpacing.xs)
                         .scrollContentBackgroundIfAvailable()
+                        .forceKeyboardLanguage(.arabic)
                 }
+                .frame(maxWidth: .infinity, minHeight: minHeight)
+                .contentShape(Rectangle())
                 .opacity(selectedLanguage == .arabic ? 1 : 0)
                 .allowsHitTesting(selectedLanguage == .arabic)
 
@@ -3298,10 +3575,14 @@ struct PPBilingualTextEditorField: View {
                         .focused($isEnglishFocused)
                         .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
-                        .frame(minHeight: minHeight)
+                        .keyboardType(.asciiCapable)
+                        .frame(maxWidth: .infinity, minHeight: minHeight)
                         .padding(AdminSpacing.xs)
                         .scrollContentBackgroundIfAvailable()
+                        .forceKeyboardLanguage(.english)
                 }
+                .frame(maxWidth: .infinity, minHeight: minHeight)
+                .contentShape(Rectangle())
                 .opacity(selectedLanguage == .english ? 1 : 0)
                 .allowsHitTesting(selectedLanguage == .english)
             }
@@ -3310,6 +3591,16 @@ struct PPBilingualTextEditorField: View {
                 RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
                     .strokeBorder((isFocused || isFieldFocused) ? AdminSurface.primary : AdminSurface.hairline.opacity(0.7), lineWidth: (isFocused || isFieldFocused) ? 1.5 : 0.75)
             )
+            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .onTapGesture {
+                if !isFieldFocused {
+                    if selectedLanguage == .arabic {
+                        isArabicFocused = true
+                    } else {
+                        isEnglishFocused = true
+                    }
+                }
+            }
             .onChange(of: isArabicFocused) { _ in
                 onFocusChange?(isFieldFocused)
             }
@@ -3330,12 +3621,16 @@ struct PPBilingualTextEditorField: View {
             }
             .onChange(of: selectedLanguage) { newLang in
                 if isFieldFocused {
-                    if newLang == .arabic {
-                        isArabicFocused = true
-                        isEnglishFocused = false
-                    } else {
-                        isEnglishFocused = true
-                        isArabicFocused = false
+                    // Dismiss current field first so SwiftUI can complete
+                    // the opacity/hitTesting swap before re-focusing.
+                    isArabicFocused = false
+                    isEnglishFocused = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        if newLang == .arabic {
+                            isArabicFocused = true
+                        } else {
+                            isEnglishFocused = true
+                        }
                     }
                 }
             }
@@ -3362,9 +3657,11 @@ struct PPBilingualTextEditorField: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         selectedLanguage = .english
                     }
-                    isEnglishFocused = true
-                    isArabicFocused = false
                     UISelectionFeedbackGenerator().selectionChanged()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isEnglishFocused = true
+                        isArabicFocused = false
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3387,9 +3684,11 @@ struct PPBilingualTextEditorField: View {
                     withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
                         selectedLanguage = .arabic
                     }
-                    isArabicFocused = true
-                    isEnglishFocused = false
                     UISelectionFeedbackGenerator().selectionChanged()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    }
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3478,6 +3777,12 @@ struct PPAccessoryEditorScreen: View {
                         }
                     }
                     .scrollDismissesKeyboardCompat()
+                    .onChange(of: focusedField) { field in
+                        guard let field = field else { return }
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            proxy.scrollTo(field, anchor: .center)
+                        }
+                    }
                 }
             }
 
@@ -3537,17 +3842,28 @@ struct PPAccessoryEditorScreen: View {
                 )
             }
         }
-        .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityAlert) {
-            TextField(Language.get("Quantity", alter: "الكمية"), text: $quantityAlertText)
-                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
-            Button(Language.get("Save", alter: "حفظ")) {
-                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+    }
+
+    private func promptQuantityEdit() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PPAlertHelper.showTextPrompt(
+            in: nil,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
+            placeholder: Language.get("Quantity", alter: "الكمية"),
+            initialText: "\(viewModel.quantity)",
+            confirmText: Language.get("Save", alter: "حفظ"),
+            cancelText: Language.get("Cancel", alter: "إلغاء"),
+            secureEntry: false,
+            keyboardType: .numberPad
+        ) { text in
+            guard let text else { return }
+            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(normalized) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                     viewModel.quantity = max(0, val)
                 }
             }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -3785,7 +4101,7 @@ struct PPAccessoryEditorScreen: View {
             // Information Projection
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(viewModel.selectedMainKind?.kindName ?? Language.get("General", alter: "عام"))
+                    Text(viewModel.selectedCategoryDisplayTitle ?? Language.get("General", alter: "عام"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminSurface.primary)
                         .padding(.horizontal, 7)
@@ -4126,6 +4442,7 @@ struct PPAccessoryEditorScreen: View {
                 },
                 onSubmit: { focusedField = .desc }
             )
+            .id(FormField.name)
 
             PPBilingualTextEditorField(
                 title: Language.get("Description", alter: "الوصف التفصيلي والمواصفات"),
@@ -4142,6 +4459,7 @@ struct PPAccessoryEditorScreen: View {
                     else if focusedField == .desc { focusedField = nil }
                 }
             )
+            .id(FormField.desc)
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -4168,9 +4486,9 @@ struct PPAccessoryEditorScreen: View {
                             Text(Language.get("Species", alter: "نوع الحيوان (الفئة)"))
                                 .font(AdminType.caption2Bold)
                                 .foregroundStyle(AdminCommandInk.secondary)
-                            Text(viewModel.selectedMainKind?.kindName ?? Language.get("SelectSpecies", alter: "اختر النوع..."))
+                            Text(viewModel.selectedCategoryDisplayTitle ?? Language.get("SelectSpecies", alter: "اختر النوع..."))
                                 .font(AdminType.calloutBold)
-                                .foregroundStyle(viewModel.selectedMainKind != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
+                                .foregroundStyle(viewModel.selectedCategoryDisplayTitle != nil ? AdminSurface.primaryText : AdminCommandInk.tertiary)
                                 .lineLimit(1)
                         }
                         Spacer()
@@ -4738,112 +5056,12 @@ struct PPAccessoryEditorScreen: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Customer Final Price Plate
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(Language.get("FinalCustomerPrice", alter: "السعر النهائي في التطبيق للعميل"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    Text(viewModel.formattedFinalPrice)
-                        .font(AdminType.title2)
-                        .foregroundStyle(AdminSurface.primary)
-                }
-                Spacer()
-                if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
-                    Text(String(format: Language.get("DiscountSavings", alter: "خصم %.0f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice))
-                        .font(AdminType.captionBold)
-                        .foregroundStyle(Color(uiColor: .ppSuccess))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule(style: .continuous))
-                }
-            }
-            .padding(14)
-            .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            customerFinalPricePlate
 
-            // Wholesale Selling Surface (Accessories & Food only)
             if !viewModel.isIndividualLivePet {
                 Divider().opacity(0.4)
-
-                if !viewModel.wholesaleEnabled {
-                    if viewModel.canManageWholesale {
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                viewModel.wholesaleEnabled = true
-                                if viewModel.wholesalePriceText.isEmpty, viewModel.basePrice > 0 {
-                                    viewModel.wholesalePriceText = String(format: "%.0f", viewModel.basePrice * 0.9)
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                Label(Language.get("Wholesale_Add_Price_Prompt", alter: "البيع بالجملة"), systemImage: "building.2.fill")
-                                    .font(AdminType.subheadlineBold)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                                Spacer()
-                                HStack(spacing: 4) {
-                                    Image(systemName: "plus.circle.fill")
-                                    Text(Language.get("Add_Price", alter: "إضافة سعر"))
-                                }
-                                .font(AdminType.captionBold)
-                                .foregroundStyle(Color(uiColor: .systemTeal))
-                            }
-                            .padding(12)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Label(Language.get("Wholesale_Price_QAR", alter: "سعر البيع بالجملة (ر.ق)"), systemImage: "building.2.fill")
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(Color(uiColor: .systemTeal))
-                            Spacer()
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    viewModel.wholesaleEnabled = false
-                                }
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundStyle(AdminCommandInk.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        TextField("0.00", text: $viewModel.wholesalePriceText)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                            .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
-                            .focused($focusedField, equals: .wholesalePrice)
-                            .padding(14)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    }
-                }
-
-                // Live Summary Plate
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Language.get("Summary_Retail_Label", alter: "التجزئة"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminCommandInk.secondary)
-                        Text(viewModel.defaultRetailGroupSummary)
-                            .font(AdminType.subheadlineBold)
-                            .foregroundStyle(AdminSurface.primaryText)
-                    }
-                    if let wholesaleSummary = viewModel.defaultWholesaleGroupSummary {
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text(Language.get("Summary_Wholesale_Label", alter: "الجملة"))
-                                .font(AdminType.caption2Bold)
-                                .foregroundStyle(Color(uiColor: .systemTeal))
-                            Text(wholesaleSummary)
-                                .font(AdminType.subheadlineBold)
-                                .foregroundStyle(Color(uiColor: .systemTeal))
-                        }
-                    }
-                }
-                .padding(12)
-                .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                wholesalePricingSection
+                livePricingSummaryPlate
             }
         }
         .padding(16)
@@ -4852,6 +5070,106 @@ struct PPAccessoryEditorScreen: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
         )
+    }
+
+    private var customerFinalPricePlate: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("FinalCustomerPrice", alter: "السعر النهائي في التطبيق للعميل"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Text(viewModel.formattedFinalPrice)
+                    .font(AdminType.title2)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            Spacer()
+            if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
+                Text(String(format: Language.get("DiscountSavings", alter: "خصم %.0f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice))
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule(style: .continuous))
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var wholesalePricingSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $viewModel.wholesaleEnabled.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                HStack(spacing: 8) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .systemTeal).opacity(viewModel.wholesaleEnabled ? 0.18 : 0.08))
+                            .frame(width: 34, height: 34)
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal) : AdminCommandInk.secondary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Wholesale_Selling_Title", alter: "البيع بالجملة (Wholesale)"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(viewModel.wholesaleEnabled
+                            ? Language.get("Wholesale_Active_Hint", alter: "مفعل ومتاح في نقطة البيع للموزعين والعملاء بالجملة")
+                            : Language.get("Wholesale_Inactive_Hint", alter: "غير مفعل (قم بالتشغيل لتحديد سعر الجملة)"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+            }
+            .tint(Color(uiColor: .systemTeal))
+
+            if viewModel.wholesaleEnabled {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Language.get("Wholesale_Price_QAR", alter: "سعر بيع الجملة للوحدة الافتراضية (ر.ق)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(uiColor: .systemTeal))
+
+                    TextField("0.00", text: $viewModel.wholesalePriceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
+                        .focused($focusedField, equals: .wholesalePrice)
+                        .padding(14)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.control.opacity(0.55), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal).opacity(0.35) : Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 1)
+        )
+    }
+
+    private var livePricingSummaryPlate: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("Summary_Retail_Label", alter: "التجزئة"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                Text(viewModel.defaultRetailGroupSummary)
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            if let wholesaleSummary = viewModel.defaultWholesaleGroupSummary {
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(Language.get("Summary_Wholesale_Label", alter: "الجملة"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(uiColor: .systemTeal))
+                    Text(wholesaleSummary)
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(Color(uiColor: .systemTeal))
+                }
+            }
+        }
+        .padding(12)
+        .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var sellingUnitsDeck: some View {
@@ -4898,70 +5216,7 @@ struct PPAccessoryEditorScreen: View {
 
             VStack(spacing: 10) {
                 ForEach(viewModel.quantityGroups) { group in
-                    Button {
-                        viewModel.selectedQuantityGroupForEditing = group
-                        viewModel.showQuantityGroupInspector = true
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                Circle()
-                                    .fill(group.defaultForRetail ? AdminSurface.primary.opacity(0.15) : AdminSurface.control)
-                                    .frame(width: 40, height: 40)
-                                Image(systemName: group.unitsPerGroup == 1 ? "cube.fill" : "shippingbox.fill")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(group.defaultForRetail ? AdminSurface.primary : AdminCommandInk.secondary)
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(group.localizedName)
-                                        .font(AdminType.bodyBold)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                    if group.defaultForRetail {
-                                        Text(Language.get("Default_Retail_Badge", alter: "افتراضي للتجزئة"))
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(AdminSurface.primary)
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
-                                    }
-                                    if group.defaultForWholesale && group.wholesaleEnabled {
-                                        Text(Language.get("Default_Wholesale_Badge", alter: "افتراضي للجملة"))
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundStyle(Color(uiColor: .systemTeal))
-                                            .padding(.horizontal, 6)
-                                            .padding(.vertical, 2)
-                                            .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
-                                    }
-                                }
-                                Text(group.unitsCountText)
-                                    .font(AdminType.caption2)
-                                    .foregroundStyle(AdminCommandInk.secondary)
-                            }
-
-                            Spacer()
-
-                            VStack(alignment: .trailing, spacing: 2) {
-                                if group.retailEnabled {
-                                    Text(String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")))
-                                        .font(AdminType.calloutBold)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                }
-                                if group.wholesaleEnabled {
-                                    Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(Color(uiColor: .systemTeal))
-                                }
-                            }
-
-                            Image(systemName: "chevron.forward")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(AdminCommandInk.secondary.opacity(0.6))
-                        }
-                        .padding(14)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
+                    sellingUnitRow(for: group)
                 }
             }
         }
@@ -4971,6 +5226,73 @@ struct PPAccessoryEditorScreen: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
         )
+    }
+
+    private func sellingUnitRow(for group: PPQuantityGroupDraft) -> some View {
+        Button {
+            viewModel.selectedQuantityGroupForEditing = group
+            viewModel.showQuantityGroupInspector = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(group.defaultForRetail ? AdminSurface.primary.opacity(0.15) : AdminSurface.control)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: group.unitsPerGroup == 1 ? "cube.fill" : "shippingbox.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(group.defaultForRetail ? AdminSurface.primary : AdminCommandInk.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(group.localizedName)
+                            .font(AdminType.bodyBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        if group.defaultForRetail {
+                            Text(Language.get("Default_Retail_Badge", alter: "افتراضي للتجزئة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                        if group.defaultForWholesale && group.wholesaleEnabled {
+                            Text(Language.get("Default_Wholesale_Badge", alter: "افتراضي للجملة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(group.unitsCountText)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    if group.retailEnabled {
+                        Text(String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    if group.wholesaleEnabled {
+                        Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                    }
+                }
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AdminCommandInk.secondary.opacity(0.6))
+            }
+            .padding(14)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private func profitMarginTelemetryDeck(margin: Double, profit: Double) -> some View {
@@ -5244,185 +5566,12 @@ struct PPQuantityGroupInspectorSheet: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Identity Card
-                        VStack(alignment: .leading, spacing: 12) {
-                            Label(Language.get("Group_Identity", alter: "اسم الوحدة ومواصفاتها"), systemImage: "cube.box.fill")
-                                .font(AdminType.headline)
-                                .foregroundStyle(AdminSurface.primaryText)
-
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Group_Name_Ar", alter: "اسم الوحدة (عربي)"))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
-                                        .font(AdminType.body)
-                                        .padding(12)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Group_Name_En", alter: "اسم الوحدة (إنجليزي)"))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    TextField("e.g. Carton", text: $group.nameEn)
-                                        .font(AdminType.body)
-                                        .padding(12)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                            }
-
-                            // Units Count Stepper
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"))
-                                    .font(AdminType.caption2Bold)
-                                    .foregroundStyle(AdminCommandInk.secondary)
-
-                                HStack(spacing: 12) {
-                                    Button {
-                                        let current = Int(unitsText) ?? 1
-                                        if current > 1 {
-                                            unitsText = "\(current - 1)"
-                                            group.unitsPerGroup = current - 1
-                                        }
-                                    } label: {
-                                        Image(systemName: "minus")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .frame(width: 44, height: 44)
-                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    TextField("1", text: $unitsText)
-                                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                                        .multilineTextAlignment(.center)
-                                        .englishNumericInput(text: $unitsText, allowsDecimal: false)
-                                        .padding(10)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                        .onChange(of: unitsText) { newVal in
-                                            if let parsed = Int(newVal), parsed >= 1 {
-                                                group.unitsPerGroup = parsed
-                                            }
-                                        }
-
-                                    Button {
-                                        let current = Int(unitsText) ?? 1
-                                        unitsText = "\(current + 1)"
-                                        group.unitsPerGroup = current + 1
-                                    } label: {
-                                        Image(systemName: "plus")
-                                            .font(.system(size: 16, weight: .bold))
-                                            .frame(width: 44, height: 44)
-                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-
-                            // Barcode & SKU
-                            HStack(spacing: 12) {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    HStack {
-                                        Image(systemName: "barcode.viewfinder")
-                                            .foregroundStyle(AdminCommandInk.secondary)
-                                        TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
-                                            .font(AdminType.body)
-                                            .englishNumericInput(text: $group.barcode, allowsDecimal: false)
-                                    }
-                                    .padding(12)
-                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Group_SKU", alter: "رمز الصنف SKU (اختياري)"))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    TextField("SKU", text: $group.sku)
-                                        .font(AdminType.body)
-                                        .padding(12)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-                            }
-                        }
-                        .padding(16)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                        // Retail Configuration Card
-                        VStack(alignment: .leading, spacing: 12) {
-                            Toggle(isOn: $group.retailEnabled) {
-                                Label(Language.get("Retail_Selling_Channel", alter: "متاح للبيع بالتجزئة (قطاعي)"), systemImage: "cart.fill")
-                                    .font(AdminType.headline)
-                                    .foregroundStyle(AdminSurface.primaryText)
-                            }
-                            .tint(AdminSurface.primary)
-
-                            if group.retailEnabled {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(Language.get("Retail_Selling_Price_QAR", alter: "سعر بيع التجزئة للوحدة (ر.ق)"))
-                                        .font(AdminType.caption2Bold)
-                                        .foregroundStyle(AdminCommandInk.secondary)
-                                    TextField("0.00", text: $group.retailPriceText)
-                                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                                        .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
-                                        .padding(12)
-                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                }
-
-                                Toggle(isOn: $group.defaultForRetail) {
-                                    Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية عند البيع بالتجزئة"))
-                                        .font(AdminType.subheadline)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                }
-                                .tint(AdminSurface.primary)
-                            }
-                        }
-                        .padding(16)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                        // Wholesale Configuration Card
+                        inspectorIdentityCard
+                        inspectorRetailCard
                         if canManageWholesale {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Toggle(isOn: $group.wholesaleEnabled) {
-                                    Label(Language.get("Wholesale_Selling_Channel", alter: "متاح للبيع بالجملة"), systemImage: "building.2.fill")
-                                        .font(AdminType.headline)
-                                        .foregroundStyle(AdminSurface.primaryText)
-                                }
-                                .tint(Color(uiColor: .systemTeal))
-
-                                if group.wholesaleEnabled {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(Language.get("Wholesale_Selling_Price_QAR", alter: "سعر بيع الجملة للوحدة (ر.ق)"))
-                                            .font(AdminType.caption2Bold)
-                                            .foregroundStyle(AdminCommandInk.secondary)
-                                        TextField("0.00", text: $group.wholesalePriceText)
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                            .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
-                                            .padding(12)
-                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-
-                                    Toggle(isOn: $group.defaultForWholesale) {
-                                        Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية عند البيع بالجملة"))
-                                            .font(AdminType.subheadline)
-                                            .foregroundStyle(AdminSurface.primaryText)
-                                    }
-                                    .tint(Color(uiColor: .systemTeal))
-                                }
-                            }
-                            .padding(16)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            inspectorWholesaleCard
                         }
-
-                        // Active Toggle
-                        Toggle(isOn: $group.active) {
-                            Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع"))
-                                .font(AdminType.subheadline)
-                                .foregroundStyle(AdminSurface.primaryText)
-                        }
-                        .tint(Color(uiColor: .ppSuccess))
-                        .padding(16)
-                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        inspectorStatusCard
 
                         if let err = localErrorMessage {
                             Text(err)
@@ -5431,7 +5580,6 @@ struct PPQuantityGroupInspectorSheet: View {
                                 .padding(.horizontal, 8)
                         }
 
-                        // Delete Button
                         if let onDelete = onDelete {
                             Button(role: .destructive) {
                                 onDelete()
@@ -5470,6 +5618,195 @@ struct PPQuantityGroupInspectorSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var inspectorIdentityCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(Language.get("Group_Identity", alter: "اسم الوحدة ومواصفاتها"), systemImage: "cube.box.fill")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Group_Name_Ar", alter: "اسم الوحدة (عربي)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
+                        .font(AdminType.body)
+                        .environment(\.layoutDirection, .rightToLeft)
+                        .multilineTextAlignment(.trailing)
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .forceKeyboardLanguage(.arabic)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Group_Name_En", alter: "اسم الوحدة (إنجليزي)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    TextField("e.g. Carton", text: $group.nameEn)
+                        .font(AdminType.body)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .multilineTextAlignment(.leading)
+                        .keyboardType(.asciiCapable)
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .forceKeyboardLanguage(.english)
+                }
+            }
+
+            // Units Count Stepper
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                HStack(spacing: 12) {
+                    Button {
+                        let current = Int(unitsText) ?? 1
+                        if current > 1 {
+                            unitsText = "\(current - 1)"
+                            group.unitsPerGroup = current - 1
+                        }
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    TextField("1", text: $unitsText)
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .englishNumericInput(text: $unitsText, allowsDecimal: false)
+                        .padding(10)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .onChange(of: unitsText) { newVal in
+                            if let parsed = Int(newVal), parsed >= 1 {
+                                group.unitsPerGroup = parsed
+                            }
+                        }
+
+                    Button {
+                        let current = Int(unitsText) ?? 1
+                        unitsText = "\(current + 1)"
+                        group.unitsPerGroup = current + 1
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 16, weight: .bold))
+                            .frame(width: 44, height: 44)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Barcode & SKU
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    HStack {
+                        Image(systemName: "barcode.viewfinder")
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
+                            .font(AdminType.body)
+                            .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+                    }
+                    .padding(12)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Group_SKU", alter: "رمز الصنف SKU (اختياري)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    TextField("SKU", text: $group.sku)
+                        .font(AdminType.body)
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var inspectorRetailCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $group.retailEnabled) {
+                Label(Language.get("Retail_Selling_Channel", alter: "متاح للبيع بالتجزئة (قطاعي)"), systemImage: "cart.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .tint(AdminSurface.primary)
+
+            if group.retailEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Retail_Selling_Price_QAR", alter: "سعر بيع التجزئة للوحدة (ر.ق)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    TextField("0.00", text: $group.retailPriceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                Toggle(isOn: $group.defaultForRetail) {
+                    Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية عند البيع بالتجزئة"))
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .tint(AdminSurface.primary)
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var inspectorWholesaleCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Toggle(isOn: $group.wholesaleEnabled) {
+                Label(Language.get("Wholesale_Selling_Channel", alter: "متاح للبيع بالجملة"), systemImage: "shippingbox.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .tint(Color(uiColor: .systemTeal))
+
+            if group.wholesaleEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("Wholesale_Selling_Price_QAR", alter: "سعر بيع الجملة للوحدة (ر.ق)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    TextField("0.00", text: $group.wholesalePriceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
+                        .padding(12)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                Toggle(isOn: $group.defaultForWholesale) {
+                    Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية عند البيع بالجملة"))
+                        .font(AdminType.subheadline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .tint(Color(uiColor: .systemTeal))
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private var inspectorStatusCard: some View {
+        Toggle(isOn: $group.active) {
+            Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع"))
+                .font(AdminType.subheadline)
+                .foregroundStyle(AdminSurface.primaryText)
+        }
+        .tint(Color(uiColor: .ppSuccess))
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
     private func validateAndSave() {
@@ -6024,6 +6361,7 @@ private struct PPLivePetIntakeJourney: View {
         case standardPrice
         case discountPercent
         case discountAmount
+        case wholesalePrice
         case groupCost
         case supplier
         case notes
@@ -6041,34 +6379,42 @@ private struct PPLivePetIntakeJourney: View {
             intakeBackground
 
             VStack(spacing: 0) {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        intakeHeader
-                            .accessibilitySortPriority(4)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            intakeHeader
+                                .accessibilitySortPriority(4)
 
-                        VStack(spacing: AdminSpacing.base) {
-                        journeyCompass
-                            .accessibilitySortPriority(3)
+                            VStack(spacing: AdminSpacing.base) {
+                            journeyCompass
+                                .accessibilitySortPriority(3)
 
-                        feedbackArea
+                            feedbackArea
 
-                        currentStageScene
-                            .id(viewModel.activeStage)
-                            .transition(
-                                accessibilityReduceMotion
-                                    ? .opacity
-                                    : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-                            )
-                            .allowsHitTesting(!viewModel.hasPendingLivePetRecovery)
-                            .opacity(viewModel.hasPendingLivePetRecovery ? 0.72 : 1)
-                            .accessibilitySortPriority(2)
+                            currentStageScene
+                                .id(viewModel.activeStage)
+                                .transition(
+                                    accessibilityReduceMotion
+                                        ? .opacity
+                                        : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+                                )
+                                .allowsHitTesting(!viewModel.hasPendingLivePetRecovery)
+                                .opacity(viewModel.hasPendingLivePetRecovery ? 0.72 : 1)
+                                .accessibilitySortPriority(2)
+                        }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.sm)
+                        .padding(.bottom, AdminSpacing.lg)
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, AdminSpacing.sm)
-                    .padding(.bottom, AdminSpacing.lg)
+                }
+                .scrollDismissesKeyboardCompat()
+                .onChange(of: focusedField) { field in
+                    guard let field = field else { return }
+                    withAnimation(.easeOut(duration: 0.28)) {
+                        proxy.scrollTo(field, anchor: .center)
+                    }
                 }
             }
-            .scrollDismissesKeyboardCompat()
             .id(viewModel.activeStage)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -6232,6 +6578,20 @@ private struct PPLivePetIntakeJourney: View {
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .sheet(isPresented: $viewModel.showQuantityGroupInspector) {
+            if let group = viewModel.selectedQuantityGroupForEditing {
+                PPQuantityGroupInspectorSheet(
+                    group: group,
+                    canManageWholesale: viewModel.canManageWholesale,
+                    onSave: { updated in
+                        viewModel.saveQuantityGroup(updated)
+                    },
+                    onDelete: viewModel.quantityGroups.count > 1 ? {
+                        viewModel.deleteQuantityGroup(id: group.id)
+                    } : nil
+                )
+            }
+        }
         .fullScreenCover(item: $previewMedia) { media in
             PPLivePetMediaPreview(media: media)
         }
@@ -6255,17 +6615,28 @@ private struct PPLivePetIntakeJourney: View {
             guard let message, !message.isEmpty else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
         }
-        .alert(tr("EditQuantity", "تعديل الكمية"), isPresented: $showQuantityAlert) {
-            TextField(tr("LivePetIntake_QuantityLabel", "عدد الحيوانات في المجموعة"), text: $quantityAlertText)
-                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
-            Button(tr("Save", "حفظ")) {
-                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+    }
+
+    private func promptQuantityEdit() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PPAlertHelper.showTextPrompt(
+            in: nil,
+            title: tr("EditQuantity", "تعديل الكمية"),
+            subtitle: tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"),
+            placeholder: tr("LivePetIntake_QuantityLabel", "عدد الحيوانات في المجموعة"),
+            initialText: "\(viewModel.quantity)",
+            confirmText: tr("Save", "حفظ"),
+            cancelText: tr("Cancel", "إلغاء"),
+            secureEntry: false,
+            keyboardType: .numberPad
+        ) { text in
+            guard let text else { return }
+            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(normalized) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                     viewModel.quantity = max(1, val)
                 }
             }
-            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -6655,6 +7026,7 @@ private struct PPLivePetIntakeJourney: View {
                     },
                     onSubmit: { focusedField = .description }
                 )
+                .id(FocusedField.name)
 
                 taxonomyControls
 
@@ -6673,6 +7045,7 @@ private struct PPLivePetIntakeJourney: View {
                         else if focusedField == .description { focusedField = nil }
                     }
                 )
+                .id(FocusedField.description)
             }
         }
     }
@@ -7657,16 +8030,13 @@ private struct PPLivePetIntakeJourney: View {
         binding: Binding<PPLivePetUnitDraft>,
         readiness: PPUnitReadiness
     ) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.lg) {
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+        VStack(alignment: .leading, spacing: 10) {
+            // 01 Identity & Gender
+            VStack(alignment: .leading, spacing: 8) {
                 passportSectionHeader(
                     sequence: 1,
                     symbol: "viewfinder.circle.fill",
-                    title: tr("LivePetIntake_PassportIdentityTitle", "إشارة الهوية"),
-                    subtitle: tr(
-                        "LivePetIntake_PassportIdentitySubtitle",
-                        "صورة تشغيلية وهوية فريدة تميّزان هذا الحيوان عن بقية الدفعة."
-                    )
+                    title: tr("LivePetIntake_PassportIdentityTitle", "إشارة الهوية")
                 )
 
                 identityCaptureLayout(unit: unit, binding: binding, readiness: readiness)
@@ -7675,73 +8045,39 @@ private struct PPLivePetIntakeJourney: View {
 
             passportSectionDivider
 
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            // 02 Commercial
+            VStack(alignment: .leading, spacing: 8) {
                 passportSectionHeader(
                     sequence: 2,
                     symbol: "point.3.filled.connected.trianglepath.dotted",
-                    title: tr("LivePetIntake_PassportCommercialTitle", "الإحداثيات التجارية"),
-                    subtitle: tr(
-                        "LivePetIntake_PassportCommercialSubtitle",
-                        "قيم البيع والاستلام تخص هذا الحيوان وحده."
-                    )
+                    title: tr("LivePetIntake_PassportCommercialTitle", "الإحداثيات التجارية")
                 )
                 moneyFields(unit: unit, binding: binding)
             }
 
             passportSectionDivider
 
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            // 03 Provenance & Arrival Context (Side-by-side date & supplier, notes below)
+            VStack(alignment: .leading, spacing: 8) {
                 passportSectionHeader(
                     sequence: 3,
                     symbol: "clock.arrow.circlepath",
-                    title: tr("LivePetIntake_PassportProvenanceTitle", "سياق الوصول"),
-                    subtitle: tr(
-                        "LivePetIntake_PassportProvenanceSubtitle",
-                        "متى وصل الحيوان ومن أين، مع ملاحظات الفريق الداخلية."
-                    )
+                    title: tr("LivePetIntake_PassportProvenanceTitle", "سياق الوصول")
                 )
 
-                receivedDateField(binding: binding)
-
-                intakeField(
-                    caption: tr("LivePetIntake_SupplierField", "المورد أو المصدر"),
-                    symbol: "shippingbox.fill",
-                    required: false,
-                    optionalNote: tr("LivePetIntake_Optional", "اختياري"),
-                    focused: focusedField == .unitSupplier(unit.id)
-                ) {
-                    TextField(
-                        "",
-                        text: binding.supplier,
-                        prompt: promptText(tr("LivePetIntake_SupplierPrompt", "اسم المورد أو المزرعة"))
-                    )
-                    .font(AdminType.body)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .focused($focusedField, equals: .unitSupplier(unit.id))
-                    .submitLabel(.next)
-                    .onSubmit { focusedField = .unitNotes(unit.id) }
-                    .accessibilityLabel(tr("LivePetIntake_SupplierField", "المورد أو المصدر"))
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 6) {
+                        receivedDateField(binding: binding)
+                        supplierField(unit: unit, binding: binding)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                        receivedDateField(binding: binding)
+                        supplierField(unit: unit, binding: binding)
+                    }
                 }
 
-                intakeField(
-                    caption: tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"),
-                    symbol: "text.alignleft",
-                    required: false,
-                    optionalNote: tr("LivePetIntake_Optional", "اختياري"),
-                    focused: focusedField == .unitNotes(unit.id)
-                ) {
-                    TextField(
-                        "",
-                        text: binding.notes,
-                        prompt: promptText(tr("LivePetIntake_NotesPrompt", "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
-                    )
-                    .font(AdminType.body)
-                    .foregroundStyle(AdminSurface.primaryText)
-                    .focused($focusedField, equals: .unitNotes(unit.id))
-                    .submitLabel(.done)
-                    .onSubmit { focusedField = nil }
-                    .accessibilityLabel(tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"))
-                }
+                notesField(unit: unit, binding: binding)
             }
 
             passportActions(index: index, unit: unit)
@@ -7764,6 +8100,50 @@ private struct PPLivePetIntakeJourney: View {
         )
     }
 
+    private func supplierField(unit: PPLivePetUnitDraft, binding: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: tr("LivePetIntake_SupplierField", "المورد أو المصدر"),
+            symbol: "shippingbox.fill",
+            required: false,
+            optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+            focused: focusedField == .unitSupplier(unit.id)
+        ) {
+            TextField(
+                "",
+                text: binding.supplier,
+                prompt: promptText(tr("LivePetIntake_SupplierPrompt", "اسم المورد أو المزرعة"))
+            )
+            .font(AdminType.body)
+            .foregroundStyle(AdminSurface.primaryText)
+            .focused($focusedField, equals: .unitSupplier(unit.id))
+            .submitLabel(.next)
+            .onSubmit { focusedField = .unitNotes(unit.id) }
+            .accessibilityLabel(tr("LivePetIntake_SupplierField", "المورد أو المصدر"))
+        }
+    }
+
+    private func notesField(unit: PPLivePetUnitDraft, binding: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"),
+            symbol: "text.alignleft",
+            required: false,
+            optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+            focused: focusedField == .unitNotes(unit.id)
+        ) {
+            TextField(
+                "",
+                text: binding.notes,
+                prompt: promptText(tr("LivePetIntake_NotesPrompt", "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
+            )
+            .font(AdminType.body)
+            .foregroundStyle(AdminSurface.primaryText)
+            .focused($focusedField, equals: .unitNotes(unit.id))
+            .submitLabel(.done)
+            .onSubmit { focusedField = nil }
+            .accessibilityLabel(tr("LivePetIntake_NotesField", "ملاحظات الاستلام الداخلية"))
+        }
+    }
+
     @ViewBuilder
     private func identityCaptureLayout(
         unit: PPLivePetUnitDraft,
@@ -7771,14 +8151,14 @@ private struct PPLivePetIntakeJourney: View {
         readiness: PPUnitReadiness
     ) -> some View {
         if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: AdminSpacing.base) {
+            VStack(alignment: .leading, spacing: 6) {
                 unitPhotoCard(unit: unit)
                 identityFieldsColumn(unit: unit, binding: binding, readiness: readiness)
             }
         } else {
-            HStack(alignment: .top, spacing: AdminSpacing.md) {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
                 unitPhotoCard(unit: unit)
-                    .frame(width: 124)
+                    .frame(width: 104)
                 identityFieldsColumn(unit: unit, binding: binding, readiness: readiness)
             }
         }
@@ -7790,7 +8170,7 @@ private struct PPLivePetIntakeJourney: View {
         binding: Binding<PPLivePetUnitDraft>,
         readiness: PPUnitReadiness
     ) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+        VStack(alignment: .leading, spacing: 6) {
             identityField(unit: unit, binding: binding, readiness: readiness)
 
             if viewModel.hasSubSubKinds {
@@ -7942,30 +8322,30 @@ private struct PPLivePetIntakeJourney: View {
                             .padding(AdminSpacing.xs)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                         } else {
-                            VStack(spacing: AdminSpacing.xs) {
+                            VStack(spacing: 3) {
                                 Image(systemName: canAttach ? "camera.aperture" : "lock.fill")
-                                    .font(.system(size: 25, weight: .semibold))
+                                    .font(.system(size: 20, weight: .semibold))
                                     .foregroundStyle(canAttach ? AdminSurface.primary : AdminSurface.secondaryText)
                                 Text(tr("LivePetIntake_UnitPhotoAdd", "أضف صورة"))
-                                    .font(AdminType.captionBold)
+                                    .font(AdminType.caption2Bold)
                                     .foregroundStyle(AdminSurface.primaryText)
                                 Text(tr("LivePetIntake_Optional", "اختياري"))
-                                    .font(AdminType.caption2)
+                                    .font(.system(size: 9))
                                     .foregroundStyle(AdminSurface.secondaryText)
                             }
                             .multilineTextAlignment(.center)
-                            .padding(AdminSpacing.sm)
+                            .padding(6)
                         }
                     }
-                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 178 : 138)
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 130 : 96)
                     .overlay(
-                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .strokeBorder(
                                 photo == nil ? AdminSurface.primary.opacity(0.30) : AdminSurface.hairline,
-                                style: StrokeStyle(lineWidth: 1, dash: photo == nil ? [5, 4] : [])
+                                style: StrokeStyle(lineWidth: 1, dash: photo == nil ? [4, 3] : [])
                             )
                     )
-                    .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
                 .disabled(!canAttach && photo == nil)
@@ -7981,46 +8361,27 @@ private struct PPLivePetIntakeJourney: View {
                         viewModel.removeLivePetUnitPhoto(unitID: unit.id)
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 11, weight: .heavy))
+                            .font(.system(size: 9, weight: .heavy))
                             .foregroundStyle(.white)
-                            .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
-                            .background(Color.black.opacity(0.58), in: Circle())
+                            .frame(width: 22, height: 22)
+                            .background(Color.black.opacity(0.65), in: Circle())
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding(2)
+                    .padding(3)
                     .accessibilityLabel(tr("LivePetIntake_UnitPhotoRemove", "إزالة صورة هذا الحيوان"))
                     .accessibilityHint(tr("LivePetIntake_UnitPhotoRemoveHint", "يزيل الصورة المحلية قبل حفظ الإدخال"))
                 }
             }
 
-            // TEMP HIDE: Second add photo button marked by user
-            #if false
-            Button {
-                presentUnitPhotoSource(for: unit.id)
-            } label: {
-                Label(
-                    photo == nil
-                        ? tr("LivePetIntake_UnitPhotoChoose", "اختيار صورة")
-                        : tr("LivePetIntake_UnitPhotoReplace", "استبدال الصورة"),
-                    systemImage: photo == nil ? "plus" : "arrow.triangle.2.circlepath"
-                )
-                .font(AdminType.captionBold)
-                .foregroundStyle(canAttach ? AdminSurface.primary : AdminSurface.secondaryText)
-                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
-                .background(AdminSurface.primary.opacity(canAttach ? 0.08 : 0.035), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-            }
-            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
-            .disabled(!canAttach)
-            #endif
-
             Label(
                 tr("LivePetIntake_UnitPhotoInternalNote", "ترتبط بسجل هذا الحيوان فقط"),
                 systemImage: "link.badge.plus"
             )
-            .font(AdminType.caption2)
+            .font(.system(size: 9))
             .foregroundStyle(AdminSurface.secondaryText)
-            .fixedSize(horizontal: false, vertical: true)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         }
         .accessibilityElement(children: .contain)
     }
@@ -8028,36 +8389,26 @@ private struct PPLivePetIntakeJourney: View {
     private func passportSectionHeader(
         sequence: Int,
         symbol: String,
-        title: String,
-        subtitle: String
+        title: String
     ) -> some View {
-        HStack(alignment: .top, spacing: AdminSpacing.sm) {
+        HStack(spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                    .fill(AdminSurface.primary.opacity(0.09))
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.10))
                 Image(systemName: symbol)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
             }
-            .frame(width: 38, height: 38)
-            .accessibilityHidden(true)
+            .frame(width: 22, height: 22)
 
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
-                    Text(String(format: "%02d", sequence))
-                        .font(.system(size: 10, weight: .heavy, design: .monospaced))
-                        .foregroundStyle(AdminSurface.primary)
-                        .environment(\.layoutDirection, .leftToRight)
-                    Text(title)
-                        .font(AdminType.calloutBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Text(subtitle)
-                    .font(AdminType.caption)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(String(format: "%02d", sequence))
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(AdminSurface.primary)
+                .environment(\.layoutDirection, .leftToRight)
+
+            Text(title)
+                .font(AdminType.captionBold)
+                .foregroundStyle(AdminSurface.primaryText)
 
             Spacer(minLength: 0)
         }
@@ -8067,8 +8418,9 @@ private struct PPLivePetIntakeJourney: View {
 
     private var passportSectionDivider: some View {
         Rectangle()
-            .fill(AdminSurface.hairline.opacity(0.72))
-            .frame(height: 0.75)
+            .fill(AdminSurface.hairline.opacity(0.50))
+            .frame(height: 0.5)
+            .padding(.vertical, 1)
             .accessibilityHidden(true)
     }
 
@@ -8237,43 +8589,41 @@ private struct PPLivePetIntakeJourney: View {
     /// biological record. Values map 1:1 onto the Infra `gender` enum; an
     /// untouched animal submits `UNSPECIFIED` rather than a guess.
     private func unitGenderSelector(unit: PPLivePetUnitDraft) -> some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
                 Image(systemName: "allergens.fill")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(AdminSurface.primary)
                 Text(tr("LivePetIntake_UnitGender", "جنس هذا الحيوان"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminSurface.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: AdminSpacing.xs)
                 if unit.gender == .unspecified {
                     Text(tr("LivePetIntake_GenderUnsetNote", "سيُحفظ كغير محدد"))
-                        .font(AdminType.caption2)
+                        .font(.system(size: 10))
                         .foregroundStyle(Color(uiColor: .ppTextTertiary))
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: AdminSpacing.xs) {
+                    VStack(spacing: 3) {
                         ForEach(PPLivePetUnitGender.allCases) { option in
                             genderOption(option, unit: unit, compact: false)
                         }
                     }
                 } else {
-                    HStack(spacing: AdminSpacing.xs) {
+                    HStack(spacing: 4) {
                         ForEach(PPLivePetUnitGender.allCases) { option in
                             genderOption(option, unit: unit, compact: true)
                         }
                     }
                 }
             }
-            .padding(AdminSpacing.xs)
-            .background(AdminSurface.primaryText.opacity(0.025), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .padding(3)
+            .background(AdminSurface.primaryText.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(AdminSurface.hairline.opacity(0.75), lineWidth: 0.75)
             )
         }
@@ -8294,49 +8644,49 @@ private struct PPLivePetIntakeJourney: View {
         } label: {
             Group {
                 if compact {
-                    VStack(spacing: 4) {
+                    HStack(spacing: 4) {
                         Image(systemName: option.symbolName)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 11, weight: .bold))
                         Text(option.localizedShortTitle)
                             .font(AdminType.caption2Bold)
                             .lineLimit(1)
-                            .minimumScaleFactor(0.72)
+                            .minimumScaleFactor(0.8)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .frame(maxWidth: .infinity, minHeight: 36)
                 } else {
                     HStack(spacing: AdminSpacing.sm) {
                         Image(systemName: option.symbolName)
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                         Text(option.localizedTitle)
                             .font(AdminType.calloutBold)
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                         if selected {
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                         }
                     }
                     .padding(.horizontal, AdminSpacing.md)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable, alignment: .leading)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
                 }
             }
             .foregroundStyle(selected ? tint : AdminSurface.primaryText)
             .background(
                 ZStack {
-                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
                         .fill(AdminSurface.surface)
                     if selected {
-                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                            .fill(tint.opacity(0.13))
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(tint.opacity(0.14))
                             .matchedGeometryEffect(id: unit.id, in: genderSelectionNamespace)
                     }
                 }
             )
             .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                    .strokeBorder(selected ? tint.opacity(0.48) : Color.clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(selected ? tint.opacity(0.50) : AdminSurface.hairline.opacity(0.4), lineWidth: selected ? 1.2 : 0.6)
             )
-            .contentShape(RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
         .animation(
@@ -8352,43 +8702,34 @@ private struct PPLivePetIntakeJourney: View {
     private func passportActions(index: Int, unit: PPLivePetUnitDraft) -> some View {
         let hasNext = index + 1 < viewModel.livePetUnits.count
 
-        return VStack(spacing: AdminSpacing.sm) {
+        return HStack(spacing: 8) {
+            removeUnitButton(unit.id)
+            cloneUnitButton(unit)
+
             if hasNext || viewModel.livePetUnits.count < 100 {
                 Button {
                     advanceFromUnit(at: index)
                 } label: {
-                    HStack(spacing: AdminSpacing.sm) {
+                    HStack(spacing: 6) {
                         Image(systemName: hasNext ? "arrow.forward.circle.fill" : "plus.circle.fill")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Text(hasNext
                             ? tr("LivePetIntake_NextAnimal", "الحيوان التالي")
                             : tr("LivePetIntake_AddAnimal", "إضافة حيوان آخر"))
-                            .font(AdminType.calloutBold)
+                            .font(AdminType.captionBold)
+                            .lineLimit(1)
                     }
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.comfortable)
-                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
                 }
                 .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
                 .accessibilityHint(hasNext
                     ? tr("LivePetIntake_NextAnimalHint", "يطوي هذا الجواز ويفتح الجواز التالي")
                     : tr("LivePetIntake_AddAnimalHint", "ينشئ جواز إدخال فارغاً جديداً"))
             }
-
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(spacing: AdminSpacing.xs) {
-                        cloneUnitButton(unit)
-                        removeUnitButton(unit.id)
-                    }
-                } else {
-                    HStack(spacing: AdminSpacing.sm) {
-                        cloneUnitButton(unit)
-                        removeUnitButton(unit.id)
-                    }
-                }
-            }
         }
+        .padding(.top, 2)
     }
 
     /// Collapses the current passport and opens the next one, creating it only
@@ -8410,15 +8751,21 @@ private struct PPLivePetIntakeJourney: View {
             viewModel.clonePreviousUnit(from: unit)
             setExpandedUnit(viewModel.livePetUnits.last?.id)
         } label: {
-            Label(tr("LivePetIntake_Clone", "نسخ كحيوان جديد"), systemImage: "plus.square.on.square")
-                .font(AdminType.captionBold)
-                .foregroundStyle(Color(uiColor: .ppSuccess))
-                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
-                .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.24), lineWidth: 0.75)
-                )
+            HStack(spacing: 4) {
+                Image(systemName: "plus.square.on.square")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(tr("LivePetIntake_Clone", "نسخ كحيوان جديد"))
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color(uiColor: .ppSuccess))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 38)
+            .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.24), lineWidth: 0.75)
+            )
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
         .disabled(viewModel.livePetUnits.count >= 100)
@@ -8431,21 +8778,27 @@ private struct PPLivePetIntakeJourney: View {
         return Button(role: .destructive) {
             showRemoveAnimalAlert(for: id)
         } label: {
-            Label(tr("LivePetIntake_Remove", "إزالة"), systemImage: "trash")
-                .font(AdminType.captionBold)
-                .foregroundStyle(isOnlyAnimal ? AdminSurface.secondaryText : Color(uiColor: .ppError))
-                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum)
-                .background(
-                    (isOnlyAnimal ? AdminSurface.hairline.opacity(0.25) : Color(uiColor: .ppError).opacity(0.10)),
-                    in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
-                        .strokeBorder(
-                            isOnlyAnimal ? AdminSurface.hairline : Color(uiColor: .ppError).opacity(0.24),
-                            lineWidth: 0.75
-                        )
-                )
+            HStack(spacing: 4) {
+                Image(systemName: "trash")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(tr("LivePetIntake_Remove", "إزالة"))
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isOnlyAnimal ? AdminSurface.secondaryText : Color(uiColor: .ppError))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 38)
+            .background(
+                (isOnlyAnimal ? AdminSurface.hairline.opacity(0.25) : Color(uiColor: .ppError).opacity(0.10)),
+                in: RoundedRectangle(cornerRadius: 11, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(
+                        isOnlyAnimal ? AdminSurface.hairline : Color(uiColor: .ppError).opacity(0.24),
+                        lineWidth: 0.75
+                    )
+            )
         }
         .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
         .disabled(isOnlyAnimal)
@@ -8483,10 +8836,10 @@ private struct PPLivePetIntakeJourney: View {
         }()
         let borderWidth: CGFloat = invalid ? 1.4 : (focused ? 1.6 : 1)
 
-        return VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: AdminSpacing.xs) {
                 Image(systemName: symbol)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(focused ? AdminSurface.primary : AdminSurface.secondaryText)
                 Text(caption)
                     .font(AdminType.caption2Bold)
@@ -8496,36 +8849,39 @@ private struct PPLivePetIntakeJourney: View {
                 if required {
                     Circle()
                         .fill(Color(uiColor: .ppError))
-                        .frame(width: 5, height: 5)
+                        .frame(width: 4, height: 4)
                         .accessibilityHidden(true)
                 } else if let optionalNote {
                     Text(optionalNote)
-                        .font(AdminType.caption2)
+                        .font(.system(size: 10))
                         .foregroundStyle(Color(uiColor: .ppTextTertiary))
                 }
                 Spacer(minLength: 0)
             }
 
-            HStack(spacing: AdminSpacing.sm) {
+            HStack(spacing: AdminSpacing.xs) {
                 control()
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    .contentShape(Rectangle())
 
                 if let trailingAffix {
                     Text(trailingAffix)
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminSurface.secondaryText)
-                        .padding(.horizontal, AdminSpacing.xs)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
                         .background(AdminSurface.primaryText.opacity(0.06), in: Capsule(style: .continuous))
                         .accessibilityHidden(true)
                 }
             }
-            .padding(.horizontal, AdminSpacing.md)
-            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: borderWidth)
             )
+            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: focused)
             .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: invalid)
 
@@ -8564,8 +8920,7 @@ private struct PPLivePetIntakeJourney: View {
                     ))
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        quantityAlertText = "\(viewModel.quantity)"
-                        showQuantityAlert = true
+                        promptQuantityEdit()
                     }
 
                 quantityButton(symbol: "plus", enabled: true) {
@@ -8789,6 +9144,11 @@ private struct PPLivePetIntakeJourney: View {
                     }
                 }
 
+                if viewModel.liveInventoryMode == .quantity {
+                    wholesaleCard
+                    sellingUnitsCard
+                }
+
                 if viewModel.isIndividualLivePet && !viewModel.isEditingLivePet {
                     exactUnitPriceSummary
                 }
@@ -8936,6 +9296,179 @@ private struct PPLivePetIntakeJourney: View {
         .accessibilityElement(children: .combine)
     }
 
+    private var wholesaleCard: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Toggle(isOn: $viewModel.wholesaleEnabled.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                HStack(spacing: AdminSpacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .systemTeal).opacity(viewModel.wholesaleEnabled ? 0.18 : 0.08))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal) : AdminSurface.secondaryText)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Wholesale_Selling_Title", "البيع بالجملة (Wholesale)"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(viewModel.wholesaleEnabled
+                            ? tr("Wholesale_Active_Hint", "مفعل ومتاح في نقطة البيع للموزعين والعملاء بالجملة")
+                            : tr("Wholesale_Inactive_Hint", "غير مفعل (قم بالتشغيل لتحديد سعر الجملة)"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .tint(Color(uiColor: .systemTeal))
+
+            if viewModel.wholesaleEnabled {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    fieldLabel(tr("Wholesale_Price_QAR", "سعر بيع الجملة للوحدة الافتراضية (ر.ق)"), required: true)
+
+                    TextField("0.00", text: $viewModel.wholesalePriceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
+                        .focused($focusedField, equals: .wholesalePrice)
+                        .padding(AdminSpacing.md)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                        .overlay(fieldFocusBorder(focusedField == .wholesalePrice))
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal).opacity(0.35) : AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+
+    private var sellingUnitsCard: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack {
+                Label(tr("Selling_Units_Deck_Title", "وحدات ومجموعات البيع"), systemImage: "square.stack.3d.up.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Spacer()
+                Button {
+                    let nextSort = viewModel.quantityGroups.count
+                    let newGroup = PPQuantityGroupDraft(
+                        id: "pack_\(nextSort + 1)_\(UUID().uuidString.prefix(4))",
+                        nameAr: "",
+                        nameEn: "",
+                        unitsPerGroup: 6,
+                        barcode: "",
+                        sku: "",
+                        sortOrder: nextSort,
+                        retailEnabled: true,
+                        wholesaleEnabled: viewModel.wholesaleEnabled,
+                        retailPriceText: "",
+                        wholesalePriceText: "",
+                        defaultForRetail: false,
+                        defaultForWholesale: false,
+                        active: true
+                    )
+                    viewModel.selectedQuantityGroupForEditing = newGroup
+                    viewModel.showQuantityGroupInspector = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text(tr("Add_Selling_Unit", "إضافة وحدة"))
+                    }
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(tr("Selling_Units_Deck_Subtitle", "تحديد أحجام البيع (حبة، شدة، كرتون) مع خصم المخزون التلقائي بالوحدات الأساسية."))
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            VStack(spacing: 8) {
+                ForEach(viewModel.quantityGroups) { group in
+                    sellingUnitRow(for: group)
+                }
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private func sellingUnitRow(for group: PPQuantityGroupDraft) -> some View {
+        Button {
+            viewModel.selectedQuantityGroupForEditing = group
+            viewModel.showQuantityGroupInspector = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(group.defaultForRetail ? AdminSurface.primary.opacity(0.15) : AdminSurface.control)
+                        .frame(width: 38, height: 38)
+                    Image(systemName: group.unitsPerGroup == 1 ? "cube.fill" : "shippingbox.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(group.defaultForRetail ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(group.localizedName)
+                            .font(AdminType.bodyBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        if group.defaultForRetail {
+                            Text(tr("Default_Retail_Badge", "افتراضي للتجزئة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                        if group.defaultForWholesale && group.wholesaleEnabled {
+                            Text(tr("Default_Wholesale_Badge", "افتراضي للجملة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(group.unitsCountText)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    if group.retailEnabled {
+                        Text(String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    if group.wholesaleEnabled {
+                        Text(String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                    }
+                }
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+            }
+            .padding(AdminSpacing.md)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: Release
 
     private var releaseScene: some View {
@@ -8995,18 +9528,19 @@ private struct PPLivePetIntakeJourney: View {
     @ViewBuilder
     private var snapshotImage: some View {
         Group {
-            if let firstURL = viewModel.existingImageURLs.first, let url = URL(string: firstURL) {
+            if let localImage = viewModel.firstLivePetPhoto {
+                Image(uiImage: localImage)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 88, height: 88)
+                    .clipped()
+            } else if let firstURL = viewModel.existingImageURLs.first(where: { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) ?? viewModel.firstLivePetUnitPhotoURL,
+                      let url = URL(string: firstURL) {
                 AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 88, height: 88)) {
                     mediaPlaceholder(symbol: "pawprint.fill")
                 }
                 .frame(width: 88, height: 88)
                 .clipped()
-            } else if let first = viewModel.pickedImages.first {
-                Image(uiImage: first)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 88, height: 88)
-                    .clipped()
             } else {
                 mediaPlaceholder(symbol: "pawprint.fill")
             }
@@ -9124,7 +9658,7 @@ private struct PPLivePetIntakeJourney: View {
 
             readinessRow(
                 title: tr("LivePetIntake_ReviewIdentity", "الاسم والنوع"),
-                value: viewModel.selectedMainKind?.kindName ?? tr("LivePetIntake_NotComplete", "غير مكتمل"),
+                value: viewModel.selectedCategoryDisplayTitle ?? tr("LivePetIntake_NotComplete", "غير مكتمل"),
                 complete: validationMessage(for: .identity) == nil,
                 stage: .identity
             )
@@ -9808,6 +10342,7 @@ private struct PPLivePetChoice: Identifiable {
     let title: String
     let subtitle: String?
     let symbol: String
+    var sectionHeader: String? = nil
 }
 
 private struct PPCatalogMultiChoiceSheet: View {
@@ -9898,7 +10433,13 @@ private struct PPCatalogMultiChoiceSheet: View {
                                 }
                                 .padding(.top, AdminSpacing.xxl)
                             } else {
-                                ForEach(filteredChoices) { choice in
+                                ForEach(Array(filteredChoices.enumerated()), id: \.element.id) { index, choice in
+                                    if let header = choice.sectionHeader, !header.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        let previousHeader = index > 0 ? filteredChoices[index - 1].sectionHeader : nil
+                                        if index == 0 || header != previousHeader {
+                                            sectionSeparator(title: header, isFirst: index == 0)
+                                        }
+                                    }
                                     choiceRow(choice)
                                 }
                             }
@@ -10084,6 +10625,36 @@ private struct PPCatalogMultiChoiceSheet: View {
             .background(AdminSurface.surface.ignoresSafeArea(edges: .bottom))
         }
     }
+
+    private func sectionSeparator(title: String, isFirst: Bool) -> some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 1)
+
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(title)
+                    .font(AdminType.caption1Bold)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, AdminSpacing.xs)
+            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+            )
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 1)
+        }
+        .padding(.top, isFirst ? AdminSpacing.xs : AdminSpacing.md)
+        .padding(.bottom, AdminSpacing.xxs)
+    }
 }
 
 private struct PPLivePetChoiceSheet: View {
@@ -10167,7 +10738,13 @@ private struct PPLivePetChoiceSheet: View {
                                 }
                                 .padding(.top, AdminSpacing.xxl)
                             } else {
-                                ForEach(filteredChoices) { choice in
+                                ForEach(Array(filteredChoices.enumerated()), id: \.element.id) { index, choice in
+                                    if let header = choice.sectionHeader, !header.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                        let previousHeader = index > 0 ? filteredChoices[index - 1].sectionHeader : nil
+                                        if index == 0 || header != previousHeader {
+                                            sectionSeparator(title: header, isFirst: index == 0)
+                                        }
+                                    }
                                     choiceRow(choice)
                                 }
                             }
@@ -10243,6 +10820,36 @@ private struct PPLivePetChoiceSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func sectionSeparator(title: String, isFirst: Bool) -> some View {
+        HStack(spacing: AdminSpacing.sm) {
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 1)
+
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: "square.grid.2x2.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(title)
+                    .font(AdminType.caption1Bold)
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, AdminSpacing.xs)
+            .background(AdminSurface.primary.opacity(0.08), in: Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.75)
+            )
+
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 1)
+        }
+        .padding(.top, isFirst ? AdminSpacing.xs : AdminSpacing.md)
+        .padding(.bottom, AdminSpacing.xxs)
     }
 }
 
@@ -10878,7 +11485,7 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
                             .foregroundStyle(AdminSurface.primary)
 
                         Text(livePreview)
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .font(AdminType.caption2Bold)
                             .foregroundStyle(AdminSurface.primary)
                     }
                     .padding(.horizontal, 8)
@@ -11017,49 +11624,7 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
     private var unitSelectorDock: some View {
         HStack(spacing: 3) {
             ForEach(availableUnits, id: \.self) { unit in
-                let isSelected = weightUnit.lowercased() == unit.lowercased()
-                Button {
-                    guard weightUnit.lowercased() != unit.lowercased() else { return }
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
-                        weightUnit = unit
-                    }
-                } label: {
-                    Text(unit)
-                        .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
-                        .foregroundStyle(
-                            isSelected
-                                ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
-                                : AdminSurface.secondaryText
-                        )
-                        .frame(minWidth: 32, height: 34)
-                        .background(
-                            ZStack {
-                                if isSelected {
-                                    Capsule()
-                                        .fill(
-                                            colorScheme == .dark
-                                                ? AdminSurface.primary.opacity(0.35)
-                                                : Color.white
-                                        )
-                                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08), radius: 3, x: 0, y: 1)
-                                }
-                            }
-                        )
-                        .overlay(
-                            Capsule()
-                                .strokeBorder(
-                                    isSelected
-                                        ? AdminSurface.primary.opacity(0.50)
-                                        : Color.clear,
-                                    lineWidth: 0.75
-                                )
-                        )
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
-                .accessibilityLabel(localizedUnitAccessibility(unit))
-                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+                unitButton(unit: unit)
             }
         }
         .padding(4)
@@ -11067,6 +11632,56 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
             Capsule()
                 .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
         )
+    }
+
+    private func unitButton(unit: String) -> some View {
+        let isSelected = weightUnit.lowercased() == unit.lowercased()
+        return Button {
+            guard weightUnit.lowercased() != unit.lowercased() else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
+                weightUnit = unit
+            }
+        } label: {
+            Text(unit)
+                .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundStyle(unitButtonForeground(isSelected: isSelected))
+                .frame(minWidth: 32)
+                .frame(height: 34)
+                .background(unitButtonBackground(isSelected: isSelected))
+                .overlay(unitButtonOverlay(isSelected: isSelected))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+        .accessibilityLabel(localizedUnitAccessibility(unit))
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+
+    @ViewBuilder
+    private func unitButtonBackground(isSelected: Bool) -> some View {
+        if isSelected {
+            let fillColor = (colorScheme == .dark)
+                ? AdminSurface.primary.opacity(0.35)
+                : Color.white
+            let shadowColor = Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08)
+            Capsule()
+                .fill(fillColor)
+                .shadow(color: shadowColor, radius: 3, x: 0, y: 1)
+        }
+    }
+
+    private func unitButtonOverlay(isSelected: Bool) -> some View {
+        let borderColor = isSelected ? AdminSurface.primary.opacity(0.50) : Color.clear
+        return Capsule()
+            .strokeBorder(borderColor, lineWidth: 0.75)
+    }
+
+    private func unitButtonForeground(isSelected: Bool) -> Color {
+        if isSelected {
+            return colorScheme == .dark ? Color.white : AdminSurface.primary
+        } else {
+            return AdminSurface.secondaryText
+        }
     }
 
     private func localizedUnitAccessibility(_ unit: String) -> String {
@@ -11283,6 +11898,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
         case costPrice
         case discountPercent
         case discountAmount
+        case wholesalePrice
     }
 
     var body: some View {
@@ -11290,30 +11906,38 @@ private struct PPAccessoryFoodIntakeJourney: View {
             catalogBackground
 
             VStack(spacing: 0) {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        catalogHeader
-                            .accessibilitySortPriority(4)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            catalogHeader
+                                .accessibilitySortPriority(4)
 
-                        VStack(spacing: AdminSpacing.base) {
-                            catalogCompass
-                                .accessibilitySortPriority(3)
-                            catalogFeedback
-                            catalogStageScene
-                                .id(viewModel.activeStage)
-                                .transition(
-                                    accessibilityReduceMotion
-                                        ? .opacity
-                                        : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-                                )
-                                .accessibilitySortPriority(2)
+                            VStack(spacing: AdminSpacing.base) {
+                                catalogCompass
+                                    .accessibilitySortPriority(3)
+                                catalogFeedback
+                                catalogStageScene
+                                    .id(viewModel.activeStage)
+                                    .transition(
+                                        accessibilityReduceMotion
+                                            ? .opacity
+                                            : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+                                    )
+                                    .accessibilitySortPriority(2)
+                            }
+                            .padding(.horizontal, AdminSpacing.screenMargin)
+                            .padding(.top, AdminSpacing.sm)
+                            .padding(.bottom, AdminSpacing.lg)
                         }
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, AdminSpacing.sm)
-                        .padding(.bottom, AdminSpacing.lg)
+                    }
+                    .scrollDismissesKeyboardCompat()
+                    .onChange(of: focusedField) { field in
+                        guard let field = field else { return }
+                        withAnimation(.easeOut(duration: 0.28)) {
+                            proxy.scrollTo(field, anchor: .center)
+                        }
                     }
                 }
-                .scrollDismissesKeyboardCompat()
                 .id(viewModel.activeStage)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -11377,6 +12001,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     } else if let firstID = viewModel.selectedMainKinds.first {
                         viewModel.selectedMainKind = viewModel.availableMainKinds.first(where: { $0.id == firstID })
                     }
+                    viewModel.fetchFreshSubKindsForSelectedCategories()
                 }
             )
             .onAppear {
@@ -11392,11 +12017,15 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 allOptionSubtitle: tr("CatalogIntake_AllSubcategoriesSub", "شامل لكل السلالات والتفريعات بدون استثناء"),
                 allOptionSymbol: "tag.fill",
                 choices: viewModel.availableSubKinds.map { subkind in
-                    PPLivePetChoice(
+                    let parentCategoryName = viewModel.availableMainKinds.first(where: { $0.id == subkind.mainKindID })?.kindName
+                        ?? viewModel.availableMainKinds.first(where: { ($0.subKindsArray as? [SubKindModel])?.contains(where: { $0.id == subkind.id }) == true })?.kindName
+                    let showSection = (viewModel.selectedMainKinds.count > 1 || viewModel.isAllCategoriesSelected)
+                    return PPLivePetChoice(
                         id: String(subkind.id),
                         title: subkind.subKindName,
-                        subtitle: nil,
-                        symbol: "tag.fill"
+                        subtitle: showSection ? parentCategoryName : nil,
+                        symbol: "tag.fill",
+                        sectionHeader: showSection ? parentCategoryName : nil
                     )
                 },
                 isAllSelected: $viewModel.isAllSubCategoriesSelected,
@@ -11407,11 +12036,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     }
                 ),
                 onRefresh: {
-                    if let main = viewModel.selectedMainKind {
-                        viewModel.fetchFreshSubKinds(for: main)
-                    } else {
-                        viewModel.loadMainKinds(forceServer: true)
-                    }
+                    viewModel.fetchFreshSubKindsForSelectedCategories()
                 },
                 onConfirm: {
                     if viewModel.isAllSubCategoriesSelected {
@@ -11422,9 +12047,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 }
             )
             .onAppear {
-                if let main = viewModel.selectedMainKind {
-                    viewModel.fetchFreshSubKinds(for: main)
-                }
+                viewModel.fetchFreshSubKindsForSelectedCategories()
             }
         }
         .sheet(isPresented: $viewModel.showStorePicker) {
@@ -11439,6 +12062,20 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .sheet(isPresented: $viewModel.showQuantityGroupInspector) {
+            if let group = viewModel.selectedQuantityGroupForEditing {
+                PPQuantityGroupInspectorSheet(
+                    group: group,
+                    canManageWholesale: viewModel.canManageWholesale,
+                    onSave: { updated in
+                        viewModel.saveQuantityGroup(updated)
+                    },
+                    onDelete: viewModel.quantityGroups.count > 1 ? {
+                        viewModel.deleteQuantityGroup(id: group.id)
+                    } : nil
+                )
+            }
         }
         .fullScreenCover(item: $previewMedia) { media in
             PPLivePetMediaPreview(media: media)
@@ -11458,17 +12095,28 @@ private struct PPAccessoryFoodIntakeJourney: View {
             guard let message, !message.isEmpty else { return }
             UIAccessibility.post(notification: .announcement, argument: message)
         }
-        .alert(tr("EditQuantity", "تعديل الكمية"), isPresented: $showQuantityAlert) {
-            TextField(tr("CatalogIntake_Quantity", "الكمية المتاحة"), text: $quantityAlertText)
-                .englishNumericInput(text: $quantityAlertText, allowsDecimal: false)
-            Button(tr("Save", "حفظ")) {
-                if let val = Int(quantityAlertText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)) {
+    }
+
+    private func promptQuantityEdit() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PPAlertHelper.showTextPrompt(
+            in: nil,
+            title: tr("EditQuantity", "تعديل الكمية"),
+            subtitle: tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"),
+            placeholder: tr("CatalogIntake_Quantity", "الكمية المتاحة"),
+            initialText: "\(viewModel.quantity)",
+            confirmText: tr("Save", "حفظ"),
+            cancelText: tr("Cancel", "إلغاء"),
+            secureEntry: false,
+            keyboardType: .numberPad
+        ) { text in
+            guard let text else { return }
+            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let val = Int(normalized) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                     viewModel.quantity = max(0, val)
                 }
             }
-            Button(tr("Cancel", "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(tr("EnterQuantityPrompt", "أدخل كمية المخزون المتاحة لهذا الصنف"))
         }
     }
 
@@ -11718,6 +12366,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     },
                     onSubmit: { focusedField = .description }
                 )
+                .id(FocusedField.name)
 
                 PPBilingualTextEditorField(
                     title: tr("CatalogIntake_DescriptionLabel", "الوصف"),
@@ -11734,6 +12383,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         else if focusedField == .description { focusedField = nil }
                     }
                 )
+                .id(FocusedField.description)
 
                 HStack(spacing: AdminSpacing.md) {
                     VStack(alignment: .leading, spacing: AdminSpacing.sm) {
@@ -12135,6 +12785,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .padding(AdminSpacing.md)
                 .background(AdminSurface.primary.opacity(0.065), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
 
+                wholesaleCard
+
+                sellingUnitsCard
+
                 Divider().background(AdminSurface.hairline)
 
                 VStack(alignment: .leading, spacing: AdminSpacing.sm) {
@@ -12151,11 +12805,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
                                 format: tr("CatalogIntake_QuantityAccessibility", "الكمية %ld"),
                                 viewModel.quantity
                             ))
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                quantityAlertText = "\(viewModel.quantity)"
-                                showQuantityAlert = true
-                            }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        promptQuantityEdit()
+                    }
                         quantityButton(symbol: "plus", enabled: true) {
                             viewModel.quantity += 1
                         }
@@ -12220,6 +12873,179 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .accessibilityLabel(symbol == "plus"
             ? tr("CatalogIntake_IncreaseQuantity", "زيادة الكمية")
             : tr("CatalogIntake_DecreaseQuantity", "تقليل الكمية"))
+    }
+
+    private var wholesaleCard: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Toggle(isOn: $viewModel.wholesaleEnabled.animation(.spring(response: 0.35, dampingFraction: 0.8))) {
+                HStack(spacing: AdminSpacing.sm) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(uiColor: .systemTeal).opacity(viewModel.wholesaleEnabled ? 0.18 : 0.08))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal) : AdminSurface.secondaryText)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("Wholesale_Selling_Title", "البيع بالجملة (Wholesale)"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(viewModel.wholesaleEnabled
+                            ? tr("Wholesale_Active_Hint", "مفعل ومتاح في نقطة البيع للموزعين والعملاء بالجملة")
+                            : tr("Wholesale_Inactive_Hint", "غير مفعل (قم بالتشغيل لتحديد سعر الجملة)"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+            }
+            .tint(Color(uiColor: .systemTeal))
+
+            if viewModel.wholesaleEnabled {
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    fieldLabel(tr("Wholesale_Price_QAR", "سعر بيع الجملة للوحدة الافتراضية (ر.ق)"), required: true)
+
+                    TextField("0.00", text: $viewModel.wholesalePriceText)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
+                        .focused($focusedField, equals: .wholesalePrice)
+                        .padding(AdminSpacing.md)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+                        .overlay(fieldFocusBorder(focusedField == .wholesalePrice))
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(viewModel.wholesaleEnabled ? Color(uiColor: .systemTeal).opacity(0.35) : AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+
+    private var sellingUnitsCard: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            HStack {
+                Label(tr("Selling_Units_Deck_Title", "وحدات ومجموعات البيع"), systemImage: "square.stack.3d.up.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Spacer()
+                Button {
+                    let nextSort = viewModel.quantityGroups.count
+                    let newGroup = PPQuantityGroupDraft(
+                        id: "pack_\(nextSort + 1)_\(UUID().uuidString.prefix(4))",
+                        nameAr: "",
+                        nameEn: "",
+                        unitsPerGroup: 6,
+                        barcode: "",
+                        sku: "",
+                        sortOrder: nextSort,
+                        retailEnabled: true,
+                        wholesaleEnabled: viewModel.wholesaleEnabled,
+                        retailPriceText: "",
+                        wholesalePriceText: "",
+                        defaultForRetail: false,
+                        defaultForWholesale: false,
+                        active: true
+                    )
+                    viewModel.selectedQuantityGroupForEditing = newGroup
+                    viewModel.showQuantityGroupInspector = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text(tr("Add_Selling_Unit", "إضافة وحدة"))
+                    }
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(tr("Selling_Units_Deck_Subtitle", "تحديد أحجام البيع (حبة، شدة، كرتون) مع خصم المخزون التلقائي بالوحدات الأساسية."))
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminSurface.secondaryText)
+
+            VStack(spacing: 8) {
+                ForEach(viewModel.quantityGroups) { group in
+                    sellingUnitRow(for: group)
+                }
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.75)
+        )
+    }
+
+    private func sellingUnitRow(for group: PPQuantityGroupDraft) -> some View {
+        Button {
+            viewModel.selectedQuantityGroupForEditing = group
+            viewModel.showQuantityGroupInspector = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(group.defaultForRetail ? AdminSurface.primary.opacity(0.15) : AdminSurface.control)
+                        .frame(width: 38, height: 38)
+                    Image(systemName: group.unitsPerGroup == 1 ? "cube.fill" : "shippingbox.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(group.defaultForRetail ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(group.localizedName)
+                            .font(AdminType.bodyBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        if group.defaultForRetail {
+                            Text(tr("Default_Retail_Badge", "افتراضي للتجزئة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                        if group.defaultForWholesale && group.wholesaleEnabled {
+                            Text(tr("Default_Wholesale_Badge", "افتراضي للجملة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                        }
+                    }
+                    Text(group.unitsCountText)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    if group.retailEnabled {
+                        Text(String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    if group.wholesaleEnabled {
+                        Text(String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                    }
+                }
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.6))
+            }
+            .padding(AdminSpacing.md)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var releaseScene: some View {
@@ -12308,13 +13134,34 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     reviewRow(
                         symbol: "square.grid.2x2.fill",
                         title: tr("CatalogIntake_ReviewCategory", "الفئة"),
-                        value: viewModel.selectedMainKind?.kindName ?? tr("CatalogIntake_NotSet", "غير محدد")
+                        value: viewModel.selectedCategoryDisplayTitle ?? tr("CatalogIntake_NotSet", "غير محدد")
                     )
+                    if let subCat = viewModel.selectedSubCategoryDisplayTitle, !subCat.isEmpty {
+                        reviewRow(
+                            symbol: "folder.fill",
+                            title: tr("CatalogIntake_ReviewSubCategory", "التصنيف الفرعي"),
+                            value: subCat
+                        )
+                    }
                     reviewRow(
-                        symbol: "tag.fill",
-                        title: tr("CatalogIntake_ReviewPrice", "السعر النهائي"),
+                        symbol: "circle.on.square.intersection.dotted",
+                        title: tr("CatalogIntake_ReviewRetailPrice", "سعر القطاعي"),
                         value: String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")),
                         forceLTR: true
+                    )
+                    let wholesalePriceValue: Double = {
+                        if let defaultW = viewModel.quantityGroups.first(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) ?? viewModel.quantityGroups.first(where: { $0.wholesaleEnabled }), defaultW.wholesalePrice > 0 {
+                            return defaultW.wholesalePrice
+                        }
+                        return Double(viewModel.wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0.0
+                    }()
+                    reviewRow(
+                        symbol: "shippingbox.fill",
+                        title: tr("CatalogIntake_ReviewWholesalePrice", "سعر الجملة"),
+                        value: viewModel.wholesaleEnabled
+                            ? (wholesalePriceValue > 0 ? String(format: "%.2f %@", wholesalePriceValue, tr("QAR", "ر.ق")) : tr("CatalogIntake_NotSet", "غير محدد"))
+                            : tr("CatalogIntake_Disabled", "غير مفعل"),
+                        forceLTR: viewModel.wholesaleEnabled && wholesalePriceValue > 0
                     )
                     reviewRow(
                         symbol: "number.square.fill",

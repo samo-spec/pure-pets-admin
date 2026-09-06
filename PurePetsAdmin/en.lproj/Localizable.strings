@@ -5137,6 +5137,9 @@
 "CatalogIntake_NotSet" = "Not set";
 "CatalogIntake_ReviewCategory" = "Category";
 "CatalogIntake_ReviewPrice" = "Final price";
+"CatalogIntake_ReviewRetailPrice" = "Retail price";
+"CatalogIntake_ReviewWholesalePrice" = "Wholesale price";
+"CatalogIntake_Disabled" = "Disabled";
 "CatalogIntake_ReviewQuantity" = "Quantity";
 "CatalogIntake_ReviewExpiry" = "Expiry";
 "CatalogIntake_Previous" = "Previous step";
@@ -6020,3 +6023,62 @@
 "LivePetIntake_SubSubKindItemLabel" = "Variety Item (SubSubKindItem)";
 "LivePetIntake_SelectSubSubKindItem" = "Select Item...";
 "LivePetIntake_None" = "None";
+
+/* POS Stacked Cart Deck */
+"POS_Cart_OneMoreItem" = "+1 more item";
+"POS_Cart_TwoMoreItems" = "+2 more items";
+"POS_Cart_FewMoreItems_Format" = "+%d more items";
+"POS_Cart_ManyMoreItems_Format" = "+%d more items";
+"POS_Cart_OneMoreItem_EN" = "+1 more item";
+"POS_Cart_MoreItems_Format_EN" = "+%d more items";
+"POS_Cart_Collapse" = "Collapse Cart";
+"POS_Cart_Collapse_Hint" = "Double tap to return to the stacked card view";
+"POS_Cart_Expand_Hint" = "Double tap to display the full cart list";
+"POS_BringCardToFront_Hint" = "Double tap to bring this card to the front of the cart";
+"POS_RemoveItem" = "Remove from cart";
+"POS_QuantityValueFormat" = "Quantity %d, tap to edit";
+"POS_TapToEditQuantity_Hint" = "Tap to edit quantity using keyboard";
+"POS_EditQuantityTitle" = "Edit Quantity";
+"POS_AvailableStockFormat" = "Available in branch: %d";
+"POS_ConfirmQuantity" = "Confirm Quantity";
+"POS_WillRemoveNotice" = "Setting quantity to 0 will remove item from cart";
+"POS_ExceedsStockFormat" = "Requested quantity exceeds available stock (%d)";
+"POS_LineTotalPreviewFormat" = "Total: %@ (%@ each)";
+"POS_RemoveItemFromCart" = "Remove item from cart";
+"POS_SalesChannel_Title" = "Sell Type";
+"POS_SalesChannel_Hint" = "Tap to choose sell type between retail and wholesale";
+"POS_Channel_Retail" = "Retail";
+"POS_Channel_Wholesale" = "Wholesale";
+
+/* Flagship Item Master Detail Dossier */
+"InspectSpecimen" = "Inspect Item Image";
+"LivePetSpecimen" = "Live Animal";
+"AccessorySpecimen" = "Pet Accessory";
+"VisibleInCatalog" = "Visible";
+"TapToCopy" = "Copy Code";
+"SellingPriceTitle" = "Selling Price";
+"ProfitMarginFormat" = "Margin: +%.2f QAR (%.0f%%)";
+"OriginalCondition" = "Original & Guaranteed";
+"MoreActions" = "More Actions";
+"CopiedToClipboard" = "Copied to clipboard";
+
+/* Sovereign Stock Transfer Logistics Conduit */
+"Stock_Transfer_LiveSync" = "Live Custody Sync • Motion Audit";
+"Stock_Transfer_Custody_Bridge" = "Inter-Branch Custody Bridge";
+"Stock_Transfer_Incoming_Delta" = "+%ld incoming units";
+"Stock_Transfer_Outgoing_Delta" = "-%ld outgoing units";
+"Stock_Transfer_Remaining_Label" = "Remaining in Branch";
+"Stock_Transfer_Ratio_Format" = "Transferring %.0f%% of branch inventory (Remaining: %ld)";
+"Stock_Transfer_Reason_Chips_Title" = "Quick Audit Reasons (Tap to apply)";
+"Stock_Transfer_Reason_Sales" = "Sales Reinforcement";
+"Stock_Transfer_Reason_Rebalance" = "Branch Stock Rebalancing";
+"Stock_Transfer_Reason_VIP" = "VIP Customer Order";
+"Stock_Transfer_Reason_Liquidation" = "Branch Liquidation";
+"Stock_Transfer_Reason_Inspection" = "Quality Inspection";
+"Stock_Transfer_Select_Branch" = "Select Destination Branch";
+"Stock_Transfer_Search_Branch" = "Search branch name or code...";
+"Stock_Transfer_Warning_Full_Title" = "Warning: Full Branch Stock Depletion";
+"Stock_Transfer_Warning_Full_Msg" = "You are about to transfer 100% of this item's stock (%ld units) to %@. The current branch balance will become zero. Proceed?";
+"Stock_Transfer_Proceed" = "Confirm & Dispatch";
+"Stock_Transfer_Summary_Format" = "Transfer %ld units to %@";
+"Stock_Transfer_Change_Branch" = "Change Branch";

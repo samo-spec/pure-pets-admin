@@ -456,6 +456,8 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
     public var statusDotColor: Color?
     public var isModal: Bool
     public var onBack: () -> Void
+    public var onSubtitleTap: (() -> Void)?
+    public var isSubtitleActionActive: Bool
     public let trailingContent: TrailingContent
 
     public init(
@@ -464,6 +466,8 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
         onBack: @escaping () -> Void,
+        onSubtitleTap: (() -> Void)? = nil,
+        isSubtitleActionActive: Bool = false,
         @ViewBuilder trailingContent: () -> TrailingContent
     ) {
         self.title = title
@@ -471,6 +475,8 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         self.statusDotColor = statusDotColor
         self.isModal = isModal
         self.onBack = onBack
+        self.onSubtitleTap = onSubtitleTap
+        self.isSubtitleActionActive = isSubtitleActionActive
         self.trailingContent = trailingContent()
     }
 
@@ -491,7 +497,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
                         .minimumScaleFactor(0.85)
 
                     if let sub = subtitle, !sub.isEmpty {
-                        HStack(spacing: 6) {
+                        let subtitleRow = HStack(spacing: 5) {
                             if let dotColor = statusDotColor {
                                 Circle()
                                     .fill(dotColor)
@@ -502,6 +508,23 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
                                 .foregroundStyle(statusDotColor ?? AdminSurface.secondaryText)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.85)
+
+                            if onSubtitleTap != nil {
+                                Image(systemName: isSubtitleActionActive ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(statusDotColor ?? AdminSurface.secondaryText)
+                            }
+                        }
+
+                        if let onSubtitleTap {
+                            Button(action: onSubtitleTap) {
+                                subtitleRow
+                                    .padding(.vertical, 2)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            subtitleRow
                         }
                     }
                 }
@@ -527,7 +550,9 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
         subtitle: String? = nil,
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
-        onBack: @escaping () -> Void
+        onBack: @escaping () -> Void,
+        onSubtitleTap: (() -> Void)? = nil,
+        isSubtitleActionActive: Bool = false
     ) {
         self.init(
             title: title,
@@ -535,6 +560,8 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
             statusDotColor: statusDotColor,
             isModal: isModal,
             onBack: onBack,
+            onSubtitleTap: onSubtitleTap,
+            isSubtitleActionActive: isSubtitleActionActive,
             trailingContent: { EmptyView() }
         )
     }

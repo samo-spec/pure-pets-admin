@@ -369,6 +369,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.hasResolvedSellingPrice) {
         dict[@"finalPrice"] = [self calculateFinalPrice];
     }
+    if (self.wholesalePrice != nil && [self.wholesalePrice doubleValue] > 0) {
+        dict[@"wholesalePrice"] = self.wholesalePrice;
+    }
     if (self.hasCommerceConfig) {
         dict[@"hasCommerceConfig"] = @(self.hasCommerceConfig);
     }
@@ -553,6 +556,94 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
                 if (url.length > 0) [urls addObject:url];
             }
             _imageURLsArray = [urls copy];
+        }
+        if (_imageURLsArray.count == 0) {
+            NSMutableArray<NSString *> *fallbackURLs = [NSMutableArray array];
+
+            // 1. Array of images (strings or dicts)
+            if ([dict[@"images"] isKindOfClass:NSArray.class]) {
+                for (id item in dict[@"images"]) {
+                    if ([item isKindOfClass:NSString.class]) {
+                        NSString *trimmed = [(NSString *)item stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                        if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                            [fallbackURLs addObject:trimmed];
+                        }
+                    } else if ([item isKindOfClass:NSDictionary.class]) {
+                        NSString *url = [item[@"url"] isKindOfClass:NSString.class] ? item[@"url"] : ([item[@"image"] isKindOfClass:NSString.class] ? item[@"image"] : nil);
+                        if (url.length > 0 && ![fallbackURLs containsObject:url]) {
+                            [fallbackURLs addObject:url];
+                        }
+                    }
+                }
+            }
+
+            // 2. Single image keys
+            NSArray<NSString *> *singleKeys = @[@"imageUrl", @"imageURL", @"image", @"photoUrl", @"photoURL", @"coverImage", @"thumbnail", @"thumbnailUrl"];
+            for (NSString *key in singleKeys) {
+                id val = dict[key];
+                if ([val isKindOfClass:NSString.class]) {
+                    NSString *trimmed = [(NSString *)val stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                    if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                        [fallbackURLs addObject:trimmed];
+                    }
+                }
+            }
+
+            // 3. Array keys: photos, mediaURLs, media
+            NSArray<NSString *> *arrayKeys = @[@"photos", @"mediaURLs", @"media"];
+            for (NSString *key in arrayKeys) {
+                if ([dict[key] isKindOfClass:NSArray.class]) {
+                    for (id item in dict[key]) {
+                        if ([item isKindOfClass:NSString.class]) {
+                            NSString *trimmed = [(NSString *)item stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                            if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                                [fallbackURLs addObject:trimmed];
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4. Live pet units array (extract unit photos/media)
+            if ([dict[@"units"] isKindOfClass:NSArray.class]) {
+                for (id unitObj in dict[@"units"]) {
+                    if (![unitObj isKindOfClass:NSDictionary.class]) continue;
+                    NSDictionary *uDict = (NSDictionary *)unitObj;
+                    if ([uDict[@"mediaURLs"] isKindOfClass:NSArray.class]) {
+                        for (id uItem in uDict[@"mediaURLs"]) {
+                            if ([uItem isKindOfClass:NSString.class]) {
+                                NSString *trimmed = [(NSString *)uItem stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                                if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                                    [fallbackURLs addObject:trimmed];
+                                }
+                            }
+                        }
+                    }
+                    if ([uDict[@"imageURLsArray"] isKindOfClass:NSArray.class]) {
+                        for (id uItem in uDict[@"imageURLsArray"]) {
+                            if ([uItem isKindOfClass:NSString.class]) {
+                                NSString *trimmed = [(NSString *)uItem stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                                if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                                    [fallbackURLs addObject:trimmed];
+                                }
+                            }
+                        }
+                    }
+                    for (NSString *uKey in @[@"photoUrl", @"photoURL", @"imageUrl", @"imageURL", @"image"]) {
+                        id uVal = uDict[uKey];
+                        if ([uVal isKindOfClass:NSString.class]) {
+                            NSString *trimmed = [(NSString *)uVal stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                            if (trimmed.length > 0 && ![fallbackURLs containsObject:trimmed]) {
+                                [fallbackURLs addObject:trimmed];
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (fallbackURLs.count > 0) {
+                _imageURLsArray = [fallbackURLs copy];
+            }
         }
         if ((_imageMeta == nil || _imageMeta.count == 0) && imageItemsPayload.count > 0) {
             NSMutableArray<NSDictionary *> *meta = [NSMutableArray arrayWithCapacity:imageItemsPayload.count];
@@ -898,10 +989,18 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 }
 
 + (nullable NSURL *)firstImageURLForAccessory:(PetAccessory *)accessory {
+    if (accessory == nil) return nil;
     if (accessory.imageURLsArray.count > 0) {
-        NSString *firstImageURL = accessory.imageURLsArray.firstObject;
-        if (firstImageURL.length > 0) {
-            return [NSURL URLWithString:firstImageURL];
+        for (id candidate in accessory.imageURLsArray) {
+            if ([candidate isKindOfClass:NSString.class]) {
+                NSString *trimmed = [(NSString *)candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (trimmed.length > 0) {
+                    NSURL *url = [NSURL URLWithString:trimmed];
+                    if (url != nil) {
+                        return url;
+                    }
+                }
+            }
         }
     }
     return nil;

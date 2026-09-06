@@ -10,8 +10,15 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface UITextField (PPEnglishNumberKeyboard)
+FOUNDATION_EXPORT NSString * const PPForcedKeyboardLanguageEnglish;
+FOUNDATION_EXPORT NSString * const PPForcedKeyboardLanguageArabic;
 
+@interface UITextField (PPEnglishNumberKeyboard)
+@property (nonatomic, copy, nullable) NSString *pp_forcedKeyboardLanguage;
+@end
+
+@interface UITextView (PPKeyboardLanguage)
+@property (nonatomic, copy, nullable) NSString *pp_forcedKeyboardLanguage;
 @end
 
 NS_ASSUME_NONNULL_END

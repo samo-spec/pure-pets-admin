@@ -5214,6 +5214,9 @@
 "CatalogIntake_NotSet" = "غير محدد";
 "CatalogIntake_ReviewCategory" = "الفئة";
 "CatalogIntake_ReviewPrice" = "السعر النهائي";
+"CatalogIntake_ReviewRetailPrice" = "سعر القطاعي";
+"CatalogIntake_ReviewWholesalePrice" = "سعر الجملة";
+"CatalogIntake_Disabled" = "غير مفعل";
 "CatalogIntake_ReviewQuantity" = "الكمية";
 "CatalogIntake_ReviewExpiry" = "انتهاء الصلاحية";
 "CatalogIntake_Previous" = "الخطوة السابقة";
@@ -6081,3 +6084,62 @@
 "LivePetIntake_SubSubKindItemLabel" = "عنصر التفريع (SubSubKindItem)";
 "LivePetIntake_SelectSubSubKindItem" = "اختر تصنيف العنصر...";
 "LivePetIntake_None" = "بدون تفريع";
+
+/* POS Stacked Cart Deck */
+"POS_Cart_OneMoreItem" = "+1 عنصر آخر";
+"POS_Cart_TwoMoreItems" = "+2 عنصران آخران";
+"POS_Cart_FewMoreItems_Format" = "+%d عناصر أخرى";
+"POS_Cart_ManyMoreItems_Format" = "+%d عنصرًا آخر";
+"POS_Cart_OneMoreItem_EN" = "+1 more item";
+"POS_Cart_MoreItems_Format_EN" = "+%d more items";
+"POS_Cart_Collapse" = "طي عناصر السلة";
+"POS_Cart_Collapse_Hint" = "اضغط مرتين للعودة لعرض السلة المكدس";
+"POS_Cart_Expand_Hint" = "اضغط مرتين لإظهار قائمة عناصر السلة بالكامل";
+"POS_BringCardToFront_Hint" = "اضغط مرتين لتقديم هذه البطاقة إلى واجهة السلة";
+"POS_RemoveItem" = "حذف من السلة";
+"POS_QuantityValueFormat" = "الكمية %d، اضغط للتعديل";
+"POS_TapToEditQuantity_Hint" = "اضغط لتعديل الكمية بواسطة لوحة المفاتيح";
+"POS_EditQuantityTitle" = "تعديل الكمية";
+"POS_AvailableStockFormat" = "المتوفر في الفرع: %d";
+"POS_ConfirmQuantity" = "تأكيد الكمية";
+"POS_WillRemoveNotice" = "تحديد الكمية إلى 0 سيؤدي لإزالة الصنف من السلة";
+"POS_ExceedsStockFormat" = "الكمية المطلوبة تتجاوز المخزون المتوفر (%d)";
+"POS_LineTotalPreviewFormat" = "المجموع: %@ (%@ للقطعة)";
+"POS_RemoveItemFromCart" = "حذف الصنف من السلة";
+"POS_SalesChannel_Title" = "نوع البيع";
+"POS_SalesChannel_Hint" = "انقر لاختيار نوع البيع بين قطاعي وجملة";
+"POS_Channel_Retail" = "قطاعي";
+"POS_Channel_Wholesale" = "جملة";
+
+/* Flagship Item Master Detail Dossier */
+"InspectSpecimen" = "معاينة صورة الصنف";
+"LivePetSpecimen" = "حيوان حي";
+"AccessorySpecimen" = "مستلزم حيوانات";
+"VisibleInCatalog" = "معروض";
+"TapToCopy" = "نسخ الكود";
+"SellingPriceTitle" = "سعر البيع";
+"ProfitMarginFormat" = "هامش: +%.2f ر.ق (%.0f%%)";
+"OriginalCondition" = "أصلي ومضمون";
+"MoreActions" = "إجراءات إضافية";
+"CopiedToClipboard" = "تم النسخ إلى الحافظة";
+
+/* Sovereign Stock Transfer Logistics Conduit */
+"Stock_Transfer_LiveSync" = "مزامنة العهدة الفورية • توثيق الحركة";
+"Stock_Transfer_Custody_Bridge" = "مسار تحويل العهدة بين الفروع";
+"Stock_Transfer_Incoming_Delta" = "+%ld واردة للفرع";
+"Stock_Transfer_Outgoing_Delta" = "-%ld صادرة من الفرع";
+"Stock_Transfer_Remaining_Label" = "الرصيد المتبقي بالفرع";
+"Stock_Transfer_Ratio_Format" = "ترحيل %.0f%% من إجمالي مخزون الفرع (المتبقي: %ld)";
+"Stock_Transfer_Reason_Chips_Title" = "أسباب الترحيل السريعة (اختر للتعبئة)";
+"Stock_Transfer_Reason_Sales" = "طلب تعزيز مبيعات";
+"Stock_Transfer_Reason_Rebalance" = "إعادة توازن مخزون الفروع";
+"Stock_Transfer_Reason_VIP" = "طلب عميل خاص";
+"Stock_Transfer_Reason_Liquidation" = "تصفية رصيد الفرع";
+"Stock_Transfer_Reason_Inspection" = "معاينة وفحص جودة";
+"Stock_Transfer_Select_Branch" = "اختر فرع الاستلام (المحول إليه)";
+"Stock_Transfer_Search_Branch" = "ابحث عن اسم أو كود الفرع...";
+"Stock_Transfer_Warning_Full_Title" = "تنبيه: تصفية كامل مخزون الفرع";
+"Stock_Transfer_Warning_Full_Msg" = "أنت على وشك ترحيل كامل رصيد هذا الصنف (%ld قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟";
+"Stock_Transfer_Proceed" = "تأكيد ونقل الرصيد";
+"Stock_Transfer_Summary_Format" = "ترحيل %ld قطعة إلى %@";
+"Stock_Transfer_Change_Branch" = "تغيير الفرع";

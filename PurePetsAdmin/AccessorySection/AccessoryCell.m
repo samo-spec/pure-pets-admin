@@ -237,13 +237,19 @@
     _finalPriceLabel.text = [PetAccessory formatCurrency:accessory.finalPrice];
     
     BOOL hasDiscount = (accessory.discountPercent.floatValue > 0.0 || accessory.discountAmount.floatValue > 0.0);
-    if (hasDiscount && accessory.price) {
+    if (accessory.wholesalePrice != nil && [accessory.wholesalePrice doubleValue] > 0) {
+        _originalPriceLabel.text = [NSString stringWithFormat:@"جملة: %@", [PetAccessory formatCurrency:accessory.wholesalePrice]];
+        _originalPriceLabel.textColor = [UIColor systemTealColor];
+        _originalPriceLabel.attributedText = nil;
+        _originalPriceLabel.hidden = NO;
+    } else if (hasDiscount && accessory.price) {
         NSString *originalText = [PetAccessory formatCurrency:accessory.price];
         NSMutableAttributedString *strikeText = [[NSMutableAttributedString alloc] initWithString:originalText];
         [strikeText addAttribute:NSStrikethroughStyleAttributeName
                            value:@(NSUnderlineStyleSingle)
                            range:NSMakeRange(0, strikeText.length)];
         _originalPriceLabel.attributedText = strikeText;
+        _originalPriceLabel.textColor = [UIColor secondaryLabelColor];
         _originalPriceLabel.hidden = NO;
     } else {
         _originalPriceLabel.attributedText = nil;
