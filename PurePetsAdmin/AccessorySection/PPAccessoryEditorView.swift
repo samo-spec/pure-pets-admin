@@ -145,7 +145,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
     @Published var name: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var nameEn: String = "" { didSet { updateUnsavedChanges() } }
     @Published var desc: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var descEn: String = "" { didSet { updateUnsavedChanges() } }
     
     // Species & Breed
     @Published var selectedMainKind: MainKindsModel? = nil {
@@ -160,8 +162,22 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             updateUnsavedChanges()
         }
     }
-    @Published var selectedSubKind: SubKindModel? = nil { didSet { updateUnsavedChanges() } }
+    @Published var selectedSubKind: SubKindModel? = nil {
+        didSet {
+            if oldValue?.id != selectedSubKind?.id {
+                fetchSubSubTaxonomy(for: selectedSubKind)
+            }
+            updateUnsavedChanges()
+        }
+    }
     @Published var dynamicSubKinds: [SubKindModel] = []
+    @Published var availableSubSubKinds: [AdminSubSubKindItem] = []
+    @Published var subSubKindItemsBySubSubID: [Int: [AdminSubKindItemDetail]] = [:]
+    @Published var isLoadingSubSubTaxonomy: Bool = false
+
+    var hasSubSubKinds: Bool {
+        (selectedSubKind?.have_subSub == 1) || !availableSubSubKinds.isEmpty
+    }
 
     // Multi-category & Multi-subcategory Support (Accessories & Food)
     @Published var selectedMainKinds: Set<Int> = [] {
@@ -347,7 +363,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
 
         name = acc.name ?? ""
+        nameEn = acc.nameEn ?? ""
         desc = acc.desc ?? ""
+        descEn = acc.descEn ?? ""
         sku = acc.sku ?? ""
         barcode = acc.barcode ?? ""
         
@@ -604,6 +622,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 if let docs = snapshot?.documents, !docs.isEmpty {
                     for doc in docs {
                         let sub = SubKindModel(snapshot: doc)
+                        sub.documentID = doc.documentID
                         items.append(sub)
                     }
                 }
@@ -617,6 +636,96 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     mainKind.subKindsArray = NSMutableArray(array: items)
                     if let sel = self.selectedSubKind {
                         self.selectedSubKind = items.first(where: { $0.id == sel.id })
+                    }
+                }
+            }
+        }
+    }
+
+    func fetchSubSubTaxonomy(for subKind: SubKindModel?) {
+        guard let subKind = subKind else {
+            self.availableSubSubKinds = []
+            self.subSubKindItemsBySubSubID = [:]
+            return
+        }
+
+        // Fast-path: check if subKind in-memory model already has subSubKindArray
+        if let arr = subKind.subSubKindArray as? [subSubKindModel], !arr.isEmpty {
+            self.availableSubSubKinds = arr.map { m in
+                AdminSubSubKindItem(
+                    id: "\(m.id)",
+                    numericID: m.id,
+                    subKindID: m.subKindID,
+                    nameAr: m.nameAr ?? "",
+                    nameEn: m.nameEn ?? "",
+                    imageUrl: ""
+                )
+            }
+            for m in arr {
+                if let items = m.subKindItemsArray as? [subKindItemsModel], !items.isEmpty {
+                    self.subSubKindItemsBySubSubID[m.id] = items.map { it in
+                        AdminSubKindItemDetail(
+                            id: "\(it.id)",
+                            numericID: it.id,
+                            subSubKindID: it.subSubKindID,
+                            itemNameAr: it.itemNameAr ?? "",
+                            itemNameEn: it.itemNameEn ?? "",
+                            male: it.male ?? "",
+                            female: it.female ?? "",
+                            imageUrl: ""
+                        )
+                    }
+                }
+            }
+        }
+
+        let mainKind = selectedMainKind ?? availableMainKinds.first(where: { $0.id == subKind.MainKindID })
+        guard let mainKind = mainKind else { return }
+        let mainDocID = mainKind.documentID.isEmpty ? "\(mainKind.id)" : mainKind.documentID
+        guard !mainDocID.isEmpty else { return }
+
+        let db = Firestore.firestore()
+        let subKindDocID = (subKind.documentID != nil && !subKind.documentID!.isEmpty) ? subKind.documentID! : "\(subKind.id)"
+
+        isLoadingSubSubTaxonomy = true
+
+        let loadSubSubsForSubRef: (DocumentReference) -> Void = { [weak self] subDocRef in
+            subDocRef.collection("SubSubKinds").order(by: "ID", descending: false).getDocuments { snapshot, error in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.isLoadingSubSubTaxonomy = false
+                    guard let docs = snapshot?.documents, !docs.isEmpty else { return }
+                    let subSubs = docs.compactMap { AdminSubSubKindItem.fromSnapshot($0) }
+                    if !subSubs.isEmpty {
+                        self.availableSubSubKinds = subSubs
+                        for subSub in subSubs {
+                            let subSubDocID = subSub.id.isEmpty ? "\(subSub.numericID)" : subSub.id
+                            subDocRef.collection("SubSubKinds").document(subSubDocID).collection("Items").order(by: "ID", descending: false).getDocuments { itemSnap, _ in
+                                DispatchQueue.main.async {
+                                    let items = itemSnap?.documents.compactMap { AdminSubKindItemDetail.fromSnapshot($0) } ?? []
+                                    self.subSubKindItemsBySubSubID[subSub.numericID] = items
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mainRef = db.collection("MainKindsCollection").document(mainDocID)
+        let directSubRef = mainRef.collection("SubKinds").document(subKindDocID)
+
+        directSubRef.getDocument { [weak self] snap, _ in
+            if let snap = snap, snap.exists {
+                loadSubSubsForSubRef(directSubRef)
+            } else {
+                mainRef.collection("SubKinds").whereField("ID", isEqualTo: subKind.id).getDocuments { subSnap, _ in
+                    if let doc = subSnap?.documents.first {
+                        loadSubSubsForSubRef(doc.reference)
+                    } else {
+                        DispatchQueue.main.async {
+                            self?.isLoadingSubSubTaxonomy = false
+                        }
                     }
                 }
             }
@@ -708,7 +817,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         livePetUnits.append(PPLivePetUnitDraft(
             gender: livePetUnits.last?.gender ?? .unspecified,
             sellingPriceText: priceText,
-            supplier: liveSupplier
+            supplier: liveSupplier,
+            subSubKindID: livePetUnits.last?.subSubKindID,
+            subSubKindNameAr: livePetUnits.last?.subSubKindNameAr,
+            subSubKindNameEn: livePetUnits.last?.subSubKindNameEn,
+            subSubKindItemID: livePetUnits.last?.subSubKindItemID,
+            subSubKindItemNameAr: livePetUnits.last?.subSubKindItemNameAr,
+            subSubKindItemNameEn: livePetUnits.last?.subSubKindItemNameEn
         ))
         quantity = livePetUnits.count
     }
@@ -722,6 +837,28 @@ final class PPAccessoryEditorViewModel: ObservableObject {
               livePetUnits[index].gender != gender else { return }
         UISelectionFeedbackGenerator().selectionChanged()
         livePetUnits[index].gender = gender
+    }
+
+    func setLivePetUnitSubSubKind(_ subSub: AdminSubSubKindItem?, unitID: String) {
+        guard !isEditingLivePet,
+              let index = livePetUnits.firstIndex(where: { $0.id == unitID }) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        livePetUnits[index].subSubKindID = subSub?.numericID
+        livePetUnits[index].subSubKindNameAr = subSub?.nameAr
+        livePetUnits[index].subSubKindNameEn = subSub?.nameEn
+        // Reset subSubKindItem when subSubKind changes
+        livePetUnits[index].subSubKindItemID = nil
+        livePetUnits[index].subSubKindItemNameAr = nil
+        livePetUnits[index].subSubKindItemNameEn = nil
+    }
+
+    func setLivePetUnitSubSubKindItem(_ item: AdminSubKindItemDetail?, unitID: String) {
+        guard !isEditingLivePet,
+              let index = livePetUnits.firstIndex(where: { $0.id == unitID }) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        livePetUnits[index].subSubKindItemID = item?.numericID
+        livePetUnits[index].subSubKindItemNameAr = item?.itemNameAr
+        livePetUnits[index].subSubKindItemNameEn = item?.itemNameEn
     }
 
     /// Ring/tag keys that appear more than once in the current draft set.
@@ -770,7 +907,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             purchaseCostText: unit.purchaseCostText,
             sellingPriceText: unit.sellingPriceText.isEmpty ? priceText : unit.sellingPriceText,
             supplier: unit.supplier,
-            notes: unit.notes
+            notes: unit.notes,
+            subSubKindID: unit.subSubKindID,
+            subSubKindNameAr: unit.subSubKindNameAr,
+            subSubKindNameEn: unit.subSubKindNameEn,
+            subSubKindItemID: unit.subSubKindItemID,
+            subSubKindItemNameAr: unit.subSubKindItemNameAr,
+            subSubKindItemNameEn: unit.subSubKindItemNameEn
         )
         livePetUnits.append(cloned)
         quantity = livePetUnits.count
@@ -1381,6 +1524,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
     func validate() -> (isValid: Bool, message: String?) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmedName.isEmpty || basePrice <= 0 {
             return (false, Language.get("Name and price are required.", alter: "يرجى إدخال اسم وسعر المنتج بدقة."))
         }
@@ -1411,8 +1555,15 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if trimmedName.utf16.count > 90 {
                 return (false, Language.get("LivePetIntake_ValidationNameLength", alter: "يجب ألا يتجاوز الاسم 90 حرفاً."))
             }
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
+                return (false, Language.get("LivePetIntake_ValidationNameLengthEn", alter: "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً."))
+            }
             if desc.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 4_000 {
                 return (false, Language.get("LivePetIntake_ValidationDescriptionLength", alter: "يجب ألا يتجاوز الوصف 4000 حرف."))
+            }
+            let trimmedDescEn = descEn.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedDescEn.isEmpty && trimmedDescEn.utf16.count > 4_000 {
+                return (false, Language.get("LivePetIntake_ValidationDescriptionLengthEn", alter: "يجب ألا يتجاوز الوصف بالإنجليزية 4000 حرف."))
             }
             if liveInventoryMode == .quantity {
                 if liveSupplier.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 100 {
@@ -1513,7 +1664,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
 
         let accessory = editingAccessory.map { PetAccessory.deepCopy(from: $0) } ?? PetAccessory()
         accessory.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        accessory.nameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.desc = desc.trimmingCharacters(in: .whitespacesAndNewlines)
+        accessory.descEn = descEn.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.sku = sku.trimmingCharacters(in: .whitespacesAndNewlines)
         accessory.barcode = barcode.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedCost = costPriceText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1813,7 +1966,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         guard let original = editingAccessory else { return }
         original.accessoryID = saved.accessoryID
         original.name = saved.name
+        original.nameEn = saved.nameEn
         original.desc = saved.desc
+        original.descEn = saved.descEn
         original.sku = saved.sku
         original.barcode = saved.barcode
         original.costPrice = saved.costPrice
@@ -1846,7 +2001,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private func commitConfirmedLivePetForm(retainedURLs: [String]) {
         guard let original = editingAccessory else { return }
         original.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        original.nameEn = nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
         original.desc = desc.trimmingCharacters(in: .whitespacesAndNewlines)
+        original.descEn = descEn.trimmingCharacters(in: .whitespacesAndNewlines)
         original.price = NSNumber(value: basePrice)
         original.discountPercent = liveInventoryMode == .quantity && discountPercent > 0
             ? NSNumber(value: discountPercent)
@@ -1933,7 +2090,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let actorUID = Auth.auth().currentUser?.uid ?? ""
         var catalogValues: [String: Any] = [
             "name": accessory.name ?? "",
+            "nameEn": accessory.nameEn ?? "",
+            "name_en": accessory.nameEn ?? "",
             "desc": accessory.desc ?? "",
+            "descEn": accessory.descEn ?? "",
+            "desc_en": accessory.descEn ?? "",
             "ownerID": accessory.ownerID,
             "storeID": accessory.storeID ?? "",
             "storeName": accessory.storeName ?? "",
@@ -1957,7 +2118,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         let unitPayloads: [[String: Any]] = livePetUnits.map { unit in
             let sellingPrice = Double(unit.sellingPriceText.replacingOccurrences(of: ",", with: ".")) ?? basePrice
             let purchaseCost = Double(unit.purchaseCostText.replacingOccurrences(of: ",", with: "."))
-            return [
+            var payload: [String: Any] = [
                 "draftUnitId": unit.id,
                 "ringTag": unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines),
                 "gender": unit.gender.rawValue,
@@ -1968,6 +2129,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "notes": unit.notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 "mediaURLs": unitMediaURLsByID[unit.id] ?? [],
             ]
+            if let subSubID = unit.subSubKindID { payload["subSubKindID"] = subSubID }
+            if let subSubAr = unit.subSubKindNameAr { payload["subSubKindNameAr"] = subSubAr }
+            if let subSubEn = unit.subSubKindNameEn { payload["subSubKindNameEn"] = subSubEn }
+            if let itemID = unit.subSubKindItemID { payload["subSubKindItemID"] = itemID }
+            if let itemAr = unit.subSubKindItemNameAr { payload["subSubKindItemNameAr"] = itemAr }
+            if let itemEn = unit.subSubKindItemNameEn { payload["subSubKindItemNameEn"] = itemEn }
+            return payload
         }
 
         let action: String
@@ -1981,7 +2149,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             mutationCommandID = liveCreateCommandID
             mutationPayload = [
                 "name": accessory.name ?? "",
+                "nameEn": accessory.nameEn ?? "",
+                "name_en": accessory.nameEn ?? "",
                 "desc": accessory.desc ?? "",
+                "descEn": accessory.descEn ?? "",
+                "desc_en": accessory.descEn ?? "",
                 "ownerID": accessory.ownerID,
                 "storeID": accessory.storeID ?? "",
                 "price": basePrice,
@@ -2368,6 +2540,528 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 }
 
+// MARK: - Bilingual Language & Reusable Input Components
+
+enum PPBilingualLanguage: String, CaseIterable, Identifiable {
+    case arabic = "ar"
+    case english = "en"
+
+    var id: String { rawValue }
+
+    var code: String {
+        switch self {
+        case .arabic: return "AR"
+        case .english: return "EN"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .arabic: return Language.get("Bilingual_ArabicShort", alter: "عربي")
+        case .english: return Language.get("Bilingual_EnglishShort", alter: "EN")
+        }
+    }
+
+    var fullTitle: String {
+        switch self {
+        case .arabic: return Language.get("Bilingual_ArabicFull", alter: "العربية")
+        case .english: return Language.get("Bilingual_EnglishFull", alter: "الإنجليزية")
+        }
+    }
+
+    var layoutDirection: LayoutDirection {
+        switch self {
+        case .arabic: return .rightToLeft
+        case .english: return .leftToRight
+        }
+    }
+
+    var textAlignment: TextAlignment {
+        switch self {
+        case .arabic: return .trailing
+        case .english: return .leading
+        }
+    }
+}
+
+// MARK: - Bilingual Segmented Switcher Capsule
+
+struct PPBilingualSegmentedCapsule: View {
+    @Binding var selectedLanguage: PPBilingualLanguage
+    let hasArabicText: Bool
+    let hasEnglishText: Bool
+
+    var body: some View {
+        HStack(spacing: 2) {
+            segmentButton(for: .arabic, hasText: hasArabicText)
+            segmentButton(for: .english, hasText: hasEnglishText)
+        }
+        .padding(2.5)
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(Color(uiColor: .systemGray6).opacity(0.65))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+        )
+    }
+
+    @ViewBuilder
+    private func segmentButton(for lang: PPBilingualLanguage, hasText: Bool) -> some View {
+        let isSelected = (selectedLanguage == lang)
+        Button {
+            if selectedLanguage != lang {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                    selectedLanguage = lang
+                }
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                // Status dot indicator
+                if hasText {
+                    Circle()
+                        .fill(Color(red: 16/255, green: 185/255, blue: 129/255))
+                        .frame(width: 5, height: 5)
+                } else {
+                    Circle()
+                        .strokeBorder(Color(red: 245/255, green: 158/255, blue: 11/255), lineWidth: 1.2)
+                        .frame(width: 5, height: 5)
+                }
+
+                Text(lang.shortTitle)
+                    .font(isSelected ? AdminType.caption1Bold : AdminType.caption1)
+                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                Group {
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                            .fill(AdminSurface.surface)
+                            .shadow(color: Color.black.opacity(0.12), radius: 2.5, x: 0, y: 1)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8.5, style: .continuous)
+                                    .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 0.75)
+                            )
+                    }
+                }
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Bilingual Single-Line Input Field
+
+struct PPBilingualInputField: View {
+    let title: String
+    let isRequired: Bool
+    @Binding var arabicText: String
+    @Binding var englishText: String
+    let arabicPlaceholder: String
+    let englishPlaceholder: String
+    @Binding var selectedLanguage: PPBilingualLanguage
+    let isFocused: Bool
+    var onFocusChange: ((Bool) -> Void)? = nil
+    var onSubmit: (() -> Void)? = nil
+
+    @FocusState private var isArabicFocused: Bool
+    @FocusState private var isEnglishFocused: Bool
+
+    private var hasArabicText: Bool {
+        !arabicText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasEnglishText: Bool {
+        !englishText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isFieldFocused: Bool {
+        isArabicFocused || isEnglishFocused
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            // Label Header Row with Integrated Switcher
+            HStack(alignment: .center, spacing: AdminSpacing.sm) {
+                HStack(spacing: 3) {
+                    Text(title)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    if isRequired {
+                        Text("*")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color.red)
+                    }
+                }
+
+                Spacer()
+
+                PPBilingualSegmentedCapsule(
+                    selectedLanguage: $selectedLanguage,
+                    hasArabicText: hasArabicText,
+                    hasEnglishText: hasEnglishText
+                )
+            }
+
+            // Single-Footprint Input Box (Smooth AR / EN state flip)
+            ZStack(alignment: selectedLanguage == .arabic ? .trailing : .leading) {
+                TextField(arabicPlaceholder, text: $arabicText)
+                    .font(AdminType.body)
+                    .focused($isArabicFocused)
+                    .environment(\.layoutDirection, .rightToLeft)
+                    .multilineTextAlignment(.trailing)
+                    .textContentType(.name)
+                    .submitLabel(.next)
+                    .onSubmit { onSubmit?() }
+                    .opacity(selectedLanguage == .arabic ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .arabic)
+
+                TextField(englishPlaceholder, text: $englishText)
+                    .font(AdminType.body)
+                    .focused($isEnglishFocused)
+                    .environment(\.layoutDirection, .leftToRight)
+                    .multilineTextAlignment(.leading)
+                    .textContentType(.name)
+                    .submitLabel(.next)
+                    .onSubmit { onSubmit?() }
+                    .opacity(selectedLanguage == .english ? 1 : 0)
+                    .allowsHitTesting(selectedLanguage == .english)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .frame(minHeight: AdminTouchTarget.expanded)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder((isFocused || isFieldFocused) ? AdminSurface.primary : AdminSurface.hairline.opacity(0.7), lineWidth: (isFocused || isFieldFocused) ? 1.5 : 0.75)
+            )
+            .onChange(of: isArabicFocused) { _ in
+                onFocusChange?(isFieldFocused)
+            }
+            .onChange(of: isEnglishFocused) { _ in
+                onFocusChange?(isFieldFocused)
+            }
+            .onChange(of: isFocused) { focused in
+                if focused {
+                    if selectedLanguage == .arabic {
+                        isArabicFocused = true
+                    } else {
+                        isEnglishFocused = true
+                    }
+                } else {
+                    isArabicFocused = false
+                    isEnglishFocused = false
+                }
+            }
+            .onChange(of: selectedLanguage) { newLang in
+                if isFieldFocused {
+                    if newLang == .arabic {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    } else {
+                        isEnglishFocused = true
+                        isArabicFocused = false
+                    }
+                }
+            }
+
+            // Status & Quick Action Strip
+            bilingualStatusStrip
+        }
+    }
+
+    @ViewBuilder
+    private var bilingualStatusStrip: some View {
+        HStack(spacing: 6) {
+            if hasArabicText && hasEnglishText {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Text(Language.get("Bilingual_BothComplete", alter: "مكتمل باللغتين (العربية والإنجليزية)"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            } else if hasArabicText && !hasEnglishText {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selectedLanguage = .english
+                    }
+                    isEnglishFocused = true
+                    isArabicFocused = false
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(red: 245/255, green: 158/255, blue: 11/255))
+                            .frame(width: 5, height: 5)
+                        Text(Language.get("Bilingual_EnglishMissingAction", alter: "الإنجليزية مفقودة • انقر للإضافة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
+                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 245/255, green: 158/255, blue: 11/255).opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else if !hasArabicText && hasEnglishText {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selectedLanguage = .arabic
+                    }
+                    isArabicFocused = true
+                    isEnglishFocused = false
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(red: 239/255, green: 68/255, blue: 68/255))
+                            .frame(width: 5, height: 5)
+                        Text(Language.get("Bilingual_ArabicMissingAction", alter: "العربية مطلوبة • انقر للإضافة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
+                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 239/255, green: 68/255, blue: 68/255).opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+
+            let currentCount = selectedLanguage == .arabic ? arabicText.count : englishText.count
+            if currentCount > 0 {
+                Text("\(currentCount)/90")
+                    .font(AdminType.caption2)
+                    .foregroundStyle(currentCount > 90 ? Color.red : AdminSurface.secondaryText.opacity(0.6))
+                    .monospacedDigit()
+            }
+        }
+        .padding(.top, 1)
+    }
+}
+
+// MARK: - Bilingual Multi-Line TextEditor Field
+
+struct PPBilingualTextEditorField: View {
+    let title: String
+    let isRequired: Bool
+    @Binding var arabicText: String
+    @Binding var englishText: String
+    let arabicPlaceholder: String
+    let englishPlaceholder: String
+    @Binding var selectedLanguage: PPBilingualLanguage
+    var minHeight: CGFloat = 100
+    let isFocused: Bool
+    var onFocusChange: ((Bool) -> Void)? = nil
+
+    @FocusState private var isArabicFocused: Bool
+    @FocusState private var isEnglishFocused: Bool
+
+    private var hasArabicText: Bool {
+        !arabicText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasEnglishText: Bool {
+        !englishText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var isFieldFocused: Bool {
+        isArabicFocused || isEnglishFocused
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            // Label Header Row with Integrated Switcher
+            HStack(alignment: .center, spacing: AdminSpacing.sm) {
+                HStack(spacing: 3) {
+                    Text(title)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    if isRequired {
+                        Text("*")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color.red)
+                    }
+                }
+
+                Spacer()
+
+                PPBilingualSegmentedCapsule(
+                    selectedLanguage: $selectedLanguage,
+                    hasArabicText: hasArabicText,
+                    hasEnglishText: hasEnglishText
+                )
+            }
+
+            // Single-Footprint Multiline Editor (Smooth AR / EN state flip)
+            ZStack(alignment: selectedLanguage == .arabic ? .topTrailing : .topLeading) {
+                // Arabic Editor Layer
+                ZStack(alignment: .topTrailing) {
+                    if arabicText.isEmpty {
+                        Text(arabicPlaceholder)
+                            .font(AdminType.body)
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                            .environment(\.layoutDirection, .rightToLeft)
+                            .multilineTextAlignment(.trailing)
+                            .padding(.horizontal, AdminSpacing.md)
+                            .padding(.vertical, 12)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $arabicText)
+                        .font(AdminType.body)
+                        .focused($isArabicFocused)
+                        .environment(\.layoutDirection, .rightToLeft)
+                        .multilineTextAlignment(.trailing)
+                        .frame(minHeight: minHeight)
+                        .padding(AdminSpacing.xs)
+                        .scrollContentBackgroundIfAvailable()
+                }
+                .opacity(selectedLanguage == .arabic ? 1 : 0)
+                .allowsHitTesting(selectedLanguage == .arabic)
+
+                // English Editor Layer
+                ZStack(alignment: .topLeading) {
+                    if englishText.isEmpty {
+                        Text(englishPlaceholder)
+                            .font(AdminType.body)
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
+                            .environment(\.layoutDirection, .leftToRight)
+                            .multilineTextAlignment(.leading)
+                            .padding(.horizontal, AdminSpacing.md)
+                            .padding(.vertical, 12)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $englishText)
+                        .font(AdminType.body)
+                        .focused($isEnglishFocused)
+                        .environment(\.layoutDirection, .leftToRight)
+                        .multilineTextAlignment(.leading)
+                        .frame(minHeight: minHeight)
+                        .padding(AdminSpacing.xs)
+                        .scrollContentBackgroundIfAvailable()
+                }
+                .opacity(selectedLanguage == .english ? 1 : 0)
+                .allowsHitTesting(selectedLanguage == .english)
+            }
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    .strokeBorder((isFocused || isFieldFocused) ? AdminSurface.primary : AdminSurface.hairline.opacity(0.7), lineWidth: (isFocused || isFieldFocused) ? 1.5 : 0.75)
+            )
+            .onChange(of: isArabicFocused) { _ in
+                onFocusChange?(isFieldFocused)
+            }
+            .onChange(of: isEnglishFocused) { _ in
+                onFocusChange?(isFieldFocused)
+            }
+            .onChange(of: isFocused) { focused in
+                if focused {
+                    if selectedLanguage == .arabic {
+                        isArabicFocused = true
+                    } else {
+                        isEnglishFocused = true
+                    }
+                } else {
+                    isArabicFocused = false
+                    isEnglishFocused = false
+                }
+            }
+            .onChange(of: selectedLanguage) { newLang in
+                if isFieldFocused {
+                    if newLang == .arabic {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    } else {
+                        isEnglishFocused = true
+                        isArabicFocused = false
+                    }
+                }
+            }
+
+            // Status & Quick Action Strip
+            bilingualStatusStrip
+        }
+    }
+
+    @ViewBuilder
+    private var bilingualStatusStrip: some View {
+        HStack(spacing: 6) {
+            if hasArabicText && hasEnglishText {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color(red: 16/255, green: 185/255, blue: 129/255))
+                    Text(Language.get("Bilingual_BothComplete", alter: "مكتمل باللغتين (العربية والإنجليزية)"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            } else if hasArabicText && !hasEnglishText {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selectedLanguage = .english
+                    }
+                    isEnglishFocused = true
+                    isArabicFocused = false
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(red: 245/255, green: 158/255, blue: 11/255))
+                            .frame(width: 5, height: 5)
+                        Text(Language.get("Bilingual_DescEnglishMissingAction", alter: "الوصف بالإنجليزي مفقود • انقر للإضافة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
+                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 245/255, green: 158/255, blue: 11/255).opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else if !hasArabicText && hasEnglishText {
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                        selectedLanguage = .arabic
+                    }
+                    isArabicFocused = true
+                    isEnglishFocused = false
+                    UISelectionFeedbackGenerator().selectionChanged()
+                } label: {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color(red: 239/255, green: 68/255, blue: 68/255))
+                            .frame(width: 5, height: 5)
+                        Text(Language.get("Bilingual_DescArabicMissingAction", alter: "الوصف بالعربي غير مدخل • انقر للإضافة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
+                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(red: 239/255, green: 68/255, blue: 68/255).opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.top, 1)
+    }
+}
+
 // MARK: - Reimagined Flagship Screen
 
 struct PPAccessoryEditorScreen: View {
@@ -2376,6 +3070,7 @@ struct PPAccessoryEditorScreen: View {
     @Namespace private var stageAnimation
     @State private var showQuantityAlert: Bool = false
     @State private var quantityAlertText: String = ""
+    @State private var bilingualLanguage: PPBilingualLanguage = .arabic
     
     enum FormField: Hashable {
         case name, desc, price, discountPercent, discountAmount, quantity, passport, weight
@@ -3050,38 +3745,37 @@ struct PPAccessoryEditorScreen: View {
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text(Language.get("ItemName", alter: "اسم الصنف أو الحيوان"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
+            PPBilingualInputField(
+                title: Language.get("ItemName", alter: "اسم الصنف أو الحيوان"),
+                isRequired: true,
+                arabicText: $viewModel.name,
+                englishText: $viewModel.nameEn,
+                arabicPlaceholder: Language.get("EnterItemName", alter: "أدخل اسم المنتج بدقة..."),
+                englishPlaceholder: Language.get("EnterItemNameEn", alter: "Enter item name in English..."),
+                selectedLanguage: $bilingualLanguage,
+                isFocused: focusedField == .name,
+                onFocusChange: { focused in
+                    if focused { focusedField = .name }
+                    else if focusedField == .name { focusedField = nil }
+                },
+                onSubmit: { focusedField = .desc }
+            )
 
-                TextField(Language.get("EnterItemName", alter: "أدخل اسم المنتج بدقة..."), text: $viewModel.name)
-                    .font(AdminType.callout)
-                    .focused($focusedField, equals: .name)
-                    .padding(14)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(focusedField == .name ? AdminSurface.primary : Color.clear, lineWidth: 1.5)
-                    )
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(Language.get("Description", alter: "الوصف التفصيلي والمواصفات"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
-
-                TextEditor(text: $viewModel.desc)
-                    .font(AdminType.callout)
-                    .focused($focusedField, equals: .desc)
-                    .frame(minHeight: 88)
-                    .padding(8)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(focusedField == .desc ? AdminSurface.primary : Color.clear, lineWidth: 1.5)
-                    )
-            }
+            PPBilingualTextEditorField(
+                title: Language.get("Description", alter: "الوصف التفصيلي والمواصفات"),
+                isRequired: false,
+                arabicText: $viewModel.desc,
+                englishText: $viewModel.descEn,
+                arabicPlaceholder: Language.get("DescriptionPlaceholder", alter: "أدخل وصف المنتج ومواصفاته بالتفصيل..."),
+                englishPlaceholder: Language.get("DescriptionPlaceholderEn", alter: "Enter detailed item description and specs..."),
+                selectedLanguage: $bilingualLanguage,
+                minHeight: 88,
+                isFocused: focusedField == .desc,
+                onFocusChange: { focused in
+                    if focused { focusedField = .desc }
+                    else if focusedField == .desc { focusedField = nil }
+                }
+            )
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -3563,69 +4257,30 @@ struct PPAccessoryEditorScreen: View {
 
     // Non-Live Product Specifications (Accessories & Food)
     private var nonLiveProductSpecsDeck: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 16) {
             Label(Language.get("ProductSpecs", alter: "المواصفات وحالة العنصر"), systemImage: "slider.horizontal.3")
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
 
-            if !viewModel.isFood {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(Language.get("Condition", alter: "حالة المنتج"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
+            PPAccessoryConditionSelector(
+                condition: $viewModel.condition,
+                isFood: viewModel.isFood
+            )
 
-                    Picker(Language.get("Condition", alter: "الحالة"), selection: $viewModel.condition) {
-                        Text(Language.get("Condition_New", alter: "جديد تماماً")).tag(AccessConditions.new)
-                        Text(Language.get("Condition_Used", alter: "مستعمل بحالة جيدة")).tag(AccessConditions.used)
-                    }
-                    .pickerStyle(.segmented)
+            PPAccessoryUnifiedMeasureChamber(
+                weightText: $viewModel.weightText,
+                weightUnit: $viewModel.weightUnit,
+                onFocusChanged: { focused in
+                    if focused { focusedField = .weight }
+                    else if focusedField == .weight { focusedField = nil }
                 }
-            }
+            )
 
-            // Weight specifications
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Weight", alter: "الوزن أو الحجم"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    TextField("0.0", text: $viewModel.weightText)
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
-                        .englishNumericInput(text: $viewModel.weightText, allowsDecimal: true)
-                        .focused($focusedField, equals: .weight)
-                        .padding(12)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Unit", alter: "الوحدة"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    Picker("", selection: $viewModel.weightUnit) {
-                        Text("kg").tag("kg")
-                        Text("g").tag("g")
-                        Text("L").tag("L")
-                        Text("ml").tag("ml")
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(height: 44)
-                }
-            }
-
-            // Expiry Date (if food)
             if viewModel.isFood {
-                VStack(alignment: .leading, spacing: 8) {
-                    Toggle(isOn: $viewModel.hasExpiryDate) {
-                        Label(Language.get("HasExpiryDate", alter: "تاريخ انتهاء الصلاحية"), systemImage: "calendar.badge.clock")
-                            .font(AdminType.calloutBold)
-                    }
-                    .tint(AdminSurface.primary)
-
-                    if viewModel.hasExpiryDate {
-                        DatePicker("", selection: $viewModel.expiryDate, displayedComponents: .date)
-                            .datePickerStyle(.graphical)
-                            .padding(.top, 4)
-                    }
-                }
+                PPAccessoryExpirySentinel(
+                    hasExpiryDate: $viewModel.hasExpiryDate,
+                    expiryDate: $viewModel.expiryDate
+                )
             }
         }
         .padding(16)
@@ -4504,6 +5159,7 @@ private struct PPLivePetIntakeJourney: View {
     @State private var showCameraAccessAlert = false
     @State private var showQuantityAlert = false
     @State private var quantityAlertText = ""
+    @State private var bilingualLanguage: PPBilingualLanguage = .arabic
     @Namespace private var genderSelectionNamespace
 
     private enum FocusedField: Hashable {
@@ -5128,45 +5784,39 @@ private struct PPLivePetIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    fieldLabel(tr("LivePetIntake_NameLabel", "اسم الحيوان أو الصنف"), required: true)
-                    TextField(tr("LivePetIntake_NamePlaceholder", "مثال: كوكتيل لوتينو أليف"), text: $viewModel.name)
-                        .font(AdminType.body)
-                        .textContentType(.name)
-                        .focused($focusedField, equals: .name)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .description }
-                        .padding(.horizontal, AdminSpacing.md)
-                        .frame(minHeight: AdminTouchTarget.expanded)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                        .overlay(fieldFocusBorder(focusedField == .name))
-                        .accessibilityLabel(tr("LivePetIntake_NameLabel", "اسم الحيوان أو الصنف"))
-                }
+                PPBilingualInputField(
+                    title: tr("LivePetIntake_NameLabel", "اسم الحيوان أو الصنف"),
+                    isRequired: true,
+                    arabicText: $viewModel.name,
+                    englishText: $viewModel.nameEn,
+                    arabicPlaceholder: tr("LivePetIntake_NamePlaceholder", "مثال: كوكتيل لوتينو أليف"),
+                    englishPlaceholder: "e.g. Tame Lutino Cockatiel",
+                    selectedLanguage: $bilingualLanguage,
+                    isFocused: focusedField == .name,
+                    onFocusChange: { focused in
+                        if focused { focusedField = .name }
+                        else if focusedField == .name { focusedField = nil }
+                    },
+                    onSubmit: { focusedField = .description }
+                )
 
                 taxonomyControls
 
-                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    fieldLabel(tr("LivePetIntake_DescriptionLabel", "وصف مختصر"), required: false)
-                    ZStack(alignment: .topLeading) {
-                        if viewModel.desc.isEmpty {
-                            Text(tr("LivePetIntake_DescriptionPlaceholder", "السلوك، اللون، السمات التي يحتاج العميل إلى معرفتها…"))
-                                .font(AdminType.body)
-                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
-                                .padding(.horizontal, AdminSpacing.md)
-                                .padding(.vertical, 15)
-                                .allowsHitTesting(false)
-                        }
-                        TextEditor(text: $viewModel.desc)
-                            .font(AdminType.body)
-                            .focused($focusedField, equals: .description)
-                            .frame(minHeight: 112)
-                            .padding(AdminSpacing.xs)
-                            .scrollContentBackgroundIfAvailable()
+                PPBilingualTextEditorField(
+                    title: tr("LivePetIntake_DescriptionLabel", "وصف مختصر"),
+                    isRequired: false,
+                    arabicText: $viewModel.desc,
+                    englishText: $viewModel.descEn,
+                    arabicPlaceholder: tr("LivePetIntake_DescriptionPlaceholder", "السلوك، اللون، السمات التي يحتاج العميل إلى معرفتها…"),
+                    englishPlaceholder: "Behavior, temperament, color traits, health notes for customers…",
+                    selectedLanguage: $bilingualLanguage,
+                    minHeight: 112,
+                    isFocused: focusedField == .description,
+                    onFocusChange: { focused in
+                        if focused { focusedField = .description }
+                        else if focusedField == .description { focusedField = nil }
                     }
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                    .overlay(fieldFocusBorder(focusedField == .description))
-                    .accessibilityLabel(tr("LivePetIntake_DescriptionLabel", "وصف مختصر"))
-                }
+                )
             }
         }
     }
@@ -6267,14 +6917,133 @@ private struct PPLivePetIntakeJourney: View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: AdminSpacing.base) {
                 unitPhotoCard(unit: unit)
-                identityField(unit: unit, binding: binding, readiness: readiness)
+                identityFieldsColumn(unit: unit, binding: binding, readiness: readiness)
             }
         } else {
             HStack(alignment: .top, spacing: AdminSpacing.md) {
                 unitPhotoCard(unit: unit)
                     .frame(width: 124)
-                identityField(unit: unit, binding: binding, readiness: readiness)
+                identityFieldsColumn(unit: unit, binding: binding, readiness: readiness)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func identityFieldsColumn(
+        unit: PPLivePetUnitDraft,
+        binding: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            identityField(unit: unit, binding: binding, readiness: readiness)
+
+            if viewModel.hasSubSubKinds {
+                unitSubSubKindSelector(unit: unit)
+            }
+
+            if let subSubID = unit.subSubKindID,
+               let items = viewModel.subSubKindItemsBySubSubID[subSubID],
+               !items.isEmpty {
+                unitSubSubKindItemSelector(unit: unit, items: items)
+            }
+        }
+    }
+
+    private func unitSubSubKindSelector(unit: PPLivePetUnitDraft) -> some View {
+        let selectedSubSub = viewModel.availableSubSubKinds.first { $0.numericID == unit.subSubKindID }
+        let title = selectedSubSub?.localizedName ?? tr("LivePetIntake_SelectSubSubKind", "اختر التفريع الفرعي...")
+        let hasSelection = selectedSubSub != nil
+
+        return intakeField(
+            caption: tr("LivePetIntake_SubSubKindLabel", "التفريع الفرعي (SubSubKind)"),
+            symbol: "arrow.triangle.branch",
+            required: false,
+            optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+            focused: false
+        ) {
+            Menu {
+                Button {
+                    viewModel.setLivePetUnitSubSubKind(nil, unitID: unit.id)
+                } label: {
+                    Label(tr("LivePetIntake_None", "بدون تفريع"), systemImage: "xmark")
+                }
+                Divider()
+                ForEach(viewModel.availableSubSubKinds) { subSub in
+                    Button {
+                        viewModel.setLivePetUnitSubSubKind(subSub, unitID: unit.id)
+                    } label: {
+                        HStack {
+                            Text(subSub.localizedName)
+                            if unit.subSubKindID == subSub.numericID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AdminSpacing.xs) {
+                    Text(title)
+                        .font(AdminType.body)
+                        .foregroundStyle(hasSelection ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func unitSubSubKindItemSelector(unit: PPLivePetUnitDraft, items: [AdminSubKindItemDetail]) -> some View {
+        let selectedItem = items.first { $0.numericID == unit.subSubKindItemID }
+        let title = selectedItem?.localizedName ?? tr("LivePetIntake_SelectSubSubKindItem", "اختر تصنيف العنصر...")
+        let hasSelection = selectedItem != nil
+
+        return intakeField(
+            caption: tr("LivePetIntake_SubSubKindItemLabel", "عنصر التفريع (SubSubKindItem)"),
+            symbol: "tag.fill",
+            required: false,
+            optionalNote: tr("LivePetIntake_Optional", "اختياري"),
+            focused: false
+        ) {
+            Menu {
+                Button {
+                    viewModel.setLivePetUnitSubSubKindItem(nil, unitID: unit.id)
+                } label: {
+                    Label(tr("LivePetIntake_None", "بدون عنصر"), systemImage: "xmark")
+                }
+                Divider()
+                ForEach(items) { item in
+                    Button {
+                        viewModel.setLivePetUnitSubSubKindItem(item, unitID: unit.id)
+                    } label: {
+                        HStack {
+                            Text(item.localizedName)
+                            if unit.subSubKindItemID == item.numericID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AdminSpacing.xs) {
+                    Text(title)
+                        .font(AdminType.body)
+                        .foregroundStyle(hasSelection ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -7824,8 +8593,15 @@ private struct PPLivePetIntakeJourney: View {
             if trimmedName.utf16.count > 90 {
                 return tr("LivePetIntake_ValidationNameLength", "يجب ألا يتجاوز الاسم 90 حرفاً.")
             }
+            let trimmedNameEn = viewModel.nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
+                return tr("LivePetIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً.")
+            }
             if viewModel.desc.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 4_000 {
                 return tr("LivePetIntake_ValidationDescriptionLength", "يجب ألا يتجاوز الوصف 4000 حرف.")
+            }
+            if viewModel.descEn.trimmingCharacters(in: .whitespacesAndNewlines).utf16.count > 4_000 {
+                return tr("LivePetIntake_ValidationDescriptionLengthEn", "يجب ألا يتجاوز الوصف بالإنجليزية 4000 حرف.")
             }
             if viewModel.selectedMainKind == nil {
                 return tr("LivePetIntake_ValidationSpecies", "اختر نوع الحيوان من التصنيف المعتمد.")
@@ -8904,7 +9680,725 @@ private extension View {
     }
 }
 
+// MARK: - Category-Defining Tactile Product Condition Matrix
 
+private struct PPAccessoryConditionSelector: View {
+    @Binding var condition: AccessConditions
+    let isFood: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            // Header Row
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+
+                Text(Language.get("CatalogIntake_ConditionLabel", alter: "حالة المنتج"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text("*")
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(Color(uiColor: .ppError))
+                    .accessibilityHidden(true)
+
+                Spacer(minLength: 4)
+
+                // Live status capsule
+                if !isFood {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(condition == .new ? Color(red: 0.06, green: 0.72, blue: 0.51) : Color(red: 0.96, green: 0.62, blue: 0.15))
+                            .frame(width: 6, height: 6)
+
+                        Text(condition == .new ? Language.get("Condition_New_Badge", alter: "جديد ومغلف") : Language.get("Condition_Used_Badge", alter: "مستعمل ومعتمد"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(condition == .new ? Color(red: 0.06, green: 0.72, blue: 0.51) : Color(red: 0.96, green: 0.62, blue: 0.15))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(
+                                condition == .new
+                                    ? Color(red: 0.06, green: 0.72, blue: 0.51).opacity(colorScheme == .dark ? 0.18 : 0.08)
+                                    : Color(red: 0.96, green: 0.62, blue: 0.15).opacity(colorScheme == .dark ? 0.18 : 0.08)
+                            )
+                    )
+                    .overlay(
+                        Capsule()
+                            .strokeBorder(
+                                condition == .new
+                                    ? Color(red: 0.06, green: 0.72, blue: 0.51).opacity(0.28)
+                                    : Color(red: 0.96, green: 0.62, blue: 0.15).opacity(0.28),
+                                lineWidth: 0.75
+                            )
+                    )
+                }
+            }
+            .accessibilityElement(children: .combine)
+
+            if isFood {
+                // Certified Food Safety & Seal Notice
+                HStack(alignment: .top, spacing: 10) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color(red: 0.06, green: 0.72, blue: 0.51).opacity(colorScheme == .dark ? 0.22 : 0.12))
+                            .frame(width: 38, height: 38)
+
+                        Image(systemName: "checkmark.shield.fill")
+                            .font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(Color(red: 0.06, green: 0.72, blue: 0.51))
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(Language.get("CatalogIntake_FoodCondition_Title", alter: "أغذية ومكملات جديدة ومغلفة حصراً"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(Language.get("CatalogIntake_FoodCondition_Sub", alter: "تخضع كافة أطعمة ومكملات الحيوانات الأليفة لمعايير السلامة الغذائية وتُحفظ دائماً بحالة جديدة ومغلفة لضمان أعلى معايير السلامة والصحة البيطرية."))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(red: 0.06, green: 0.72, blue: 0.51).opacity(colorScheme == .dark ? 0.08 : 0.04))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(red: 0.06, green: 0.72, blue: 0.51).opacity(0.25), lineWidth: 0.8)
+                )
+            } else {
+                // Bilateral Tactile Quality Cards
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(spacing: 8) {
+                            conditionTile(
+                                target: .new,
+                                icon: "checkmark.seal.fill",
+                                title: Language.get("Condition_New", alter: "جديد تماماً"),
+                                subtitle: Language.get("Condition_New_Sub", alter: "مغلف المصنع • أصلي 100%"),
+                                accent: Color(red: 0.06, green: 0.72, blue: 0.51)
+                            )
+                            conditionTile(
+                                target: .used,
+                                icon: "sparkle.magnifyingglass",
+                                title: Language.get("Condition_Used", alter: "مستعمل بحالة جيدة"),
+                                subtitle: Language.get("Condition_Used_Sub", alter: "مفحوص ومعتمد • جاهز للاستخدام"),
+                                accent: Color(red: 0.96, green: 0.62, blue: 0.15)
+                            )
+                        }
+                    } else {
+                        HStack(spacing: 10) {
+                            conditionTile(
+                                target: .new,
+                                icon: "checkmark.seal.fill",
+                                title: Language.get("Condition_New", alter: "جديد تماماً"),
+                                subtitle: Language.get("Condition_New_Sub", alter: "مغلف المصنع • أصلي 100%"),
+                                accent: Color(red: 0.06, green: 0.72, blue: 0.51)
+                            )
+                            conditionTile(
+                                target: .used,
+                                icon: "sparkle.magnifyingglass",
+                                title: Language.get("Condition_Used", alter: "مستعمل بحالة جيدة"),
+                                subtitle: Language.get("Condition_Used_Sub", alter: "مفحوص ومعتمد • جاهز للاستخدام"),
+                                accent: Color(red: 0.96, green: 0.62, blue: 0.15)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func conditionTile(
+        target: AccessConditions,
+        icon: String,
+        title: String,
+        subtitle: String,
+        accent: Color
+    ) -> some View {
+        let isSelected = condition == target
+        return Button {
+            guard condition != target else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.76)) {
+                condition = target
+            }
+        } label: {
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(
+                            isSelected
+                                ? accent.opacity(colorScheme == .dark ? 0.28 : 0.14)
+                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                        )
+                        .frame(width: 38, height: 38)
+
+                    Image(systemName: icon)
+                        .font(.system(size: 17, weight: isSelected ? .bold : .semibold))
+                        .foregroundStyle(isSelected ? accent : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text(title)
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                            .lineLimit(1)
+
+                        if isSelected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(accent)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(isSelected ? AdminCommandInk.secondary : AdminSurface.secondaryText.opacity(0.75))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.80)
+                }
+
+                Spacer(minLength: 2)
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(
+                            isSelected
+                                ? (colorScheme == .dark ? Color(white: 0.13) : Color.white)
+                                : AdminSurface.control
+                        )
+
+                    if isSelected {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        accent.opacity(colorScheme == .dark ? 0.16 : 0.08),
+                                        accent.opacity(colorScheme == .dark ? 0.04 : 0.01)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        isSelected
+                            ? accent.opacity(colorScheme == .dark ? 0.65 : 0.45)
+                            : AdminSurface.hairline.opacity(0.70),
+                        lineWidth: isSelected ? 1.4 : 0.75
+                    )
+            )
+            .shadow(
+                color: isSelected ? accent.opacity(colorScheme == .dark ? 0.22 : 0.10) : Color.black.opacity(0.02),
+                radius: isSelected ? 6 : 2,
+                x: 0,
+                y: isSelected ? 2 : 1
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+        .accessibilityLabel("\(title), \(subtitle)")
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// MARK: - Category-Defining Unified Physical Measure Chamber
+
+private struct PPAccessoryUnifiedMeasureChamber: View {
+    @Binding var weightText: String
+    @Binding var weightUnit: String
+    var onFocusChanged: ((Bool) -> Void)? = nil
+
+    @FocusState private var isInternalFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let availableUnits: [String] = ["kg", "g", "L", "ml"]
+
+    private var isVolumeDimension: Bool {
+        weightUnit.lowercased() == "l" || weightUnit.lowercased() == "ml"
+    }
+
+    private var dimensionIcon: String {
+        isVolumeDimension ? "drop.fill" : "scalemass.fill"
+    }
+
+    private var contextualPresets: [String] {
+        switch weightUnit.lowercased() {
+        case "kg": return ["0.5", "1.0", "2.0", "3.0", "5.0", "10", "15"]
+        case "g": return ["100", "200", "250", "400", "500", "800"]
+        case "l": return ["0.5", "1.0", "1.5", "2.0", "5.0", "10"]
+        case "ml": return ["50", "100", "150", "250", "500", "750"]
+        default: return ["1.0", "2.0", "5.0"]
+        }
+    }
+
+    private var liveMetricDisplay: String? {
+        let trimmed = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let val = Double(trimmed), val > 0 else { return nil }
+
+        let formattedVal = trimmed
+        switch weightUnit.lowercased() {
+        case "kg":
+            if val < 1.0 {
+                let grams = Int(val * 1000)
+                return "\(formattedVal) كجم (\(grams) جم)"
+            }
+            return "\(formattedVal) كجم"
+        case "g":
+            if val >= 1000 {
+                let kg = val / 1000.0
+                let kgStr = String(format: "%.2f", kg).replacingOccurrences(of: ".00", with: "")
+                return "\(formattedVal) جم (\(kgStr) كجم)"
+            }
+            return "\(formattedVal) جم"
+        case "l":
+            if val < 1.0 {
+                let ml = Int(val * 1000)
+                return "\(formattedVal) لتر (\(ml) مل)"
+            }
+            return "\(formattedVal) لتر"
+        case "ml":
+            if val >= 1000 {
+                let liters = val / 1000.0
+                let lStr = String(format: "%.2f", liters).replacingOccurrences(of: ".00", with: "")
+                return "\(formattedVal) مل (\(lStr) لتر)"
+            }
+            return "\(formattedVal) مل"
+        default:
+            return "\(formattedVal) \(weightUnit)"
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            // Header Row: Adaptive Icon + Title + Live Physical Preview
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: dimensionIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(isVolumeDimension ? Color(red: 0.14, green: 0.54, blue: 0.98) : AdminSurface.primary)
+                    .frame(width: 20)
+
+                Text(Language.get("CatalogIntake_WeightLabel", alter: "الوزن أو السعة"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("CatalogIntake_Optional", alter: "(اختياري)"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer(minLength: 4)
+
+                // Live Physical Metric Tag
+                if let livePreview = liveMetricDisplay {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Text(livePreview)
+                            .font(.system(size: 11, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.30), lineWidth: 0.75))
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+
+            // Unified Sculpted Chamber
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) {
+                        numericInputField
+                        unitSelectorDock
+                    }
+                    .padding(10)
+                } else {
+                    HStack(spacing: 0) {
+                        numericInputField
+                        
+                        // Vertical Separation Hairline
+                        Rectangle()
+                            .fill(AdminSurface.hairline.opacity(0.85))
+                            .frame(width: 1, height: 32)
+                            .padding(.horizontal, 4)
+
+                        unitSelectorDock
+                            .padding(.trailing, 8)
+                    }
+                }
+            }
+            .frame(minHeight: 54)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AdminSurface.control)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        isInternalFocused ? AdminSurface.primary : AdminSurface.hairline.opacity(0.85),
+                        lineWidth: isInternalFocused ? 1.5 : 0.75
+                    )
+            )
+            .shadow(
+                color: isInternalFocused ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.25 : 0.12) : Color.clear,
+                radius: 6,
+                x: 0,
+                y: 1
+            )
+
+            // Contextual Quick-Magnitude Presets Runway
+            HStack(spacing: 6) {
+                Text(Language.get("CatalogIntake_QuickPresets", alter: "مقادير سريعة:"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .lineLimit(1)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(contextualPresets, id: \.self) { preset in
+                            let isSelected = weightText == preset
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                                    weightText = preset
+                                }
+                            } label: {
+                                HStack(spacing: 2) {
+                                    Text(preset)
+                                        .font(.system(size: 12, weight: isSelected ? .bold : .medium, design: .rounded))
+                                    Text(weightUnit)
+                                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                                }
+                                .foregroundStyle(
+                                    isSelected
+                                        ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
+                                        : AdminSurface.primaryText.opacity(0.85)
+                                )
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 4.5)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            isSelected
+                                                ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.15)
+                                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                        )
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(
+                                            isSelected ? AdminSurface.primary.opacity(0.60) : Color.clear,
+                                            lineWidth: 0.8
+                                        )
+                                    )
+                            }
+                            .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private var numericInputField: some View {
+        HStack(spacing: 8) {
+            TextField("0.0", text: $weightText)
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(AdminSurface.primaryText)
+                .englishNumericInput(text: $weightText, allowsDecimal: true)
+                .focused($isInternalFocused)
+                .onChange(of: isInternalFocused) { focused in
+                    onFocusChanged?(focused)
+                }
+
+            if !weightText.isEmpty {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    weightText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(AdminSurface.secondaryText.opacity(0.70))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+    }
+
+    private var unitSelectorDock: some View {
+        HStack(spacing: 3) {
+            ForEach(availableUnits, id: \.self) { unit in
+                let isSelected = weightUnit.lowercased() == unit.lowercased()
+                Button {
+                    guard weightUnit.lowercased() != unit.lowercased() else { return }
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.26, dampingFraction: 0.78)) {
+                        weightUnit = unit
+                    }
+                } label: {
+                    Text(unit)
+                        .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
+                        .foregroundStyle(
+                            isSelected
+                                ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
+                                : AdminSurface.secondaryText
+                        )
+                        .frame(minWidth: 32, height: 34)
+                        .background(
+                            ZStack {
+                                if isSelected {
+                                    Capsule()
+                                        .fill(
+                                            colorScheme == .dark
+                                                ? AdminSurface.primary.opacity(0.35)
+                                                : Color.white
+                                        )
+                                        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.08), radius: 3, x: 0, y: 1)
+                                }
+                            }
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(
+                                    isSelected
+                                        ? AdminSurface.primary.opacity(0.50)
+                                        : Color.clear,
+                                    lineWidth: 0.75
+                                )
+                        )
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                .accessibilityLabel(localizedUnitAccessibility(unit))
+                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+            }
+        }
+        .padding(4)
+        .background(
+            Capsule()
+                .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+        )
+    }
+
+    private func localizedUnitAccessibility(_ unit: String) -> String {
+        switch unit.lowercased() {
+        case "kg": return Language.get("Unit_Kilogram", alter: "كيلوجرام")
+        case "g": return Language.get("Unit_Gram", alter: "جرام")
+        case "l": return Language.get("Unit_Liter", alter: "لتر")
+        case "ml": return Language.get("Unit_Milliliter", alter: "مليلتر")
+        default: return unit
+        }
+    }
+}
+
+// MARK: - Category-Defining Expiry & Shelf-Life Sentinel
+
+private struct PPAccessoryExpirySentinel: View {
+    @Binding var hasExpiryDate: Bool
+    @Binding var expiryDate: Date
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var daysRemaining: Int {
+        let calendar = Calendar.current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let startOfTarget = calendar.startOfDay(for: expiryDate)
+        return calendar.dateComponents([.day], from: startOfToday, to: startOfTarget).day ?? 0
+    }
+
+    private var shelfLifeHealth: (text: String, color: Color, icon: String) {
+        let days = daysRemaining
+        if days < 0 {
+            return (Language.get("Expiry_Expired", alter: "منتهي الصلاحية!"), Color(uiColor: .ppError), "exclamationmark.octagon.fill")
+        } else if days < 30 {
+            return (String(format: Language.get("Expiry_Urgent_Days", alter: "تنبيه: متبقي %ld يوماً فقط"), days), Color(uiColor: .ppError), "exclamationmark.triangle.fill")
+        } else if days <= 90 {
+            let months = max(1, days / 30)
+            return (String(format: Language.get("Expiry_Moderate_Months", alter: "صلاحية متوسطة (متبقي %ld أشهر)"), months), Color(red: 0.96, green: 0.62, blue: 0.15), "clock.badge.exclamationmark.fill")
+        } else {
+            let months = days / 30
+            return (String(format: Language.get("Expiry_Excellent_Months", alter: "صلاحية ممتازة (متبقي %ld شهراً)"), months), Color(red: 0.06, green: 0.72, blue: 0.51), "checkmark.seal.fill")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Master Toggle Row
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(
+                            hasExpiryDate
+                                ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.28 : 0.12)
+                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                        )
+                        .frame(width: 38, height: 38)
+
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(hasExpiryDate ? AdminSurface.primary : AdminSurface.secondaryText)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("CatalogIntake_ExpiryToggle", alter: "للصنف تاريخ انتهاء صلاحية"))
+                        .font(AdminType.calloutBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+
+                    Text(Language.get("CatalogIntake_ExpiryHint", alter: "فعّلها عندما تكون الصلاحية مطبوعة على العبوة لحساب دورة الصلاحية."))
+                        .font(AdminType.caption)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 4)
+
+                Toggle("", isOn: $hasExpiryDate)
+                    .labelsHidden()
+                    .tint(AdminSurface.primary)
+            }
+
+            if hasExpiryDate {
+                VStack(alignment: .leading, spacing: 12) {
+                    Divider().background(AdminSurface.hairline)
+
+                    // Freshness Gauge Pill
+                    let health = shelfLifeHealth
+                    HStack(spacing: 6) {
+                        Image(systemName: health.icon)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(health.color)
+
+                        Text(health.text)
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(health.color)
+
+                        Spacer()
+
+                        Text(expiryDateFormatted)
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(health.color.opacity(colorScheme == .dark ? 0.16 : 0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(health.color.opacity(0.30), lineWidth: 0.75)
+                    )
+
+                    // Quick Shelf-Life Extension Presets
+                    HStack(spacing: 6) {
+                        shelfLifePresetButton(label: "+6 أشهر", months: 6)
+                        shelfLifePresetButton(label: "+سنة", months: 12)
+                        shelfLifePresetButton(label: "+سنتين", months: 24)
+                        shelfLifePresetButton(label: "+3 سنوات", months: 36)
+                    }
+
+                    // Native Compact DatePicker
+                    HStack {
+                        Label(Language.get("CatalogIntake_ExpiryDate", alter: "تاريخ انتهاء الصلاحية"), systemImage: "calendar")
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        DatePicker(
+                            "",
+                            selection: $expiryDate,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.03))
+                    )
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.control)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(
+                    hasExpiryDate
+                        ? AdminSurface.primary.opacity(0.35)
+                        : AdminSurface.hairline.opacity(0.70),
+                    lineWidth: 0.8
+                )
+        )
+    }
+
+    private var expiryDateFormatted: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        formatter.locale = Locale(identifier: Language.currentLanguageCode())
+        return formatter.string(from: expiryDate)
+    }
+
+    private func shelfLifePresetButton(label: String, months: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if let newDate = Calendar.current.date(byAdding: .month, value: months, to: Date()) {
+                withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+                    expiryDate = newDate
+                }
+            }
+        } label: {
+            Text(label)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(AdminSurface.primary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .frame(maxWidth: .infinity)
+                .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
+                .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.30), lineWidth: 0.75))
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+    }
+}
 
 // MARK: - Accessory & Food Task-Led Catalog Journey
 
@@ -8918,6 +10412,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
     @State private var previewMedia: PPLivePetPreviewMedia?
     @State private var showQuantityAlert: Bool = false
     @State private var quantityAlertText: String = ""
+    @State private var bilingualLanguage: PPBilingualLanguage = .arabic
 
     private enum FocusedField: Hashable {
         case name
@@ -9349,43 +10844,37 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    fieldLabel(tr("CatalogIntake_NameLabel", "اسم الصنف"), required: true)
-                    TextField(tr("CatalogIntake_NamePlaceholder", "مثال: منتج واضح وسهل البحث"), text: $viewModel.name)
-                        .font(AdminType.body)
-                        .textContentType(.name)
-                        .focused($focusedField, equals: .name)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .description }
-                        .padding(.horizontal, AdminSpacing.md)
-                        .frame(minHeight: AdminTouchTarget.expanded)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                        .overlay(fieldFocusBorder(focusedField == .name))
-                        .accessibilityLabel(tr("CatalogIntake_NameLabel", "اسم الصنف"))
-                }
+                PPBilingualInputField(
+                    title: tr("CatalogIntake_NameLabel", "اسم الصنف"),
+                    isRequired: true,
+                    arabicText: $viewModel.name,
+                    englishText: $viewModel.nameEn,
+                    arabicPlaceholder: tr("CatalogIntake_NamePlaceholder", "مثال: منتج واضح وسهل البحث"),
+                    englishPlaceholder: "e.g. Premium Grain-Free Cat Food",
+                    selectedLanguage: $bilingualLanguage,
+                    isFocused: focusedField == .name,
+                    onFocusChange: { focused in
+                        if focused { focusedField = .name }
+                        else if focusedField == .name { focusedField = nil }
+                    },
+                    onSubmit: { focusedField = .description }
+                )
 
-                VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                    fieldLabel(tr("CatalogIntake_DescriptionLabel", "الوصف"), required: false)
-                    ZStack(alignment: .topLeading) {
-                        if viewModel.desc.isEmpty {
-                            Text(tr("CatalogIntake_DescriptionPlaceholder", "المزايا، الاستخدام، المقاس أو المعلومات المهمة للعميل…"))
-                                .font(AdminType.body)
-                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
-                                .padding(.horizontal, AdminSpacing.md)
-                                .padding(.vertical, 15)
-                                .allowsHitTesting(false)
-                        }
-                        TextEditor(text: $viewModel.desc)
-                            .font(AdminType.body)
-                            .focused($focusedField, equals: .description)
-                            .frame(minHeight: 120)
-                            .padding(AdminSpacing.xs)
-                            .scrollContentBackgroundIfAvailable()
+                PPBilingualTextEditorField(
+                    title: tr("CatalogIntake_DescriptionLabel", "الوصف"),
+                    isRequired: false,
+                    arabicText: $viewModel.desc,
+                    englishText: $viewModel.descEn,
+                    arabicPlaceholder: tr("CatalogIntake_DescriptionPlaceholder", "المزايا، الاستخدام، المقاس أو المعلومات المهمة للعميل…"),
+                    englishPlaceholder: "Key features, directions for use, size, ingredients…",
+                    selectedLanguage: $bilingualLanguage,
+                    minHeight: 120,
+                    isFocused: focusedField == .description,
+                    onFocusChange: { focused in
+                        if focused { focusedField = .description }
+                        else if focusedField == .description { focusedField = nil }
                     }
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                    .overlay(fieldFocusBorder(focusedField == .description))
-                    .accessibilityLabel(tr("CatalogIntake_DescriptionLabel", "الوصف"))
-                }
+                )
 
                 HStack(spacing: AdminSpacing.md) {
                     VStack(alignment: .leading, spacing: AdminSpacing.sm) {
@@ -9658,102 +11147,31 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 Divider().background(AdminSurface.hairline)
 
-                if !viewModel.isFood {
-                    VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                        fieldLabel(tr("CatalogIntake_ConditionLabel", "حالة المنتج"), required: true)
-                        Picker(tr("CatalogIntake_ConditionLabel", "حالة المنتج"), selection: $viewModel.condition) {
-                            Text(tr("Condition_New", "جديد")).tag(AccessConditions.new)
-                            Text(tr("Condition_Used", "مستعمل")).tag(AccessConditions.used)
-                        }
-                        .pickerStyle(.segmented)
-                        .accessibilityLabel(tr("CatalogIntake_ConditionLabel", "حالة المنتج"))
-                    }
-                } else {
-                    Label(
-                        tr("CatalogIntake_FoodConditionNote", "تُحفظ الأغذية والمكملات دائماً بحالة جديدة."),
-                        systemImage: "checkmark.seal.fill"
-                    )
-                    .font(AdminType.footnote)
-                    .foregroundStyle(Color(uiColor: .ppSuccess))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                // Tactile Product Condition Matrix
+                PPAccessoryConditionSelector(
+                    condition: $viewModel.condition,
+                    isFood: viewModel.isFood
+                )
 
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(spacing: AdminSpacing.md) {
-                            weightField
-                            weightUnitField
-                        }
-                    } else {
-                        HStack(alignment: .bottom, spacing: AdminSpacing.md) {
-                            weightField
-                            weightUnitField
-                        }
+                // Unified Physical Measurement Chamber
+                PPAccessoryUnifiedMeasureChamber(
+                    weightText: $viewModel.weightText,
+                    weightUnit: $viewModel.weightUnit,
+                    onFocusChanged: { focused in
+                        if focused { focusedField = .weight }
+                        else if focusedField == .weight { focusedField = nil }
                     }
-                }
+                )
 
+                // Expiry Date Sentinel (if food)
                 if viewModel.isFood {
-                    VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                        Toggle(isOn: $viewModel.hasExpiryDate) {
-                            VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-                                Text(tr("CatalogIntake_ExpiryToggle", "للصنف تاريخ انتهاء صلاحية"))
-                                    .font(AdminType.calloutBold)
-                                Text(tr("CatalogIntake_ExpiryHint", "فعّلها عندما تكون الصلاحية مطبوعة على العبوة."))
-                                    .font(AdminType.caption)
-                                    .foregroundStyle(AdminSurface.secondaryText)
-                            }
-                        }
-                        .tint(AdminSurface.primary)
-
-                        if viewModel.hasExpiryDate {
-                            DatePicker(
-                                tr("CatalogIntake_ExpiryDate", "تاريخ انتهاء الصلاحية"),
-                                selection: $viewModel.expiryDate,
-                                displayedComponents: .date
-                            )
-                            .datePickerStyle(.compact)
-                            .font(AdminType.callout)
-                            .frame(minHeight: AdminTouchTarget.minimum)
-                        }
-                    }
-                    .padding(AdminSpacing.md)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                    PPAccessoryExpirySentinel(
+                        hasExpiryDate: $viewModel.hasExpiryDate,
+                        expiryDate: $viewModel.expiryDate
+                    )
                 }
             }
         }
-    }
-
-    private var weightField: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            fieldLabel(tr("CatalogIntake_WeightLabel", "الوزن أو الحجم"), required: false)
-            TextField("0.0", text: $viewModel.weightText)
-                .font(AdminType.headline)
-                .englishNumericInput(text: $viewModel.weightText, allowsDecimal: true)
-                .focused($focusedField, equals: .weight)
-                .padding(.horizontal, AdminSpacing.md)
-                .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                .overlay(fieldFocusBorder(focusedField == .weight))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var weightUnitField: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            fieldLabel(tr("CatalogIntake_UnitLabel", "الوحدة"), required: false)
-            Picker(tr("CatalogIntake_UnitLabel", "الوحدة"), selection: $viewModel.weightUnit) {
-                Text("kg").tag("kg")
-                Text("g").tag("g")
-                Text("L").tag("L")
-                Text("ml").tag("ml")
-            }
-            .pickerStyle(.menu)
-            .environment(\.layoutDirection, .leftToRight)
-            .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
-            .padding(.horizontal, AdminSpacing.md)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func taxonomyButton(
@@ -10271,6 +11689,10 @@ private struct PPAccessoryFoodIntakeJourney: View {
         case .identity:
             if viewModel.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return tr("CatalogIntake_ValidationName", "أدخل اسم الصنف أولاً.")
+            }
+            let trimmedNameEn = viewModel.nameEn.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedNameEn.isEmpty && trimmedNameEn.utf16.count > 90 {
+                return tr("CatalogIntake_ValidationNameLengthEn", "يجب ألا يتجاوز الاسم بالإنجليزية 90 حرفاً.")
             }
         case .bioVault:
             if viewModel.selectedMainKind == nil {

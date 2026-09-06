@@ -209,10 +209,12 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 - (instancetype)init {
     if (self = [super init]) {
         _name = @"";
+        _nameEn = @"";
         _sku = @"";
         _barcode = @"";
         _costPrice = nil;
         _desc = @"";
+        _descEn = @"";
         _price = @(0);
         _hasResolvedSellingPrice = NO;
         _ownerID = @"";
@@ -258,10 +260,24 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     // Basic info
     if (self.name) dict[@"name"] = self.name;
     dict[@"searchTitle"] = [ArabicNormalizer normalize:self.name ?: @""];
+    if (self.nameEn.length > 0) {
+        dict[@"nameEn"] = self.nameEn;
+        dict[@"name_en"] = self.nameEn;
+    } else {
+        dict[@"nameEn"] = [NSNull null];
+        dict[@"name_en"] = [NSNull null];
+    }
     dict[@"sku"] = self.sku.length > 0 ? self.sku : [NSNull null];
     dict[@"barcode"] = self.barcode.length > 0 ? self.barcode : [NSNull null];
     dict[@"costPrice"] = self.costPrice ?: [NSNull null];
     if (self.desc) dict[@"desc"] = self.desc;
+    if (self.descEn.length > 0) {
+        dict[@"descEn"] = self.descEn;
+        dict[@"desc_en"] = self.descEn;
+    } else {
+        dict[@"descEn"] = [NSNull null];
+        dict[@"desc_en"] = [NSNull null];
+    }
     if (self.hasResolvedSellingPrice) dict[@"price"] = self.price;
 
     // Discount fields
@@ -476,10 +492,12 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self = [super init]) {
         _accessoryID = docID ?: @"";
         _name = PPAccessoryStringValueForKeys(dict, (@[@"name", @"title"]));
+        _nameEn = PPAccessoryStringValueForKeys(dict, (@[@"nameEn", @"name_en", @"titleEn", @"title_en"]));
         _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
         _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"Barcode", @"barCode", @"upc", @"ean"]));
         _costPrice = PPAccessoryNumberValueForKeys(dict, (@[@"costPrice", @"cost_price", @"cost"]));
         _desc = PPAccessoryStringValueForKeys(dict, (@[@"desc", @"description"]));
+        _descEn = PPAccessoryStringValueForKeys(dict, (@[@"descEn", @"descriptionEn", @"desc_en", @"description_en"]));
 
         // Individually tracked live-pet parent documents intentionally expose
         // a null aggregate price when no available unit has a selling price.
@@ -641,6 +659,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     PetAccessory *copy = [[PetAccessory alloc] init];
     copy.accessoryID = [source.accessoryID copy];
     copy.name = [source.name copy];
+    copy.nameEn = [source.nameEn copy];
     copy.sku = [source.sku copy];
     copy.barcode = [source.barcode copy];
     copy.costPrice = [source.costPrice copy];
@@ -653,6 +672,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.weight = [source.weight copy];
     copy.weightUnit = [source.weightUnit copy];
     copy.desc = [source.desc copy];
+    copy.descEn = [source.descEn copy];
     copy.blurHash = [source.blurHash copy];
     copy.petMainCategoryID = source.petMainCategoryID;
     copy.petSubCategoryID = source.petSubCategoryID;

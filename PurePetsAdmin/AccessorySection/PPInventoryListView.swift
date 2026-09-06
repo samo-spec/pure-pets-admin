@@ -119,6 +119,28 @@ struct PPLivePetUnitDraft: Identifiable, Equatable {
     var sellingPriceText: String
     var supplier: String
     var notes: String
+    var subSubKindID: Int?
+    var subSubKindNameAr: String?
+    var subSubKindNameEn: String?
+    var subSubKindItemID: Int?
+    var subSubKindItemNameAr: String?
+    var subSubKindItemNameEn: String?
+
+    var subSubKindName: String? {
+        if Language.isRTL() {
+            return !(subSubKindNameAr ?? "").isEmpty ? subSubKindNameAr : subSubKindNameEn
+        } else {
+            return !(subSubKindNameEn ?? "").isEmpty ? subSubKindNameEn : subSubKindNameAr
+        }
+    }
+
+    var subSubKindItemName: String? {
+        if Language.isRTL() {
+            return !(subSubKindItemNameAr ?? "").isEmpty ? subSubKindItemNameAr : subSubKindItemNameEn
+        } else {
+            return !(subSubKindItemNameEn ?? "").isEmpty ? subSubKindItemNameEn : subSubKindItemNameAr
+        }
+    }
 
     init(
         id: String = "unit_draft_\(UUID().uuidString.lowercased())",
@@ -128,7 +150,13 @@ struct PPLivePetUnitDraft: Identifiable, Equatable {
         purchaseCostText: String = "",
         sellingPriceText: String = "",
         supplier: String = "",
-        notes: String = ""
+        notes: String = "",
+        subSubKindID: Int? = nil,
+        subSubKindNameAr: String? = nil,
+        subSubKindNameEn: String? = nil,
+        subSubKindItemID: Int? = nil,
+        subSubKindItemNameAr: String? = nil,
+        subSubKindItemNameEn: String? = nil
     ) {
         self.id = id
         self.ringTag = ringTag
@@ -138,6 +166,12 @@ struct PPLivePetUnitDraft: Identifiable, Equatable {
         self.sellingPriceText = sellingPriceText
         self.supplier = supplier
         self.notes = notes
+        self.subSubKindID = subSubKindID
+        self.subSubKindNameAr = subSubKindNameAr
+        self.subSubKindNameEn = subSubKindNameEn
+        self.subSubKindItemID = subSubKindItemID
+        self.subSubKindItemNameAr = subSubKindItemNameAr
+        self.subSubKindItemNameEn = subSubKindItemNameEn
     }
 }
 
@@ -156,6 +190,28 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
     let reservationValidUntil: Date?
     let mortalityReason: String
     let transferReason: String
+    let subSubKindID: Int?
+    let subSubKindNameAr: String?
+    let subSubKindNameEn: String?
+    let subSubKindItemID: Int?
+    let subSubKindItemNameAr: String?
+    let subSubKindItemNameEn: String?
+
+    var subSubKindName: String? {
+        if Language.isRTL() {
+            return !(subSubKindNameAr ?? "").isEmpty ? subSubKindNameAr : subSubKindNameEn
+        } else {
+            return !(subSubKindNameEn ?? "").isEmpty ? subSubKindNameEn : subSubKindNameAr
+        }
+    }
+
+    var subSubKindItemName: String? {
+        if Language.isRTL() {
+            return !(subSubKindItemNameAr ?? "").isEmpty ? subSubKindItemNameAr : subSubKindItemNameEn
+        } else {
+            return !(subSubKindItemNameEn ?? "").isEmpty ? subSubKindItemNameEn : subSubKindItemNameAr
+        }
+    }
 
     init(dictionary: [String: Any]) {
         id = PPLivePetInventoryService.string(dictionary["unitId"] ?? dictionary["id"])
@@ -179,6 +235,14 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
         reservationValidUntil = PPLivePetInventoryService.date(dictionary["reservationValidUntil"])
         mortalityReason = PPLivePetInventoryService.string(dictionary["mortalityReason"])
         transferReason = PPLivePetInventoryService.string(dictionary["transferReason"])
+        subSubKindID = (dictionary["subSubKindID"] as? NSNumber)?.intValue
+            ?? (dictionary["subSubKindId"] as? NSNumber)?.intValue
+        subSubKindNameAr = PPLivePetInventoryService.string(dictionary["subSubKindNameAr"] ?? dictionary["subSubKindName"])
+        subSubKindNameEn = PPLivePetInventoryService.string(dictionary["subSubKindNameEn"])
+        subSubKindItemID = (dictionary["subSubKindItemID"] as? NSNumber)?.intValue
+            ?? (dictionary["subSubKindItemId"] as? NSNumber)?.intValue
+        subSubKindItemNameAr = PPLivePetInventoryService.string(dictionary["subSubKindItemNameAr"] ?? dictionary["subSubKindItemName"])
+        subSubKindItemNameEn = PPLivePetInventoryService.string(dictionary["subSubKindItemNameEn"])
     }
 }
 
@@ -1236,7 +1300,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                     throw PPLivePetOperationValidationError.invalidCost
                 }
             }
-            return [
+            var dict: [String: Any] = [
                 "draftUnitId": draft.id,
                 "ringTag": draft.ringTag.trimmingCharacters(in: .whitespacesAndNewlines),
                 "gender": draft.gender.rawValue,
@@ -1247,6 +1311,17 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                 "notes": draft.notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 "mediaURLs": [],
             ]
+            if let subSubID = draft.subSubKindID {
+                dict["subSubKindID"] = subSubID
+                dict["subSubKindNameAr"] = draft.subSubKindNameAr ?? ""
+                dict["subSubKindNameEn"] = draft.subSubKindNameEn ?? ""
+            }
+            if let itemID = draft.subSubKindItemID {
+                dict["subSubKindItemID"] = itemID
+                dict["subSubKindItemNameAr"] = draft.subSubKindItemNameAr ?? ""
+                dict["subSubKindItemNameEn"] = draft.subSubKindItemNameEn ?? ""
+            }
+            return dict
         }
     }
 }

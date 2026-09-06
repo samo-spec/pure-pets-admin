@@ -14,6 +14,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSArray<NSString *> *unitIDs;
 @property (nonatomic, copy) NSArray<NSString *> *unitRingTags;
 @property (nonatomic, copy) NSArray<NSDictionary *> *unitPrices;
+@property (nonatomic, copy, nullable) NSString *subSubKindName;
+@property (nonatomic, copy, nullable) NSString *subSubKindItemName;
+@property (nonatomic, copy) NSArray<NSString *> *unitSubSubKinds;
+@property (nonatomic, copy) NSArray<NSString *> *unitSubSubKindItems;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 
@@ -22,6 +26,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *ringTag;
 @property (nonatomic, assign) double sellingPrice;
 @property (nonatomic, copy) NSString *currentBranchId;
+@property (nonatomic, strong, nullable) NSNumber *subSubKindID;
+@property (nonatomic, copy, nullable) NSString *subSubKindNameAr;
+@property (nonatomic, copy, nullable) NSString *subSubKindNameEn;
+@property (nonatomic, strong, nullable) NSNumber *subSubKindItemID;
+@property (nonatomic, copy, nullable) NSString *subSubKindItemNameAr;
+@property (nonatomic, copy, nullable) NSString *subSubKindItemNameEn;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 

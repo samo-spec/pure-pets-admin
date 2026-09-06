@@ -65,6 +65,7 @@ struct AdminPOSHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var viewModel = POSHistoryViewModel()
+    @State private var selectedReceipt: POSCompletedReceipt? = nil
 
     init(session: AdminSession, onDismiss: (() -> Void)? = nil) {
         self.session = session
@@ -103,6 +104,9 @@ struct AdminPOSHistoryView: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(item: $selectedReceipt) { receipt in
+            POSCompletedReceiptSheet(receipt: receipt)
+        }
         .onAppear { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
         .onChange(of: branchStore.activeBranch?.branchID) { branchID in
             viewModel.load(branchID: branchID)
@@ -181,7 +185,12 @@ struct AdminPOSHistoryView: View {
         ScrollView {
             LazyVStack(spacing: AdminSpacing.sm) {
                 ForEach(viewModel.receipts, id: \.receiptID) { receipt in
-                    ReceiptCard(receipt: receipt)
+                    Button {
+                        selectedReceipt = POSCompletedReceipt(receipt: receipt)
+                    } label: {
+                        ReceiptCard(receipt: receipt)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)

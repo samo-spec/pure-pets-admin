@@ -208,6 +208,8 @@ struct POSCartItem: Identifiable, Equatable {
     var unitIDs: [String] = []
     var unitRingTags: [String] = []
     var unitPrices: [[String: Any]] = []
+    var unitSubSubKinds: [String] = []
+    var unitSubSubKindItems: [String] = []
 
     var isIndividuallyTracked: Bool { inventoryMode == kPOSIndividualInventoryMode }
 
@@ -297,6 +299,28 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     let ringTag: String
     let sellingPrice: Double
     let currentBranchId: String
+    var subSubKindID: Int = 0
+    var subSubKindNameAr: String = ""
+    var subSubKindNameEn: String = ""
+    var subSubKindItemID: Int = 0
+    var subSubKindItemNameAr: String = ""
+    var subSubKindItemNameEn: String = ""
+
+    var subSubKindName: String {
+        if Language.isRTL() {
+            return !subSubKindNameAr.isEmpty ? subSubKindNameAr : subSubKindNameEn
+        } else {
+            return !subSubKindNameEn.isEmpty ? subSubKindNameEn : subSubKindNameAr
+        }
+    }
+
+    var subSubKindItemName: String {
+        if Language.isRTL() {
+            return !subSubKindItemNameAr.isEmpty ? subSubKindItemNameAr : subSubKindItemNameEn
+        } else {
+            return !subSubKindItemNameEn.isEmpty ? subSubKindItemNameEn : subSubKindItemNameAr
+        }
+    }
 
     var id: String { unitID }
     var label: String { ringTag.isEmpty ? unitID : ringTag }
@@ -432,7 +456,13 @@ final class POSUnitPickerState: ObservableObject {
                     unitID: $0.unitID,
                     ringTag: $0.ringTag,
                     sellingPrice: $0.sellingPrice,
-                    currentBranchId: $0.currentBranchId ?? ""
+                    currentBranchId: $0.currentBranchId ?? "",
+                    subSubKindID: $0.subSubKindID,
+                    subSubKindNameAr: $0.subSubKindNameAr ?? "",
+                    subSubKindNameEn: $0.subSubKindNameEn ?? "",
+                    subSubKindItemID: $0.subSubKindItemID,
+                    subSubKindItemNameAr: $0.subSubKindItemNameAr ?? "",
+                    subSubKindItemNameEn: $0.subSubKindItemNameEn ?? ""
                 )
             }
             let cursorValue = nextCursor
@@ -730,6 +760,8 @@ final class POSFastSellViewModel: ObservableObject {
         guard !units.isEmpty else { return }
         let unitIDs = units.map { $0.unitID }
         let ringTags = units.map { $0.label }
+        let subSubKinds = units.compactMap { $0.subSubKindName.isEmpty ? nil : $0.subSubKindName }
+        let subSubKindItems = units.compactMap { $0.subSubKindItemName.isEmpty ? nil : $0.subSubKindItemName }
         let prices: [[String: Any]] = units.map { ["unitId": $0.unitID, "unitPrice": $0.sellingPrice] }
         let lineTotal = prices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
 
@@ -738,6 +770,8 @@ final class POSFastSellViewModel: ObservableObject {
             cartItems[idx].unitIDs = unitIDs
             cartItems[idx].unitRingTags = ringTags
             cartItems[idx].unitPrices = prices
+            cartItems[idx].unitSubSubKinds = subSubKinds
+            cartItems[idx].unitSubSubKindItems = subSubKindItems
             cartItems[idx].quantity = unitIDs.count
         } else {
             var item = POSCartItem(accessory: product, quantity: unitIDs.count)
@@ -745,6 +779,8 @@ final class POSFastSellViewModel: ObservableObject {
             item.unitIDs = unitIDs
             item.unitRingTags = ringTags
             item.unitPrices = prices
+            item.unitSubSubKinds = subSubKinds
+            item.unitSubSubKindItems = subSubKindItems
             cartItems.append(item)
         }
         POSLogger.info("cart.exact_units_bound", category: "cart", message: "Bound \(unitIDs.count) exact live units to '\(product.name)' (Line Total: \(lineTotal) QAR)", metadata: [
@@ -952,6 +988,15 @@ final class POSFastSellViewModel: ObservableObject {
                 payload["inventoryMode"] = kPOSIndividualInventoryMode
                 payload["unitIds"] = item.unitIDs
                 payload["unitPrices"] = item.unitPrices
+                if !item.unitRingTags.isEmpty {
+                    payload["unitRingTags"] = item.unitRingTags
+                }
+                if !item.unitSubSubKinds.isEmpty {
+                    payload["unitSubSubKinds"] = item.unitSubSubKinds
+                }
+                if !item.unitSubSubKindItems.isEmpty {
+                    payload["unitSubSubKindItems"] = item.unitSubSubKindItems
+                }
             }
             return payload
         }
@@ -3850,6 +3895,28 @@ private struct ApexAnimalSpecimenCard: View {
                             .environment(\.layoutDirection, .leftToRight)
                     }
 
+                    // SubSubKind & SubSubKindItem Badges
+                    if !unit.subSubKindName.isEmpty || !unit.subSubKindItemName.isEmpty {
+                        HStack(spacing: 4) {
+                            if !unit.subSubKindName.isEmpty {
+                                Text(unit.subSubKindName)
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(rosePrimary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(rosePrimary.opacity(0.08), in: Capsule())
+                            }
+                            if !unit.subSubKindItemName.isEmpty {
+                                Text(unit.subSubKindItemName)
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primaryText.opacity(0.05), in: Capsule())
+                            }
+                        }
+                    }
+
                     // Serial Registry Chip & Readiness
                     HStack(spacing: 6) {
                         Text(formattedShortID)
@@ -4218,6 +4285,22 @@ private struct CartItemRow: View {
                     .lineLimit(2)
                     .environment(\.layoutDirection, .leftToRight)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if !item.unitSubSubKinds.isEmpty || !item.unitSubSubKindItems.isEmpty {
+                HStack(spacing: 6) {
+                    if !item.unitSubSubKinds.isEmpty {
+                        Text(item.unitSubSubKinds.joined(separator: " · "))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    if !item.unitSubSubKindItems.isEmpty {
+                        Text("(\(item.unitSubSubKindItems.joined(separator: " · ")))")
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(AdminSpacing.md)

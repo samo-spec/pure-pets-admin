@@ -19,6 +19,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) _Nullable id<FIRListenerRegistration> subSubKindsListener;
 
 
+@property (nonatomic, copy, nullable) NSString *documentID;
 @property (nonatomic, assign) NSInteger ID;
 @property (nonatomic, assign) NSInteger MainKindID;
 

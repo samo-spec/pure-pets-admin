@@ -19,6 +19,25 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         let unitPrice: Double
         let lineTotal: Double
         let ringTags: [String]
+        let subSubKind: String?
+        let subSubKindItem: String?
+        let unitSubSubKinds: [String]
+        let unitSubSubKindItems: [String]
+
+        var subSubKindFormatted: String {
+            var parts: [String] = []
+            if let subSub = subSubKind, !subSub.isEmpty {
+                parts.append(subSub)
+            } else if !unitSubSubKinds.isEmpty {
+                parts.append(unitSubSubKinds.joined(separator: "، "))
+            }
+            if let item = subSubKindItem, !item.isEmpty {
+                parts.append("(\(item))")
+            } else if !unitSubSubKindItems.isEmpty {
+                parts.append("(\(unitSubSubKindItems.joined(separator: "، ")))")
+            }
+            return parts.joined(separator: " ")
+        }
     }
 
     let transactionID: String
@@ -54,7 +73,11 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 quantity: quantity,
                 unitPrice: item.price,
                 lineTotal: item.lineTotal > 0 ? item.lineTotal : derivedTotal,
-                ringTags: item.unitRingTags
+                ringTags: item.unitRingTags,
+                subSubKind: item.subSubKindName,
+                subSubKindItem: item.subSubKindItemName,
+                unitSubSubKinds: item.unitSubSubKinds,
+                unitSubSubKindItems: item.unitSubSubKindItems
             )
         }
         subtotal = receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount
@@ -96,7 +119,11 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 quantity: item.quantity,
                 unitPrice: item.unitPriceDisplay,
                 lineTotal: item.lineTotal,
-                ringTags: item.unitRingTags
+                ringTags: item.unitRingTags,
+                subSubKind: item.unitSubSubKinds.first,
+                subSubKindItem: item.unitSubSubKindItems.first,
+                unitSubSubKinds: item.unitSubSubKinds,
+                unitSubSubKindItems: item.unitSubSubKindItems
             )
         }
         self.subtotal = subtotal > 0 ? subtotal : total + discount
@@ -353,6 +380,14 @@ struct POSCompletedReceiptSheet: View {
                             .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .callout))
                             .foregroundColor(AdminSurface.primaryText)
                             .fixedSize(horizontal: false, vertical: true)
+
+                        let subSubDesc = line.subSubKindFormatted
+                        if !subSubDesc.isEmpty {
+                            Text(subSubDesc)
+                                .font(Font.custom("Beiruti-SemiBold", size: 12, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.primary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
 
                         if !line.ringTags.isEmpty {
                             Text(
@@ -792,7 +827,13 @@ private enum POSReceiptPDFExporter {
 
         // Items
         for line in receipt.lines {
-            let itemTextHeight: CGFloat = line.ringTags.isEmpty ? 22.0 : 34.0
+            var itemTextHeight: CGFloat = 22.0
+            if !line.subSubKindFormatted.isEmpty {
+                itemTextHeight += 14.0
+            }
+            if !line.ringTags.isEmpty {
+                itemTextHeight += 14.0
+            }
             dynamicHeight += itemTextHeight + 4.0
         }
         dynamicHeight += 12.0
@@ -991,6 +1032,18 @@ private enum POSReceiptPDFExporter {
                     priceStr.draw(in: CGRect(x: w - m - priceWidth, y: currentY, width: priceWidth, height: 16.0), withAttributes: priceAttr)
                 }
                 currentY += 16.0
+
+                let subSubDesc = line.subSubKindFormatted
+                if !subSubDesc.isEmpty {
+                    let subSubAttr: [NSAttributedString.Key: Any] = [
+                        .font: microFont,
+                        .foregroundColor: primaryColor,
+                        .paragraphStyle: leadingStyle
+                    ]
+                    let subSubX = rtl ? (m + priceWidth + 4.0) : (m + qtyWidth + 4.0)
+                    subSubDesc.draw(in: CGRect(x: subSubX, y: currentY, width: nameWidth, height: 12.0), withAttributes: subSubAttr)
+                    currentY += 14.0
+                }
 
                 if !line.ringTags.isEmpty {
                     let tagsStr = Language.get("POS_Receipt_Rings", alter: "الوسوم") + ": " + line.ringTags.joined(separator: ", ")

@@ -33,6 +33,7 @@
     self = [super init];
     if (self) {
         
+        self.documentID = dict[@"documentID"] ?: [NSString stringWithFormat:@"%ld", (long)[dict[@"ID"] integerValue]];
         self.ID = [dict[@"ID"] integerValue];
         self.MainKindID = [dict[@"MainKindID"] integerValue];
 
@@ -88,6 +89,7 @@
         
         NSDictionary *data = snapshot.data;
 
+        self.documentID = snapshot.documentID;
         self.ID = [data[@"ID"] integerValue];
         self.MainKindID = [data[@"MainKindID"] integerValue];
 

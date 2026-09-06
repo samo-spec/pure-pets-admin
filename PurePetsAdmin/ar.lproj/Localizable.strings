@@ -5174,6 +5174,22 @@
 "CatalogIntake_ExpiryToggle" = "للصنف تاريخ انتهاء صلاحية";
 "CatalogIntake_ExpiryHint" = "فعّلها عندما تكون الصلاحية مطبوعة على العبوة.";
 "CatalogIntake_ExpiryDate" = "تاريخ انتهاء الصلاحية";
+"Condition_New_Sub" = "مغلف المصنع • أصلي 100%";
+"Condition_Used_Sub" = "مفحوص ومعتمد • جاهز للاستخدام";
+"Condition_New_Badge" = "جديد ومغلف";
+"Condition_Used_Badge" = "مستعمل ومعتمد";
+"CatalogIntake_FoodCondition_Title" = "أغذية ومكملات جديدة ومغلفة حصراً";
+"CatalogIntake_FoodCondition_Sub" = "تخضع كافة أطعمة ومكملات الحيوانات الأليفة لمعايير السلامة الغذائية وتُحفظ دائماً بحالة جديدة ومغلفة لضمان أعلى معايير السلامة والصحة البيطرية.";
+"CatalogIntake_QuickPresets" = "مقادير سريعة:";
+"CatalogIntake_Optional" = "(اختياري)";
+"Expiry_Expired" = "منتهي الصلاحية!";
+"Expiry_Urgent_Days" = "تنبيه: متبقي %ld يوماً فقط";
+"Expiry_Moderate_Months" = "صلاحية متوسطة (متبقي %ld أشهر)";
+"Expiry_Excellent_Months" = "صلاحية ممتازة (متبقي %ld شهراً)";
+"Unit_Kilogram" = "كيلوجرام";
+"Unit_Gram" = "جرام";
+"Unit_Liter" = "لتر";
+"Unit_Milliliter" = "مليلتر";
 "CatalogIntake_PricingEyebrow" = "السعر والمخزون";
 "CatalogIntake_PricingTitle" = "حدّد سعر البيع والعرض والكمية";
 "CatalogIntake_PricingSubtitle" = "السعر الأساسي مطلوب. الخصم اختياري، والكمية صفر تعني أن الصنف غير متوفر حالياً.";
@@ -6058,3 +6074,10 @@
 "SubSub_Delete_Confirm_Title" = "تأكيد حذف التفريع الفرعي";
 "KindItem_Delete_Confirm_Title" = "تأكيد حذف المواصفة / العنصر";
 "Manage" = "إدارة";
+
+/* Live Pet Intake SubSubKind & SubSubKindItem */
+"LivePetIntake_SubSubKindLabel" = "التفريع الفرعي (SubSubKind)";
+"LivePetIntake_SelectSubSubKind" = "اختر التفريع الفرعي...";
+"LivePetIntake_SubSubKindItemLabel" = "عنصر التفريع (SubSubKindItem)";
+"LivePetIntake_SelectSubSubKindItem" = "اختر تصنيف العنصر...";
+"LivePetIntake_None" = "بدون تفريع";

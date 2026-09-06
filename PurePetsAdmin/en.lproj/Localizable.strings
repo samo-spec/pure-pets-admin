@@ -5178,6 +5178,22 @@
 "CatalogIntake_PhotoZoomHint" = "Use the zoom in or zoom out actions to adjust the preview";
 "CatalogIntake_PhotoLoadFailed" = "Photo could not be loaded";
 "CatalogIntake_TryAnotherSearch" = "Try another term or clear the search.";
+"Condition_New_Sub" = "Factory sealed • 100% genuine";
+"Condition_Used_Sub" = "Inspected & certified • Ready to use";
+"Condition_New_Badge" = "Sealed & New";
+"Condition_Used_Badge" = "Certified Pre-Owned";
+"CatalogIntake_FoodCondition_Title" = "Factory-Sealed Nutrition Only";
+"CatalogIntake_FoodCondition_Sub" = "All pet food and nutritional supplements are strictly cataloged factory-sealed and pristine to uphold veterinary safety standards.";
+"CatalogIntake_QuickPresets" = "Quick Presets:";
+"CatalogIntake_Optional" = "(Optional)";
+"Expiry_Expired" = "Expired!";
+"Expiry_Urgent_Days" = "Warning: only %ld days remaining";
+"Expiry_Moderate_Months" = "Moderate shelf-life (%ld months left)";
+"Expiry_Excellent_Months" = "Excellent shelf-life (%ld months left)";
+"Unit_Kilogram" = "Kilograms";
+"Unit_Gram" = "Grams";
+"Unit_Liter" = "Liters";
+"Unit_Milliliter" = "Milliliters";
 
 
 /* MARK: - Live animal intake roster (per-animal identity, gender, pricing) */
@@ -5997,3 +6013,10 @@
 "SubSub_Delete_Confirm_Title" = "Confirm Delete SubSubKind";
 "KindItem_Delete_Confirm_Title" = "Confirm Delete Item";
 "Manage" = "Manage";
+
+/* Live Pet Intake SubSubKind & SubSubKindItem */
+"LivePetIntake_SubSubKindLabel" = "Sub-Variety (SubSubKind)";
+"LivePetIntake_SelectSubSubKind" = "Select SubSubKind...";
+"LivePetIntake_SubSubKindItemLabel" = "Variety Item (SubSubKindItem)";
+"LivePetIntake_SelectSubSubKindItem" = "Select Item...";
+"LivePetIntake_None" = "None";

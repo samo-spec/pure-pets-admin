@@ -57,6 +57,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _unitIDs = PPPOSStringArray(dict[@"unitIds"]);
         _unitRingTags = PPPOSStringArray(dict[@"unitRingTags"]);
         _unitPrices = [dict[@"unitPrices"] isKindOfClass:NSArray.class] ? dict[@"unitPrices"] : @[];
+        _subSubKindName = PPSafeString(dict[@"subSubKindName"] ?: dict[@"subSubKind"] ?: dict[@"subSubKindNameAr"]);
+        _subSubKindItemName = PPSafeString(dict[@"subSubKindItemName"] ?: dict[@"subSubKindItem"] ?: dict[@"subSubKindItemNameAr"]);
+        _unitSubSubKinds = PPPOSStringArray(dict[@"unitSubSubKinds"]);
+        _unitSubSubKindItems = PPPOSStringArray(dict[@"unitSubSubKindItems"]);
     }
     return self;
 }
@@ -70,6 +74,12 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _ringTag = PPSafeString(dict[@"ringTag"]);
         _sellingPrice = PPSafeDouble(dict[@"sellingPrice"]);
         _currentBranchId = PPSafeString(dict[@"currentBranchId"]);
+        _subSubKindID = PPSafeNumber(dict[@"subSubKindID"] ?: dict[@"subSubKindId"]);
+        _subSubKindNameAr = PPSafeString(dict[@"subSubKindNameAr"] ?: dict[@"subSubKindName"]);
+        _subSubKindNameEn = PPSafeString(dict[@"subSubKindNameEn"]);
+        _subSubKindItemID = PPSafeNumber(dict[@"subSubKindItemID"] ?: dict[@"subSubKindItemId"]);
+        _subSubKindItemNameAr = PPSafeString(dict[@"subSubKindItemNameAr"] ?: dict[@"subSubKindItemName"]);
+        _subSubKindItemNameEn = PPSafeString(dict[@"subSubKindItemNameEn"]);
     }
     return self;
 }
