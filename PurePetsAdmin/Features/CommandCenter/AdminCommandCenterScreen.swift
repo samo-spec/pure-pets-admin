@@ -2906,7 +2906,6 @@ private struct CommandPOSSovereignCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var isBeaconPulsing = false
-    @State private var laserOffset: CGFloat = -18
     @State private var arrowNudge: CGFloat = 0
 
     var body: some View {
@@ -2922,7 +2921,7 @@ private struct CommandPOSSovereignCard: View {
 
                 Spacer(minLength: 6)
 
-                // Zone 2: Optical Reticle & Armed Laser Scanner Hero
+                // Zone 2: Marketplace POS Hero
                 scannerReticleHero
 
                 Spacer(minLength: 8)
@@ -2955,9 +2954,6 @@ private struct CommandPOSSovereignCard: View {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
                 isBeaconPulsing = true
-            }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                laserOffset = 18
             }
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                 arrowNudge = 2.5
@@ -3008,8 +3004,8 @@ private struct CommandPOSSovereignCard: View {
 
     private var scannerReticleHero: some View {
         ZStack {
-            // Reticle background chamber
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
+            // Chamber background
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
@@ -3021,46 +3017,13 @@ private struct CommandPOSSovereignCard: View {
                     )
                 )
 
-            // Stylized optical barcode line array
-            HStack(spacing: 2.5) {
-                ForEach(0..<7, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 0.5)
-                        .fill(item.accent.opacity(colorScheme == .dark ? (i % 2 == 0 ? 0.35 : 0.18) : (i % 2 == 0 ? 0.28 : 0.14)))
-                        .frame(width: (i == 1 || i == 5) ? 2.5 : 1.2, height: 26)
-                }
-            }
-
-            // Central Marketplace & Scanner Icon
-            CommandQuickActionIcon(item: item, size: 22)
-                .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.55 : 0.25), radius: 4, x: 0, y: 1)
-
-            // Scanning Laser Beam
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            .clear,
-                            item.accent.opacity(0.85),
-                            Color.white,
-                            item.accent.opacity(0.85),
-                            .clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(width: 44, height: 1.5)
-                .shadow(color: item.accent, radius: 4, x: 0, y: 0)
-                .offset(y: laserOffset)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-
-            // Precision Optical Reticle HUD Corner Brackets
-            ReticleCornerMarks(accent: item.accent, length: 7, strokeWidth: 1.5)
-                .padding(4)
+            // Central Marketplace Icon
+            CommandQuickActionIcon(item: item, size: 32)
+                .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.20), radius: 4, x: 0, y: 1.5)
         }
         .frame(width: 54, height: 54)
         .overlay(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.46 : 0.30), lineWidth: 0.8)
         )
         .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 4, x: 0, y: 2)
@@ -3192,7 +3155,6 @@ private struct CommandIPadPOSSovereignCard: View {
     @Environment(\.layoutDirection) private var layoutDirection
 
     @State private var isBeaconPulsing = false
-    @State private var laserOffset: CGFloat = -20
     @State private var arrowNudge: CGFloat = 0
 
     var body: some View {
@@ -3208,7 +3170,7 @@ private struct CommandIPadPOSSovereignCard: View {
 
                 Spacer(minLength: 6)
 
-                // Zone 2: Panoramic Optical Reticle & Scanning Laser Chamber
+                // Zone 2: Marketplace POS Hero
                 scannerReticleHero
 
                 Spacer(minLength: 6)
@@ -3238,9 +3200,6 @@ private struct CommandIPadPOSSovereignCard: View {
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
                 isBeaconPulsing = true
-            }
-            withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                laserOffset = 20
             }
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                 arrowNudge = 3.0
@@ -3327,49 +3286,9 @@ private struct CommandIPadPOSSovereignCard: View {
                         )
                     )
 
-                // Tactical Grid Pattern
-                VStack(spacing: 6) {
-                    Divider().background(item.accent.opacity(colorScheme == .dark ? 0.12 : 0.06))
-                    Divider().background(item.accent.opacity(colorScheme == .dark ? 0.12 : 0.06))
-                }
-                .padding(.horizontal, 8)
-
-                // Optical barcode array
-                HStack(spacing: 2.8) {
-                    ForEach(0..<9, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 0.5)
-                            .fill(item.accent.opacity(colorScheme == .dark ? (i % 2 == 0 ? 0.38 : 0.18) : (i % 2 == 0 ? 0.30 : 0.15)))
-                            .frame(width: (i == 1 || i == 4 || i == 7) ? 2.4 : 1.2, height: 30)
-                    }
-                }
-
-                // Central Icon
-                CommandQuickActionIcon(item: item, size: 24)
-                    .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.65 : 0.30), radius: 5, x: 0, y: 1)
-
-                // Laser Beam
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                .clear,
-                                item.accent.opacity(0.88),
-                                Color.white,
-                                item.accent.opacity(0.88),
-                                .clear
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: 52, height: 1.6)
-                    .shadow(color: item.accent, radius: 4, x: 0, y: 0)
-                    .offset(y: laserOffset)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                // Corner brackets HUD
-                ReticleCornerMarks(accent: item.accent, length: 8, strokeWidth: 1.6)
-                    .padding(5)
+                // Central Marketplace Icon
+                CommandQuickActionIcon(item: item, size: 36)
+                    .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.22), radius: 5, x: 0, y: 1.5)
             }
             .frame(width: 62, height: 62)
             .overlay(

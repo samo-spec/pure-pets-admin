@@ -65,32 +65,80 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
 @implementation PPAuditLogEntryModel
 
 + (instancetype)entryFromSnapshot:(FIRDocumentSnapshot *)snapshot {
+    return [self entryFromSnapshot:snapshot sourceCollection:nil];
+}
+
++ (instancetype)entryFromSnapshot:(FIRDocumentSnapshot *)snapshot sourceCollection:(nullable NSString *)sourceCollection {
     PPAuditLogEntryModel *entry = [PPAuditLogEntryModel new];
     entry.auditId = snapshot.documentID;
+    entry.sourceCollection = sourceCollection;
     NSDictionary *data = snapshot.data;
     if (!data) return entry;
 
     entry.action = [data[@"action"] isKindOfClass:[NSString class]] ? data[@"action"] : @"";
+    if (entry.action.length == 0 && [data[@"type"] isKindOfClass:[NSString class]]) {
+        entry.action = data[@"type"];
+    }
+    if (entry.action.length == 0 && [data[@"event"] isKindOfClass:[NSString class]]) {
+        entry.action = data[@"event"];
+    }
+
     entry.adminUid = [data[@"adminUid"] isKindOfClass:[NSString class]] ? data[@"adminUid"] : @"";
     if (entry.adminUid.length == 0 && [data[@"userId"] isKindOfClass:[NSString class]]) {
         entry.adminUid = data[@"userId"];
     }
+    if (entry.adminUid.length == 0 && [data[@"actorUid"] isKindOfClass:[NSString class]]) {
+        entry.adminUid = data[@"actorUid"];
+    }
+    if (entry.adminUid.length == 0 && [data[@"createdBy"] isKindOfClass:[NSString class]]) {
+        entry.adminUid = data[@"createdBy"];
+    }
+
     entry.targetUid = [data[@"targetUid"] isKindOfClass:[NSString class]] ? data[@"targetUid"] : @"";
     if (entry.targetUid.length == 0 && [data[@"targetId"] isKindOfClass:[NSString class]]) {
         entry.targetUid = data[@"targetId"];
     }
+    if (entry.targetUid.length == 0 && [data[@"orderId"] isKindOfClass:[NSString class]]) {
+        entry.targetUid = data[@"orderId"];
+    }
+    if (entry.targetUid.length == 0 && [data[@"transactionId"] isKindOfClass:[NSString class]]) {
+        entry.targetUid = data[@"transactionId"];
+    }
+
     entry.targetCollection = [data[@"targetCollection"] isKindOfClass:[NSString class]] ? data[@"targetCollection"] : nil;
+    if (!entry.targetCollection && [data[@"targetType"] isKindOfClass:[NSString class]]) {
+        entry.targetCollection = data[@"targetType"];
+    }
+    if (!entry.targetCollection && [data[@"collection"] isKindOfClass:[NSString class]]) {
+        entry.targetCollection = data[@"collection"];
+    }
+
     entry.reason = [data[@"reason"] isKindOfClass:[NSString class]] ? data[@"reason"] : nil;
+    if (!entry.reason && [data[@"note"] isKindOfClass:[NSString class]]) {
+        entry.reason = data[@"note"];
+    }
+    if (!entry.reason && [data[@"metadata"] isKindOfClass:[NSDictionary class]]) {
+        id metaReason = data[@"metadata"][@"reason"];
+        if ([metaReason isKindOfClass:[NSString class]]) {
+            entry.reason = metaReason;
+        }
+    }
 
     entry.before = [data[@"before"] isKindOfClass:NSDictionary.class] ? data[@"before"] : nil;
     entry.after = [data[@"after"] isKindOfClass:NSDictionary.class] ? data[@"after"] : nil;
     entry.metadata = [data[@"metadata"] isKindOfClass:NSDictionary.class] ? data[@"metadata"] : nil;
 
     id ts = data[@"timestamp"];
+    if (!ts) ts = data[@"createdAt"];
+    if (!ts) ts = data[@"updatedAt"];
+    if (!ts) ts = data[@"date"];
+
     if ([ts isKindOfClass:FIRTimestamp.class]) {
         entry.timestamp = [(FIRTimestamp *)ts dateValue];
     } else if ([ts isKindOfClass:NSDate.class]) {
         entry.timestamp = ts;
+    } else if ([ts isKindOfClass:NSNumber.class]) {
+        entry.timestamp = [NSDate dateWithTimeIntervalSince1970:[ts doubleValue] / 1000.0];
     } else {
         entry.timestamp = [NSDate date];
     }

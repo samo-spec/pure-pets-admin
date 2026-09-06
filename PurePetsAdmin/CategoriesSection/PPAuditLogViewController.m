@@ -1484,7 +1484,10 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 
 @property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *allEntries;
 @property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *filteredEntries;
-@property (nonatomic, strong) id<FIRListenerRegistration> listenerReg;
+@property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *canonicalEntries;
+@property (nonatomic, strong) NSArray<PPAuditLogEntryModel *> *adminEntries;
+@property (nonatomic, strong, nullable) id<FIRListenerRegistration> canonicalListenerReg;
+@property (nonatomic, strong, nullable) id<FIRListenerRegistration> adminListenerReg;
 @property (nonatomic, assign) NSUInteger listenerGeneration;
 
 // Sovereign Navigation Chrome
@@ -1512,6 +1515,7 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 - (BOOL)evaluatePermissions;
 - (void)loadData;
 - (void)refreshData;
+- (void)mergeAndApplyAuditEntriesWithGeneration:(NSUInteger)generation;
 
 @end
 
@@ -1835,8 +1839,10 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     BOOL hasGlobalReach = staff.isAdmin || staff.hasGlobalScope;
     BOOL hasAuditPerm = [staff hasPermission:kStaffPermAuditView];
     if (!hasGlobalReach || !hasAuditPerm) {
-        [self.listenerReg remove];
-        self.listenerReg = nil;
+        [self.canonicalListenerReg remove];
+        self.canonicalListenerReg = nil;
+        [self.adminListenerReg remove];
+        self.adminListenerReg = nil;
         self.listenerGeneration += 1;
         [PPHUD showError:kLang(@"Error_Title")];
         [self handleBackTapped];
@@ -1846,26 +1852,34 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 }
 
 - (void)loadData {
-    [self.listenerReg remove];
-    self.listenerReg = nil;
+    [self.canonicalListenerReg remove];
+    self.canonicalListenerReg = nil;
+    [self.adminListenerReg remove];
+    self.adminListenerReg = nil;
+    self.canonicalEntries = @[];
+    self.adminEntries = @[];
+
     self.listenerGeneration += 1;
     NSUInteger generation = self.listenerGeneration;
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
 
-    FIRQuery *query = [[[[FIRFirestore firestore] collectionWithPath:@"AdminAuditLogs"]
-                        queryOrderedByField:@"timestamp" descending:YES]
-                       queryLimitedTo:500];
+    // 1. Canonical Audit Logs (auditLogs) - Primary backend audit stream
+    FIRQuery *canonicalQuery = [[[[FIRFirestore firestore] collectionWithPath:@"auditLogs"]
+                                 queryOrderedByField:@"timestamp" descending:YES]
+                                queryLimitedTo:250];
 
     __weak typeof(self) weakSelf = self;
-    self.listenerReg = [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
+    self.canonicalListenerReg = [canonicalQuery addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf || generation != strongSelf.listenerGeneration) return;
 
         if (!PPAuditStaffSessionCanRead(staff)) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (generation != strongSelf.listenerGeneration) return;
-                [strongSelf.listenerReg remove];
-                strongSelf.listenerReg = nil;
+                [strongSelf.canonicalListenerReg remove];
+                strongSelf.canonicalListenerReg = nil;
+                [strongSelf.adminListenerReg remove];
+                strongSelf.adminListenerReg = nil;
                 strongSelf.listenerGeneration += 1;
                 strongSelf.allEntries = @[];
                 [strongSelf applyFilter];
@@ -1875,22 +1889,76 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         }
 
         if (error) {
-            [PPHUD showError:kLang(@"Error_Title")];
+            NSLog(@"[PPAuditLog] Canonical auditLogs error: %@", error.localizedDescription);
+            if (strongSelf.adminEntries.count == 0) {
+                [PPHUD showError:kLang(@"Error_Title")];
+            }
             return;
         }
 
         NSMutableArray *entries = [NSMutableArray array];
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
-            PPAuditLogEntryModel *entry = [PPAuditLogEntryModel entryFromSnapshot:doc];
+            PPAuditLogEntryModel *entry = [PPAuditLogEntryModel entryFromSnapshot:doc sourceCollection:@"auditLogs"];
             [entries addObject:entry];
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
             if (generation != strongSelf.listenerGeneration || !PPAuditStaffSessionCanRead(staff)) return;
-            strongSelf.allEntries = entries.copy;
-            [strongSelf applyFilter];
+            strongSelf.canonicalEntries = entries.copy;
+            [strongSelf mergeAndApplyAuditEntriesWithGeneration:generation];
         });
     }];
+
+    // 2. Admin Specific Audit Logs (AdminAuditLogs) - Staff manual mutations
+    FIRQuery *adminQuery = [[[FIRFirestore firestore] collectionWithPath:@"AdminAuditLogs"]
+                            queryLimitedTo:250];
+
+    self.adminListenerReg = [adminQuery addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || generation != strongSelf.listenerGeneration) return;
+
+        if (error) {
+            NSLog(@"[PPAuditLog] AdminAuditLogs error: %@", error.localizedDescription);
+            return;
+        }
+
+        NSMutableArray *entries = [NSMutableArray array];
+        for (FIRDocumentSnapshot *doc in snapshot.documents) {
+            PPAuditLogEntryModel *entry = [PPAuditLogEntryModel entryFromSnapshot:doc sourceCollection:@"AdminAuditLogs"];
+            [entries addObject:entry];
+        }
+
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (generation != strongSelf.listenerGeneration || !PPAuditStaffSessionCanRead(staff)) return;
+            strongSelf.adminEntries = entries.copy;
+            [strongSelf mergeAndApplyAuditEntriesWithGeneration:generation];
+        });
+    }];
+}
+
+- (void)mergeAndApplyAuditEntriesWithGeneration:(NSUInteger)generation {
+    if (generation != self.listenerGeneration) return;
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (!PPAuditStaffSessionCanRead(staff)) return;
+
+    NSMutableDictionary<NSString *, PPAuditLogEntryModel *> *dedup = [NSMutableDictionary dictionary];
+    for (PPAuditLogEntryModel *entry in self.canonicalEntries ?: @[]) {
+        if (entry.auditId.length > 0) {
+            dedup[entry.auditId] = entry;
+        }
+    }
+    for (PPAuditLogEntryModel *entry in self.adminEntries ?: @[]) {
+        if (entry.auditId.length > 0) {
+            dedup[entry.auditId] = entry;
+        }
+    }
+
+    NSArray<PPAuditLogEntryModel *> *merged = [dedup.allValues sortedArrayUsingComparator:^NSComparisonResult(PPAuditLogEntryModel *a, PPAuditLogEntryModel *b) {
+        return [b.timestamp compare:a.timestamp];
+    }];
+
+    self.allEntries = merged;
+    [self applyFilter];
 }
 
 - (void)refreshData {
@@ -2068,7 +2136,10 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 
 - (void)dealloc {
     self.listenerGeneration += 1;
-    [self.listenerReg remove];
+    [self.canonicalListenerReg remove];
+    self.canonicalListenerReg = nil;
+    [self.adminListenerReg remove];
+    self.adminListenerReg = nil;
 }
 
 @end

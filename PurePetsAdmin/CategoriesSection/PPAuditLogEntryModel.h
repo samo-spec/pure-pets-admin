@@ -54,6 +54,7 @@ typedef NS_ENUM(NSInteger, PPAuditSeverity) {
 @property (nonatomic, copy) NSString *adminUid;
 @property (nonatomic, copy) NSString *targetUid;
 @property (nonatomic, copy, nullable) NSString *targetCollection;
+@property (nonatomic, copy, nullable) NSString *sourceCollection;
 @property (nonatomic, copy, nullable) NSString *reason;
 @property (nonatomic, strong, nullable) NSDictionary *before;
 @property (nonatomic, strong, nullable) NSDictionary *after;
@@ -61,6 +62,7 @@ typedef NS_ENUM(NSInteger, PPAuditSeverity) {
 @property (nonatomic, strong) NSDate *timestamp;
 
 + (instancetype)entryFromSnapshot:(FIRDocumentSnapshot *)snapshot;
++ (instancetype)entryFromSnapshot:(FIRDocumentSnapshot *)snapshot sourceCollection:(nullable NSString *)sourceCollection;
 
 - (NSString *)formattedTimestamp;
 - (NSString *)relativeTimeString;
