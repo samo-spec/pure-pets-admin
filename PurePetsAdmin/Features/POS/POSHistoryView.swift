@@ -105,7 +105,7 @@ struct AdminPOSHistoryView: View {
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $selectedReceipt) { receipt in
-            POSCompletedReceiptSheet(receipt: receipt)
+            POSCompletedReceiptSheet(receipt: receipt, notice: nil)
         }
         .onAppear { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
         .onChange(of: branchStore.activeBranch?.branchID) { branchID in

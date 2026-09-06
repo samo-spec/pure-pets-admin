@@ -2491,7 +2491,9 @@ private struct CommandQuickActionsDeck: View {
                 let effectiveWidth = containerWidth > 0 ? containerWidth : max(UIScreen.main.bounds.width - 2 * AdminCommandMetric.pageMargin, 320)
                 let spacing: CGFloat = 11
                 let oneCol = max((effectiveWidth - 2 * spacing) / 3, 70)
-                let twoCol = 2 * oneCol + spacing
+                let posWidth = oneCol + 8
+                let smallCardWidth = oneCol - 4
+                let smallTwoCol = 2 * smallCardWidth + spacing
                 let cardHeight: CGFloat = 106
                 let tallHeight: CGFloat = 2 * cardHeight + spacing
 
@@ -2502,34 +2504,34 @@ private struct CommandQuickActionsDeck: View {
                             CommandPOSSovereignCard(item: items[0], height: tallHeight) {
                                 onRoute(items[0].tag)
                             }
-                            .frame(width: oneCol, height: tallHeight)
+                            .frame(width: posWidth, height: tallHeight)
 
                             VStack(spacing: spacing) {
                                 HStack(spacing: spacing) {
                                     CommandQuickActionCard(item: items[1], isTwoColumn: false, isRegular: false) {
                                         onRoute(items[1].tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
 
                                     CommandQuickActionCard(item: items[2], isTwoColumn: false, isRegular: false) {
                                         onRoute(items[2].tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
                                 }
 
                                 HStack(spacing: spacing) {
                                     CommandQuickActionCard(item: items[3], isTwoColumn: false, isRegular: false) {
                                         onRoute(items[3].tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
 
                                     CommandQuickActionCard(item: items[4], isTwoColumn: false, isRegular: false) {
                                         onRoute(items[4].tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
                                 }
                             }
-                            .frame(width: twoCol)
+                            .frame(width: smallTwoCol)
                         }
 
                         CommandQuickActionCard(item: items[5], isTwoColumn: true, isRegular: false) {
@@ -2549,7 +2551,7 @@ private struct CommandQuickActionsDeck: View {
                             CommandPOSSovereignCard(item: posItem, height: tallHeight) {
                                 onRoute(posItem.tag)
                             }
-                            .frame(width: oneCol, height: tallHeight)
+                            .frame(width: posWidth, height: tallHeight)
 
                             // 2x2 Companion Operations Matrix (2 columns wide x 2 rows tall)
                             VStack(spacing: spacing) {
@@ -2558,12 +2560,12 @@ private struct CommandQuickActionsDeck: View {
                                     CommandQuickActionCard(item: stockItem, isTwoColumn: false, isRegular: false) {
                                         onRoute(stockItem.tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
 
                                     CommandQuickActionCard(item: fulfillmentItem, isTwoColumn: false, isRegular: false) {
                                         onRoute(fulfillmentItem.tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
                                 }
 
                                 // Row 2: Delivery Fleet + Broadcast
@@ -2571,15 +2573,15 @@ private struct CommandQuickActionsDeck: View {
                                     CommandQuickActionCard(item: deliveryItem, isTwoColumn: false, isRegular: false) {
                                         onRoute(deliveryItem.tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
 
                                     CommandQuickActionCard(item: broadcastItem, isTwoColumn: false, isRegular: false) {
                                         onRoute(broadcastItem.tag)
                                     }
-                                    .frame(width: oneCol, height: cardHeight)
+                                    .frame(width: smallCardWidth, height: cardHeight)
                                 }
                             }
-                            .frame(width: twoCol)
+                            .frame(width: smallTwoCol)
                         }
                     }
                 }
@@ -2787,7 +2789,7 @@ private struct CommandQuickActionCard: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, isRegular ? 10 : 12)
+            .padding(.horizontal, 10)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .frame(minHeight: 104)

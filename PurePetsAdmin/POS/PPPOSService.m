@@ -61,6 +61,13 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _subSubKindItemName = PPSafeString(dict[@"subSubKindItemName"] ?: dict[@"subSubKindItem"] ?: dict[@"subSubKindItemNameAr"]);
         _unitSubSubKinds = PPPOSStringArray(dict[@"unitSubSubKinds"]);
         _unitSubSubKindItems = PPPOSStringArray(dict[@"unitSubSubKindItems"]);
+        _salesChannel = PPSafeString(dict[@"salesChannel"] ?: @"retail");
+        _quantityGroupId = PPSafeString(dict[@"quantityGroupId"] ?: @"single");
+        _quantityGroupName = PPSafeString(dict[@"quantityGroupName"] ?: dict[@"quantityGroupNameAr"] ?: dict[@"quantityGroupNameEn"]);
+        _unitsPerGroup = MAX(1, [PPSafeNumber(dict[@"unitsPerGroup"]) integerValue]);
+        _groupQuantity = [PPSafeNumber(dict[@"groupQuantity"]) integerValue] ?: _quantity;
+        _baseUnitQuantity = [PPSafeNumber(dict[@"baseUnitQuantity"]) integerValue] ?: (_groupQuantity * _unitsPerGroup);
+        _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)round(_price * 100.0);
     }
     return self;
 }
@@ -106,6 +113,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _note = PPSafeString(dict[@"note"]);
         _source = PPSafeString(dict[@"source"]);
         _operatorID = PPSafeString(dict[@"operator"] ?: dict[@"createdBy"]);
+        _salesChannel = PPSafeString(dict[@"salesChannel"] ?: @"retail");
         _schemaVersion = [PPSafeNumber(dict[@"posSchemaVersion"]) integerValue];
         NSArray *rawItems = PPSafeArray(dict[@"items"]);
         NSMutableArray *parsedItems = [NSMutableArray array];
@@ -657,8 +665,36 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                    customerName:(NSString *)customerName
                   customerPhone:(NSString *)customerPhone
                   posCustomerID:(NSString *)posCustomerID
-                        branchID:(NSString *)branchID
-                      completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+                       branchID:(NSString *)branchID
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
+    [self submitPOSOrderWithItems:items
+                         subtotal:subtotal
+                         discount:discount
+                            total:total
+                    paymentMethod:paymentMethod
+                     cashReceived:cashReceived
+                        commandID:commandID
+                     customerName:customerName
+                    customerPhone:customerPhone
+                    posCustomerID:posCustomerID
+                         branchID:branchID
+                     salesChannel:@"retail"
+                       completion:completion];
+}
+
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(NSString *)customerName
+                  customerPhone:(NSString *)customerPhone
+                  posCustomerID:(NSString *)posCustomerID
+                       branchID:(NSString *)branchID
+                   salesChannel:(NSString *)salesChannel
+                     completion:(void(^)(PPPOSSubmitResult *, NSError *))completion {
     NSString *traceID = [PPPOSLogger generateTraceID];
     NSDate *startedAt = [NSDate date];
 
@@ -674,6 +710,15 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
             @"productId": productID,
             @"quantity": item[@"quantity"] ?: @(1),
         } mutableCopy];
+        if (item[@"salesChannel"]) mapped[@"salesChannel"] = item[@"salesChannel"];
+        if (item[@"quantityGroupId"]) mapped[@"quantityGroupId"] = item[@"quantityGroupId"];
+        if (item[@"quantityGroupName"]) mapped[@"quantityGroupName"] = item[@"quantityGroupName"];
+        if (item[@"unitsPerGroup"]) mapped[@"unitsPerGroup"] = item[@"unitsPerGroup"];
+        if (item[@"groupQuantity"]) mapped[@"groupQuantity"] = item[@"groupQuantity"];
+        if (item[@"baseUnitQuantity"]) mapped[@"baseUnitQuantity"] = item[@"baseUnitQuantity"];
+        if (item[@"assertedGroupPriceMinor"]) mapped[@"assertedGroupPriceMinor"] = item[@"assertedGroupPriceMinor"];
+        if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
+
         if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
             mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
             NSArray *uids = [item[@"unitIds"] isKindOfClass:NSArray.class] ? item[@"unitIds"] : @[];
@@ -697,6 +742,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         effectiveBranchID = [PPBranchContextManager sharedManager].activeBranch.branchID;
     }
 
+    NSString *effectiveSalesChannel = salesChannel.length > 0 ? [salesChannel lowercaseString] : @"retail";
+
     NSMutableDictionary *salePayload = [@{
         @"items": mappedItems,
         @"paymentMethod": paymentMethod ?: @"cash",
@@ -706,6 +753,7 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         @"total": @(roundedTotal),
         @"currency": @"QAR",
         @"source": @"admin_ios",
+        @"salesChannel": effectiveSalesChannel,
     } mutableCopy];
     if (effectiveBranchID.length > 0) {
         // `processTransaction` has always accepted `branchID` as the

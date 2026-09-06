@@ -369,6 +369,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.hasResolvedSellingPrice) {
         dict[@"finalPrice"] = [self calculateFinalPrice];
     }
+    if (self.hasCommerceConfig) {
+        dict[@"hasCommerceConfig"] = @(self.hasCommerceConfig);
+    }
 
     // Add timestamps for Firestore
     dict[@"updatedAt"] = [FIRTimestamp timestampWithDate:[NSDate date]];
@@ -512,6 +515,12 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         [self setPrice:resolvedPrice];
         _discountPercent = PPAccessoryNumberValueForKeys(dict, (@[@"discountPercent"]));
         _discountAmount = PPAccessoryNumberValueForKeys(dict, (@[@"discountAmount"]));
+        _wholesalePrice = PPAccessoryNumberValueForKeys(dict, (@[@"wholesalePrice", @"wholesalePriceMinor"]));
+        if (_wholesalePrice && [_wholesalePrice doubleValue] > 1000.0 && [dict[@"wholesalePriceMinor"] isKindOfClass:NSNumber.class]) {
+            _wholesalePrice = @([_wholesalePrice doubleValue] / 100.0);
+        }
+        _hasCommerceConfig = [dict[@"hasCommerceConfig"] boolValue];
+        _quantityGroups = [dict[@"quantityGroups"] isKindOfClass:NSArray.class] ? dict[@"quantityGroups"] : nil;
         _weightText = PPAccessoryStringValueForKeys(dict, (@[
             @"weightText",
             @"weightLabel",

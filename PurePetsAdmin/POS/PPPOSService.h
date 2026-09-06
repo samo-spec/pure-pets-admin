@@ -18,6 +18,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *subSubKindItemName;
 @property (nonatomic, copy) NSArray<NSString *> *unitSubSubKinds;
 @property (nonatomic, copy) NSArray<NSString *> *unitSubSubKindItems;
+@property (nonatomic, copy, nullable) NSString *salesChannel;
+@property (nonatomic, copy, nullable) NSString *quantityGroupId;
+@property (nonatomic, copy, nullable) NSString *quantityGroupName;
+@property (nonatomic, assign) NSInteger unitsPerGroup;
+@property (nonatomic, assign) NSInteger groupQuantity;
+@property (nonatomic, assign) NSInteger baseUnitQuantity;
+@property (nonatomic, assign) NSInteger unitGroupPriceMinor;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 
@@ -58,6 +65,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy) NSString *note;
 @property (nonatomic, copy) NSString *source;
 @property (nonatomic, copy) NSString *operatorID;
+@property (nonatomic, copy, nullable) NSString *salesChannel;
 @property (nonatomic, assign) NSInteger schemaVersion;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
@@ -113,6 +121,20 @@ NS_ASSUME_NONNULL_BEGIN
                   customerPhone:(nullable NSString *)customerPhone
                   posCustomerID:(nullable NSString *)posCustomerID
                        branchID:(nullable NSString *)branchID
+                     completion:(void(^)(PPPOSSubmitResult * _Nullable result,
+                                         NSError * _Nullable error))completion;
+- (void)submitPOSOrderWithItems:(NSArray<NSDictionary *> *)items
+                       subtotal:(double)subtotal
+                       discount:(double)discount
+                          total:(double)total
+                  paymentMethod:(NSString *)paymentMethod
+                   cashReceived:(nullable NSNumber *)cashReceived
+                      commandID:(NSString *)commandID
+                   customerName:(nullable NSString *)customerName
+                  customerPhone:(nullable NSString *)customerPhone
+                  posCustomerID:(nullable NSString *)posCustomerID
+                       branchID:(nullable NSString *)branchID
+                   salesChannel:(nullable NSString *)salesChannel
                      completion:(void(^)(PPPOSSubmitResult * _Nullable result,
                                          NSError * _Nullable error))completion;
 - (void)fetchPOSHistoryForBranchID:(NSString *)branchID

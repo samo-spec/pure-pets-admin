@@ -68,6 +68,9 @@ NSString * const kStaffPermDeliveryCODReconcile = @"delivery.cod.reconcile";
 NSString * const kStaffPermDeliverySettingsManage = @"delivery.settings.manage";
 NSString * const kStaffPermPosView = @"pos.view";
 NSString * const kStaffPermPosSell = @"pos.sell";
+NSString * const kStaffPermPosSellWholesale = @"pos.sell.wholesale";
+NSString * const kStaffPermCatalogPricingManage = @"catalog.pricing.manage";
+NSString * const kStaffPermCatalogWholesaleManage = @"catalog.wholesale.manage";
 NSString * const kStaffPermPosHistory = @"pos.history";
 NSString * const kStaffPermBranchesView = @"branches.view";
 NSString * const kStaffPermBranchesManage = @"branches.manage";
@@ -196,6 +199,9 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermDeliverySettingsManage,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
+            kStaffPermCatalogPricingManage,
+            kStaffPermCatalogWholesaleManage,
             kStaffPermPosHistory,
             kStaffPermBranchesView,
             kStaffPermBranchesManage,
@@ -413,7 +419,10 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermDeliveryCODReconcile,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
+            kStaffPermCatalogPricingManage,
+            kStaffPermCatalogWholesaleManage,
             kStaffPermBranchesView,
             kStaffPermBranchesManage,
             kStaffPermAgentsView,
@@ -503,7 +512,9 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermStockQuarantineRelease,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
+            kStaffPermCatalogPricingManage,
             kStaffPermPaymentsView,
             kStaffPermPaymentsManage,
             kStaffPermPaymentsRefund,
@@ -529,6 +540,8 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermStockQuarantineRelease,
             kStaffPermStockCreate,
             kStaffPermStockDelete,
+            kStaffPermCatalogPricingManage,
+            kStaffPermCatalogWholesaleManage,
             kStaffPermCategoriesView,
             kStaffPermCategoriesManage,
             kStaffPermReportsView,
@@ -588,6 +601,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermDashboardView,
             kStaffPermPosView,
             kStaffPermPosSell,
+            kStaffPermPosSellWholesale,
             kStaffPermPosHistory,
             kStaffPermStockView,
             kStaffPermPaymentsView,

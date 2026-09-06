@@ -198,10 +198,72 @@ enum POSCatalogFilter: String, CaseIterable, Identifiable {
 
 // MARK: - POS Cart Item
 
+enum POSSalesChannel: String, CaseIterable, Identifiable {
+    case retail = "retail"
+    case wholesale = "wholesale"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .retail:
+            return Language.get("POS_Channel_Retail", alter: "قطاعي")
+        case .wholesale:
+            return Language.get("POS_Channel_Wholesale", alter: "جملة")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .retail: return "cart.fill"
+        case .wholesale: return "building.2.fill"
+        }
+    }
+}
+
+extension PetAccessory {
+    var pos_supportsWholesale: Bool {
+        guard !isLivePet && !isPetMedicine else { return false }
+        if let wp = wholesalePrice?.doubleValue, wp > 0 { return true }
+        if let groups = quantityGroups {
+            return groups.contains { ($0["wholesaleEnabled"] as? Bool) == true }
+        }
+        return false
+    }
+
+    func pos_wholesalePrice() -> Double {
+        if let wp = wholesalePrice?.doubleValue, wp > 0 {
+            return wp
+        }
+        if let groups = quantityGroups {
+            for g in groups {
+                if (g["wholesaleEnabled"] as? Bool) == true,
+                   let minor = g["wholesalePriceMinor"] as? Int, minor > 0 {
+                    return Double(minor) / 100.0
+                }
+            }
+        }
+        return 0
+    }
+}
+
 struct POSCartItem: Identifiable, Equatable {
     let id = UUID()
     let accessory: PetAccessory
-    var quantity: Int = 1
+    var quantity: Int = 1 // groupQuantity
+
+    // Commercial Channel & Quantity Groups V2
+    var salesChannel: String = "retail"
+    var quantityGroupID: String = "single"
+    var quantityGroupNameAr: String = "حبة"
+    var quantityGroupNameEn: String = "Single"
+    var unitsPerGroup: Int = 1
+    var unitGroupPrice: Double = 0
+    var unitGroupPriceMinor: Int = 0
+
+    var baseUnitQuantity: Int {
+        quantity * max(1, unitsPerGroup)
+    }
 
     /// Populated only for individually tracked live pets.
     var inventoryMode: String? = nil
@@ -213,11 +275,20 @@ struct POSCartItem: Identifiable, Equatable {
 
     var isIndividuallyTracked: Bool { inventoryMode == kPOSIndividualInventoryMode }
 
+    var localizedGroupName: String {
+        Language.isRTL()
+            ? (quantityGroupNameAr.isEmpty ? quantityGroupNameEn : quantityGroupNameAr)
+            : (quantityGroupNameEn.isEmpty ? quantityGroupNameAr : quantityGroupNameEn)
+    }
+
     /// Exact-unit lines total the selected animals, never quantity × catalog price.
     @MainActor
     var lineTotal: Double {
         if isIndividuallyTracked {
             return unitPrices.reduce(0) { $0 + (($1["unitPrice"] as? Double) ?? 0) }
+        }
+        if unitGroupPrice > 0 {
+            return unitGroupPrice * Double(quantity)
         }
         return accessory.pos_canonicalUnitPrice * Double(quantity)
     }
@@ -227,6 +298,9 @@ struct POSCartItem: Identifiable, Equatable {
         if isIndividuallyTracked {
             return quantity > 0 ? lineTotal / Double(quantity) : 0
         }
+        if unitGroupPrice > 0 {
+            return unitGroupPrice
+        }
         return accessory.pos_canonicalUnitPrice
     }
 
@@ -234,6 +308,8 @@ struct POSCartItem: Identifiable, Equatable {
         lhs.id == rhs.id
             && lhs.quantity == rhs.quantity
             && lhs.unitIDs == rhs.unitIDs
+            && lhs.quantityGroupID == rhs.quantityGroupID
+            && lhs.salesChannel == rhs.salesChannel
     }
 }
 
@@ -451,18 +527,19 @@ final class POSUnitPickerState: ObservableObject {
 
         PPPOSService.shared().listAvailableUnits(forProductID: productID, cursor: cursor) { [weak self] units, nextCursor, hasMore, error in
             // Project to Sendable values before crossing to the main actor.
-            let projected: [POSAnimalUnit] = (units ?? []).map {
+            let unitsList = units ?? []
+            let projected: [POSAnimalUnit] = unitsList.map { unit in
                 POSAnimalUnit(
-                    unitID: $0.unitID,
-                    ringTag: $0.ringTag,
-                    sellingPrice: $0.sellingPrice,
-                    currentBranchId: $0.currentBranchId ?? "",
-                    subSubKindID: $0.subSubKindID,
-                    subSubKindNameAr: $0.subSubKindNameAr ?? "",
-                    subSubKindNameEn: $0.subSubKindNameEn ?? "",
-                    subSubKindItemID: $0.subSubKindItemID,
-                    subSubKindItemNameAr: $0.subSubKindItemNameAr ?? "",
-                    subSubKindItemNameEn: $0.subSubKindItemNameEn ?? ""
+                    unitID: unit.unitID ?? "",
+                    ringTag: unit.ringTag ?? "",
+                    sellingPrice: unit.sellingPrice,
+                    currentBranchId: unit.currentBranchId ?? "",
+                    subSubKindID: unit.subSubKindID?.intValue ?? 0,
+                    subSubKindNameAr: unit.subSubKindNameAr ?? "",
+                    subSubKindNameEn: unit.subSubKindNameEn ?? "",
+                    subSubKindItemID: unit.subSubKindItemID?.intValue ?? 0,
+                    subSubKindItemNameAr: unit.subSubKindItemNameAr ?? "",
+                    subSubKindItemNameEn: unit.subSubKindItemNameEn ?? ""
                 )
             }
             let cursorValue = nextCursor
@@ -540,6 +617,93 @@ final class POSFastSellViewModel: ObservableObject {
 
     @Published var selectedCustomer: POSCustomerRecord? = nil
     @Published var appliedDiscount: POSDiscount? = nil
+
+    // Commercial Channel & Wholesale Reconciliation
+    @Published var salesChannel: POSSalesChannel = .retail
+    @Published var showWholesaleReconciliationAlert: Bool = false
+    @Published var unsupportedWholesaleCartItems: [POSCartItem] = []
+
+    var canSellWholesale: Bool {
+        guard let staff = PPStaffAuth.shared().cachedCurrentStaff else { return false }
+        if staff.role == .superAdmin || staff.role == .owner || staff.isAdmin() { return true }
+        return staff.hasPermission("pos.sell.wholesale")
+    }
+
+    func requestSalesChannelChange(_ newChannel: POSSalesChannel) {
+        guard newChannel != salesChannel else { return }
+        if newChannel == .wholesale {
+            guard canSellWholesale else {
+                submitError = Language.get("POS_Wholesale_Permission_Required", alter: "صلاحية البيع بالجملة غير متوفرة لهذا المستخدم.")
+                return
+            }
+            let unsupported = cartItems.filter { !$0.accessory.pos_supportsWholesale }
+            if !unsupported.isEmpty {
+                unsupportedWholesaleCartItems = unsupported
+                showWholesaleReconciliationAlert = true
+                return
+            }
+            confirmSwitchToWholesale(removeUnavailable: false)
+        } else {
+            salesChannel = .retail
+            repriceCartForRetail()
+            invalidateSubmissionCommand()
+        }
+    }
+
+    func confirmSwitchToWholesale(removeUnavailable: Bool) {
+        if removeUnavailable {
+            let unsupportedIDs = Set(unsupportedWholesaleCartItems.map { $0.id })
+            cartItems.removeAll { unsupportedIDs.contains($0.id) }
+        }
+        unsupportedWholesaleCartItems = []
+        showWholesaleReconciliationAlert = false
+        salesChannel = .wholesale
+        repriceCartForWholesale()
+        invalidateSubmissionCommand()
+    }
+
+    private func repriceCartForWholesale() {
+        for i in 0..<cartItems.count {
+            guard !cartItems[i].isIndividuallyTracked else { continue }
+            cartItems[i].salesChannel = "wholesale"
+            let wholesalePrice = cartItems[i].accessory.pos_wholesalePrice()
+            if wholesalePrice > 0 {
+                cartItems[i].unitGroupPrice = wholesalePrice
+                cartItems[i].unitGroupPriceMinor = Int((wholesalePrice * 100).rounded())
+            }
+        }
+    }
+
+    private func repriceCartForRetail() {
+        for i in 0..<cartItems.count {
+            guard !cartItems[i].isIndividuallyTracked else { continue }
+            cartItems[i].salesChannel = "retail"
+            let retailPrice = cartItems[i].accessory.pos_canonicalUnitPrice
+            cartItems[i].unitGroupPrice = retailPrice
+            cartItems[i].unitGroupPriceMinor = Int((retailPrice * 100).rounded())
+        }
+    }
+
+    var wholesaleUnavailableAlertMessage: String {
+        let count = unsupportedWholesaleCartItems.count
+        let names = unsupportedWholesaleCartItems.map { $0.accessory.name }.prefix(3).joined(separator: "، ")
+        return String(
+            format: Language.get("POS_Wholesale_Unavailable_Message_Format", alter: "البيع بالجملة غير متاح لـ %d من أصناف السلة:\n%@"),
+            count,
+            names
+        )
+    }
+
+    func setQuantityGroup(for itemID: UUID, groupID: String, nameAr: String, nameEn: String, unitsPerGroup: Int, price: Double, priceMinor: Int) {
+        guard let idx = cartItems.firstIndex(where: { $0.id == itemID }) else { return }
+        cartItems[idx].quantityGroupID = groupID
+        cartItems[idx].quantityGroupNameAr = nameAr
+        cartItems[idx].quantityGroupNameEn = nameEn
+        cartItems[idx].unitsPerGroup = unitsPerGroup
+        cartItems[idx].unitGroupPrice = price
+        cartItems[idx].unitGroupPriceMinor = priceMinor
+        invalidateSubmissionCommand()
+    }
 
     func count(for filter: POSCatalogFilter) -> Int {
         allAccessories.filter { $0.pos_isSellable && filter.matches($0) }.count
@@ -725,9 +889,17 @@ final class POSFastSellViewModel: ObservableObject {
             ])
             return false
         }
+        if salesChannel == .wholesale && !accessory.pos_supportsWholesale {
+            submitError = String(format: Language.get("POS_Wholesale_Not_Supported_For_Product", alter: "هذا الصنف (%@) لا يدعم البيع بالجملة."), accessory.name)
+            return false
+        }
         let branchStock = accessory.pos_branchStock()
+        let unitPrice = salesChannel == .wholesale ? accessory.pos_wholesalePrice() : accessory.pos_canonicalUnitPrice
+        let unitPriceMinor = Int((unitPrice * 100).rounded())
+
         if let idx = cartIndex(for: accessory.accessoryID) {
-            guard cartItems[idx].quantity < branchStock else {
+            let nextUnits = (cartItems[idx].quantity + 1) * max(1, cartItems[idx].unitsPerGroup)
+            guard nextUnits <= branchStock else {
                 POSLogger.warn("cart.add_stock_capped", category: "cart", message: "Cannot add more '\(accessory.name)': branch stock limit (\(branchStock)) reached", metadata: [
                     "productId": accessory.accessoryID,
                     "quantity": cartItems[idx].quantity,
@@ -743,11 +915,15 @@ final class POSFastSellViewModel: ObservableObject {
             ])
         } else {
             guard branchStock > 0 else { return false }
-            cartItems.append(POSCartItem(accessory: accessory, quantity: 1))
-            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(accessory.pos_canonicalUnitPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
+            var item = POSCartItem(accessory: accessory, quantity: 1)
+            item.salesChannel = salesChannel.rawValue
+            item.unitGroupPrice = unitPrice
+            item.unitGroupPriceMinor = unitPriceMinor
+            cartItems.append(item)
+            POSLogger.info("cart.item_added", category: "cart", message: "Added '\(accessory.name)' to cart (Price: \(unitPrice) QAR, Subtotal: \(cartSubtotal) QAR)", metadata: [
                 "productId": accessory.accessoryID,
                 "name": accessory.name,
-                "unitPrice": accessory.pos_canonicalUnitPrice,
+                "unitPrice": unitPrice,
                 "cartTotal": cartTotal
             ])
         }
@@ -982,7 +1158,15 @@ final class POSFastSellViewModel: ObservableObject {
                 "itemID": item.accessory.accessoryID,
                 "name": item.accessory.name,
                 "price": item.unitPriceDisplay,
-                "quantity": item.quantity
+                "quantity": item.quantity,
+                "salesChannel": salesChannel.rawValue,
+                "quantityGroupId": item.quantityGroupID,
+                "quantityGroupName": item.localizedGroupName,
+                "unitsPerGroup": item.unitsPerGroup,
+                "groupQuantity": item.quantity,
+                "baseUnitQuantity": item.baseUnitQuantity,
+                "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : Int((item.unitPriceDisplay * 100).rounded()),
+                "lineTotalMinor": Int((item.lineTotal * 100).rounded())
             ]
             if item.isIndividuallyTracked {
                 payload["inventoryMode"] = kPOSIndividualInventoryMode
@@ -1037,7 +1221,8 @@ final class POSFastSellViewModel: ObservableObject {
             customerName: customerName,
             customerPhone: customerPhone,
             posCustomerID: posCustomerID,
-            branchID: activeBranchId
+            branchID: activeBranchId,
+            salesChannel: salesChannel.rawValue
         ) { [weak self] result, error in
             // Project ObjC/Foundation values before crossing into MainActor.
             let transactionID = result?.transactionID ?? ""
@@ -1400,6 +1585,19 @@ struct AdminPOSFastSellView: View {
         } message: {
             Text(viewModel.submitError ?? "")
         }
+        .alert(
+            Language.get("POS_Wholesale_Unavailable_Title", alter: "البيع بالجملة غير متاح لبعض الأصناف"),
+            isPresented: $viewModel.showWholesaleReconciliationAlert
+        ) {
+            Button(Language.get("POS_Remove_Unavailable_Items", alter: "إزالة الأصناف غير المتاحة ومتابعة الجملة"), role: .destructive) {
+                viewModel.confirmSwitchToWholesale(removeUnavailable: true)
+            }
+            Button(Language.get("POS_Stay_In_Retail", alter: "البقاء في نمط التجزئة"), role: .cancel) {
+                viewModel.showWholesaleReconciliationAlert = false
+            }
+        } message: {
+            Text(viewModel.wholesaleUnavailableAlertMessage)
+        }
     }
 
     private var scannerPushLink: some View {
@@ -1438,6 +1636,7 @@ struct AdminPOSFastSellView: View {
         VStack(spacing: AdminSpacing.sm) {
             commandHeaderView
             VStack(spacing: AdminSpacing.sm) {
+                salesChannelSegmentedControl
                 if isBranchPickerVisible {
                     PPAdminBranchSwitcherBar(style: .compact)
                         .transition(.asymmetric(
@@ -1460,6 +1659,38 @@ struct AdminPOSFastSellView: View {
                 .frame(height: AdminStroke.hairline),
             alignment: .bottom
         )
+    }
+
+    private var salesChannelSegmentedControl: some View {
+        HStack(spacing: 0) {
+            ForEach(POSSalesChannel.allCases) { channel in
+                let isSelected = viewModel.salesChannel == channel
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.requestSalesChannelChange(channel)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: channel.symbol)
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(channel.title)
+                            .font(AdminType.subheadlineBold)
+                    }
+                    .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 38)
+                    .background(
+                        isSelected ? AdminSurface.surface : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                    .shadow(color: isSelected ? Color.black.opacity(0.06) : Color.clear, radius: 4, x: 0, y: 1)
+                }
+                .buttonStyle(.plain)
+                .disabled(channel == .wholesale && !viewModel.canSellWholesale)
+                .opacity((channel == .wholesale && !viewModel.canSellWholesale) ? 0.45 : 1.0)
+            }
+        }
+        .padding(4)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var commandHeaderView: some View {
@@ -1933,6 +2164,7 @@ struct AdminPOSFastSellView: View {
                         POSCatalogTile(
                             accessory: accessory,
                             inCart: viewModel.quantityInCart(for: accessory.accessoryID),
+                            salesChannel: viewModel.salesChannel,
                             currency: { formatCurrency($0) },
                             onTap: { rect in handleCatalogTap(accessory, from: rect) }
                         )
@@ -4076,8 +4308,23 @@ private struct POSCatalogThumbnail: View {
 private struct POSCatalogTile: View {
     let accessory: PetAccessory
     let inCart: Int
+    var salesChannel: POSSalesChannel = .retail
     let currency: (Double) -> String
     let onTap: (CGRect) -> Void
+
+    private var isWholesaleMode: Bool { salesChannel == .wholesale }
+    private var isSellableInChannel: Bool {
+        if isWholesaleMode {
+            return accessory.pos_supportsWholesale
+        }
+        return true
+    }
+    private var activePrice: Double {
+        if isWholesaleMode {
+            return accessory.pos_wholesalePrice()
+        }
+        return accessory.pos_canonicalUnitPrice
+    }
 
     private var tileHeight: CGFloat {
         UIDevice.current.userInterfaceIdiom == .pad ? 160 : 134
@@ -4154,11 +4401,18 @@ private struct POSCatalogTile: View {
                             .multilineTextAlignment(.leading)
 
                         HStack(spacing: 2) {
-                            Text(currency(accessory.pos_canonicalUnitPrice))
-                                .font(AdminType.caption2Bold)
-                                .foregroundColor(AdminSurface.primary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.72)
+                            if isWholesaleMode && !accessory.pos_supportsWholesale {
+                                Text(Language.get("POS_Wholesale_Unavailable_Badge", alter: "غير متاح للجملة"))
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(Color.gray)
+                                    .lineLimit(1)
+                            } else {
+                                Text(currency(activePrice))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(isWholesaleMode ? Color(uiColor: .systemTeal) : AdminSurface.primary)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+                            }
 
                             Spacer(minLength: 0)
 
@@ -4190,6 +4444,7 @@ private struct POSCatalogTile: View {
                 .padding(6)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .opacity(isWholesaleMode && !accessory.pos_supportsWholesale ? 0.45 : 1.0)
                 .overlay(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .stroke(inCart > 0 ? AdminSurface.primary.opacity(0.5) : AdminSurface.hairline, lineWidth: inCart > 0 ? 1.5 : 0.75)
@@ -4234,9 +4489,24 @@ private struct CartItemRow: View {
                     Text(item.accessory.name)
                         .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.primaryText)
-                    Text(formatCurrency(item.unitPriceDisplay))
-                        .font(AdminType.caption2)
-                        .foregroundColor(AdminSurface.secondaryText)
+                    HStack(spacing: 4) {
+                        if item.unitsPerGroup > 1 || item.salesChannel == "wholesale" {
+                            Text(item.localizedGroupName)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(item.salesChannel == "wholesale" ? Color(uiColor: .systemTeal) : AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1)
+                                .background((item.salesChannel == "wholesale" ? Color(uiColor: .systemTeal) : AdminSurface.primary).opacity(0.12), in: Capsule())
+                        }
+                        if item.unitsPerGroup > 1 {
+                            Text(String(format: Language.get("POS_BaseUnitsDeductionFormat", alter: "(%d قطعة)"), item.baseUnitQuantity))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        Text(formatCurrency(item.unitPriceDisplay))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
                 }
 
                 Spacer()

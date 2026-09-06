@@ -147,6 +147,11 @@ struct POSCompletedReceiptSheet: View {
     let receipt: POSCompletedReceipt
     let notice: String?
 
+    init(receipt: POSCompletedReceipt, notice: String? = nil) {
+        self.receipt = receipt
+        self.notice = notice
+    }
+
     @Environment(\.dismiss) private var dismiss
     @State private var temporaryReceiptURL: URL?
     @State private var isSharing = false

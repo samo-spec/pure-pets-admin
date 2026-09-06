@@ -15,6 +15,7 @@ import CryptoKit
 import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
+import FirebaseFunctions
 
 // MARK: - Sendable Conformance
 
@@ -118,6 +119,51 @@ private struct PPLivePetUnitPhotoMetadataSnapshot: Sendable {
     let contentType: String?
     let size: Int64
     let customMetadata: [String: String]
+}
+
+// MARK: - Unified Quantity Group Draft
+
+struct PPQuantityGroupDraft: Identifiable, Equatable, Sendable {
+    var id: String
+    var nameAr: String
+    var nameEn: String
+    var unitsPerGroup: Int
+    var barcode: String
+    var sku: String
+    var sortOrder: Int
+    var retailEnabled: Bool
+    var wholesaleEnabled: Bool
+    var retailPriceText: String
+    var wholesalePriceText: String
+    var defaultForRetail: Bool
+    var defaultForWholesale: Bool
+    var active: Bool
+
+    var retailPrice: Double {
+        Double(retailPriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+    var wholesalePrice: Double {
+        Double(wholesalePriceText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+    var retailPriceMinor: Int {
+        Int((retailPrice * 100).rounded())
+    }
+    var wholesalePriceMinor: Int? {
+        wholesaleEnabled ? Int((wholesalePrice * 100).rounded()) : nil
+    }
+
+    var localizedName: String {
+        Language.isRTL()
+            ? (nameAr.isEmpty ? nameEn : nameAr)
+            : (nameEn.isEmpty ? nameAr : nameEn)
+    }
+
+    var unitsCountText: String {
+        if unitsPerGroup == 1 {
+            return Language.get("Unit_Single_Piece", alter: "1 قطعة")
+        }
+        return String(format: Language.get("Unit_Multiple_Pieces_Format", alter: "%d قطع"), unitsPerGroup)
+    }
 }
 
 // MARK: - View Model
@@ -243,11 +289,38 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var liveArrivalDate: Date = Date() { didSet { updateUnsavedChanges() } }
     @Published var liveIntakeNotes: String = "" { didSet { updateUnsavedChanges() } }
 
-    // Pricing
-    @Published var priceText: String = "" { didSet { updateUnsavedChanges() } }
+    // Pricing & Unified Commerce
+    @Published var priceText: String = "" {
+        didSet {
+            updateUnsavedChanges()
+            syncBasePriceToSingleGroup()
+        }
+    }
+    @Published var wholesaleEnabled: Bool = false {
+        didSet {
+            updateUnsavedChanges()
+            syncWholesaleStateToSingleGroup()
+        }
+    }
+    @Published var wholesalePriceText: String = "" {
+        didSet {
+            updateUnsavedChanges()
+            syncWholesalePriceToGroups()
+        }
+    }
     @Published var discountPercentText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var discountAmountText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var costPriceText: String = "" { didSet { updateUnsavedChanges() } }
+
+    // Unified Quantity Groups
+    @Published var commerceBaseUnitID: String = "piece" { didSet { updateUnsavedChanges() } }
+    @Published var commerceBaseUnitNameAr: String = "قطعة" { didSet { updateUnsavedChanges() } }
+    @Published var commerceBaseUnitNameEn: String = "Piece" { didSet { updateUnsavedChanges() } }
+    @Published var quantityGroups: [PPQuantityGroupDraft] = [] { didSet { updateUnsavedChanges() } }
+    @Published var pricingRevision: Int = 1
+    @Published var showQuantityGroupInspector: Bool = false
+    @Published var selectedQuantityGroupForEditing: PPQuantityGroupDraft? = nil
+    @Published var isLoadingCommerce: Bool = false
     
     // Inventory, SKU & Stock
     @Published var sku: String = "" { didSet { updateUnsavedChanges() } }
@@ -358,7 +431,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 selectedStoreName = Language.get("Main Store", alter: "المتجر الرئيسي")
             }
             initialSetupComplete = true
-            isPopulatingInitialValues = false
+        isPopulatingInitialValues = false
+        if editingAccessory != nil {
+            loadCommerceIfAvailable()
+        } else {
+            ensureDefaultSingleGroup()
+        }
             return
         }
 
@@ -800,6 +878,275 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
     var canViewStockCosts: Bool {
         canManageStock || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.view") ?? false) || (PPStaffAuth.shared().cachedCurrentStaff?.hasPermission("stock.cost.view") ?? false)
+    }
+
+    var canManagePricing: Bool {
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        let role = staff?.role?.lowercased() ?? ""
+        if role == "super_admin" || role == "owner" { return true }
+        return staff?.hasPermission("catalog.pricing.manage") ?? false || canManageStock
+    }
+
+    var canManageWholesale: Bool {
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        let role = staff?.role?.lowercased() ?? ""
+        if role == "super_admin" || role == "owner" { return true }
+        return staff?.hasPermission("catalog.wholesale.manage") ?? false
+    }
+
+    func ensureDefaultSingleGroup() {
+        if quantityGroups.isEmpty {
+            let single = PPQuantityGroupDraft(
+                id: "single",
+                nameAr: "حبة",
+                nameEn: "Single",
+                unitsPerGroup: 1,
+                barcode: barcode,
+                sku: sku,
+                sortOrder: 0,
+                retailEnabled: true,
+                wholesaleEnabled: wholesaleEnabled,
+                retailPriceText: priceText,
+                wholesalePriceText: wholesalePriceText,
+                defaultForRetail: true,
+                defaultForWholesale: wholesaleEnabled,
+                active: true
+            )
+            quantityGroups = [single]
+        }
+    }
+
+    func syncBasePriceToSingleGroup() {
+        if let idx = quantityGroups.firstIndex(where: { $0.unitsPerGroup == 1 && $0.defaultForRetail }) {
+            quantityGroups[idx].retailPriceText = priceText
+            if !barcode.isEmpty && quantityGroups[idx].barcode.isEmpty {
+                quantityGroups[idx].barcode = barcode
+            }
+        }
+    }
+
+    func syncWholesaleStateToSingleGroup() {
+        if let idx = quantityGroups.firstIndex(where: { $0.defaultForRetail || $0.unitsPerGroup == 1 }) {
+            quantityGroups[idx].wholesaleEnabled = wholesaleEnabled
+            if wholesaleEnabled {
+                quantityGroups[idx].wholesalePriceText = wholesalePriceText
+                quantityGroups[idx].defaultForWholesale = true
+            }
+        }
+    }
+
+    func syncWholesalePriceToGroups() {
+        if let idx = quantityGroups.firstIndex(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) {
+            quantityGroups[idx].wholesalePriceText = wholesalePriceText
+        } else if wholesaleEnabled, let firstW = quantityGroups.firstIndex(where: { $0.wholesaleEnabled }) {
+            quantityGroups[firstW].wholesalePriceText = wholesalePriceText
+        }
+    }
+
+    func saveQuantityGroup(_ group: PPQuantityGroupDraft) {
+        if let idx = quantityGroups.firstIndex(where: { $0.id == group.id }) {
+            quantityGroups[idx] = group
+        } else {
+            quantityGroups.append(group)
+        }
+        if group.defaultForRetail {
+            for i in 0..<quantityGroups.count {
+                if quantityGroups[i].id != group.id {
+                    quantityGroups[i].defaultForRetail = false
+                }
+            }
+        }
+        if group.defaultForWholesale {
+            for i in 0..<quantityGroups.count {
+                if quantityGroups[i].id != group.id {
+                    quantityGroups[i].defaultForWholesale = false
+                }
+            }
+        }
+        showQuantityGroupInspector = false
+        selectedQuantityGroupForEditing = nil
+        updateUnsavedChanges()
+    }
+
+    func deleteQuantityGroup(id: String) {
+        guard quantityGroups.count > 1 else { return }
+        quantityGroups.removeAll(where: { $0.id == id })
+        if !quantityGroups.contains(where: { $0.defaultForRetail }) {
+            if let first = quantityGroups.firstIndex(where: { $0.retailEnabled }) {
+                quantityGroups[first].defaultForRetail = true
+            }
+        }
+        showQuantityGroupInspector = false
+        selectedQuantityGroupForEditing = nil
+        updateUnsavedChanges()
+    }
+
+    func validateQuantityGroups() -> (isValid: Bool, message: String?) {
+        guard !isLivePet else { return (true, nil) }
+        ensureDefaultSingleGroup()
+
+        for g in quantityGroups {
+            if g.unitsPerGroup < 1 {
+                return (false, Language.get("Validation_Group_Units_Positive", alter: "يجب أن تكون كمية المجموعة عدداً صحيحاً أكبر من صفر."))
+            }
+            if g.retailEnabled && (g.retailPrice <= 0 || !g.retailPrice.isFinite) {
+                return (false, String(format: Language.get("Validation_Group_Retail_Price_Required", alter: "يرجى تحديد سعر تجزئة صالح للوحدة: %@"), g.localizedName))
+            }
+            if g.wholesaleEnabled && (g.wholesalePrice <= 0 || !g.wholesalePrice.isFinite) {
+                return (false, String(format: Language.get("Validation_Group_Wholesale_Price_Required", alter: "يرجى تحديد سعر جملة صالح للوحدة: %@"), g.localizedName))
+            }
+            if g.defaultForRetail && !g.retailEnabled {
+                return (false, Language.get("Validation_Default_Retail_Disabled", alter: "لا يمكن تعيين الوحدة كافتراضية للتجزئة وهي معطلة للتجزئة."))
+            }
+            if g.defaultForWholesale && !g.wholesaleEnabled {
+                return (false, Language.get("Validation_Default_Wholesale_Disabled", alter: "لا يمكن تعيين الوحدة كافتراضية للجملة وهي معطلة للجملة."))
+            }
+        }
+
+        let ids = quantityGroups.map { $0.id }
+        if Set(ids).count != ids.count {
+            return (false, Language.get("Validation_Group_Duplicate_ID", alter: "توجد وحدات بيع بمعرفات مكررة."))
+        }
+
+        let barcodes = quantityGroups.map { $0.barcode.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        if Set(barcodes).count != barcodes.count {
+            return (false, Language.get("Validation_Group_Duplicate_Barcode", alter: "لا يمكن استخدام نفس الباركود لأكثر من وحدة بيع."))
+        }
+
+        let retailDefaults = quantityGroups.filter { $0.defaultForRetail && $0.retailEnabled && $0.active }
+        if retailDefaults.count > 1 {
+            return (false, Language.get("Validation_Multiple_Retail_Defaults", alter: "يمكن تحديد وحدة بيع افتراضية واحدة فقط للتجزئة."))
+        }
+
+        let wholesaleDefaults = quantityGroups.filter { $0.defaultForWholesale && $0.wholesaleEnabled && $0.active }
+        if wholesaleDefaults.count > 1 {
+            return (false, Language.get("Validation_Multiple_Wholesale_Defaults", alter: "يمكن تحديد وحدة بيع افتراضية واحدة فقط للجملة."))
+        }
+
+        return (true, nil)
+    }
+
+    var defaultRetailGroupSummary: String {
+        if let g = quantityGroups.first(where: { $0.defaultForRetail && $0.retailEnabled }) ?? quantityGroups.first(where: { $0.retailEnabled }) {
+            return "\(g.localizedName) · \(String(format: "%.0f", g.retailPrice)) \(Language.get("QAR", alter: "ر.ق"))"
+        }
+        return "\(basePrice) \(Language.get("QAR", alter: "ر.ق"))"
+    }
+
+    var defaultWholesaleGroupSummary: String? {
+        guard wholesaleEnabled else { return nil }
+        if let g = quantityGroups.first(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) ?? quantityGroups.first(where: { $0.wholesaleEnabled }) {
+            let countStr = g.unitsPerGroup > 1 ? " ×\(g.unitsPerGroup)" : ""
+            return "\(g.localizedName)\(countStr) · \(String(format: "%.0f", g.wholesalePrice)) \(Language.get("QAR", alter: "ر.ق"))"
+        }
+        return nil
+    }
+
+    func loadCommerceIfAvailable() {
+        guard let acc = editingAccessory, let accID = acc.accessoryID, !accID.isEmpty, !isLivePet else {
+            ensureDefaultSingleGroup()
+            return
+        }
+        isLoadingCommerce = true
+        Functions.functions().httpsCallable("getProductCommerce").call(["productId": accID]) { [weak self] result, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isLoadingCommerce = false
+                guard let data = result?.data as? [String: Any],
+                      let commerce = data["productCommerce"] as? [String: Any] else {
+                    self.ensureDefaultSingleGroup()
+                    return
+                }
+
+                if let rev = commerce["pricingRevision"] as? Int {
+                    self.pricingRevision = rev
+                }
+                if let base = commerce["baseUnit"] as? [String: Any] {
+                    self.commerceBaseUnitID = base["id"] as? String ?? "piece"
+                    self.commerceBaseUnitNameAr = base["nameAr"] as? String ?? "قطعة"
+                    self.commerceBaseUnitNameEn = base["nameEn"] as? String ?? "Piece"
+                }
+                if let rawGroups = commerce["quantityGroups"] as? [[String: Any]], !rawGroups.isEmpty {
+                    self.quantityGroups = rawGroups.map { g in
+                        let retailMinor = g["retailPriceMinor"] as? Int ?? 0
+                        let wholesaleMinor = g["wholesalePriceMinor"] as? Int
+                        let wEnabled = g["wholesaleEnabled"] as? Bool ?? false
+                        return PPQuantityGroupDraft(
+                            id: g["id"] as? String ?? UUID().uuidString,
+                            nameAr: g["nameAr"] as? String ?? "",
+                            nameEn: g["nameEn"] as? String ?? "",
+                            unitsPerGroup: max(1, g["unitsPerGroup"] as? Int ?? 1),
+                            barcode: g["barcode"] as? String ?? "",
+                            sku: g["sku"] as? String ?? "",
+                            sortOrder: g["sortOrder"] as? Int ?? 0,
+                            retailEnabled: g["retailEnabled"] as? Bool ?? true,
+                            wholesaleEnabled: wEnabled,
+                            retailPriceText: String(format: "%.2f", Double(retailMinor) / 100.0),
+                            wholesalePriceText: wholesaleMinor != nil ? String(format: "%.2f", Double(wholesaleMinor!) / 100.0) : "",
+                            defaultForRetail: g["defaultForRetail"] as? Bool ?? false,
+                            defaultForWholesale: g["defaultForWholesale"] as? Bool ?? false,
+                            active: g["active"] as? Bool ?? true
+                        )
+                    }
+                    if self.quantityGroups.contains(where: { $0.wholesaleEnabled }) {
+                        self.wholesaleEnabled = true
+                        if let defaultW = self.quantityGroups.first(where: { $0.defaultForWholesale && $0.wholesaleEnabled }) {
+                            self.wholesalePriceText = defaultW.wholesalePriceText
+                        }
+                    }
+                } else {
+                    self.ensureDefaultSingleGroup()
+                }
+            }
+        }
+    }
+
+    func persistCommerceRecord(for productID: String) {
+        guard !isLivePet, !productID.isEmpty else { return }
+        ensureDefaultSingleGroup()
+
+        let groupsPayload: [[String: Any]] = quantityGroups.map { g in
+            var dict: [String: Any] = [
+                "id": g.id,
+                "nameAr": g.nameAr.isEmpty ? (Language.isRTL() ? "وحدة" : "Unit") : g.nameAr,
+                "nameEn": g.nameEn.isEmpty ? "Unit" : g.nameEn,
+                "unitsPerGroup": max(1, g.unitsPerGroup),
+                "barcode": g.barcode.isEmpty ? NSNull() : g.barcode,
+                "sku": g.sku.isEmpty ? NSNull() : g.sku,
+                "sortOrder": g.sortOrder,
+                "retailEnabled": g.retailEnabled,
+                "wholesaleEnabled": g.wholesaleEnabled,
+                "retailPriceMinor": g.retailPriceMinor,
+                "wholesalePriceMinor": g.wholesaleEnabled ? (g.wholesalePriceMinor as Any) : NSNull(),
+                "defaultForRetail": g.defaultForRetail,
+                "defaultForWholesale": g.defaultForWholesale,
+                "active": g.active
+            ]
+            return dict
+        }
+
+        let payload: [String: Any] = [
+            "productId": productID,
+            "commandId": "cmd_comm_\(UUID().uuidString)",
+            "currency": "QAR",
+            "expectedRevision": pricingRevision,
+            "baseUnit": [
+                "id": commerceBaseUnitID,
+                "nameAr": commerceBaseUnitNameAr,
+                "nameEn": commerceBaseUnitNameEn
+            ],
+            "quantityGroups": groupsPayload
+        ]
+
+        Functions.functions().httpsCallable("upsertProductCommerce").call(["payload": payload]) { [weak self] result, error in
+            if let err = error {
+                print("[PPAccessoryEditorView] upsertProductCommerce error:", err.localizedDescription)
+            } else if let data = result?.data as? [String: Any], let rev = data["pricingRevision"] as? Int {
+                DispatchQueue.main.async {
+                    self?.pricingRevision = rev
+                }
+            }
+        }
     }
 
     var groupCost: Double {
@@ -1532,6 +1879,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             if hasNoCategorySelected {
                 return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
             }
+            let (groupsValid, groupError) = validateQuantityGroups()
+            if !groupsValid {
+                return (false, groupError)
+            }
         } else {
             if selectedMainKind == nil {
                 return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
@@ -1918,6 +2269,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 }
 
                 self.commitSavedAccessory(accessory)
+                self.persistCommerceRecord(for: accessory.accessoryID ?? "")
 
                 let resolvedBranchId: String = {
                     if let bid = accessory.branchID, !bid.isEmpty, bid != "main_store" {
@@ -3073,7 +3425,7 @@ struct PPAccessoryEditorScreen: View {
     @State private var bilingualLanguage: PPBilingualLanguage = .arabic
     
     enum FormField: Hashable {
-        case name, desc, price, discountPercent, discountAmount, quantity, passport, weight
+        case name, desc, price, discountPercent, discountAmount, quantity, passport, weight, wholesalePrice
     }
 
     var body: some View {
@@ -3170,6 +3522,20 @@ struct PPAccessoryEditorScreen: View {
                 viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .sheet(isPresented: $viewModel.showQuantityGroupInspector) {
+            if let group = viewModel.selectedQuantityGroupForEditing {
+                PPQuantityGroupInspectorSheet(
+                    group: group,
+                    canManageWholesale: viewModel.canManageWholesale,
+                    onSave: { updated in
+                        viewModel.saveQuantityGroup(updated)
+                    },
+                    onDelete: viewModel.quantityGroups.count > 1 ? {
+                        viewModel.deleteQuantityGroup(id: group.id)
+                    } : nil
+                )
+            }
         }
         .alert(Language.get("EditQuantity", alter: "تعديل الكمية"), isPresented: $showQuantityAlert) {
             TextField(Language.get("Quantity", alter: "الكمية"), text: $quantityAlertText)
@@ -4298,6 +4664,11 @@ struct PPAccessoryEditorScreen: View {
             // Financial Pricing Deck
             financialPricingDeck
 
+            // Selling Units Deck (Accessories & Food only)
+            if !viewModel.isIndividualLivePet {
+                sellingUnitsDeck
+            }
+
             // Profit & Margin Telemetry (if permitted)
             if let telemetry = viewModel.profitMarginTelemetry {
                 profitMarginTelemetryDeck(margin: telemetry.marginPercent, profit: telemetry.netProfit)
@@ -4389,6 +4760,210 @@ struct PPAccessoryEditorScreen: View {
             }
             .padding(14)
             .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            // Wholesale Selling Surface (Accessories & Food only)
+            if !viewModel.isIndividualLivePet {
+                Divider().opacity(0.4)
+
+                if !viewModel.wholesaleEnabled {
+                    if viewModel.canManageWholesale {
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                viewModel.wholesaleEnabled = true
+                                if viewModel.wholesalePriceText.isEmpty, viewModel.basePrice > 0 {
+                                    viewModel.wholesalePriceText = String(format: "%.0f", viewModel.basePrice * 0.9)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Label(Language.get("Wholesale_Add_Price_Prompt", alter: "البيع بالجملة"), systemImage: "building.2.fill")
+                                    .font(AdminType.subheadlineBold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Spacer()
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus.circle.fill")
+                                    Text(Language.get("Add_Price", alter: "إضافة سعر"))
+                                }
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                            }
+                            .padding(12)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Label(Language.get("Wholesale_Price_QAR", alter: "سعر البيع بالجملة (ر.ق)"), systemImage: "building.2.fill")
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                            Spacer()
+                            Button {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    viewModel.wholesaleEnabled = false
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        TextField("0.00", text: $viewModel.wholesalePriceText)
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
+                            .focused($focusedField, equals: .wholesalePrice)
+                            .padding(14)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+
+                // Live Summary Plate
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Summary_Retail_Label", alter: "التجزئة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Text(viewModel.defaultRetailGroupSummary)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    if let wholesaleSummary = viewModel.defaultWholesaleGroupSummary {
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(Language.get("Summary_Wholesale_Label", alter: "الجملة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                            Text(wholesaleSummary)
+                                .font(AdminType.subheadlineBold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.55), lineWidth: 0.75)
+        )
+    }
+
+    private var sellingUnitsDeck: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(Language.get("Selling_Units_Deck_Title", alter: "وحدات ومجموعات البيع"), systemImage: "square.stack.3d.up.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Spacer()
+                Button {
+                    let nextSort = viewModel.quantityGroups.count
+                    let newGroup = PPQuantityGroupDraft(
+                        id: "pack_\(nextSort + 1)_\(UUID().uuidString.prefix(4))",
+                        nameAr: "",
+                        nameEn: "",
+                        unitsPerGroup: 6,
+                        barcode: "",
+                        sku: "",
+                        sortOrder: nextSort,
+                        retailEnabled: true,
+                        wholesaleEnabled: viewModel.wholesaleEnabled,
+                        retailPriceText: "",
+                        wholesalePriceText: "",
+                        defaultForRetail: false,
+                        defaultForWholesale: false,
+                        active: true
+                    )
+                    viewModel.selectedQuantityGroupForEditing = newGroup
+                    viewModel.showQuantityGroupInspector = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus.circle.fill")
+                        Text(Language.get("Add_Selling_Unit", alter: "إضافة وحدة"))
+                    }
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(Language.get("Selling_Units_Deck_Subtitle", alter: "تحديد أحجام البيع (حبة، شدة، كرتون) مع خصم المخزون التلقائي بالوحدات الأساسية."))
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.secondary)
+
+            VStack(spacing: 10) {
+                ForEach(viewModel.quantityGroups) { group in
+                    Button {
+                        viewModel.selectedQuantityGroupForEditing = group
+                        viewModel.showQuantityGroupInspector = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(group.defaultForRetail ? AdminSurface.primary.opacity(0.15) : AdminSurface.control)
+                                    .frame(width: 40, height: 40)
+                                Image(systemName: group.unitsPerGroup == 1 ? "cube.fill" : "shippingbox.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(group.defaultForRetail ? AdminSurface.primary : AdminCommandInk.secondary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(group.localizedName)
+                                        .font(AdminType.bodyBold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                    if group.defaultForRetail {
+                                        Text(Language.get("Default_Retail_Badge", alter: "افتراضي للتجزئة"))
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(AdminSurface.primary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                                    }
+                                    if group.defaultForWholesale && group.wholesaleEnabled {
+                                        Text(Language.get("Default_Wholesale_Badge", alter: "افتراضي للجملة"))
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(Color(uiColor: .systemTeal))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                                    }
+                                }
+                                Text(group.unitsCountText)
+                                    .font(AdminType.caption2)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+
+                            Spacer()
+
+                            VStack(alignment: .trailing, spacing: 2) {
+                                if group.retailEnabled {
+                                    Text(String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")))
+                                        .font(AdminType.calloutBold)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                if group.wholesaleEnabled {
+                                    Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(Color(uiColor: .systemTeal))
+                                }
+                            }
+
+                            Image(systemName: "chevron.forward")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(AdminCommandInk.secondary.opacity(0.6))
+                        }
+                        .padding(14)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -4637,6 +5212,287 @@ private struct EditorPressStyle: ButtonStyle {
 }
 
 // MARK: - Flagship Modal Pickers
+
+struct PPQuantityGroupInspectorSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var group: PPQuantityGroupDraft
+    let canManageWholesale: Bool
+    let onSave: (PPQuantityGroupDraft) -> Void
+    let onDelete: (() -> Void)?
+
+    @State private var unitsText: String = "1"
+    @State private var localErrorMessage: String? = nil
+
+    init(
+        group: PPQuantityGroupDraft,
+        canManageWholesale: Bool,
+        onSave: @escaping (PPQuantityGroupDraft) -> Void,
+        onDelete: (() -> Void)? = nil
+    ) {
+        _group = State(initialValue: group)
+        _unitsText = State(initialValue: "\(max(1, group.unitsPerGroup))")
+        self.canManageWholesale = canManageWholesale
+        self.onSave = onSave
+        self.onDelete = onDelete
+    }
+
+    var body: some View {
+        NavigationView {
+            ZStack {
+                AdminSurface.background
+                    .ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // Identity Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            Label(Language.get("Group_Identity", alter: "اسم الوحدة ومواصفاتها"), systemImage: "cube.box.fill")
+                                .font(AdminType.headline)
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(Language.get("Group_Name_Ar", alter: "اسم الوحدة (عربي)"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                    TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
+                                        .font(AdminType.body)
+                                        .padding(12)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(Language.get("Group_Name_En", alter: "اسم الوحدة (إنجليزي)"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                    TextField("e.g. Carton", text: $group.nameEn)
+                                        .font(AdminType.body)
+                                        .padding(12)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                            }
+
+                            // Units Count Stepper
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+
+                                HStack(spacing: 12) {
+                                    Button {
+                                        let current = Int(unitsText) ?? 1
+                                        if current > 1 {
+                                            unitsText = "\(current - 1)"
+                                            group.unitsPerGroup = current - 1
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .frame(width: 44, height: 44)
+                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    TextField("1", text: $unitsText)
+                                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                                        .multilineTextAlignment(.center)
+                                        .englishNumericInput(text: $unitsText, allowsDecimal: false)
+                                        .padding(10)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                        .onChange(of: unitsText) { newVal in
+                                            if let parsed = Int(newVal), parsed >= 1 {
+                                                group.unitsPerGroup = parsed
+                                            }
+                                        }
+
+                                    Button {
+                                        let current = Int(unitsText) ?? 1
+                                        unitsText = "\(current + 1)"
+                                        group.unitsPerGroup = current + 1
+                                    } label: {
+                                        Image(systemName: "plus")
+                                            .font(.system(size: 16, weight: .bold))
+                                            .frame(width: 44, height: 44)
+                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+
+                            // Barcode & SKU
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                    HStack {
+                                        Image(systemName: "barcode.viewfinder")
+                                            .foregroundStyle(AdminCommandInk.secondary)
+                                        TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
+                                            .font(AdminType.body)
+                                            .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+                                    }
+                                    .padding(12)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(Language.get("Group_SKU", alter: "رمز الصنف SKU (اختياري)"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                    TextField("SKU", text: $group.sku)
+                                        .font(AdminType.body)
+                                        .padding(12)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+                            }
+                        }
+                        .padding(16)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                        // Retail Configuration Card
+                        VStack(alignment: .leading, spacing: 12) {
+                            Toggle(isOn: $group.retailEnabled) {
+                                Label(Language.get("Retail_Selling_Channel", alter: "متاح للبيع بالتجزئة (قطاعي)"), systemImage: "cart.fill")
+                                    .font(AdminType.headline)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                            }
+                            .tint(AdminSurface.primary)
+
+                            if group.retailEnabled {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(Language.get("Retail_Selling_Price_QAR", alter: "سعر بيع التجزئة للوحدة (ر.ق)"))
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                    TextField("0.00", text: $group.retailPriceText)
+                                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                                        .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
+                                        .padding(12)
+                                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                }
+
+                                Toggle(isOn: $group.defaultForRetail) {
+                                    Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية عند البيع بالتجزئة"))
+                                        .font(AdminType.subheadline)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                .tint(AdminSurface.primary)
+                            }
+                        }
+                        .padding(16)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                        // Wholesale Configuration Card
+                        if canManageWholesale {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Toggle(isOn: $group.wholesaleEnabled) {
+                                    Label(Language.get("Wholesale_Selling_Channel", alter: "متاح للبيع بالجملة"), systemImage: "building.2.fill")
+                                        .font(AdminType.headline)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                .tint(Color(uiColor: .systemTeal))
+
+                                if group.wholesaleEnabled {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(Language.get("Wholesale_Selling_Price_QAR", alter: "سعر بيع الجملة للوحدة (ر.ق)"))
+                                            .font(AdminType.caption2Bold)
+                                            .foregroundStyle(AdminCommandInk.secondary)
+                                        TextField("0.00", text: $group.wholesalePriceText)
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
+                                            .padding(12)
+                                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+
+                                    Toggle(isOn: $group.defaultForWholesale) {
+                                        Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية عند البيع بالجملة"))
+                                            .font(AdminType.subheadline)
+                                            .foregroundStyle(AdminSurface.primaryText)
+                                    }
+                                    .tint(Color(uiColor: .systemTeal))
+                                }
+                            }
+                            .padding(16)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        }
+
+                        // Active Toggle
+                        Toggle(isOn: $group.active) {
+                            Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع"))
+                                .font(AdminType.subheadline)
+                                .foregroundStyle(AdminSurface.primaryText)
+                        }
+                        .tint(Color(uiColor: .ppSuccess))
+                        .padding(16)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                        if let err = localErrorMessage {
+                            Text(err)
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(Color(uiColor: .systemRed))
+                                .padding(.horizontal, 8)
+                        }
+
+                        // Delete Button
+                        if let onDelete = onDelete {
+                            Button(role: .destructive) {
+                                onDelete()
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    Image(systemName: "trash.fill")
+                                    Text(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"))
+                                }
+                                .font(AdminType.subheadlineBold)
+                                .foregroundStyle(Color(uiColor: .systemRed))
+                                .frame(maxWidth: .infinity)
+                                .padding(14)
+                                .background(Color(uiColor: .systemRed).opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            }
+                            .padding(.top, 8)
+                        }
+                    }
+                    .padding(16)
+                }
+                .navigationTitle(Language.get("Edit_Selling_Unit", alter: "وحدة البيع"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(Language.get("Cancel", alter: "إلغاء")) {
+                            dismiss()
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(Language.get("Done", alter: "تم")) {
+                            validateAndSave()
+                        }
+                        .font(AdminType.bodyBold)
+                    }
+                }
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private func validateAndSave() {
+        if group.unitsPerGroup < 1 {
+            localErrorMessage = Language.get("Validation_Group_Units_Positive", alter: "يجب أن تكون كمية المجموعة عدداً صحيحاً أكبر من صفر.")
+            return
+        }
+        if !group.retailEnabled && !group.wholesaleEnabled {
+            localErrorMessage = Language.get("Validation_Channel_Required", alter: "يرجى تفعيل قناة بيع واحدة على الأقل (تجزئة أو جملة).")
+            return
+        }
+        if group.retailEnabled && group.retailPrice <= 0 {
+            localErrorMessage = Language.get("Validation_Retail_Price_Required", alter: "يرجى تحديد سعر بيع التجزئة بدقة.")
+            return
+        }
+        if group.wholesaleEnabled && group.wholesalePrice <= 0 {
+            localErrorMessage = Language.get("Validation_Wholesale_Price_Required", alter: "يرجى تحديد سعر بيع الجملة بدقة.")
+            return
+        }
+        onSave(group)
+        dismiss()
+    }
+}
 
 private struct PPAccessorySpeciesPickerSheet: View {
     let speciesList: [MainKindsModel]
@@ -7138,6 +7994,8 @@ private struct PPLivePetIntakeJourney: View {
                 }
             }
 
+            // TEMP HIDE: Second add photo button marked by user
+            #if false
             Button {
                 presentUnitPhotoSource(for: unit.id)
             } label: {
@@ -7154,6 +8012,7 @@ private struct PPLivePetIntakeJourney: View {
             }
             .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
             .disabled(!canAttach)
+            #endif
 
             Label(
                 tr("LivePetIntake_UnitPhotoInternalNote", "ترتبط بسجل هذا الحيوان فقط"),

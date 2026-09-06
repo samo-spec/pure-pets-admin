@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 #import "PetImageItem.h"
 
+@class UIViewController, UIView;
+
 typedef NS_ENUM(NSInteger, AccessConditions)
 {
     AccessConditionsNew = 1,
@@ -39,6 +41,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSNumber *discountPercent;  // % discount (0–100)
 @property (nonatomic, strong, nullable) NSNumber *discountAmount;   // Absolute discount (e.g. 15.0)
 @property (nonatomic, readonly) NSNumber *finalPrice;               // Auto-calculated final price
+@property (nonatomic, strong, nullable) NSNumber *wholesalePrice;
+@property (nonatomic, assign) BOOL hasCommerceConfig;
+@property (nonatomic, copy, nullable) NSArray<NSDictionary *> *quantityGroups;
 @property (nonatomic, copy, nullable) NSString *weightText;          // Display-ready package weight, e.g. "2 kg"
 @property (nonatomic, strong, nullable) NSNumber *weight;            // Numeric package weight when stored separately
 @property (nonatomic, copy, nullable) NSString *weightUnit;          // Unit for numeric package weight
