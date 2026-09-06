@@ -79,6 +79,12 @@ typedef NS_ENUM(NSInteger, PPAuditSeverity) {
 - (NSInteger)modifiedKeysCount;
 - (BOOL)hasDiff;
 
+- (NSString *)actorDisplayName;
+- (NSString *)targetDisplayName;
+- (nullable NSString *)stateTransitionSummary;
+- (NSString *)diffPillText;
+- (UIColor *)severityColor;
+
 @end
 
 NS_ASSUME_NONNULL_END

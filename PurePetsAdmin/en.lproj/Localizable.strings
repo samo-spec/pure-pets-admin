@@ -3189,6 +3189,16 @@
 "Audit_Search_Placeholder" = "Search by action, actor, target, or reason...";
 "Audit_Empty_SearchTitle" = "No Matching Records";
 "Audit_Empty_SearchSubtitle" = "Try adjusting your search terms or clearing active filters.";
+"Audit_Perimeter_Secure_Title" = "Sovereign Perimeter Secure";
+"Audit_Perimeter_Secure_Subtitle" = "No anomalous interventions or recorded operations match the active filter.";
+"Audit_Live_Fidelity" = "99.9%% Stream Integrity";
+"Audit_Actor_Title" = "Actor Admin";
+"Audit_Target_Entity" = "Target Entity";
+"Audit_State_Transition" = "State Transition";
+"Audit_Clear_Active_Filters" = "Reset Search Scope";
+"Audit_Active_Filter_Label" = "Active Filter";
+"Audit_Empty_Initial_Title" = "Sovereign Audit Stream Connected";
+"Audit_Empty_Initial_Subtitle" = "Awaiting new administrative interventions or events.";
 "Audit_Diff_Added" = "Added Fields";
 "Audit_Diff_Removed" = "Removed Fields";
 "Audit_Diff_Modified" = "Modified Fields";

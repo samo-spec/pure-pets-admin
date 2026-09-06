@@ -784,26 +784,47 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 
 @end
 
-#pragma mark - Flagship Audit Log Card Cell
+#pragma mark - Flagship Narrative Audit Log Card Cell
 
 @interface PPAuditLogCardCell : UITableViewCell
 @property (nonatomic, strong) UIView *cardView;
 @property (nonatomic, strong) UIView *accentStripe;
-@property (nonatomic, strong) UIView *iconCircle;
-@property (nonatomic, strong) UIImageView *iconImageView;
-@property (nonatomic, strong) UILabel *titleLabel;
-@property (nonatomic, strong) UILabel *techActionPill;
+@property (nonatomic, strong) UIStackView *contentStack;
+
+// Row 1: Actor & Time
+@property (nonatomic, strong) UIView *actorTimeRow;
+@property (nonatomic, strong) UIView *actorAvatarView;
+@property (nonatomic, strong) UIImageView *actorIconView;
+@property (nonatomic, strong) UILabel *actorNameLabel;
+@property (nonatomic, strong) UIImageView *timeIconView;
 @property (nonatomic, strong) UILabel *relativeTimeLabel;
-@property (nonatomic, strong) UILabel *adminLabel;
+
+// Row 2: Category Pill & Localized Headline
+@property (nonatomic, strong) UIView *actionRow;
+@property (nonatomic, strong) UIView *categoryPillView;
+@property (nonatomic, strong) UIImageView *categoryIconView;
+@property (nonatomic, strong) UILabel *categoryLabel;
+@property (nonatomic, strong) UILabel *titleLabel;
+
+// Row 3: Target Entity
+@property (nonatomic, strong) UIView *targetRow;
+@property (nonatomic, strong) UIImageView *targetIconView;
 @property (nonatomic, strong) UILabel *targetLabel;
-@property (nonatomic, strong) UIView *reasonBox;
-@property (nonatomic, strong) UILabel *reasonLabel;
-@property (nonatomic, strong) UIView *diffBadge;
+
+// Row 4: Delta DNA Strip
+@property (nonatomic, strong) UIView *diffBoxView;
 @property (nonatomic, strong) UILabel *diffBadgeLabel;
+@property (nonatomic, strong) UILabel *diffTransitionLabel;
+
+// Row 5: Operational Reason Box
+@property (nonatomic, strong) UIView *reasonBoxView;
+@property (nonatomic, strong) UILabel *reasonLabel;
+
+// Row 6: Provenance Footer & Chevron
+@property (nonatomic, strong) UIView *footerRow;
+@property (nonatomic, strong) UILabel *auditIdLabel;
 @property (nonatomic, strong) UIImageView *disclosureIcon;
-@property (nonatomic, strong) NSLayoutConstraint *reasonTopConstraint;
-@property (nonatomic, strong) NSLayoutConstraint *reasonBottomConstraint;
-@property (nonatomic, strong) NSLayoutConstraint *diffBottomConstraint;
+
 - (void)configureWithEntry:(PPAuditLogEntryModel *)entry;
 @end
 
@@ -820,11 +841,15 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 }
 
 - (void)setupUI {
+    self.contentView.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
     _cardView = [[UIView alloc] init];
     _cardView.translatesAutoresizingMaskIntoConstraints = NO;
     _cardView.backgroundColor = [UIColor ppSurface];
     PPApplyContinuousCorners(_cardView, PPCornerCard);
     PPApplyCardShadow(_cardView);
+    _cardView.layer.borderWidth = 0.5;
+    _cardView.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
     [self.contentView addSubview:_cardView];
 
     _accentStripe = [[UIView alloc] init];
@@ -832,79 +857,13 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     _accentStripe.layer.cornerRadius = 2.0;
     [_cardView addSubview:_accentStripe];
 
-    _iconCircle = [[UIView alloc] init];
-    _iconCircle.translatesAutoresizingMaskIntoConstraints = NO;
-    _iconCircle.layer.cornerRadius = 18.0;
-    [_cardView addSubview:_iconCircle];
-
-    _iconImageView = [[UIImageView alloc] init];
-    _iconImageView.translatesAutoresizingMaskIntoConstraints = NO;
-    _iconImageView.contentMode = UIViewContentModeScaleAspectFit;
-    [_iconCircle addSubview:_iconImageView];
-
-    _titleLabel = [[UILabel alloc] init];
-    _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _titleLabel.font = PPFontBold(PPFontHeadline);
-    _titleLabel.textColor = [UIColor ppTextPrimary];
-    _titleLabel.numberOfLines = 1;
-    [_cardView addSubview:_titleLabel];
-
-    _techActionPill = [[UILabel alloc] init];
-    _techActionPill.translatesAutoresizingMaskIntoConstraints = NO;
-    _techActionPill.font = [UIFont fontWithName:@"Menlo" size:10] ?: PPFontRegular(PPFontCaption2);
-    _techActionPill.textColor = [UIColor ppTextSecondary];
-    _techActionPill.backgroundColor = [UIColor ppSecondarySurface];
-    _techActionPill.layer.cornerRadius = 4.0;
-    _techActionPill.clipsToBounds = YES;
-    [_cardView addSubview:_techActionPill];
-
-    _relativeTimeLabel = [[UILabel alloc] init];
-    _relativeTimeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _relativeTimeLabel.font = PPFontRegular(PPFontCaption1);
-    _relativeTimeLabel.textColor = [UIColor ppTextTertiary];
-    [_cardView addSubview:_relativeTimeLabel];
-
-    _adminLabel = [[UILabel alloc] init];
-    _adminLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _adminLabel.font = PPFontMedium(PPFontCaption1);
-    _adminLabel.textColor = [UIColor ppTextSecondary];
-    [_cardView addSubview:_adminLabel];
-
-    _targetLabel = [[UILabel alloc] init];
-    _targetLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _targetLabel.font = PPFontRegular(PPFontCaption1);
-    _targetLabel.textColor = [UIColor ppTextTertiary];
-    [_cardView addSubview:_targetLabel];
-
-    _reasonBox = [[UIView alloc] init];
-    _reasonBox.translatesAutoresizingMaskIntoConstraints = NO;
-    _reasonBox.backgroundColor = [UIColor ppSecondarySurface];
-    _reasonBox.layer.cornerRadius = 8.0;
-    [_cardView addSubview:_reasonBox];
-
-    _reasonLabel = [[UILabel alloc] init];
-    _reasonLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _reasonLabel.font = PPFontRegular(PPFontCaption1);
-    _reasonLabel.textColor = [UIColor ppTextSecondary];
-    _reasonLabel.numberOfLines = 2;
-    [_reasonBox addSubview:_reasonLabel];
-
-    _diffBadge = [[UIView alloc] init];
-    _diffBadge.translatesAutoresizingMaskIntoConstraints = NO;
-    _diffBadge.backgroundColor = [[UIColor ppWarning] colorWithAlphaComponent:0.12];
-    _diffBadge.layer.cornerRadius = 6.0;
-    [_cardView addSubview:_diffBadge];
-
-    _diffBadgeLabel = [[UILabel alloc] init];
-    _diffBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    _diffBadgeLabel.font = PPFontBold(PPFontCaption2);
-    _diffBadgeLabel.textColor = [UIColor ppWarning];
-    [_diffBadge addSubview:_diffBadgeLabel];
-
-    _disclosureIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:[Language isRTL] ? @"chevron.left" : @"chevron.right"]];
-    _disclosureIcon.translatesAutoresizingMaskIntoConstraints = NO;
-    _disclosureIcon.tintColor = [UIColor ppTextTertiary];
-    [_cardView addSubview:_disclosureIcon];
+    _contentStack = [[UIStackView alloc] init];
+    _contentStack.translatesAutoresizingMaskIntoConstraints = NO;
+    _contentStack.axis = UILayoutConstraintAxisVertical;
+    _contentStack.spacing = PPSpaceSM;
+    _contentStack.alignment = UIStackViewAlignmentFill;
+    _contentStack.distribution = UIStackViewDistributionFill;
+    [_cardView addSubview:_contentStack];
 
     [NSLayoutConstraint activateConstraints:@[
         [_cardView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:PPSpaceBase],
@@ -912,107 +871,280 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         [_cardView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:PPSpaceXS],
         [_cardView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-PPSpaceXS],
 
-        [_accentStripe.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:PPSpaceSM],
+        [_accentStripe.leadingAnchor constraintEqualToAnchor:_cardView.leadingAnchor constant:PPSpaceXS],
         [_accentStripe.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
         [_accentStripe.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD],
-        [_accentStripe.widthAnchor constraintEqualToConstant:4.0],
+        [_accentStripe.widthAnchor constraintEqualToConstant:3.5],
 
-        [_iconCircle.leadingAnchor constraintEqualToAnchor:_accentStripe.trailingAnchor constant:PPSpaceMD],
-        [_iconCircle.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
-        [_iconCircle.widthAnchor constraintEqualToConstant:36.0],
-        [_iconCircle.heightAnchor constraintEqualToConstant:36.0],
+        [_contentStack.leadingAnchor constraintEqualToAnchor:_accentStripe.trailingAnchor constant:PPSpaceMD],
+        [_contentStack.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceMD],
+        [_contentStack.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
+        [_contentStack.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD]
+    ]];
 
-        [_iconImageView.centerXAnchor constraintEqualToAnchor:_iconCircle.centerXAnchor],
-        [_iconImageView.centerYAnchor constraintEqualToAnchor:_iconCircle.centerYAnchor],
-        [_iconImageView.widthAnchor constraintEqualToConstant:18.0],
-        [_iconImageView.heightAnchor constraintEqualToConstant:18.0],
+    // --- Row 1: Actor & Time ---
+    _actorTimeRow = [[UIView alloc] init];
+    _actorTimeRow.translatesAutoresizingMaskIntoConstraints = NO;
 
-        [_disclosureIcon.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceBase],
-        [_disclosureIcon.centerYAnchor constraintEqualToAnchor:_iconCircle.centerYAnchor],
+    _actorAvatarView = [[UIView alloc] init];
+    _actorAvatarView.translatesAutoresizingMaskIntoConstraints = NO;
+    _actorAvatarView.layer.cornerRadius = 14.0;
+    if (@available(iOS 13.0, *)) {
+        _actorAvatarView.layer.cornerCurve = kCACornerCurveContinuous;
+    }
+    [_actorTimeRow addSubview:_actorAvatarView];
+
+    _actorIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"person.fill"]];
+    _actorIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    _actorIconView.contentMode = UIViewContentModeScaleAspectFit;
+    [_actorAvatarView addSubview:_actorIconView];
+
+    _actorNameLabel = [[UILabel alloc] init];
+    _actorNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _actorNameLabel.font = PPFontBold(PPFontSubheadline);
+    _actorNameLabel.textColor = [UIColor ppTextPrimary];
+    [_actorTimeRow addSubview:_actorNameLabel];
+
+    _relativeTimeLabel = [[UILabel alloc] init];
+    _relativeTimeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _relativeTimeLabel.font = PPFontRegular(PPFontCaption1);
+    _relativeTimeLabel.textColor = [UIColor ppTextTertiary];
+    [_actorTimeRow addSubview:_relativeTimeLabel];
+
+    _timeIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"clock"]];
+    _timeIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    _timeIconView.tintColor = [UIColor ppTextTertiary];
+    _timeIconView.contentMode = UIViewContentModeScaleAspectFit;
+    [_actorTimeRow addSubview:_timeIconView];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_actorAvatarView.leadingAnchor constraintEqualToAnchor:_actorTimeRow.leadingAnchor],
+        [_actorAvatarView.topAnchor constraintEqualToAnchor:_actorTimeRow.topAnchor],
+        [_actorAvatarView.bottomAnchor constraintEqualToAnchor:_actorTimeRow.bottomAnchor],
+        [_actorAvatarView.widthAnchor constraintEqualToConstant:28.0],
+        [_actorAvatarView.heightAnchor constraintEqualToConstant:28.0],
+
+        [_actorIconView.centerXAnchor constraintEqualToAnchor:_actorAvatarView.centerXAnchor],
+        [_actorIconView.centerYAnchor constraintEqualToAnchor:_actorAvatarView.centerYAnchor],
+        [_actorIconView.widthAnchor constraintEqualToConstant:14.0],
+        [_actorIconView.heightAnchor constraintEqualToConstant:14.0],
+
+        [_actorNameLabel.leadingAnchor constraintEqualToAnchor:_actorAvatarView.trailingAnchor constant:PPSpaceSM],
+        [_actorNameLabel.centerYAnchor constraintEqualToAnchor:_actorAvatarView.centerYAnchor],
+
+        [_relativeTimeLabel.trailingAnchor constraintEqualToAnchor:_actorTimeRow.trailingAnchor],
+        [_relativeTimeLabel.centerYAnchor constraintEqualToAnchor:_actorAvatarView.centerYAnchor],
+
+        [_timeIconView.trailingAnchor constraintEqualToAnchor:_relativeTimeLabel.leadingAnchor constant:-PPSpaceXS],
+        [_timeIconView.centerYAnchor constraintEqualToAnchor:_actorAvatarView.centerYAnchor],
+        [_timeIconView.widthAnchor constraintEqualToConstant:12.0],
+        [_timeIconView.heightAnchor constraintEqualToConstant:12.0],
+
+        [_actorNameLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_timeIconView.leadingAnchor constant:-PPSpaceSM]
+    ]];
+    [_contentStack addArrangedSubview:_actorTimeRow];
+
+    // --- Row 2: Action Category & Headline ---
+    _actionRow = [[UIView alloc] init];
+    _actionRow.translatesAutoresizingMaskIntoConstraints = NO;
+
+    _categoryPillView = [[UIView alloc] init];
+    _categoryPillView.translatesAutoresizingMaskIntoConstraints = NO;
+    _categoryPillView.layer.cornerRadius = 6.0;
+    [_actionRow addSubview:_categoryPillView];
+
+    _categoryIconView = [[UIImageView alloc] init];
+    _categoryIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    _categoryIconView.contentMode = UIViewContentModeScaleAspectFit;
+    [_categoryPillView addSubview:_categoryIconView];
+
+    _categoryLabel = [[UILabel alloc] init];
+    _categoryLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _categoryLabel.font = PPFontBold(PPFontCaption2);
+    [_categoryPillView addSubview:_categoryLabel];
+
+    _titleLabel = [[UILabel alloc] init];
+    _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _titleLabel.font = PPFontBold(PPFontHeadline);
+    _titleLabel.textColor = [UIColor ppTextPrimary];
+    _titleLabel.numberOfLines = 2;
+    [_actionRow addSubview:_titleLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_categoryPillView.leadingAnchor constraintEqualToAnchor:_actionRow.leadingAnchor],
+        [_categoryPillView.topAnchor constraintEqualToAnchor:_actionRow.topAnchor],
+        [_categoryPillView.heightAnchor constraintEqualToConstant:22.0],
+
+        [_categoryIconView.leadingAnchor constraintEqualToAnchor:_categoryPillView.leadingAnchor constant:6.0],
+        [_categoryIconView.centerYAnchor constraintEqualToAnchor:_categoryPillView.centerYAnchor],
+        [_categoryIconView.widthAnchor constraintEqualToConstant:12.0],
+        [_categoryIconView.heightAnchor constraintEqualToConstant:12.0],
+
+        [_categoryLabel.leadingAnchor constraintEqualToAnchor:_categoryIconView.trailingAnchor constant:4.0],
+        [_categoryLabel.trailingAnchor constraintEqualToAnchor:_categoryPillView.trailingAnchor constant:-6.0],
+        [_categoryLabel.centerYAnchor constraintEqualToAnchor:_categoryPillView.centerYAnchor],
+
+        [_titleLabel.leadingAnchor constraintEqualToAnchor:_categoryPillView.trailingAnchor constant:PPSpaceSM],
+        [_titleLabel.trailingAnchor constraintEqualToAnchor:_actionRow.trailingAnchor],
+        [_titleLabel.centerYAnchor constraintEqualToAnchor:_categoryPillView.centerYAnchor],
+        [_actionRow.bottomAnchor constraintEqualToAnchor:_categoryPillView.bottomAnchor]
+    ]];
+    [_contentStack addArrangedSubview:_actionRow];
+
+    // --- Row 3: Target Entity ---
+    _targetRow = [[UIView alloc] init];
+    _targetRow.translatesAutoresizingMaskIntoConstraints = NO;
+
+    _targetIconView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"arrow.turn.down.right"]];
+    _targetIconView.translatesAutoresizingMaskIntoConstraints = NO;
+    _targetIconView.tintColor = [UIColor ppTextTertiary];
+    _targetIconView.contentMode = UIViewContentModeScaleAspectFit;
+    [_targetRow addSubview:_targetIconView];
+
+    _targetLabel = [[UILabel alloc] init];
+    _targetLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _targetLabel.font = [UIFont fontWithName:@"Menlo" size:11] ?: PPFontRegular(PPFontCaption1);
+    _targetLabel.textColor = [UIColor ppTextSecondary];
+    [_targetRow addSubview:_targetLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_targetIconView.leadingAnchor constraintEqualToAnchor:_targetRow.leadingAnchor],
+        [_targetIconView.centerYAnchor constraintEqualToAnchor:_targetRow.centerYAnchor],
+        [_targetIconView.widthAnchor constraintEqualToConstant:12.0],
+        [_targetIconView.heightAnchor constraintEqualToConstant:12.0],
+
+        [_targetLabel.leadingAnchor constraintEqualToAnchor:_targetIconView.trailingAnchor constant:6.0],
+        [_targetLabel.trailingAnchor constraintEqualToAnchor:_targetRow.trailingAnchor],
+        [_targetLabel.topAnchor constraintEqualToAnchor:_targetRow.topAnchor],
+        [_targetLabel.bottomAnchor constraintEqualToAnchor:_targetRow.bottomAnchor]
+    ]];
+    [_contentStack addArrangedSubview:_targetRow];
+
+    // --- Row 4: Delta DNA Strip ---
+    _diffBoxView = [[UIView alloc] init];
+    _diffBoxView.translatesAutoresizingMaskIntoConstraints = NO;
+    _diffBoxView.layer.cornerRadius = 8.0;
+    _diffBoxView.layer.borderWidth = 0.5;
+
+    _diffBadgeLabel = [[UILabel alloc] init];
+    _diffBadgeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _diffBadgeLabel.font = PPFontBold(PPFontCaption2);
+    [_diffBoxView addSubview:_diffBadgeLabel];
+
+    _diffTransitionLabel = [[UILabel alloc] init];
+    _diffTransitionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _diffTransitionLabel.font = [UIFont fontWithName:@"Menlo" size:11] ?: PPFontRegular(PPFontCaption1);
+    _diffTransitionLabel.textColor = [UIColor ppTextPrimary];
+    [_diffBoxView addSubview:_diffTransitionLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_diffBadgeLabel.leadingAnchor constraintEqualToAnchor:_diffBoxView.leadingAnchor constant:PPSpaceSM],
+        [_diffBadgeLabel.topAnchor constraintEqualToAnchor:_diffBoxView.topAnchor constant:6.0],
+        [_diffBadgeLabel.bottomAnchor constraintEqualToAnchor:_diffBoxView.bottomAnchor constant:-6.0],
+
+        [_diffTransitionLabel.leadingAnchor constraintEqualToAnchor:_diffBadgeLabel.trailingAnchor constant:PPSpaceSM],
+        [_diffTransitionLabel.trailingAnchor constraintEqualToAnchor:_diffBoxView.trailingAnchor constant:-PPSpaceSM],
+        [_diffTransitionLabel.centerYAnchor constraintEqualToAnchor:_diffBadgeLabel.centerYAnchor]
+    ]];
+    [_contentStack addArrangedSubview:_diffBoxView];
+
+    // --- Row 5: Operational Reason Box ---
+    _reasonBoxView = [[UIView alloc] init];
+    _reasonBoxView.translatesAutoresizingMaskIntoConstraints = NO;
+    _reasonBoxView.backgroundColor = [UIColor ppSecondarySurface];
+    _reasonBoxView.layer.cornerRadius = 8.0;
+
+    _reasonLabel = [[UILabel alloc] init];
+    _reasonLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _reasonLabel.font = PPFontRegular(PPFontCaption1);
+    _reasonLabel.textColor = [UIColor ppTextSecondary];
+    _reasonLabel.numberOfLines = 3;
+    [_reasonBoxView addSubview:_reasonLabel];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_reasonLabel.topAnchor constraintEqualToAnchor:_reasonBoxView.topAnchor constant:PPSpaceSM],
+        [_reasonLabel.leadingAnchor constraintEqualToAnchor:_reasonBoxView.leadingAnchor constant:PPSpaceSM],
+        [_reasonLabel.trailingAnchor constraintEqualToAnchor:_reasonBoxView.trailingAnchor constant:-PPSpaceSM],
+        [_reasonLabel.bottomAnchor constraintEqualToAnchor:_reasonBoxView.bottomAnchor constant:-PPSpaceSM]
+    ]];
+    [_contentStack addArrangedSubview:_reasonBoxView];
+
+    // --- Row 6: Provenance Footer ---
+    _footerRow = [[UIView alloc] init];
+    _footerRow.translatesAutoresizingMaskIntoConstraints = NO;
+
+    _auditIdLabel = [[UILabel alloc] init];
+    _auditIdLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    _auditIdLabel.font = [UIFont fontWithName:@"Menlo" size:10] ?: PPFontRegular(PPFontCaption2);
+    _auditIdLabel.textColor = [UIColor ppTextTertiary];
+    [_footerRow addSubview:_auditIdLabel];
+
+    _disclosureIcon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:[Language isRTL] ? @"chevron.left" : @"chevron.right"]];
+    _disclosureIcon.translatesAutoresizingMaskIntoConstraints = NO;
+    _disclosureIcon.tintColor = [UIColor ppTextTertiary];
+    [_footerRow addSubview:_disclosureIcon];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [_auditIdLabel.leadingAnchor constraintEqualToAnchor:_footerRow.leadingAnchor],
+        [_auditIdLabel.centerYAnchor constraintEqualToAnchor:_footerRow.centerYAnchor],
+        [_auditIdLabel.topAnchor constraintEqualToAnchor:_footerRow.topAnchor],
+        [_auditIdLabel.bottomAnchor constraintEqualToAnchor:_footerRow.bottomAnchor],
+
+        [_disclosureIcon.trailingAnchor constraintEqualToAnchor:_footerRow.trailingAnchor],
+        [_disclosureIcon.centerYAnchor constraintEqualToAnchor:_footerRow.centerYAnchor],
         [_disclosureIcon.widthAnchor constraintEqualToConstant:12.0],
         [_disclosureIcon.heightAnchor constraintEqualToConstant:12.0],
 
-        [_relativeTimeLabel.trailingAnchor constraintEqualToAnchor:_disclosureIcon.leadingAnchor constant:-PPSpaceSM],
-        [_relativeTimeLabel.centerYAnchor constraintEqualToAnchor:_iconCircle.centerYAnchor],
-
-        [_titleLabel.leadingAnchor constraintEqualToAnchor:_iconCircle.trailingAnchor constant:PPSpaceMD],
-        [_titleLabel.trailingAnchor constraintEqualToAnchor:_relativeTimeLabel.leadingAnchor constant:-PPSpaceSM],
-        [_titleLabel.topAnchor constraintEqualToAnchor:_cardView.topAnchor constant:PPSpaceMD],
-
-        [_techActionPill.leadingAnchor constraintEqualToAnchor:_titleLabel.leadingAnchor],
-        [_techActionPill.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:PPSpaceXXS],
-        [_techActionPill.trailingAnchor constraintLessThanOrEqualToAnchor:_relativeTimeLabel.leadingAnchor constant:-PPSpaceSM],
-
-        [_adminLabel.leadingAnchor constraintEqualToAnchor:_iconCircle.leadingAnchor],
-        [_adminLabel.topAnchor constraintEqualToAnchor:_techActionPill.bottomAnchor constant:PPSpaceSM],
-        [_adminLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceBase],
-
-        [_targetLabel.leadingAnchor constraintEqualToAnchor:_iconCircle.leadingAnchor],
-        [_targetLabel.topAnchor constraintEqualToAnchor:_adminLabel.bottomAnchor constant:PPSpaceXXS],
-        [_targetLabel.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceBase],
-
-        [_reasonBox.leadingAnchor constraintEqualToAnchor:_iconCircle.leadingAnchor],
-        [_reasonBox.trailingAnchor constraintEqualToAnchor:_cardView.trailingAnchor constant:-PPSpaceBase],
-        [_reasonLabel.topAnchor constraintEqualToAnchor:_reasonBox.topAnchor constant:PPSpaceXS],
-        [_reasonLabel.leadingAnchor constraintEqualToAnchor:_reasonBox.leadingAnchor constant:PPSpaceSM],
-        [_reasonLabel.trailingAnchor constraintEqualToAnchor:_reasonBox.trailingAnchor constant:-PPSpaceSM],
-        [_reasonLabel.bottomAnchor constraintEqualToAnchor:_reasonBox.bottomAnchor constant:-PPSpaceXS],
-
-        [_diffBadge.leadingAnchor constraintEqualToAnchor:_iconCircle.leadingAnchor],
-        [_diffBadge.heightAnchor constraintEqualToConstant:20.0],
-        [_diffBadgeLabel.leadingAnchor constraintEqualToAnchor:_diffBadge.leadingAnchor constant:PPSpaceSM],
-        [_diffBadgeLabel.trailingAnchor constraintEqualToAnchor:_diffBadge.trailingAnchor constant:-PPSpaceSM],
-        [_diffBadgeLabel.centerYAnchor constraintEqualToAnchor:_diffBadge.centerYAnchor]
+        [_auditIdLabel.trailingAnchor constraintLessThanOrEqualToAnchor:_disclosureIcon.leadingAnchor constant:-PPSpaceSM]
     ]];
-
-    _reasonTopConstraint = [_reasonBox.topAnchor constraintEqualToAnchor:_targetLabel.bottomAnchor constant:PPSpaceSM];
-    _reasonBottomConstraint = [_reasonBox.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD];
-    _diffBottomConstraint = [_diffBadge.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD];
+    [_contentStack addArrangedSubview:_footerRow];
 }
 
 - (void)configureWithEntry:(PPAuditLogEntryModel *)entry {
     UIColor *accent = [entry accentColor];
     _accentStripe.backgroundColor = accent;
-    _iconCircle.backgroundColor = [entry badgeBackgroundColor];
-    _iconImageView.image = [UIImage systemImageNamed:[entry systemIconName]];
-    _iconImageView.tintColor = accent;
 
-    _titleLabel.text = [entry localizedActionTitle];
-    _techActionPill.text = [NSString stringWithFormat:@" %@ ", entry.action];
+    // Actor
+    _actorAvatarView.backgroundColor = [entry badgeBackgroundColor];
+    _actorIconView.tintColor = accent;
+    _actorNameLabel.text = [entry actorDisplayName];
     _relativeTimeLabel.text = [entry relativeTimeString];
 
-    _adminLabel.text = [NSString stringWithFormat:@"%@: %@", kLang(@"Audit_Admin"), entry.adminUid.length > 0 ? entry.adminUid : @"--"];
-    _targetLabel.text = [NSString stringWithFormat:@"%@: %@", kLang(@"Audit_Target"), entry.targetUid.length > 0 ? entry.targetUid : @"--"];
+    // Category Pill & Title
+    _categoryPillView.backgroundColor = [entry badgeBackgroundColor];
+    _categoryIconView.image = [UIImage systemImageNamed:[entry systemIconName]];
+    _categoryIconView.tintColor = accent;
+    _categoryLabel.text = [entry categoryTitle];
+    _categoryLabel.textColor = accent;
+    _titleLabel.text = [entry localizedActionTitle];
 
-    BOOL hasReason = entry.reason.length > 0;
-    _reasonBox.hidden = !hasReason;
-    if (hasReason) {
-        _reasonLabel.text = entry.reason;
-    }
+    // Target
+    _targetLabel.text = [NSString stringWithFormat:@"%@: %@", kLang(@"Audit_Target"), [entry targetDisplayName]];
 
+    // Delta DNA
     BOOL hasDiff = [entry hasDiff];
-    _diffBadge.hidden = !hasDiff;
-    if (hasDiff) {
-        NSInteger added = [entry addedKeysCount];
-        NSInteger mod = [entry modifiedKeysCount];
-        NSInteger rem = [entry removedKeysCount];
-        _diffBadgeLabel.text = [NSString stringWithFormat:@"Δ +%ld ~%ld -%ld", (long)added, (long)mod, (long)rem];
+    NSString *transition = [entry stateTransitionSummary];
+    if (hasDiff || transition.length > 0) {
+        _diffBoxView.hidden = NO;
+        _diffBoxView.backgroundColor = [accent colorWithAlphaComponent:0.06];
+        _diffBoxView.layer.borderColor = [accent colorWithAlphaComponent:0.25].CGColor;
+        _diffBadgeLabel.text = [entry diffPillText];
+        _diffBadgeLabel.textColor = accent;
+        _diffTransitionLabel.text = transition.length > 0 ? transition : [NSString stringWithFormat:@"%ld fields", (long)([entry addedKeysCount] + [entry modifiedKeysCount] + [entry removedKeysCount])];
+    } else {
+        _diffBoxView.hidden = YES;
     }
 
-    // Dynamic constraints layout
-    _reasonTopConstraint.active = hasReason;
-    if (hasReason && !hasDiff) {
-        _reasonBottomConstraint.active = YES;
-        _diffBottomConstraint.active = NO;
-    } else if (hasDiff) {
-        _reasonBottomConstraint.active = NO;
-        _diffBottomConstraint.active = YES;
-        [_diffBadge.topAnchor constraintEqualToAnchor:(hasReason ? _reasonBox.bottomAnchor : _targetLabel.bottomAnchor) constant:PPSpaceSM].active = YES;
-    } else {
-        _reasonBottomConstraint.active = NO;
-        _diffBottomConstraint.active = NO;
-        [_targetLabel.bottomAnchor constraintEqualToAnchor:_cardView.bottomAnchor constant:-PPSpaceMD].active = YES;
+    // Reason
+    BOOL hasReason = entry.reason.length > 0;
+    _reasonBoxView.hidden = !hasReason;
+    if (hasReason) {
+        _reasonLabel.text = [NSString stringWithFormat:@"“%@”", entry.reason];
     }
+
+    // Provenance Footer
+    NSString *shortId = entry.auditId.length > 10 ? [entry.auditId substringToIndex:10] : entry.auditId;
+    _auditIdLabel.text = [NSString stringWithFormat:@"ID: #%@", shortId.length > 0 ? shortId : @"--"];
 }
 
 - (void)setHighlighted:(BOOL)highlighted animated:(BOOL)animated {
@@ -1024,211 +1156,323 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 
 @end
 
-#pragma mark - Telemetry Pulse Strip View
+#pragma mark - Ambient Sentinel Status Beacon Capsule
 
-@interface PPAuditTelemetryPulseView : UIView
-@property (nonatomic, strong) UIStackView *stackView;
-@property (nonatomic, copy) void (^onCardTapped)(NSInteger filterIndex);
-- (void)updateWithTotal:(NSInteger)total
-               security:(NSInteger)sec
-                    ops:(NSInteger)ops
-            destructive:(NSInteger)dest
-          selectedIndex:(NSInteger)selectedIdx;
+@interface PPSentinelBeaconView : UIView
+@property (nonatomic, strong) PPAuditPulsingDotView *pulseDot;
+@property (nonatomic, strong) UILabel *statusLabel;
+@property (nonatomic, strong) UILabel *countBadge;
+- (void)updateWithCount:(NSInteger)count;
 @end
 
-@implementation PPAuditTelemetryPulseView
+@implementation PPSentinelBeaconView
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:self.bounds];
-        scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        scroll.showsHorizontalScrollIndicator = NO;
-        [self addSubview:scroll];
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        self.backgroundColor = [UIColor ppElevatedSurface];
+        self.layer.cornerRadius = 14.0;
+        if (@available(iOS 13.0, *)) {
+            self.layer.cornerCurve = kCACornerCurveContinuous;
+        }
+        self.layer.borderWidth = 0.5;
+        self.layer.borderColor = [UIColor ppBorder].CGColor;
 
-        _stackView = [[UIStackView alloc] init];
-        _stackView.translatesAutoresizingMaskIntoConstraints = NO;
-        _stackView.axis = UILayoutConstraintAxisHorizontal;
-        _stackView.spacing = PPSpaceSM;
-        _stackView.alignment = UIStackViewAlignmentFill;
-        _stackView.distribution = UIStackViewDistributionFillEqually;
-        [scroll addSubview:_stackView];
+        _pulseDot = [[PPAuditPulsingDotView alloc] initWithFrame:CGRectMake(0, 0, 10, 10)];
+        _pulseDot.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:_pulseDot];
+
+        _statusLabel = [[UILabel alloc] init];
+        _statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _statusLabel.font = PPFontBold(PPFontCaption2);
+        _statusLabel.textColor = [UIColor ppSuccess];
+        _statusLabel.text = [NSString stringWithFormat:@"%@ • %@", kLang(@"Audit_LiveStreamActive"), kLang(@"Audit_Live_Fidelity")];
+        [self addSubview:_statusLabel];
+
+        _countBadge = [[UILabel alloc] init];
+        _countBadge.translatesAutoresizingMaskIntoConstraints = NO;
+        _countBadge.font = PPFontMedium(PPFontCaption2);
+        _countBadge.textColor = [UIColor ppTextSecondary];
+        _countBadge.textAlignment = NSTextAlignmentRight;
+        [self addSubview:_countBadge];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_stackView.topAnchor constraintEqualToAnchor:scroll.topAnchor],
-            [_stackView.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor],
-            [_stackView.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:PPSpaceBase],
-            [_stackView.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-PPSpaceBase],
-            [_stackView.heightAnchor constraintEqualToAnchor:scroll.heightAnchor]
+            [_pulseDot.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:PPSpaceMD],
+            [_pulseDot.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [_pulseDot.widthAnchor constraintEqualToConstant:10.0],
+            [_pulseDot.heightAnchor constraintEqualToConstant:10.0],
+
+            [_statusLabel.leadingAnchor constraintEqualToAnchor:_pulseDot.trailingAnchor constant:6.0],
+            [_statusLabel.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+
+            [_countBadge.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-PPSpaceMD],
+            [_countBadge.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [_countBadge.leadingAnchor constraintGreaterThanOrEqualToAnchor:_statusLabel.trailingAnchor constant:PPSpaceSM]
         ]];
     }
     return self;
 }
 
-- (void)updateWithTotal:(NSInteger)total
-               security:(NSInteger)sec
-                    ops:(NSInteger)ops
-            destructive:(NSInteger)dest
-          selectedIndex:(NSInteger)selectedIdx {
-    for (UIView *v in self.stackView.arrangedSubviews) {
-        [v removeFromSuperview];
-    }
-
-    NSArray *configs = @[
-        @{ @"title": kLang(@"Audit_Metric_Total"), @"count": @(total), @"icon": @"waveform.path.ecg", @"color": AppPrimaryClr, @"idx": @(0) },
-        @{ @"title": kLang(@"Audit_Metric_Security"), @"count": @(sec), @"icon": @"shield.checkerboard", @"color": [UIColor ppQuickActionAnimals], @"idx": @(1) },
-        @{ @"title": kLang(@"Audit_Metric_Ops"), @"count": @(ops), @"icon": @"slider.horizontal.3", @"color": [UIColor ppQuickActionServices], @"idx": @(2) },
-        @{ @"title": kLang(@"Audit_Metric_Destructive"), @"count": @(dest), @"icon": @"trash.fill", @"color": [UIColor ppError], @"idx": @(5) }
-    ];
-
-    for (NSDictionary *cfg in configs) {
-        NSInteger idx = [cfg[@"idx"] integerValue];
-        BOOL isSel = (selectedIdx == idx);
-        UIView *card = [self buildMetricCardWithTitle:cfg[@"title"]
-                                                count:[cfg[@"count"] integerValue]
-                                             iconName:cfg[@"icon"]
-                                                color:cfg[@"color"]
-                                           isSelected:isSel
-                                                index:idx];
-        [self.stackView addArrangedSubview:card];
-    }
-}
-
-- (UIView *)buildMetricCardWithTitle:(NSString *)title
-                               count:(NSInteger)count
-                            iconName:(NSString *)iconName
-                               color:(UIColor *)color
-                          isSelected:(BOOL)isSel
-                               index:(NSInteger)idx {
-    UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
-    btn.translatesAutoresizingMaskIntoConstraints = NO;
-    btn.backgroundColor = isSel ? [color colorWithAlphaComponent:0.12] : [UIColor ppSurface];
-    PPApplyContinuousCorners(btn, PPCornerMedium);
-    btn.layer.borderWidth = isSel ? 1.5 : 0.5;
-    btn.layer.borderColor = isSel ? color.CGColor : [UIColor ppBorder].CGColor;
-    objc_setAssociatedObject(btn, "cardIdx", @(idx), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    [btn addTarget:self action:@selector(handleCardTap:) forControlEvents:UIControlEventTouchUpInside];
-
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:iconName]];
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    icon.tintColor = color;
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-    [btn addSubview:icon];
-
-    UILabel *countLbl = [[UILabel alloc] init];
-    countLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    countLbl.font = PPFontBold(PPFontTitle3);
-    countLbl.textColor = isSel ? color : [UIColor ppTextPrimary];
-    countLbl.text = [NSString stringWithFormat:@"%ld", (long)count];
-    [btn addSubview:countLbl];
-
-    UILabel *titleLbl = [[UILabel alloc] init];
-    titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLbl.font = PPFontMedium(PPFontCaption2);
-    titleLbl.textColor = [UIColor ppTextSecondary];
-    titleLbl.text = title;
-    titleLbl.numberOfLines = 1;
-    [btn addSubview:titleLbl];
-
-    [NSLayoutConstraint activateConstraints:@[
-        [btn.widthAnchor constraintGreaterThanOrEqualToConstant:108.0],
-        [icon.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor constant:PPSpaceMD],
-        [icon.topAnchor constraintEqualToAnchor:btn.topAnchor constant:PPSpaceSM],
-        [icon.widthAnchor constraintEqualToConstant:18.0],
-        [icon.heightAnchor constraintEqualToConstant:18.0],
-
-        [countLbl.leadingAnchor constraintEqualToAnchor:icon.leadingAnchor],
-        [countLbl.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:PPSpaceXXS],
-
-        [titleLbl.leadingAnchor constraintEqualToAnchor:icon.leadingAnchor],
-        [titleLbl.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor constant:-PPSpaceSM],
-        [titleLbl.topAnchor constraintEqualToAnchor:countLbl.bottomAnchor constant:PPSpaceXXS],
-        [titleLbl.bottomAnchor constraintEqualToAnchor:btn.bottomAnchor constant:-PPSpaceSM]
-    ]];
-
-    return btn;
-}
-
-- (void)handleCardTap:(UIButton *)sender {
-    NSInteger idx = [objc_getAssociatedObject(sender, "cardIdx") integerValue];
-    UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
-    [fb impactOccurred];
-    if (self.onCardTapped) {
-        self.onCardTapped(idx);
-    }
+- (void)updateWithCount:(NSInteger)count {
+    self.countBadge.text = [NSString stringWithFormat:@"%ld %@", (long)count, kLang(@"Audit_Title")];
 }
 
 @end
 
-#pragma mark - Filter Scrubber View
+#pragma mark - Unified Chronos Telemetry Lens Bar
 
-@interface PPAuditScrubberView : UIView
+@interface PPChronosTelemetryLensView : UIView
+@property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *stackView;
-@property (nonatomic, copy) void (^onPillSelected)(NSInteger index);
-- (void)setFilterTitles:(NSArray<NSString *> *)titles selectedIndex:(NSInteger)selIdx;
+@property (nonatomic, copy) void (^onLensSelected)(NSInteger index);
+- (void)updateWithCounts:(NSArray<NSNumber *> *)counts selectedIndex:(NSInteger)selIdx;
 @end
 
-@implementation PPAuditScrubberView
+@implementation PPChronosTelemetryLensView
 
 - (instancetype)initWithFrame:(CGRect)frame {
     self = [super initWithFrame:frame];
     if (self) {
-        UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:self.bounds];
-        scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        scroll.showsHorizontalScrollIndicator = NO;
-        [self addSubview:scroll];
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+        _scrollView = [[UIScrollView alloc] initWithFrame:self.bounds];
+        _scrollView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        _scrollView.showsHorizontalScrollIndicator = NO;
+        _scrollView.contentInset = UIEdgeInsetsMake(0, PPSpaceBase, 0, PPSpaceBase);
+        [self addSubview:_scrollView];
 
         _stackView = [[UIStackView alloc] init];
         _stackView.translatesAutoresizingMaskIntoConstraints = NO;
         _stackView.axis = UILayoutConstraintAxisHorizontal;
         _stackView.spacing = PPSpaceSM;
         _stackView.alignment = UIStackViewAlignmentCenter;
-        [scroll addSubview:_stackView];
+        [_scrollView addSubview:_stackView];
 
         [NSLayoutConstraint activateConstraints:@[
-            [_stackView.topAnchor constraintEqualToAnchor:scroll.topAnchor],
-            [_stackView.bottomAnchor constraintEqualToAnchor:scroll.bottomAnchor],
-            [_stackView.leadingAnchor constraintEqualToAnchor:scroll.leadingAnchor constant:PPSpaceBase],
-            [_stackView.trailingAnchor constraintEqualToAnchor:scroll.trailingAnchor constant:-PPSpaceBase],
-            [_stackView.heightAnchor constraintEqualToAnchor:scroll.heightAnchor]
+            [_stackView.topAnchor constraintEqualToAnchor:_scrollView.topAnchor],
+            [_stackView.bottomAnchor constraintEqualToAnchor:_scrollView.bottomAnchor],
+            [_stackView.leadingAnchor constraintEqualToAnchor:_scrollView.leadingAnchor],
+            [_stackView.trailingAnchor constraintEqualToAnchor:_scrollView.trailingAnchor],
+            [_stackView.heightAnchor constraintEqualToAnchor:_scrollView.heightAnchor]
         ]];
     }
     return self;
 }
 
-- (void)setFilterTitles:(NSArray<NSString *> *)titles selectedIndex:(NSInteger)selIdx {
+- (void)updateWithCounts:(NSArray<NSNumber *> *)counts selectedIndex:(NSInteger)selIdx {
     for (UIView *v in self.stackView.arrangedSubviews) {
         [v removeFromSuperview];
     }
 
-    [titles enumerateObjectsUsingBlock:^(NSString *title, NSUInteger idx, BOOL *stop) {
-        BOOL isSel = (idx == selIdx);
-        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.translatesAutoresizingMaskIntoConstraints = NO;
-        btn.layer.cornerRadius = PPCornerPill;
-        btn.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceLG, PPSpaceSM, PPSpaceLG);
-        btn.titleLabel.font = isSel ? PPFontBold(PPFontSubheadline) : PPFontMedium(PPFontSubheadline);
+    NSArray *configs = @[
+        @{ @"title": kLang(@"Audit_Filter_All"), @"icon": @"waveform.path.ecg", @"color": AppPrimaryClr },
+        @{ @"title": kLang(@"Audit_Filter_Security"), @"icon": @"shield.checkerboard", @"color": [UIColor ppQuickActionAnimals] },
+        @{ @"title": kLang(@"Audit_Filter_Services"), @"icon": @"pawprint.fill", @"color": [UIColor ppQuickActionServices] },
+        @{ @"title": kLang(@"Audit_Filter_Ops"), @"icon": @"slider.horizontal.3", @"color": [UIColor ppQuickActionCommunity] },
+        @{ @"title": kLang(@"Audit_Filter_Finance"), @"icon": @"creditcard.fill", @"color": [UIColor ppPremiumAccent] },
+        @{ @"title": kLang(@"Audit_Filter_Destructive"), @"icon": @"trash.fill", @"color": [UIColor ppError] }
+    ];
 
-        if (isSel) {
-            btn.backgroundColor = AppPrimaryClr;
-            [btn setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
-        } else {
-            btn.backgroundColor = [UIColor ppSecondarySurface];
-            [btn setTitleColor:[UIColor ppTextSecondary] forState:UIControlStateNormal];
+    for (NSUInteger i = 0; i < configs.count; i++) {
+        NSDictionary *cfg = configs[i];
+        NSInteger count = (i < counts.count) ? [counts[i] integerValue] : 0;
+        BOOL isSel = (i == (NSUInteger)selIdx);
+        UIColor *color = cfg[@"color"];
+
+        UIButton *btn = [UIButton buttonWithType:UIButtonTypeCustom];
+        btn.translatesAutoresizingMaskIntoConstraints = NO;
+        btn.backgroundColor = isSel ? [color colorWithAlphaComponent:0.12] : [UIColor ppSurface];
+        btn.layer.cornerRadius = 16.0;
+        if (@available(iOS 13.0, *)) {
+            btn.layer.cornerCurve = kCACornerCurveContinuous;
         }
-        [btn setTitle:title forState:UIControlStateNormal];
-        objc_setAssociatedObject(btn, "pillIdx", @(idx), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [btn addTarget:self action:@selector(handlePillTap:) forControlEvents:UIControlEventTouchUpInside];
+        btn.layer.borderWidth = isSel ? 1.5 : 0.6;
+        btn.layer.borderColor = isSel ? color.CGColor : [UIColor ppSurfaceBorder].CGColor;
+        objc_setAssociatedObject(btn, "lensIdx", @(i), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [btn addTarget:self action:@selector(handleLensTap:) forControlEvents:UIControlEventTouchUpInside];
+
+        UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:cfg[@"icon"]]];
+        icon.translatesAutoresizingMaskIntoConstraints = NO;
+        icon.tintColor = isSel ? color : [UIColor ppTextSecondary];
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        [btn addSubview:icon];
+
+        UILabel *titleLbl = [[UILabel alloc] init];
+        titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
+        titleLbl.font = isSel ? PPFontBold(PPFontSubheadline) : PPFontMedium(PPFontSubheadline);
+        titleLbl.textColor = isSel ? color : [UIColor ppTextPrimary];
+        titleLbl.text = cfg[@"title"];
+        [btn addSubview:titleLbl];
+
+        UIView *badgeBox = [[UIView alloc] init];
+        badgeBox.translatesAutoresizingMaskIntoConstraints = NO;
+        badgeBox.backgroundColor = isSel ? color : [UIColor ppSecondarySurface];
+        badgeBox.layer.cornerRadius = 9.0;
+        [btn addSubview:badgeBox];
+
+        UILabel *countLbl = [[UILabel alloc] init];
+        countLbl.translatesAutoresizingMaskIntoConstraints = NO;
+        countLbl.font = PPFontBold(PPFontCaption2);
+        countLbl.textColor = isSel ? [UIColor whiteColor] : [UIColor ppTextSecondary];
+        countLbl.text = [NSString stringWithFormat:@"%ld", (long)count];
+        [badgeBox addSubview:countLbl];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [btn.heightAnchor constraintEqualToConstant:36.0],
+
+            [icon.leadingAnchor constraintEqualToAnchor:btn.leadingAnchor constant:PPSpaceMD],
+            [icon.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+            [icon.widthAnchor constraintEqualToConstant:15.0],
+            [icon.heightAnchor constraintEqualToConstant:15.0],
+
+            [titleLbl.leadingAnchor constraintEqualToAnchor:icon.trailingAnchor constant:PPSpaceXS],
+            [titleLbl.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+
+            [badgeBox.leadingAnchor constraintEqualToAnchor:titleLbl.trailingAnchor constant:PPSpaceSM],
+            [badgeBox.trailingAnchor constraintEqualToAnchor:btn.trailingAnchor constant:-PPSpaceSM],
+            [badgeBox.centerYAnchor constraintEqualToAnchor:btn.centerYAnchor],
+            [badgeBox.heightAnchor constraintEqualToConstant:18.0],
+
+            [countLbl.leadingAnchor constraintEqualToAnchor:badgeBox.leadingAnchor constant:6.0],
+            [countLbl.trailingAnchor constraintEqualToAnchor:badgeBox.trailingAnchor constant:-6.0],
+            [countLbl.centerYAnchor constraintEqualToAnchor:badgeBox.centerYAnchor]
+        ]];
+
         [self.stackView addArrangedSubview:btn];
-    }];
+    }
 }
 
-- (void)handlePillTap:(UIButton *)sender {
-    NSInteger idx = [objc_getAssociatedObject(sender, "pillIdx") integerValue];
+- (void)handleLensTap:(UIButton *)sender {
+    NSInteger idx = [objc_getAssociatedObject(sender, "lensIdx") integerValue];
     UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
     [fb impactOccurred];
-    if (self.onPillSelected) {
-        self.onPillSelected(idx);
+    if (self.onLensSelected) {
+        self.onLensSelected(idx);
+    }
+}
+
+@end
+
+#pragma mark - Sovereign Serenity Empty State View
+
+@interface PPSentinelEmptyStateView : UIView
+@property (nonatomic, strong) UIView *emblemContainer;
+@property (nonatomic, strong) UIImageView *iconImageView;
+@property (nonatomic, strong) UILabel *titleLabel;
+@property (nonatomic, strong) UILabel *subtitleLabel;
+@property (nonatomic, strong) UIButton *primaryActionButton;
+@property (nonatomic, copy) void (^onResetTapped)(void);
+- (void)configureWithSearchActive:(BOOL)isSearch query:(nullable NSString *)query;
+@end
+
+@implementation PPSentinelEmptyStateView
+
+- (instancetype)initWithFrame:(CGRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) {
+        self.semanticContentAttribute = [Language semanticAttributeForCurrentLanguage];
+
+        _emblemContainer = [[UIView alloc] init];
+        _emblemContainer.translatesAutoresizingMaskIntoConstraints = NO;
+        _emblemContainer.layer.cornerRadius = 24.0;
+        if (@available(iOS 13.0, *)) {
+            _emblemContainer.layer.cornerCurve = kCACornerCurveContinuous;
+        }
+        [self addSubview:_emblemContainer];
+
+        _iconImageView = [[UIImageView alloc] init];
+        _iconImageView.translatesAutoresizingMaskIntoConstraints = NO;
+        _iconImageView.contentMode = UIViewContentModeScaleAspectFit;
+        [_emblemContainer addSubview:_iconImageView];
+
+        _titleLabel = [[UILabel alloc] init];
+        _titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _titleLabel.font = PPFontBold(PPFontTitle3);
+        _titleLabel.textColor = [UIColor ppTextPrimary];
+        _titleLabel.textAlignment = NSTextAlignmentCenter;
+        [self addSubview:_titleLabel];
+
+        _subtitleLabel = [[UILabel alloc] init];
+        _subtitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        _subtitleLabel.font = PPFontRegular(PPFontSubheadline);
+        _subtitleLabel.textColor = [UIColor ppTextSecondary];
+        _subtitleLabel.textAlignment = NSTextAlignmentCenter;
+        _subtitleLabel.numberOfLines = 3;
+        [self addSubview:_subtitleLabel];
+
+        _primaryActionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+        _primaryActionButton.translatesAutoresizingMaskIntoConstraints = NO;
+        _primaryActionButton.backgroundColor = AppPrimaryClr;
+        _primaryActionButton.tintColor = [UIColor whiteColor];
+        _primaryActionButton.layer.cornerRadius = PPCornerMedium;
+        if (@available(iOS 13.0, *)) {
+            _primaryActionButton.layer.cornerCurve = kCACornerCurveContinuous;
+        }
+        _primaryActionButton.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceMD, PPSpaceXL, PPSpaceMD, PPSpaceXL);
+        _primaryActionButton.titleLabel.font = PPFontBold(PPFontSubheadline);
+        [_primaryActionButton addTarget:self action:@selector(handleResetTapped) forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_primaryActionButton];
+
+        [NSLayoutConstraint activateConstraints:@[
+            [_emblemContainer.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [_emblemContainer.topAnchor constraintEqualToAnchor:self.topAnchor],
+            [_emblemContainer.widthAnchor constraintEqualToConstant:72.0],
+            [_emblemContainer.heightAnchor constraintEqualToConstant:72.0],
+
+            [_iconImageView.centerXAnchor constraintEqualToAnchor:_emblemContainer.centerXAnchor],
+            [_iconImageView.centerYAnchor constraintEqualToAnchor:_emblemContainer.centerYAnchor],
+            [_iconImageView.widthAnchor constraintEqualToConstant:38.0],
+            [_iconImageView.heightAnchor constraintEqualToConstant:38.0],
+
+            [_titleLabel.topAnchor constraintEqualToAnchor:_emblemContainer.bottomAnchor constant:PPSpaceLG],
+            [_titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:PPSpaceBase],
+            [_titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-PPSpaceBase],
+
+            [_subtitleLabel.topAnchor constraintEqualToAnchor:_titleLabel.bottomAnchor constant:PPSpaceSM],
+            [_subtitleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:PPSpaceBase],
+            [_subtitleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-PPSpaceBase],
+
+            [_primaryActionButton.topAnchor constraintEqualToAnchor:_subtitleLabel.bottomAnchor constant:PPSpaceLG],
+            [_primaryActionButton.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
+            [_primaryActionButton.heightAnchor constraintEqualToConstant:44.0],
+            [_primaryActionButton.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
+        ]];
+    }
+    return self;
+}
+
+- (void)configureWithSearchActive:(BOOL)isSearch query:(nullable NSString *)query {
+    if (isSearch) {
+        _emblemContainer.backgroundColor = [[UIColor ppTextTertiary] colorWithAlphaComponent:0.1];
+        _emblemContainer.layer.borderWidth = 0.5;
+        _emblemContainer.layer.borderColor = [UIColor ppSurfaceBorder].CGColor;
+        _iconImageView.image = [UIImage systemImageNamed:@"magnifyingglass"];
+        _iconImageView.tintColor = [UIColor ppTextSecondary];
+
+        _titleLabel.text = kLang(@"Audit_Empty_SearchTitle");
+        _subtitleLabel.text = (query.length > 0) ?
+            [NSString stringWithFormat:@"%@ «%@»", kLang(@"Audit_Empty_SearchSubtitle"), query] :
+            kLang(@"Audit_Empty_SearchSubtitle");
+
+        [_primaryActionButton setTitle:kLang(@"Audit_Filter_Reset") forState:UIControlStateNormal];
+    } else {
+        // Serene Zero Anomalies State
+        _emblemContainer.backgroundColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.12];
+        _emblemContainer.layer.borderWidth = 1.0;
+        _emblemContainer.layer.borderColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.3].CGColor;
+        _iconImageView.image = [UIImage systemImageNamed:@"shield.checkerboard"];
+        _iconImageView.tintColor = [UIColor ppSuccess];
+
+        _titleLabel.text = kLang(@"Audit_Perimeter_Secure_Title");
+        _subtitleLabel.text = kLang(@"Audit_Perimeter_Secure_Subtitle");
+
+        [_primaryActionButton setTitle:kLang(@"Audit_Filter_Reset") forState:UIControlStateNormal];
+    }
+}
+
+- (void)handleResetTapped {
+    if (self.onResetTapped) {
+        self.onResetTapped();
     }
 }
 
@@ -1252,18 +1496,22 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 @property (nonatomic, strong) UIButton *searchToggleBtn;
 @property (nonatomic, strong) UIButton *filterModalBtn;
 
-// Search & Telemetry Chrome
+// Search & Chronos Telemetry Chrome
 @property (nonatomic, strong) UISearchBar *searchBar;
 @property (nonatomic, strong) NSLayoutConstraint *searchBarHeightConstraint;
 @property (nonatomic, assign) BOOL isSearchVisible;
-@property (nonatomic, strong) PPAuditTelemetryPulseView *telemetryPulseView;
-@property (nonatomic, strong) PPAuditScrubberView *scrubberView;
+@property (nonatomic, strong) PPSentinelBeaconView *sentinelBeaconView;
+@property (nonatomic, strong) PPChronosTelemetryLensView *telemetryLensView;
 @property (nonatomic, assign) NSInteger selectedCategoryIndex;
 
-// Table View
+// Table View & Serene Empty State
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) UIRefreshControl *refreshControl;
-@property (nonatomic, strong) UIView *emptyStateView;
+@property (nonatomic, strong) PPSentinelEmptyStateView *emptyStateView;
+
+- (BOOL)evaluatePermissions;
+- (void)loadData;
+- (void)refreshData;
 
 @end
 
@@ -1490,43 +1738,34 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     }];
 }
 
-#pragma mark - Telemetry Header & Scrubber
+#pragma mark - Chronos Sentinel Telemetry Header & Lens
 
 - (void)setupTelemetryHeader {
-    _telemetryPulseView = [[PPAuditTelemetryPulseView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 92.0)];
-    _telemetryPulseView.translatesAutoresizingMaskIntoConstraints = NO;
-    __weak typeof(self) weakSelf = self;
-    _telemetryPulseView.onCardTapped = ^(NSInteger filterIndex) {
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        strongSelf.selectedCategoryIndex = filterIndex;
-        [strongSelf.scrubberView setFilterTitles:[strongSelf filterTitlesArray] selectedIndex:strongSelf.selectedCategoryIndex];
-        [strongSelf applyFilter];
-    };
-    [self.view addSubview:_telemetryPulseView];
+    _sentinelBeaconView = [[PPSentinelBeaconView alloc] initWithFrame:CGRectZero];
+    _sentinelBeaconView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:_sentinelBeaconView];
 
-    _scrubberView = [[PPAuditScrubberView alloc] initWithFrame:CGRectMake(0, 0, self.view.bounds.size.width, 48.0)];
-    _scrubberView.translatesAutoresizingMaskIntoConstraints = NO;
-    [_scrubberView setFilterTitles:[self filterTitlesArray] selectedIndex:0];
-    _scrubberView.onPillSelected = ^(NSInteger index) {
+    _telemetryLensView = [[PPChronosTelemetryLensView alloc] initWithFrame:CGRectZero];
+    _telemetryLensView.translatesAutoresizingMaskIntoConstraints = NO;
+    __weak typeof(self) weakSelf = self;
+    _telemetryLensView.onLensSelected = ^(NSInteger index) {
         __strong typeof(weakSelf) strongSelf = weakSelf;
         if (!strongSelf) return;
         strongSelf.selectedCategoryIndex = index;
-        [strongSelf.scrubberView setFilterTitles:[strongSelf filterTitlesArray] selectedIndex:index];
         [strongSelf applyFilter];
     };
-    [self.view addSubview:_scrubberView];
+    [self.view addSubview:_telemetryLensView];
 
     [NSLayoutConstraint activateConstraints:@[
-        [_telemetryPulseView.topAnchor constraintEqualToAnchor:_searchBar.bottomAnchor constant:PPSpaceSM],
-        [_telemetryPulseView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [_telemetryPulseView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_telemetryPulseView.heightAnchor constraintEqualToConstant:92.0],
+        [_sentinelBeaconView.topAnchor constraintEqualToAnchor:_searchBar.bottomAnchor constant:PPSpaceXS],
+        [_sentinelBeaconView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:PPSpaceBase],
+        [_sentinelBeaconView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-PPSpaceBase],
+        [_sentinelBeaconView.heightAnchor constraintEqualToConstant:36.0],
 
-        [_scrubberView.topAnchor constraintEqualToAnchor:_telemetryPulseView.bottomAnchor constant:PPSpaceSM],
-        [_scrubberView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [_scrubberView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [_scrubberView.heightAnchor constraintEqualToConstant:48.0]
+        [_telemetryLensView.topAnchor constraintEqualToAnchor:_sentinelBeaconView.bottomAnchor constant:PPSpaceSM],
+        [_telemetryLensView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [_telemetryLensView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [_telemetryLensView.heightAnchor constraintEqualToConstant:44.0]
     ]];
 }
 
@@ -1551,8 +1790,8 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     _tableView.backgroundColor = UIColor.clearColor;
     _tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
     _tableView.rowHeight = UITableViewAutomaticDimension;
-    _tableView.estimatedRowHeight = 160.0;
-    _tableView.contentInset = UIEdgeInsetsMake(PPSpaceSM, 0, PPSpaceXXXL, 0);
+    _tableView.estimatedRowHeight = 180.0;
+    _tableView.contentInset = UIEdgeInsetsMake(PPSpaceXS, 0, PPSpaceXXXL, 0);
     [_tableView registerClass:[PPAuditLogCardCell class] forCellReuseIdentifier:kAuditCardCellID];
     [self.view addSubview:_tableView];
 
@@ -1561,75 +1800,31 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     _tableView.refreshControl = _refreshControl;
 
     [NSLayoutConstraint activateConstraints:@[
-        [_tableView.topAnchor constraintEqualToAnchor:_scrubberView.bottomAnchor constant:PPSpaceSM],
+        [_tableView.topAnchor constraintEqualToAnchor:_telemetryLensView.bottomAnchor constant:PPSpaceSM],
         [_tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [_tableView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_tableView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 }
 
+#pragma mark - Sovereign Serenity Empty State
+
 - (void)setupEmptyStateView {
-    _emptyStateView = [[UIView alloc] init];
+    _emptyStateView = [[PPSentinelEmptyStateView alloc] initWithFrame:CGRectZero];
     _emptyStateView.translatesAutoresizingMaskIntoConstraints = NO;
     _emptyStateView.hidden = YES;
+    __weak typeof(self) weakSelf = self;
+    _emptyStateView.onResetTapped = ^{
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        [strongSelf resetAllFilters];
+    };
     [self.view addSubview:_emptyStateView];
-
-    UIImageView *icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"shield.slash"]];
-    icon.translatesAutoresizingMaskIntoConstraints = NO;
-    icon.tintColor = [UIColor ppTextTertiary];
-    icon.contentMode = UIViewContentModeScaleAspectFit;
-    [_emptyStateView addSubview:icon];
-
-    UILabel *titleLbl = [[UILabel alloc] init];
-    titleLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLbl.font = PPFontBold(PPFontHeadline);
-    titleLbl.textColor = [UIColor ppTextPrimary];
-    titleLbl.text = kLang(@"Audit_Empty_SearchTitle");
-    titleLbl.textAlignment = NSTextAlignmentCenter;
-    [_emptyStateView addSubview:titleLbl];
-
-    UILabel *subLbl = [[UILabel alloc] init];
-    subLbl.translatesAutoresizingMaskIntoConstraints = NO;
-    subLbl.font = PPFontRegular(PPFontSubheadline);
-    subLbl.textColor = [UIColor ppTextSecondary];
-    subLbl.text = kLang(@"Audit_Empty_SearchSubtitle");
-    subLbl.textAlignment = NSTextAlignmentCenter;
-    subLbl.numberOfLines = 2;
-    [_emptyStateView addSubview:subLbl];
-
-    UIButton *resetBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-    resetBtn.translatesAutoresizingMaskIntoConstraints = NO;
-    resetBtn.backgroundColor = [UIColor ppSecondarySurface];
-    resetBtn.tintColor = AppPrimaryClr;
-    resetBtn.layer.cornerRadius = PPCornerMedium;
-    resetBtn.contentEdgeInsets = UIEdgeInsetsMake(PPSpaceSM, PPSpaceLG, PPSpaceSM, PPSpaceLG);
-    resetBtn.titleLabel.font = PPFontMedium(PPFontSubheadline);
-    [resetBtn setTitle:kLang(@"Audit_Filter_Reset") forState:UIControlStateNormal];
-    [resetBtn addTarget:self action:@selector(resetAllFilters) forControlEvents:UIControlEventTouchUpInside];
-    [_emptyStateView addSubview:resetBtn];
 
     [NSLayoutConstraint activateConstraints:@[
         [_emptyStateView.centerXAnchor constraintEqualToAnchor:_tableView.centerXAnchor],
-        [_emptyStateView.centerYAnchor constraintEqualToAnchor:_tableView.centerYAnchor constant:-40.0],
+        [_emptyStateView.centerYAnchor constraintEqualToAnchor:_tableView.centerYAnchor constant:-20.0],
         [_emptyStateView.leadingAnchor constraintEqualToAnchor:_tableView.leadingAnchor constant:PPSpaceXL],
-        [_emptyStateView.trailingAnchor constraintEqualToAnchor:_tableView.trailingAnchor constant:-PPSpaceXL],
-
-        [icon.centerXAnchor constraintEqualToAnchor:_emptyStateView.centerXAnchor],
-        [icon.topAnchor constraintEqualToAnchor:_emptyStateView.topAnchor],
-        [icon.widthAnchor constraintEqualToConstant:56.0],
-        [icon.heightAnchor constraintEqualToConstant:56.0],
-
-        [titleLbl.topAnchor constraintEqualToAnchor:icon.bottomAnchor constant:PPSpaceMD],
-        [titleLbl.leadingAnchor constraintEqualToAnchor:_emptyStateView.leadingAnchor],
-        [titleLbl.trailingAnchor constraintEqualToAnchor:_emptyStateView.trailingAnchor],
-
-        [subLbl.topAnchor constraintEqualToAnchor:titleLbl.bottomAnchor constant:PPSpaceXS],
-        [subLbl.leadingAnchor constraintEqualToAnchor:_emptyStateView.leadingAnchor],
-        [subLbl.trailingAnchor constraintEqualToAnchor:_emptyStateView.trailingAnchor],
-
-        [resetBtn.topAnchor constraintEqualToAnchor:subLbl.bottomAnchor constant:PPSpaceMD],
-        [resetBtn.centerXAnchor constraintEqualToAnchor:_emptyStateView.centerXAnchor],
-        [resetBtn.bottomAnchor constraintEqualToAnchor:_emptyStateView.bottomAnchor]
+        [_emptyStateView.trailingAnchor constraintEqualToAnchor:_tableView.trailingAnchor constant:-PPSpaceXL]
     ]];
 }
 
@@ -1663,18 +1858,18 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 
     __weak typeof(self) weakSelf = self;
     self.listenerReg = [query addSnapshotListener:^(FIRQuerySnapshot *snapshot, NSError *error) {
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self || generation != self.listenerGeneration) return;
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf || generation != strongSelf.listenerGeneration) return;
 
         if (!PPAuditStaffSessionCanRead(staff)) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (generation != self.listenerGeneration) return;
-                [self.listenerReg remove];
-                self.listenerReg = nil;
-                self.listenerGeneration += 1;
-                self.allEntries = @[];
-                [self applyFilter];
-                if ([self evaluatePermissions]) [self loadData];
+                if (generation != strongSelf.listenerGeneration) return;
+                [strongSelf.listenerReg remove];
+                strongSelf.listenerReg = nil;
+                strongSelf.listenerGeneration += 1;
+                strongSelf.allEntries = @[];
+                [strongSelf applyFilter];
+                if ([strongSelf evaluatePermissions]) [strongSelf loadData];
             });
             return;
         }
@@ -1691,9 +1886,9 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         }
 
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (generation != self.listenerGeneration || !PPAuditStaffSessionCanRead(staff)) return;
-            self.allEntries = entries.copy;
-            [self applyFilter];
+            if (generation != strongSelf.listenerGeneration || !PPAuditStaffSessionCanRead(staff)) return;
+            strongSelf.allEntries = entries.copy;
+            [strongSelf applyFilter];
         });
     }];
 }
@@ -1716,14 +1911,18 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     NSMutableArray *result = [NSMutableArray array];
     NSInteger totalCount = self.allEntries.count;
     NSInteger secCount = 0;
+    NSInteger srvCount = 0;
     NSInteger opsCount = 0;
+    NSInteger finCount = 0;
     NSInteger destCount = 0;
 
     for (PPAuditLogEntryModel *entry in self.allEntries) {
         PPAuditActionCategory cat = [entry actionCategory];
         if (cat == PPAuditActionCategorySecurity) secCount++;
-        if (cat == PPAuditActionCategoryServices || cat == PPAuditActionCategoryOperations) opsCount++;
-        if (cat == PPAuditActionCategoryDestructive) destCount++;
+        else if (cat == PPAuditActionCategoryServices) srvCount++;
+        else if (cat == PPAuditActionCategoryOperations) opsCount++;
+        else if (cat == PPAuditActionCategoryFinance) finCount++;
+        else if (cat == PPAuditActionCategoryDestructive) destCount++;
 
         // Category filter check
         BOOL matchesCat = YES;
@@ -1741,7 +1940,9 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
                          [entry.adminUid.lowercaseString containsString:search] ||
                          [entry.targetUid.lowercaseString containsString:search] ||
                          (entry.reason && [entry.reason.lowercaseString containsString:search]) ||
-                         [entry.localizedActionTitle.lowercaseString containsString:search];
+                         [entry.localizedActionTitle.lowercaseString containsString:search] ||
+                         [entry.actorDisplayName.lowercaseString containsString:search] ||
+                         [entry.targetDisplayName.lowercaseString containsString:search];
             if (!match) continue;
         }
 
@@ -1751,22 +1952,28 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     self.filteredEntries = result.copy;
     [self.tableView reloadData];
 
-    // Update Telemetry Header & Subtitle
-    [self.telemetryPulseView updateWithTotal:totalCount
-                                   security:secCount
-                                        ops:opsCount
-                                destructive:destCount
-                              selectedIndex:self.selectedCategoryIndex];
+    // Update Telemetry Lens & Beacon
+    NSArray<NSNumber *> *counts = @[
+        @(totalCount),
+        @(secCount),
+        @(srvCount),
+        @(opsCount),
+        @(finCount),
+        @(destCount)
+    ];
+    [self.telemetryLensView updateWithCounts:counts selectedIndex:self.selectedCategoryIndex];
+    [self.sentinelBeaconView updateWithCount:self.filteredEntries.count];
 
     NSString *countStr = [NSString stringWithFormat:@"(%ld %@)", (long)self.filteredEntries.count, kLang(@"Audit_Title")];
     self.navSubtitleLabel.text = [NSString stringWithFormat:@"%@ • %@", kLang(@"Audit_LiveStreamActive"), countStr];
 
+    BOOL isSearchActive = (self.searchBar.text.length > 0);
+    [self.emptyStateView configureWithSearchActive:isSearchActive query:self.searchBar.text];
     self.emptyStateView.hidden = (self.filteredEntries.count > 0);
 }
 
 - (void)resetAllFilters {
     self.selectedCategoryIndex = 0;
-    [self.scrubberView setFilterTitles:[self filterTitlesArray] selectedIndex:0];
     self.searchBar.text = @"";
     if (self.isSearchVisible) {
         [self toggleSearch];
@@ -1785,7 +1992,6 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         NSString *title = titles[i];
         [sheet addAction:[UIAlertAction actionWithTitle:title style:UIAlertActionStyleDefault handler:^(UIAlertAction *action) {
             self.selectedCategoryIndex = i;
-            [self.scrubberView setFilterTitles:[self filterTitlesArray] selectedIndex:i];
             [self applyFilter];
         }]];
     }
@@ -1834,6 +2040,30 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     PPAuditDetailViewController *detailVC = [[PPAuditDetailViewController alloc] initWithEntry:entry];
     UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:detailVC];
     [self presentViewController:nav animated:YES completion:nil];
+}
+
+- (nullable UIContextMenuConfiguration *)tableView:(UITableView *)tableView contextMenuConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath point:(CGPoint)point API_AVAILABLE(ios(13.0)) {
+    if (indexPath.row >= self.filteredEntries.count) return nil;
+    PPAuditLogEntryModel *entry = self.filteredEntries[indexPath.row];
+
+    return [UIContextMenuConfiguration configurationWithIdentifier:nil previewProvider:nil actionProvider:^UIMenu * _Nullable(NSArray<UIMenuElement *> * _Nonnull suggestedActions) {
+        UIAction *copyIdAction = [UIAction actionWithTitle:kLang(@"Audit_Action_CopyId") image:[UIImage systemImageNamed:@"doc.on.doc"] identifier:nil handler:^(__kindof UIAction * _Nonnull action) {
+            if (entry.auditId.length > 0) {
+                [UIPasteboard generalPasteboard].string = entry.auditId;
+                [PPToast toast:kLang(@"Audit_Copied")];
+                UIImpactFeedbackGenerator *fb = [[UIImpactFeedbackGenerator alloc] initWithStyle:UIImpactFeedbackStyleLight];
+                [fb impactOccurred];
+            }
+        }];
+
+        UIAction *inspectAction = [UIAction actionWithTitle:kLang(@"Audit_Inspector_Title") image:[UIImage systemImageNamed:@"waveform.path.ecg.rectangle"] identifier:nil handler:^(__kindof UIAction * _Nonnull action) {
+            PPAuditDetailViewController *detailVC = [[PPAuditDetailViewController alloc] initWithEntry:entry];
+            UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:detailVC];
+            [self presentViewController:nav animated:YES completion:nil];
+        }];
+
+        return [UIMenu menuWithTitle:entry.localizedActionTitle children:@[copyIdAction, inspectAction]];
+    }];
 }
 
 - (void)dealloc {

@@ -3239,6 +3239,16 @@
 "Audit_Search_Placeholder" = "بحث بالإجراء، المشرف، الهدف، أو السبب...";
 "Audit_Empty_SearchTitle" = "لا توجد نتائج مطابقة";
 "Audit_Empty_SearchSubtitle" = "جرّب تغيير كلمات البحث أو إعادة تعيين المرشحات.";
+"Audit_Perimeter_Secure_Title" = "السجل السيادي محمي بالكامل";
+"Audit_Perimeter_Secure_Subtitle" = "لا توجد عمليات مسجلة مطابقة للمرشح النشط ضمن النافذة الحالية.";
+"Audit_Live_Fidelity" = "سلامة التدقيق 99.9%%";
+"Audit_Actor_Title" = "المشرف المنفذ";
+"Audit_Target_Entity" = "الكيان المستهدف";
+"Audit_State_Transition" = "تحول الحالة";
+"Audit_Clear_Active_Filters" = "إعادة ضبط نطاق البحث";
+"Audit_Active_Filter_Label" = "المرشح النشط";
+"Audit_Empty_Initial_Title" = "سجل التدقيق السيادي متصل";
+"Audit_Empty_Initial_Subtitle" = "في انتظار تسجيل أي عمليات إدارية جديدة في النظام.";
 "Audit_Diff_Added" = "حقول مضافة";
 "Audit_Diff_Removed" = "حقول محذوفة";
 "Audit_Diff_Modified" = "حقول معدلة";

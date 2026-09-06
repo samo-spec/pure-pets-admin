@@ -316,5 +316,68 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
     return self.before.count > 0 || self.after.count > 0;
 }
 
+- (NSString *)actorDisplayName {
+    if (self.metadata[@"adminName"] && [self.metadata[@"adminName"] isKindOfClass:[NSString class]] && [self.metadata[@"adminName"] length] > 0) {
+        return self.metadata[@"adminName"];
+    }
+    if (self.metadata[@"actorName"] && [self.metadata[@"actorName"] isKindOfClass:[NSString class]] && [self.metadata[@"actorName"] length] > 0) {
+        return self.metadata[@"actorName"];
+    }
+    if (self.adminUid.length > 0) {
+        if (self.adminUid.length > 12) {
+            return [NSString stringWithFormat:@"%@...%@", [self.adminUid substringToIndex:6], [self.adminUid substringFromIndex:self.adminUid.length - 4]];
+        }
+        return self.adminUid;
+    }
+    return kLang(@"Audit_Actor_Title");
+}
+
+- (NSString *)targetDisplayName {
+    NSString *coll = self.targetCollection ?: @"";
+    NSString *tid = self.targetUid ?: @"";
+    if (tid.length > 12) {
+        tid = [NSString stringWithFormat:@"%@...", [tid substringToIndex:8]];
+    }
+    if (coll.length > 0 && tid.length > 0) {
+        return [NSString stringWithFormat:@"%@/%@", coll, tid];
+    } else if (tid.length > 0) {
+        return tid;
+    } else if (coll.length > 0) {
+        return coll;
+    }
+    return @"--";
+}
+
+- (nullable NSString *)stateTransitionSummary {
+    id beforeStatus = self.before[@"status"] ?: self.before[@"state"] ?: self.before[@"orderStatus"];
+    id afterStatus = self.after[@"status"] ?: self.after[@"state"] ?: self.after[@"orderStatus"];
+    if (beforeStatus && afterStatus && ![beforeStatus isEqual:afterStatus]) {
+        return [NSString stringWithFormat:@"%@ ➔ %@", beforeStatus, afterStatus];
+    }
+    return nil;
+}
+
+- (NSString *)diffPillText {
+    if (![self hasDiff]) return @"";
+    NSInteger added = [self addedKeysCount];
+    NSInteger mod = [self modifiedKeysCount];
+    NSInteger rem = [self removedKeysCount];
+    return [NSString stringWithFormat:@"Δ +%ld ~%ld -%ld", (long)added, (long)mod, (long)rem];
+}
+
+- (UIColor *)severityColor {
+    switch ([self severity]) {
+        case PPAuditSeverityCritical:
+            return [UIColor ppError];
+        case PPAuditSeverityWarning:
+            return [UIColor ppWarning];
+        case PPAuditSeverityConstructive:
+            return [UIColor ppSuccess];
+        case PPAuditSeverityInfo:
+        default:
+            return [UIColor ppPrimary];
+    }
+}
+
 @end
 
