@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0.0",
+  "repo_key": "admin",
+  "repository": "samo-spec/pure-pets-admin",
+  "role": "staff_ios",
+  "canonical_brain_repository": "samo-spec/PurePetsProjects",
+  "canonical_brain_paths": [
+    "AGENTS.md",
+    "docs/agent/INDEX.md",
+    "docs/agent/governance/GOVERNANCE.md",
+    "docs/agent/maps/FEATURE_MAP.md",
+    "docs/agent/maps/DATA_SECURITY_MAP.md",
+    "docs/agent/brain-manifest.json"
+  ],
+  "local_instruction": "AGENTS.md",
+  "allow_full_platform_scan_by_default": false,
+  "memory_can_grant_approval": false
+}
