@@ -685,6 +685,18 @@ enum POSReceiptFormat {
         return formatter.string(from: value)
     }
 
+    static func relativeDate(_ value: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
+        return formatter.localizedString(for: value, relativeTo: Date())
+    }
+
+    static func relativeDate(_ value: Date?) -> String {
+        guard let value else { return "" }
+        return relativeDate(value)
+    }
+
     static func paymentMethod(_ value: String) -> String {
         switch value.lowercased() {
         case "cash": return Language.get("POS_Cash", alter: "نقدي")

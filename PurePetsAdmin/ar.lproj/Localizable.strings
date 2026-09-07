@@ -6229,6 +6229,30 @@
 "POS_Cancel_Success_Title" = "تم إلغاء المعاملة";
 "POS_Cancel_Success_Msg" = "تم إلغاء العملية وإعادة المنتجات إلى مخزون الفرع.";
 
+"POS_Void_Studio_Title" = "وحدة إبطال المعاملة واسترداد المخزون";
+"POS_Void_Dossier_Badge" = "قيد تدقيق مالي وإداري";
+"POS_Void_Reversal_Hero" = "المبلغ المطلوب إرجاعه للعميل";
+"POS_Void_Restock_Manifest" = "بيان إعادة الأصناف لمخزون الفرع";
+"POS_Void_Restock_Unit" = "+%@ للمخزون";
+"POS_Void_Impact_Title" = "أثر العملية على النظام فور التأكيد";
+"POS_Void_Impact_Inventory_Title" = "المخزون";
+"POS_Void_Impact_Inventory_Desc" = "إعادة الأصناف فوراً لرفوف الفرع";
+"POS_Void_Impact_Finance_Title" = "المالية والخزينة";
+"POS_Void_Impact_Finance_Desc" = "خصم القيمة من مبيعات الوردية اليومية";
+"POS_Void_Impact_Audit_Title" = "سجل التدقيق";
+"POS_Void_Impact_Audit_Desc" = "توثيق العملية باسم المشغل والتوقيت";
+"POS_Void_Impact_Finality_Title" = "إجراء قطعي";
+"POS_Void_Impact_Finality_Desc" = "لا يمكن التراجع عن الإبطال نهائياً";
+"POS_Void_Slide_To_Confirm" = "اسحب لإبطال المعاملة واسترداد المخزون";
+"POS_Void_Submitting" = "جاري إبطال المعاملة واسترداد المخزون...";
+"POS_Void_Reason_Section" = "سبب الإبطال والإلغاء (مطلوب)";
+"POS_Void_Notes_Prompt" = "ملاحظات إضافية وتفاصيل السبب";
+"POS_Void_Reason_Preset_1" = "خطأ في إدخال الأصناف أو السعر";
+"POS_Void_Reason_Preset_2" = "عملية مكررة بالخطأ";
+"POS_Void_Reason_Preset_3" = "فشل استلام الدفع الخارجي";
+"POS_Void_Reason_Preset_4" = "طلب العميل الإلغاء فوراً";
+
+
 "POS_Error_StatusChanged" = "تغيرت حالة المعاملة، يرجى تحديث القائمة قبل المحاولة مجدداً.";
 "POS_Error_InsufficientStock" = "الكمية المتاحة في المخزون لا تسمح بإتمام هذه العملية.";
 "POS_Error_PermissionDenied" = "ليس لديك صلاحية لإجراء استرداد أو إبطال المعاملات المالية (payments.refund).";

@@ -6168,6 +6168,30 @@
 "POS_Cancel_Success_Title" = "Transaction Cancelled";
 "POS_Cancel_Success_Msg" = "The transaction was cancelled and products returned to branch stock.";
 
+"POS_Void_Studio_Title" = "Transaction Void & Restock Console";
+"POS_Void_Dossier_Badge" = "Financial & Administrative Audit Entry";
+"POS_Void_Reversal_Hero" = "Amount to be Reversed to Customer";
+"POS_Void_Restock_Manifest" = "Branch Inventory Restock Manifest";
+"POS_Void_Restock_Unit" = "+%@ to Stock";
+"POS_Void_Impact_Title" = "Immediate System Impact Upon Confirmation";
+"POS_Void_Impact_Inventory_Title" = "Inventory";
+"POS_Void_Impact_Inventory_Desc" = "Instant replenishment of items to store shelves";
+"POS_Void_Impact_Finance_Title" = "Finance & Till";
+"POS_Void_Impact_Finance_Desc" = "Deducted from shift sales & drawer balance";
+"POS_Void_Impact_Audit_Title" = "Audit Trail";
+"POS_Void_Impact_Audit_Desc" = "Immutable log with operator ID and timestamp";
+"POS_Void_Impact_Finality_Title" = "Irreversible";
+"POS_Void_Impact_Finality_Desc" = "Transaction cannot be reopened once voided";
+"POS_Void_Slide_To_Confirm" = "Slide to Void Transaction & Restock";
+"POS_Void_Submitting" = "Voiding transaction & restocking inventory...";
+"POS_Void_Reason_Section" = "Void Reason (Required)";
+"POS_Void_Notes_Prompt" = "Additional notes or specific reason details";
+"POS_Void_Reason_Preset_1" = "Item or pricing entry error";
+"POS_Void_Reason_Preset_2" = "Accidental duplicate transaction";
+"POS_Void_Reason_Preset_3" = "Payment terminal / gateway failure";
+"POS_Void_Reason_Preset_4" = "Immediate customer cancellation request";
+
+
 "POS_Error_StatusChanged" = "Transaction status changed. Please refresh the list before retrying.";
 "POS_Error_InsufficientStock" = "Available inventory is insufficient to complete this operation.";
 "POS_Error_PermissionDenied" = "You lack permission to perform financial refunds or voids (payments.refund).";

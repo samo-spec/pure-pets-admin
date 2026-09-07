@@ -128,11 +128,56 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         id createdAt = dict[@"createdAt"] ?: dict[@"timestamp"];
         if ([createdAt isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)createdAt dateValue];
 
-        _refundedAmount = PPSafeDouble(dict[@"refundedAmount"]);
+        double totalRefunded = PPSafeDouble(dict[@"refundedAmount"]);
+        if (totalRefunded <= 0.0) {
+            NSArray *rawRefunds = PPSafeArray(dict[@"refunds"]);
+            for (NSDictionary *entry in rawRefunds) {
+                if ([entry isKindOfClass:NSDictionary.class]) {
+                    totalRefunded += PPSafeDouble(entry[@"amount"]);
+                }
+            }
+        }
+        if (totalRefunded <= 0.0 && _items.count > 0) {
+            for (PPPOSCartItem *item in _items) {
+                if (item.refundedQuantity > 0) {
+                    totalRefunded += (double)item.refundedQuantity * item.price;
+                }
+            }
+        }
+        _refundedAmount = totalRefunded;
+
         _refundReason = PPSafeString(dict[@"refundReason"] ?: dict[@"refundedReason"]);
         id refundedAt = dict[@"refundedAt"];
         if ([refundedAt isKindOfClass:FIRTimestamp.class]) _refundedAt = [(FIRTimestamp *)refundedAt dateValue];
         _refundedBy = PPSafeString(dict[@"refundedBy"]);
+
+        if (_refundReason.length == 0 || _refundedAt == nil) {
+            NSArray *rawRefunds = PPSafeArray(dict[@"refunds"]);
+            if (rawRefunds.count > 0) {
+                NSDictionary *latestRefund = rawRefunds.lastObject;
+                if ([latestRefund isKindOfClass:NSDictionary.class]) {
+                    if (_refundReason.length == 0) _refundReason = PPSafeString(latestRefund[@"reason"]);
+                    if (_refundedBy.length == 0) _refundedBy = PPSafeString(latestRefund[@"refundedBy"] ?: latestRefund[@"actorUid"]);
+                    id refAt = latestRefund[@"refundedAt"] ?: latestRefund[@"createdAt"];
+                    if ([refAt isKindOfClass:FIRTimestamp.class]) _refundedAt = [(FIRTimestamp *)refAt dateValue];
+                }
+            }
+        }
+
+        if ([_status isEqualToString:@"completed"] || [_status isEqualToString:@"partially_refunded"]) {
+            BOOL allItemsRefunded = (_items.count > 0);
+            for (PPPOSCartItem *item in _items) {
+                if (item.refundedQuantity < item.quantity) {
+                    allItemsRefunded = NO;
+                    break;
+                }
+            }
+            if (allItemsRefunded || (_total > 0 && _refundedAmount >= _total)) {
+                _status = @"refunded";
+            } else if (_refundedAmount > 0) {
+                _status = @"partially_refunded";
+            }
+        }
 
         _cancellationReason = PPSafeString(dict[@"cancellationReason"] ?: dict[@"cancelReason"] ?: dict[@"reason"]);
         id cancelledAt = dict[@"cancelledAt"];

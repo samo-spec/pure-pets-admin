@@ -1544,12 +1544,22 @@ struct POSTransactionDossierSheet: View {
         return st == "cancelled" || st == "voided"
     }
 
+    private var effectiveRefundedAmount: Double {
+        if receipt.refundedAmount > 0 { return receipt.refundedAmount }
+        let sum = receipt.items.reduce(0.0) { $0 + (Double($1.refundedQuantity) * $1.price) }
+        return sum
+    }
+
     private var isRefunded: Bool {
-        receipt.status.lowercased() == "refunded" || receipt.status.lowercased() == "partially_refunded" || receipt.refundedAmount > 0
+        let st = receipt.status.lowercased()
+        return st == "refunded" || st == "partially_refunded" || effectiveRefundedAmount > 0
     }
 
     private var isFullyRefunded: Bool {
-        receipt.status.lowercased() == "refunded" || (receipt.refundedAmount >= receipt.total && receipt.total > 0)
+        let st = receipt.status.lowercased()
+        if st == "refunded" { return true }
+        if effectiveRefundedAmount >= receipt.total && receipt.total > 0 { return true }
+        return !receipt.items.isEmpty && receipt.items.allSatisfy { $0.refundedQuantity >= $0.quantity }
     }
 
     private var dossierHeader: some View {
@@ -1621,16 +1631,16 @@ struct POSTransactionDossierSheet: View {
 
     private var refundBanner: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "arrow.uturn.backward.circle.fill")
-                .font(.system(size: 20))
-                .foregroundColor(Color(uiColor: .systemOrange))
+            Image(systemName: isFullyRefunded ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill")
+                .font(.system(size: 22))
+                .foregroundColor(isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(Language.get("POS_Status_PartiallyRefunded", alter: "معاملة مستردة"))
+                Text(isFullyRefunded ? Language.get("POS_Status_Refunded", alter: "مستردة بالكامل") : Language.get("POS_Status_PartiallyRefunded", alter: "مستردة جزئياً"))
                     .font(AdminType.headline)
-                    .foregroundColor(Color(uiColor: .systemOrange))
+                    .foregroundColor(isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
 
-                Text(verbatim: "المبلغ المسترد: \(receipt.refundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                Text(verbatim: "المبلغ المسترد: \(effectiveRefundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
                     .font(AdminType.captionBold)
                     .foregroundColor(AdminSurface.primaryText)
 
@@ -1643,10 +1653,16 @@ struct POSTransactionDossierSheet: View {
             Spacer()
         }
         .padding(14)
-        .background(Color(uiColor: .systemOrange).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(
+            (isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange)).opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color(uiColor: .systemOrange).opacity(0.3), lineWidth: 1)
+                .strokeBorder(
+                    (isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange)).opacity(0.3),
+                    lineWidth: 1
+                )
         )
     }
 
@@ -1839,7 +1855,7 @@ struct POSTransactionDossierSheet: View {
                         .monospacedDigit()
                 }
 
-                if receipt.refundedAmount > 0 {
+                if effectiveRefundedAmount > 0 {
                     HStack {
                         Text(Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"))
                             .font(AdminType.captionBold)
@@ -1847,7 +1863,7 @@ struct POSTransactionDossierSheet: View {
 
                         Spacer()
 
-                        Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                        Text(verbatim: "−" + effectiveRefundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
                             .font(AdminType.headline)
                             .foregroundColor(Color(uiColor: .systemOrange))
                             .monospacedDigit()
@@ -2344,7 +2360,151 @@ struct POSRefundStudioSheet: View {
     }
 }
 
-// MARK: - POS Cancel / Void Confirmation Sheet
+// MARK: - POS Cancel / Void Confirmation Sheet (POSTransactionVoidStudio)
+
+private struct VoidReasonPresetItem: Identifiable {
+    let id: String
+    let icon: String
+    let title: String
+}
+
+struct TactileSlideToVoidControl: View {
+    let isEnabled: Bool
+    let isSubmitting: Bool
+    let onConfirm: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var isArmed: Bool = false
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    private let thumbSize: CGFloat = 46
+    private let trackHeight: CGFloat = 56
+
+    var body: some View {
+        GeometryReader { proxy in
+            let totalWidth = proxy.size.width
+            let maxSlide = max(10, totalWidth - thumbSize - 8)
+            let isRTL = layoutDirection == .rightToLeft
+            let progress = max(0, min(1, abs(dragOffset) / maxSlide))
+
+            ZStack(alignment: isRTL ? .trailing : .leading) {
+                // Background Track
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(uiColor: .ppElevatedSurface))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(
+                                isEnabled
+                                    ? Color(uiColor: .systemRed).opacity(0.3 + 0.4 * Double(progress))
+                                    : Color(uiColor: .ppSurfaceBorder),
+                                lineWidth: 1.2
+                            )
+                    )
+
+                // Fill progress
+                if isEnabled && progress > 0 {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(uiColor: .systemRed).opacity(0.35),
+                                    Color(uiColor: .systemRed).opacity(0.85)
+                                ],
+                                startPoint: isRTL ? .trailing : .leading,
+                                endPoint: isRTL ? .leading : .trailing
+                            )
+                        )
+                        .frame(width: max(thumbSize + 8, (progress * maxSlide) + thumbSize + 4))
+                }
+
+                // Centered Prompt or In-Flight Indicator
+                HStack(spacing: 8) {
+                    if isSubmitting {
+                        ProgressView()
+                            .tint(.white)
+                        Text(Language.get("POS_Void_Submitting", alter: "جاري إبطال المعاملة واسترداد المخزون..."))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(.white)
+                    } else if !isEnabled {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(Language.get("POS_Cancel_Reason_Placeholder", alter: "اكتب سبب إبطال هذه المعاملة للتفعيل..."))
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    } else {
+                        Image(systemName: isRTL ? "chevron.left.2" : "chevron.right.2")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(progress > 0.4 ? .white : Color(uiColor: .systemRed))
+                        Text(Language.get("POS_Void_Slide_To_Confirm", alter: "اسحب لإبطال المعاملة واسترداد المخزون"))
+                            .font(AdminType.headline)
+                            .foregroundColor(progress > 0.4 ? .white : AdminSurface.primaryText)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .opacity(isSubmitting ? 1.0 : (1.0 - Double(progress * 0.7)))
+
+                // Draggable Thumb Knob
+                if !isSubmitting {
+                    HStack {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    isEnabled
+                                        ? Color(uiColor: .systemRed)
+                                        : Color.gray.opacity(0.35)
+                                )
+                                .shadow(
+                                    color: isEnabled ? Color(uiColor: .systemRed).opacity(0.35) : .clear,
+                                    radius: 6,
+                                    y: 2
+                                )
+
+                            Image(systemName: isEnabled ? "xmark.octagon.fill" : "lock.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                        .frame(width: thumbSize, height: thumbSize)
+                        .offset(x: isRTL ? -dragOffset : dragOffset)
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    guard isEnabled else { return }
+                                    let raw = isRTL ? -value.translation.width : value.translation.width
+                                    let clamped = max(0, min(maxSlide, raw))
+                                    dragOffset = clamped
+
+                                    if clamped >= maxSlide * 0.82 && !isArmed {
+                                        isArmed = true
+                                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                    } else if clamped < maxSlide * 0.82 && isArmed {
+                                        isArmed = false
+                                    }
+                                }
+                                .onEnded { value in
+                                    guard isEnabled else { return }
+                                    let raw = isRTL ? -value.translation.width : value.translation.width
+                                    if raw >= maxSlide * 0.82 {
+                                        dragOffset = maxSlide
+                                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                        onConfirm()
+                                    } else {
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                                            dragOffset = 0
+                                            isArmed = false
+                                        }
+                                    }
+                                }
+                        )
+                    }
+                    .padding(.horizontal, 4)
+                }
+            }
+            .frame(height: trackHeight)
+        }
+        .frame(height: trackHeight)
+    }
+}
 
 struct POSCancelConfirmationSheet: View {
     let receipt: PPPOSReceipt
@@ -2353,12 +2513,29 @@ struct POSCancelConfirmationSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var cancelReason: String = ""
+    @State private var selectedPresetId: String? = nil
 
-    private let cancelPresets: [String] = [
-        "خطأ في إدخال الأصناف",
-        "طلب العميل الإلغاء فوراً",
-        "فشل استلام الدفع الخارجي",
-        "عملية مكررة"
+    private let presets: [VoidReasonPresetItem] = [
+        VoidReasonPresetItem(
+            id: "item_error",
+            icon: "cart.badge.minus",
+            title: Language.get("POS_Void_Reason_Preset_1", alter: "خطأ في إدخال الأصناف أو السعر")
+        ),
+        VoidReasonPresetItem(
+            id: "duplicate",
+            icon: "doc.on.doc.fill",
+            title: Language.get("POS_Void_Reason_Preset_2", alter: "عملية مكررة بالخطأ")
+        ),
+        VoidReasonPresetItem(
+            id: "payment_failed",
+            icon: "creditcard.trianglebadge.exclamationmark",
+            title: Language.get("POS_Void_Reason_Preset_3", alter: "فشل استلام الدفع الخارجي")
+        ),
+        VoidReasonPresetItem(
+            id: "customer_void",
+            icon: "person.crop.circle.badge.xmark",
+            title: Language.get("POS_Void_Reason_Preset_4", alter: "طلب العميل الإلغاء فوراً")
+        )
     ]
 
     var body: some View {
@@ -2366,113 +2543,484 @@ struct POSCancelConfirmationSheet: View {
             AdminSurface.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Close button
-                HStack {
-                    Spacer()
-                    AdminSquircleCloseButton {
-                        dismiss()
-                    }
-                }
-                .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, AdminSpacing.md)
+                // Header Bar
+                studioHeader
 
-                VStack(spacing: AdminSpacing.lg) {
-                    // Warning Icon
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color(uiColor: .systemRed))
+                // Scrollable Content
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.base) {
+                        // Dossier Identity Card
+                        dossierIdentityCard
 
-                    VStack(spacing: 6) {
-                        Text(Language.get("POS_Cancel_Confirm_Title", alter: "إلغاء وإبطال المعاملة بالكامل؟"))
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(AdminSurface.primaryText)
-                            .multilineTextAlignment(.center)
+                        // Financial Reversal Hero Display
+                        financialReversalHero
 
-                        let itemsCount = receipt.items.count.englishDigits
-                        Text(String(format: Language.get("POS_Cancel_Confirm_Msg", alter: "أنت على وشك إلغاء هذه المعاملة وإعادة كافة عناصرها (%@ صنف) إلى مخزون الفرع. لا يمكن التراجع عن هذا الإجراء."), itemsCount))
-                            .font(AdminType.body)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
-                    }
+                        // Live Restock Manifest
+                        restockManifestSection
 
-                    // Error Banner
-                    if let error = viewModel.reversalError {
-                        AdminErrorBanner(message: error)
-                    }
+                        // System Impact Matrix (4 Pillars)
+                        systemImpactMatrix
 
-                    // Reason Presets
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(Language.get("POS_Cancel_Reason_Prompt", alter: "سبب إلغاء المعاملة"))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.secondaryText)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(cancelPresets, id: \.self) { preset in
-                                    let isSelected = cancelReason == preset
-                                    Button {
-                                        cancelReason = preset
-                                    } label: {
-                                        Text(preset)
-                                            .font(AdminType.caption)
-                                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                                            .padding(.horizontal, 12)
-                                            .padding(.vertical, 6)
-                                            .background(
-                                                isSelected ? Color(uiColor: .systemRed) : Color(uiColor: .ppBackgroundSecondary),
-                                                in: Capsule()
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                        // Error Banner if present
+                        if let error = viewModel.reversalError {
+                            AdminErrorBanner(message: error)
                         }
 
-                        TextField(Language.get("POS_Cancel_Reason_Placeholder", alter: "اكتب سبب إبطال هذه المعاملة..."), text: $cancelReason)
-                            .font(AdminType.body)
-                            .padding(12)
-                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 0.8)
-                            )
-                    }
+                        // Intelligent Reason Studio
+                        reasonStudioSection
 
-                    Spacer()
-
-                    // Confirm Void Button
-                    Button(action: executeCancel) {
-                        HStack(spacing: 8) {
-                            if viewModel.isSubmittingReversal {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Image(systemName: "xmark.octagon.fill")
-                                    .font(.system(size: 16, weight: .bold))
-                            }
-                            Text("تأكيد إبطال وإلغاء المعاملة")
-                                .font(AdminType.headline)
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 52)
-                        .background(
-                            canSubmit ? Color(uiColor: .systemRed) : Color.gray.opacity(0.4),
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        )
+                        Spacer(minLength: 20)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!canSubmit || viewModel.isSubmittingReversal)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.sm)
+                    .padding(.bottom, 90)
                 }
-                .padding(AdminSpacing.screenMargin)
+
+                // Pinned Bottom Slide-to-Void Dock
+                bottomDock
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
+    // MARK: - Header Bar
+
+    private var studioHeader: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: "shield.lefthalf.filled")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(uiColor: .systemRed))
+                    Text(Language.get("POS_Void_Studio_Title", alter: "وحدة إبطال المعاملة واسترداد المخزون"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+
+                Text(Language.get("POS_Void_Dossier_Badge", alter: "قيد تدقيق مالي وإداري قطعي"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            Spacer()
+
+            AdminSquircleCloseButton {
+                dismiss()
+            }
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, AdminSpacing.md)
+        .background(AdminSurface.surface.opacity(0.85))
+        .overlay(
+            Divider().background(AdminSurface.hairline),
+            alignment: .bottom
+        )
+    }
+
+    // MARK: - Dossier Identity Card
+
+    private var dossierIdentityCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundColor(Color(uiColor: .ppPrimary))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color(uiColor: .ppPrimary).opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mappin.circle.fill")
+                            .font(.system(size: 12))
+                        Text(branch)
+                            .font(AdminType.caption)
+                    }
+                    .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: paymentMethodIcon)
+                        .font(.system(size: 12))
+                    Text(paymentMethodLabel)
+                        .font(AdminType.captionBold)
+                }
+                .foregroundColor(AdminSurface.primaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color(uiColor: .ppBackgroundSecondary), in: Capsule())
+            }
+
+            HStack(spacing: 12) {
+                if let cashier = receipt.cashierName ?? (!receipt.operatorID.isEmpty ? receipt.operatorID : nil) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.badge.shield.checkmark.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(verbatim: cashier)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                if let createdAt = receipt.createdAt {
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(POSReceiptFormat.relativeDate(createdAt))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                if !receipt.customerName.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                        Text(receipt.customerName)
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Financial Reversal Hero Display
+
+    private var financialReversalHero: some View {
+        VStack(spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Language.get("POS_Void_Reversal_Hero", alter: "المبلغ المطلوب إرجاعه للعميل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color(uiColor: .systemRed))
+
+                    Text(verbatim: "−" + receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .foregroundColor(Color(uiColor: .systemRed))
+                        .monospacedDigit()
+                }
+
+                Spacer()
+
+                ZStack {
+                    Circle()
+                        .fill(Color(uiColor: .systemRed).opacity(0.12))
+                        .frame(width: 54, height: 54)
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .font(.system(size: 32, weight: .bold))
+                        .foregroundColor(Color(uiColor: .systemRed))
+                }
+            }
+
+            Divider().background(Color(uiColor: .systemRed).opacity(0.2))
+
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundColor(Color(uiColor: .systemRed))
+                Text(paymentSettlementHint)
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+            }
+        }
+        .padding(16)
+        .background(Color(uiColor: .systemRed).opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .systemRed).opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Live Restock Manifest
+
+    private var restockManifestSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(Color(uiColor: .systemGreen))
+                    Text(Language.get("POS_Void_Restock_Manifest", alter: "بيان إعادة الأصناف لمخزون الفرع"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                let itemsCount = receipt.items.count.englishDigits
+                Text(String(format: Language.get("POS_Items_Count", alter: "%@ أصناف"), itemsCount))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            VStack(spacing: 8) {
+                ForEach(receipt.items, id: \.itemID) { item in
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(uiColor: .systemGreen).opacity(0.12))
+                                .frame(width: 38, height: 38)
+                            Image(systemName: "arrow.down.left.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(Color(uiColor: .systemGreen))
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name)
+                                .font(AdminType.bodyBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            HStack(spacing: 6) {
+                                if let tag = item.unitRingTags.first, !tag.isEmpty {
+                                    Text(verbatim: "#" + tag)
+                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                        .foregroundColor(Color(uiColor: .ppPrimary))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(uiColor: .ppPrimary).opacity(0.1), in: Capsule())
+                                }
+
+                                Text(verbatim: item.price.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+                        }
+
+                        Spacer()
+
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(String(format: Language.get("POS_Void_Restock_Unit", alter: "+%@ للمخزون"), item.quantity.englishDigits))
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(Color(uiColor: .systemGreen))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color(uiColor: .systemGreen).opacity(0.12), in: Capsule())
+
+                            Text(verbatim: item.lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                                .font(AdminType.captionBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+                    }
+                    .padding(10)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - System Impact Matrix
+
+    private var systemImpactMatrix: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Void_Impact_Title", alter: "أثر العملية على النظام فور التأكيد"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                impactPill(
+                    icon: "shippingbox.and.arrow.backward.fill",
+                    color: Color(uiColor: .systemGreen),
+                    title: Language.get("POS_Void_Impact_Inventory_Title", alter: "المخزون"),
+                    desc: Language.get("POS_Void_Impact_Inventory_Desc", alter: "إعادة الأصناف فوراً لرفوف الفرع")
+                )
+
+                impactPill(
+                    icon: "banknote.fill",
+                    color: Color(uiColor: .systemOrange),
+                    title: Language.get("POS_Void_Impact_Finance_Title", alter: "المالية والخزينة"),
+                    desc: Language.get("POS_Void_Impact_Finance_Desc", alter: "خصم القيمة من مبيعات الوردية اليومية")
+                )
+
+                impactPill(
+                    icon: "shield.lefthalf.filled",
+                    color: Color(uiColor: .ppPrimary),
+                    title: Language.get("POS_Void_Impact_Audit_Title", alter: "سجل التدقيق"),
+                    desc: Language.get("POS_Void_Impact_Audit_Desc", alter: "توثيق العملية باسم المشغل والتوقيت")
+                )
+
+                impactPill(
+                    icon: "lock.shield.fill",
+                    color: Color(uiColor: .systemRed),
+                    title: Language.get("POS_Void_Impact_Finality_Title", alter: "إجراء قطعي"),
+                    desc: Language.get("POS_Void_Impact_Finality_Desc", alter: "لا يمكن التراجع عن الإبطال نهائياً")
+                )
+            }
+        }
+    }
+
+    private func impactPill(icon: String, color: Color, title: String, desc: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+            }
+
+            Text(desc)
+                .font(AdminType.caption2)
+                .foregroundColor(AdminSurface.secondaryText)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Intelligent Reason Studio
+
+    private var reasonStudioSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(Language.get("POS_Void_Reason_Section", alter: "سبب الإبطال والإلغاء (مطلوب)"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+
+                let count = cancelReason.trimmingCharacters(in: .whitespacesAndNewlines).count
+                HStack(spacing: 4) {
+                    if count >= 3 {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(Color(uiColor: .systemGreen))
+                    }
+                    Text(verbatim: "\(count.englishDigits) / 500")
+                        .font(AdminType.caption2)
+                        .foregroundColor(count >= 3 ? Color(uiColor: .systemGreen) : AdminSurface.secondaryText)
+                }
+            }
+
+            // 2x2 Preset Tiles
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(presets) { preset in
+                    let isSelected = selectedPresetId == preset.id
+                    Button {
+                        selectedPresetId = preset.id
+                        cancelReason = preset.title
+                        UISelectionFeedbackGenerator().selectionChanged()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: preset.icon)
+                                .font(.system(size: 14))
+                                .foregroundColor(isSelected ? .white : Color(uiColor: .systemRed))
+
+                            Text(preset.title)
+                                .font(AdminType.caption)
+                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.leading)
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .background(
+                            isSelected ? Color(uiColor: .systemRed) : AdminSurface.surface,
+                            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(
+                                    isSelected ? Color(uiColor: .systemRed) : AdminSurface.hairline,
+                                    lineWidth: isSelected ? 1.5 : 0.8
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Freeform Reason Input
+            TextField(Language.get("POS_Void_Notes_Prompt", alter: "ملاحظات إضافية وتفاصيل السبب..."), text: $cancelReason)
+                .font(AdminType.body)
+                .padding(12)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(
+                            canSubmit ? Color(uiColor: .systemRed).opacity(0.5) : AdminSurface.hairline,
+                            lineWidth: 0.8
+                        )
+                )
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    // MARK: - Pinned Bottom Dock
+
+    private var bottomDock: some View {
+        VStack(spacing: 8) {
+            TactileSlideToVoidControl(
+                isEnabled: canSubmit,
+                isSubmitting: viewModel.isSubmittingReversal,
+                onConfirm: executeCancel
+            )
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 10)
+        .padding(.bottom, 16)
+        .background(
+            AdminSurface.surface
+                .shadow(color: Color.black.opacity(0.08), radius: 10, y: -4)
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
+
+    // MARK: - Helpers
+
     private var canSubmit: Bool {
         cancelReason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+    }
+
+    private var paymentMethodIcon: String {
+        switch receipt.paymentMethod.lowercased() {
+        case "cash": return "banknote.fill"
+        case "card": return "creditcard.fill"
+        case "qib": return "qrcode"
+        default: return "creditcard.and.123"
+        }
+    }
+
+    private var paymentMethodLabel: String {
+        switch receipt.paymentMethod.lowercased() {
+        case "cash": return Language.get("POS_Payment_Cash", alter: "نقداً")
+        case "card": return Language.get("POS_Payment_Card", alter: "بطاقة")
+        case "qib": return "QIB Pay"
+        default: return receipt.paymentMethod
+        }
+    }
+
+    private var paymentSettlementHint: String {
+        if receipt.paymentMethod.lowercased() == "cash" {
+            return Language.get("POS_Void_Hint_Cash", alter: "تم الدفع نقداً: يلزم إعادة المبلغ للعميل من درج النقدية بالفرع.")
+        } else {
+            return Language.get("POS_Void_Hint_Card", alter: "تم الدفع إلكترونياً: يلزم إرجاع المبلغ عبر جهاز نقاط البيع البنكي.")
+        }
     }
 
     private func executeCancel() {
@@ -2486,3 +3034,4 @@ struct POSCancelConfirmationSheet: View {
         }
     }
 }
+
