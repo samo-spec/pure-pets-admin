@@ -128,6 +128,11 @@ static UIColor *PPDesignTokenDynamicHex(uint32_t lightHex,
     return PPDesignTokenDynamicHex(0xF8F8F9, 0x0E0B0C, 1.0, 1.0);
 }
 
++ (UIColor *)ppBackgroundSecondary
+{
+    return [self ppSecondarySurface];
+}
+
 + (UIColor *)ppSurfaceBase
 {
     return [UIColor ppBackground];

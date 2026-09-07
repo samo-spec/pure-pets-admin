@@ -4,6 +4,7 @@
 // PurePetsAdmin-Bridging-Header.h
 
 #import <UIKit/UIKit.h>
+#import "Lottie.h"
 #import "ThirdParty/PPStyles/PPDesignTokens.h"
 #import "ThirdParty/PPStyles/UIViewController+PPNavBar.h"
 #import "ThirdParty/PPStyles/PPFunc.h"
@@ -21,6 +22,7 @@
 #import "VeterinarianSection/PPAddEditVetViewController.h"
 #import "VeterinarianSection/PPVetSubscriptionViewController.h"
 #import "BasicClasses/PetAccessory.h"
+#import "BasicClasses/ArabicNormalizer.h"
 #import "BasicClasses/MainKindsModel.h"
 #import "BasicClasses/SubKindModel.h"
 #import "AppManager.h"

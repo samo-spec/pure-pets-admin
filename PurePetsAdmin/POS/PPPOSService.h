@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger groupQuantity;
 @property (nonatomic, assign) NSInteger baseUnitQuantity;
 @property (nonatomic, assign) NSInteger unitGroupPriceMinor;
+@property (nonatomic, assign) NSInteger refundedQuantity;
+@property (nonatomic, copy) NSArray<NSString *> *refundedUnitIds;
 - (instancetype)initWithDictionary:(NSDictionary *)dict;
 @end
 
@@ -68,6 +70,16 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *salesChannel;
 @property (nonatomic, assign) NSInteger schemaVersion;
 @property (nonatomic, copy, nullable) NSDate *createdAt;
+@property (nonatomic, assign) double refundedAmount;
+@property (nonatomic, copy, nullable) NSString *refundReason;
+@property (nonatomic, copy, nullable) NSDate *refundedAt;
+@property (nonatomic, copy, nullable) NSString *refundedBy;
+@property (nonatomic, copy, nullable) NSString *cancellationReason;
+@property (nonatomic, copy, nullable) NSDate *cancelledAt;
+@property (nonatomic, copy, nullable) NSString *cancelledBy;
+@property (nonatomic, copy, nullable) NSString *branchID;
+@property (nonatomic, copy, nullable) NSString *branchName;
+@property (nonatomic, copy, nullable) NSString *cashierName;
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
 @end
 
@@ -144,6 +156,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)fetchPOSReceiptForTransactionID:(NSString *)transactionID
                              completion:(void(^)(PPPOSReceipt * _Nullable receipt,
                                                  NSError * _Nullable error))completion;
+- (void)cancelTransaction:(NSString *)transactionId
+           expectedStatus:(nullable NSString *)expectedStatus
+                   reason:(NSString *)reason
+               completion:(void(^)(BOOL success, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(cancelTransaction(transactionID:expectedStatus:reason:completion:));
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+               completion:(void(^)(BOOL success, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(refundTransaction(transactionID:refundAmount:refundItems:reason:currency:completion:));
 @end
 
 // MARK: - POS Deep Diagnostic Logging

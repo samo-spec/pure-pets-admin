@@ -770,12 +770,12 @@ extension PPPOSReceipt {
 
 // MARK: - PDF
 
-private enum POSReceiptExportError: Error {
+enum POSReceiptExportError: Error {
     case emptyDocument
 }
 
 @MainActor
-private enum POSReceiptPDFExporter {
+enum POSReceiptPDFExporter {
     static func pdfData(for receipt: POSCompletedReceipt) throws -> Data {
         let receiptWidth: CGFloat = 340.0
         let margin: CGFloat = 20.0
@@ -1181,6 +1181,36 @@ private enum POSReceiptPDFExporter {
         let data = try pdfData(for: receipt)
         try data.write(to: url, options: .atomic)
         return url
+    }
+
+    static func temporaryPDF(for rawReceipt: PPPOSReceipt) throws -> URL {
+        let completed = POSCompletedReceipt(receipt: rawReceipt)
+        return try temporaryPDF(for: completed)
+    }
+
+    static func pdfData(for rawReceipt: PPPOSReceipt) throws -> Data {
+        let completed = POSCompletedReceipt(receipt: rawReceipt)
+        return try pdfData(for: completed)
+    }
+
+    static func renderPDFPageToImage(pdfData: Data) -> UIImage? {
+        guard let provider = CGDataProvider(data: pdfData as CFData),
+              let document = CGPDFDocument(provider),
+              let page = document.page(at: 1) else { return nil }
+        let pageRect = page.getBoxRect(.mediaBox)
+        let scale: CGFloat = 2.0
+        let targetSize = CGSize(width: pageRect.width * scale, height: pageRect.height * scale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1.0
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        return renderer.image { ctx in
+            UIColor.white.set()
+            ctx.fill(CGRect(origin: .zero, size: targetSize))
+            ctx.cgContext.scaleBy(x: scale, y: scale)
+            ctx.cgContext.translateBy(x: 0.0, y: pageRect.height)
+            ctx.cgContext.scaleBy(x: 1.0, y: -1.0)
+            ctx.cgContext.drawPDFPage(page)
+        }
     }
 }
 

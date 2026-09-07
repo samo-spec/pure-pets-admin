@@ -956,14 +956,66 @@ private struct CommandCenterChrome: View {
         contrast == .increased ? AdminSurface.primaryText : Color(uiColor: .ppAccentText)
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-            HStack(alignment: .top, spacing: AdminSpacing.sm) {
-                accountSignature
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                moreActionsMenu
-            }
+    private var topShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 18,
+            bottomLeadingRadius: 16,
+            bottomTrailingRadius: 16,
+            topTrailingRadius: 18,
+            style: .continuous
+        )
+    }
 
+    private var bottomShape: UnevenRoundedRectangle {
+        UnevenRoundedRectangle(
+            topLeadingRadius: 16,
+            bottomLeadingRadius: 32,
+            bottomTrailingRadius: 32,
+            topTrailingRadius: 16,
+            style: .continuous
+        )
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            topCard
+                .zIndex(isShowingMoreMenu ? 10 : 1)
+            bottomCard
+                .zIndex(0)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("admin.command.header")
+    }
+
+    private var topCard: some View {
+        HStack(alignment: .center, spacing: AdminSpacing.sm) {
+            accountSignature
+                .frame(maxWidth: .infinity, alignment: .leading)
+            moreActionsMenu
+        }
+        .padding(.horizontal, AdminSpacing.base)
+        .padding(.vertical, AdminSpacing.md)
+        .background(
+            AdminSurface.surface,
+            in: topShape
+        )
+        .overlay {
+            topShape
+                .strokeBorder(
+                    AdminSurface.hairline,
+                    lineWidth: contrast == .increased ? 1 : AdminStroke.hairline
+                )
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: AdminShadow.card.color,
+            radius: AdminShadow.card.radius,
+            y: AdminShadow.card.y
+        )
+    }
+
+    private var bottomCard: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
             workingBranch
 
             Rectangle()
@@ -988,10 +1040,10 @@ private struct CommandCenterChrome: View {
         .padding(.vertical, AdminSpacing.md)
         .background(
             AdminSurface.surface,
-            in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+            in: bottomShape
         )
         .overlay {
-            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+            bottomShape
                 .strokeBorder(
                     AdminSurface.hairline,
                     lineWidth: contrast == .increased ? 1 : AdminStroke.hairline
@@ -1003,8 +1055,6 @@ private struct CommandCenterChrome: View {
             radius: AdminShadow.card.radius,
             y: AdminShadow.card.y
         )
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("admin.command.header")
     }
 
     // MARK: - Account Signature
@@ -1068,16 +1118,14 @@ private struct CommandCenterChrome: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 if canSwitchBranch {
-                    VStack(spacing: AdminSpacing.xxs) {
+                    VStack(spacing: 2) {
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Text(Language.get("AdminCommandCenter_Header_Switch", alter: nil))
-                            .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                            .font(PPBrandFont.bold(size: 11, relativeTo: .caption))
                     }
                     .foregroundStyle(actionInk)
-                    .padding(.horizontal, AdminSpacing.sm)
-                    .padding(.vertical, AdminSpacing.xs)
-                    .frame(minWidth: AdminTouchTarget.minimum, minHeight: AdminTouchTarget.minimum)
+                    .frame(width: AdminTouchTarget.minimum, height: 40)
                     .background(
                         AdminSurface.primarySoft,
                         in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
@@ -2620,7 +2668,7 @@ private struct CommandQuickActionsDeck: View {
             .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.16 : 0.08), in: Capsule(style: .continuous))
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.5)
+                    .strokeBorder(AdminSurface.primary.opacity(0.14), lineWidth: 0.5)
             )
             .accessibilityHidden(true)
         }
@@ -2686,11 +2734,11 @@ private struct CommandQuickActionCard: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.50 : 0.32), lineWidth: 0.75)
+                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.75)
                             )
                             .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 3, x: 0, y: 1)
 
-                        CommandQuickActionIcon(item: item, size: 16)
+                        CommandQuickActionIcon(item: item, size: 19)
                     }
                     .frame(width: 36, height: 36)
                     .accessibilityHidden(true)
@@ -2717,11 +2765,11 @@ private struct CommandQuickActionCard: View {
                         .padding(.vertical, 3.5)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                                .fill(Color.clear)
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                                .strokeBorder(item.accent.opacity(0.16), lineWidth: 0.75)
                         )
                     } else if isTwoColumn && item.isLive {
                         HStack(spacing: 4) {
@@ -2740,11 +2788,11 @@ private struct CommandQuickActionCard: View {
                         .padding(.vertical, 3.5)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                                .fill(Color.clear)
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                                .strokeBorder(item.accent.opacity(0.16), lineWidth: 0.75)
                         )
                     } else if item.isLive {
                         HStack(spacing: 3) {
@@ -2760,11 +2808,11 @@ private struct CommandQuickActionCard: View {
                         .padding(.vertical, 3)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                                .fill(Color.clear)
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.32), lineWidth: 0.75)
+                                .strokeBorder(item.accent.opacity(0.16), lineWidth: 0.75)
                         )
                     } else {
                         Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
@@ -2804,8 +2852,8 @@ private struct CommandQuickActionCard: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    item.accent.opacity(colorScheme == .dark ? 0.06 : 0.025),
-                                    item.accent.opacity(colorScheme == .dark ? 0.03 : 0.010)
+                                    item.accent.opacity(colorScheme == .dark ? 0.025 : 0.010),
+                                    item.accent.opacity(colorScheme == .dark ? 0.010 : 0.004)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -2815,7 +2863,7 @@ private struct CommandQuickActionCard: View {
                     // Optical radial glow from the leading corner
                     RadialGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.045 : 0.018),
+                            item.accent.opacity(colorScheme == .dark ? 0.020 : 0.008),
                             .clear
                         ],
                         center: .topLeading,
@@ -2827,7 +2875,7 @@ private struct CommandQuickActionCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.38 : 0.22), lineWidth: 0.85)
+                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.11), lineWidth: 0.75)
             )
             .shadow(
                 color: item.accent.opacity(colorScheme == .dark ? 0.16 : 0.06),
@@ -2893,6 +2941,149 @@ private struct ReticleCornerMarks: View {
                 path.addLine(to: CGPoint(x: w, y: h - length))
             }
             .stroke(accent.opacity(0.75), lineWidth: strokeWidth)
+        }
+    }
+}
+
+// MARK: - Home Hero Lottie Bridge & Representable
+
+final class PPHomeHeroAnimationView: UIView {
+    private let animationView = LOTAnimationView()
+    private let fallbackImageView = UIImageView()
+    private var colorValueCallback: LOTColorValueCallback?
+    private var animationLoaded = false
+
+    var isPlaybackEnabled: Bool = true {
+        didSet {
+            if isPlaybackEnabled {
+                if !animationView.isAnimationPlaying {
+                    animationView.play()
+                }
+            } else {
+                animationView.pause()
+            }
+        }
+    }
+
+    var customTintColor: UIColor? {
+        didSet {
+            applyCustomTint()
+        }
+    }
+
+    init(animationName: String = "Shop2.json", loadsFromFirebase: Bool = false) {
+        super.init(frame: .zero)
+        setupViews()
+        loadAnimation(named: animationName, loadsFromFirebase: loadsFromFirebase)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupViews()
+        loadAnimation(named: "Shop2.json", loadsFromFirebase: false)
+    }
+
+    private func setupViews() {
+        backgroundColor = .clear
+        isUserInteractionEnabled = false
+
+        let config = UIImage.SymbolConfiguration(pointSize: 28, weight: .semibold)
+        fallbackImageView.image = UIImage(systemName: "storefront.fill", withConfiguration: config) ?? UIImage(named: "marketplacecustom")
+        fallbackImageView.tintColor = customTintColor ?? .ppQuickActionShopping
+        fallbackImageView.contentMode = .scaleAspectFit
+        fallbackImageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(fallbackImageView)
+
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.backgroundColor = .clear
+        animationView.contentMode = .scaleAspectFit
+        animationView.loopAnimation = true
+        animationView.animationSpeed = 0.65
+        animationView.isHidden = true
+        addSubview(animationView)
+
+        NSLayoutConstraint.activate([
+            fallbackImageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            fallbackImageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            fallbackImageView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.75),
+            fallbackImageView.heightAnchor.constraint(equalTo: heightAnchor, multiplier: 0.75),
+
+            animationView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            animationView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            animationView.topAnchor.constraint(equalTo: topAnchor),
+            animationView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+    }
+
+    private func loadAnimation(named name: String, loadsFromFirebase: Bool) {
+        let cleanName = (name as NSString).deletingPathExtension
+        var composition: LOTComposition?
+
+        // 1. Try bundle by clean name or raw name
+        if let comp = LOTComposition(name: cleanName, bundle: Bundle.main) {
+            composition = comp
+        } else if let comp = LOTComposition(name: name, bundle: Bundle.main) {
+            composition = comp
+        } else if let comp = LOTComposition(name: cleanName) {
+            composition = comp
+        } else if let path = Bundle.main.path(forResource: cleanName, ofType: "json"),
+                  let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                  let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [AnyHashable: Any] {
+            composition = LOTComposition(json: json)
+        }
+
+        if let comp = composition {
+            applyLoadedComposition(comp)
+            return
+        }
+    }
+
+    private func applyLoadedComposition(_ composition: LOTComposition) {
+        animationLoaded = true
+        animationView.sceneModel = composition
+        animationView.isHidden = false
+        fallbackImageView.isHidden = true
+        applyCustomTint()
+        if isPlaybackEnabled {
+            animationView.play()
+        }
+    }
+
+    private func applyCustomTint() {
+        guard let tint = customTintColor else { return }
+        fallbackImageView.tintColor = tint
+        animationView.tintColor = tint
+
+        let callback = LOTColorValueCallback(color: tint.cgColor)
+        self.colorValueCallback = callback
+        animationView.setValueDelegate(callback, for: LOTKeypath(string: "**.Stroke 1.Color"))
+        animationView.setValueDelegate(callback, for: LOTKeypath(string: "**.Fill 1.Color"))
+        animationView.setValueDelegate(callback, for: LOTKeypath(string: "**.Color"))
+    }
+}
+
+struct HomeHeroLottieRepresentable: UIViewRepresentable {
+    let animationName: String
+    var loadsFromFirebase: Bool = false
+    var playbackEnabled: Bool = true
+    var tintColor: UIColor? = nil
+
+    func makeUIView(context: Context) -> PPHomeHeroAnimationView {
+        let view = PPHomeHeroAnimationView(
+            animationName: animationName,
+            loadsFromFirebase: loadsFromFirebase
+        )
+        view.isPlaybackEnabled = playbackEnabled
+        if let tintColor = tintColor {
+            view.customTintColor = tintColor
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: PPHomeHeroAnimationView, context: Context) {
+        uiView.isPlaybackEnabled = playbackEnabled
+        if let tintColor = tintColor {
+            uiView.customTintColor = tintColor
         }
     }
 }
@@ -2994,39 +3185,37 @@ private struct CommandPOSSovereignCard: View {
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 3.5)
-        .background(
-            Capsule(style: .continuous)
-                .fill(colorScheme == .dark ? item.accent.opacity(0.18) : Color.white.opacity(0.92))
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.38 : 0.24), lineWidth: 0.75)
-        )
     }
 
     private var scannerReticleHero: some View {
         ZStack {
             // Chamber background
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.22 : 0.10),
-                            item.accent.opacity(colorScheme == .dark ? 0.08 : 0.03)
+                            item.accent.opacity(colorScheme == .dark ? 0.12 : 0.05),
+                            item.accent.opacity(colorScheme == .dark ? 0.04 : 0.015)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
 
-            // Central Marketplace Icon
-            CommandQuickActionIcon(item: item, size: 32)
-                .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.20), radius: 4, x: 0, y: 1.5)
+            // Central Marketplace Icon - Lottie from iOS HomeView hero plate
+            HomeHeroLottieRepresentable(
+                animationName: "Shop2.json",
+                loadsFromFirebase: false,
+                playbackEnabled: !reduceMotion,
+                tintColor: UIColor(item.accent)
+            )
+            .frame(width: 55, height: 55)
+            .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.20), radius: 4, x: 0, y: 1.5)
         }
-        .frame(width: 54, height: 54)
+        .frame(width: 56, height: 56)
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.46 : 0.30), lineWidth: 0.8)
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.75)
         )
         .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 4, x: 0, y: 2)
     }
@@ -3081,7 +3270,7 @@ private struct CommandPOSSovereignCard: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.30), lineWidth: 0.75)
+                .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75)
         )
         .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.38 : 0.24), radius: 4, x: 0, y: 1.5)
         .frame(maxWidth: .infinity)
@@ -3098,8 +3287,8 @@ private struct CommandPOSSovereignCard: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.12 : 0.045),
-                            item.accent.opacity(colorScheme == .dark ? 0.04 : 0.015)
+                            item.accent.opacity(colorScheme == .dark ? 0.045 : 0.016),
+                            item.accent.opacity(colorScheme == .dark ? 0.015 : 0.005)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -3109,7 +3298,7 @@ private struct CommandPOSSovereignCard: View {
             // Top-down specular radial highlight
             RadialGradient(
                 colors: [
-                    item.accent.opacity(colorScheme == .dark ? 0.14 : 0.05),
+                    item.accent.opacity(colorScheme == .dark ? 0.05 : 0.018),
                     .clear
                 ],
                 center: .top,
@@ -3124,13 +3313,13 @@ private struct CommandPOSSovereignCard: View {
             .strokeBorder(
                 LinearGradient(
                     colors: [
-                        item.accent.opacity(colorScheme == .dark ? 0.55 : 0.35),
-                        item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14)
+                        item.accent.opacity(colorScheme == .dark ? 0.26 : 0.16),
+                        item.accent.opacity(colorScheme == .dark ? 0.10 : 0.06)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                lineWidth: 0.85
+                lineWidth: 0.75
             )
     }
 }
@@ -3233,14 +3422,6 @@ private struct CommandIPadPOSSovereignCard: View {
             }
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(colorScheme == .dark ? item.accent.opacity(0.18) : Color.white.opacity(0.92))
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.40 : 0.25), lineWidth: 0.75)
-            )
 
             Spacer(minLength: 4)
 
@@ -3262,10 +3443,6 @@ private struct CommandIPadPOSSovereignCard: View {
                 Capsule(style: .continuous)
                     .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04))
             )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.08), lineWidth: 0.5)
-            )
         }
     }
 
@@ -3276,26 +3453,32 @@ private struct CommandIPadPOSSovereignCard: View {
         }) {
             ZStack {
                 // Background Chamber
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(
                         LinearGradient(
                             colors: [
-                                item.accent.opacity(colorScheme == .dark ? 0.24 : 0.11),
-                                item.accent.opacity(colorScheme == .dark ? 0.08 : 0.03)
+                                item.accent.opacity(colorScheme == .dark ? 0.12 : 0.05),
+                                item.accent.opacity(colorScheme == .dark ? 0.04 : 0.015)
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
 
-                // Central Marketplace Icon
-                CommandQuickActionIcon(item: item, size: 36)
-                    .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.22), radius: 5, x: 0, y: 1.5)
+                // Central Marketplace Icon - Lottie from iOS HomeView hero plate
+                HomeHeroLottieRepresentable(
+                    animationName: "Shop2.json",
+                    loadsFromFirebase: false,
+                    playbackEnabled: !reduceMotion,
+                    tintColor: UIColor(item.accent)
+                )
+                .frame(width: 62.5, height: 62.5)
+                .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.50 : 0.22), radius: 5, x: 0, y: 1.5)
             }
-            .frame(width: 62, height: 62)
+            .frame(width: 64, height: 64)
             .overlay(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.50 : 0.32), lineWidth: 0.85)
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.24 : 0.15), lineWidth: 0.75)
             )
             .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 5, x: 0, y: 2)
         }
@@ -3358,7 +3541,7 @@ private struct CommandIPadPOSSovereignCard: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.32), lineWidth: 0.8)
+                        .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.75)
                 )
                 .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.42 : 0.26), radius: 5, x: 0, y: 2)
             }
@@ -3388,7 +3571,7 @@ private struct CommandIPadPOSSovereignCard: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.75)
+                        .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.11), lineWidth: 0.75)
                 )
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.04), radius: 3, x: 0, y: 1)
             }
@@ -3405,8 +3588,8 @@ private struct CommandIPadPOSSovereignCard: View {
                 .fill(
                     LinearGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.12 : 0.045),
-                            item.accent.opacity(colorScheme == .dark ? 0.03 : 0.010)
+                            item.accent.opacity(colorScheme == .dark ? 0.045 : 0.016),
+                            item.accent.opacity(colorScheme == .dark ? 0.015 : 0.005)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -3415,7 +3598,7 @@ private struct CommandIPadPOSSovereignCard: View {
 
             RadialGradient(
                 colors: [
-                    item.accent.opacity(colorScheme == .dark ? 0.15 : 0.05),
+                    item.accent.opacity(colorScheme == .dark ? 0.05 : 0.018),
                     .clear
                 ],
                 center: .top,
@@ -3430,13 +3613,13 @@ private struct CommandIPadPOSSovereignCard: View {
             .strokeBorder(
                 LinearGradient(
                     colors: [
-                        item.accent.opacity(colorScheme == .dark ? 0.55 : 0.35),
-                        item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14)
+                        item.accent.opacity(colorScheme == .dark ? 0.26 : 0.16),
+                        item.accent.opacity(colorScheme == .dark ? 0.10 : 0.06)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                lineWidth: 0.85
+                lineWidth: 0.75
             )
     }
 }
@@ -3468,7 +3651,7 @@ private struct CommandIPadQuickActionCard: View {
                             )
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.48 : 0.30), lineWidth: 0.75)
+                                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.22 : 0.14), lineWidth: 0.75)
                             )
                             .shadow(color: item.accent.opacity(colorScheme == .dark ? 0.22 : 0.08), radius: 3, x: 0, y: 1)
 
@@ -3502,7 +3685,7 @@ private struct CommandIPadQuickActionCard: View {
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.34), lineWidth: 0.75)
+                                .strokeBorder(item.accent.opacity(0.16), lineWidth: 0.75)
                         )
                     } else if item.isLive {
                         HStack(spacing: 3.5) {
@@ -3518,11 +3701,11 @@ private struct CommandIPadQuickActionCard: View {
                         .padding(.vertical, 3.5)
                         .background(
                             Capsule(style: .continuous)
-                                .fill(colorScheme == .dark ? item.accent.opacity(0.24) : Color.white.opacity(0.92))
+                                .fill(Color.clear)
                         )
                         .overlay(
                             Capsule(style: .continuous)
-                                .strokeBorder(item.accent.opacity(0.34), lineWidth: 0.75)
+                                .strokeBorder(item.accent.opacity(0.16), lineWidth: 0.75)
                         )
                     } else {
                         Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
@@ -3562,8 +3745,8 @@ private struct CommandIPadQuickActionCard: View {
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    item.accent.opacity(colorScheme == .dark ? 0.07 : 0.025),
-                                    item.accent.opacity(colorScheme == .dark ? 0.02 : 0.008)
+                                    item.accent.opacity(colorScheme == .dark ? 0.025 : 0.010),
+                                    item.accent.opacity(colorScheme == .dark ? 0.010 : 0.004)
                                 ],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
@@ -3572,7 +3755,7 @@ private struct CommandIPadQuickActionCard: View {
 
                     RadialGradient(
                         colors: [
-                            item.accent.opacity(colorScheme == .dark ? 0.06 : 0.02),
+                            item.accent.opacity(colorScheme == .dark ? 0.020 : 0.008),
                             .clear
                         ],
                         center: .topLeading,
@@ -3584,7 +3767,7 @@ private struct CommandIPadQuickActionCard: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.38 : 0.22), lineWidth: 0.85)
+                    .strokeBorder(item.accent.opacity(colorScheme == .dark ? 0.18 : 0.11), lineWidth: 0.75)
             )
             .shadow(
                 color: item.accent.opacity(colorScheme == .dark ? 0.16 : 0.05),

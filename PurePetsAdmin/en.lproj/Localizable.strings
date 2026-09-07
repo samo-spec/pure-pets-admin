@@ -2948,7 +2948,7 @@
 "CatalogIntake_AllCategoriesSub" = "Suitable for dogs, cats, birds, and all pets";
 "CatalogIntake_AllSubcategoriesPrompt" = "All Breeds & Subcategories";
 "CatalogIntake_AllSubcategoriesSub" = "Applies to all breeds and subcategories without exception";
-"CatalogIntake_SelectedCountFormat" = "%ld selected";
+"CatalogIntake_SelectedCountFormat" = "%@ selected";
 "Confirm_Selection" = "Confirm Selection";
 "Stock_Transfer_Action" = "Transfer Stock to Another Branch";
 "Stock_Transfer_Title" = "Transfer Product Stock Between Branches";
@@ -5136,6 +5136,11 @@
 "CatalogIntake_ReviewItem" = "Item";
 "CatalogIntake_NotSet" = "Not set";
 "CatalogIntake_ReviewCategory" = "Category";
+"CatalogIntake_ReviewMainKind" = "Main Kind";
+"CatalogIntake_ReviewSubKind" = "Sub Kind";
+"CatalogIntake_ReviewSubCategory" = "Subcategory";
+"CatalogIntake_ReviewSKU" = "SKU";
+"CatalogIntake_ReviewBarcode" = "Barcode";
 "CatalogIntake_ReviewPrice" = "Final price";
 "CatalogIntake_ReviewRetailPrice" = "Retail price";
 "CatalogIntake_ReviewWholesalePrice" = "Wholesale price";
@@ -5263,6 +5268,8 @@
 "LivePetDossier_AccessLimited" = "Unavailable with your permission";
 "LivePetDossier_UnitLedgerTitle" = "Individual animal ledger";
 "LivePetDossier_UnitLedgerCount" = "%ld independent identity records";
+"LivePetDossier_ActiveUnitLedgerCount" = "%ld active identity records";
+"LivePet_Units_Archived_Count" = "Archived and removed records (%ld)";
 "LivePetDossier_LoadingHint" = "The current state is being fetched before actions are available.";
 "LivePetDossier_UnitsRestricted" = "Individual animal records are unavailable with your permission.";
 "LivePetDossier_EmptyUnitsHint" = "Add individual stock to create an identity record for each animal.";
@@ -6078,7 +6085,97 @@
 "Stock_Transfer_Select_Branch" = "Select Destination Branch";
 "Stock_Transfer_Search_Branch" = "Search branch name or code...";
 "Stock_Transfer_Warning_Full_Title" = "Warning: Full Branch Stock Depletion";
-"Stock_Transfer_Warning_Full_Msg" = "You are about to transfer 100% of this item's stock (%ld units) to %@. The current branch balance will become zero. Proceed?";
+"Stock_Transfer_Warning_Full_Msg" = "You are about to transfer 100% of this item's stock (%@ units) to %@. The current branch balance will become zero. Proceed?";
 "Stock_Transfer_Proceed" = "Confirm & Dispatch";
-"Stock_Transfer_Summary_Format" = "Transfer %ld units to %@";
+"Stock_Transfer_Summary_Format" = "Transfer %@ units to %@";
 "Stock_Transfer_Change_Branch" = "Change Branch";
+
+/* Sovereign POS History & Transaction Ledger */
+"POS_Horizon_Today" = "Today";
+"POS_Horizon_Yesterday" = "Yesterday";
+"POS_Horizon_Week" = "Week";
+"POS_Horizon_Month" = "Month";
+"POS_Horizon_All" = "All";
+
+"POS_Telemetry_NetRevenue" = "Net Revenue";
+"POS_Telemetry_Cash" = "Cash";
+"POS_Telemetry_Card" = "Card / Digital";
+"POS_Telemetry_AvgBasket" = "Avg Basket";
+"POS_Telemetry_Refunds" = "Refunds";
+"POS_Telemetry_UnitsSold" = "Units Sold";
+"POS_Telemetry_CompletedSales" = "Transactions";
+
+"POS_Search_Placeholder" = "Search by receipt #, customer name, phone, or item...";
+"POS_Filter_All" = "All";
+"POS_Filter_Cash" = "Cash";
+"POS_Filter_Card" = "Card";
+"POS_Filter_Completed" = "Completed";
+"POS_Filter_Refunded" = "Refunded";
+"POS_Filter_Cancelled" = "Cancelled";
+
+"POS_Status_Completed" = "Completed";
+"POS_Status_PartiallyRefunded" = "Partially Refunded";
+"POS_Status_Refunded" = "Refunded";
+"POS_Status_Cancelled" = "Cancelled";
+
+"POS_Card_Items_Count" = "%@ items";
+"POS_Card_Item_Single" = "1 item";
+"POS_Card_TapToView" = "Tap to view full dossier & actions";
+"POS_Card_Cashier" = "Cashier: %@";
+"POS_Receipt_Copy_Success" = "Receipt ID copied to clipboard";
+
+"POS_Dossier_Title" = "Transaction Dossier";
+"POS_Dossier_Sub" = "Sale Audit • Reversal & Ledger";
+"POS_Dossier_ReceiptID" = "Receipt ID";
+"POS_Dossier_Branch" = "Branch";
+"POS_Dossier_Date" = "Transaction Time";
+"POS_Dossier_Customer_Section" = "Customer Information";
+"POS_Customer_Call" = "Phone Call";
+"POS_Customer_WhatsApp" = "WhatsApp Chat";
+"POS_Dossier_Items_Section" = "Purchased Items";
+"POS_Dossier_Financial_Section" = "Financial Breakdown";
+"POS_Subtotal" = "Subtotal";
+"POS_Discount" = "Discount";
+"POS_CashReceived" = "Cash Received";
+"POS_ChangeDue" = "Change Due";
+"POS_GrandTotal" = "Grand Total";
+"POS_Action_PrintReceipt" = "View & Print Receipt";
+"POS_Action_WhatsAppReceipt" = "Send Receipt via WhatsApp";
+"POS_Action_Refund" = "Issue Refund";
+"POS_Action_Cancel" = "Void / Cancel Sale";
+
+"POS_RefundStudio_Title" = "Refund Studio";
+"POS_RefundStudio_Sub" = "Restock items and issue financial refund";
+"POS_Refund_Full_Action" = "Full Refund (All Items)";
+"POS_Refund_Select_Items" = "Select Items & Quantities to Return";
+"POS_Refund_Qty_To_Return" = "Return Qty";
+"POS_Refund_Max_Available" = "Max Available: %@";
+"POS_Refund_Reason_Title" = "Refund Reason (Required)";
+"POS_Refund_Reason_Placeholder" = "Specify reason for return...";
+"POS_Refund_Reason_Chip_Customer" = "Customer Preference";
+"POS_Refund_Reason_Chip_Defect" = "Factory Defect";
+"POS_Refund_Reason_Chip_Error" = "Billing Error";
+"POS_Refund_Reason_Chip_Damaged" = "Damaged Product";
+"POS_Refund_Restock_Notice" = "Selected item quantities will be automatically restocked to branch inventory and ledger reversed.";
+"POS_Refund_Confirm_Button" = "Confirm Refund (%@)";
+"POS_Refund_Success_Title" = "Refund Completed";
+"POS_Refund_Success_Msg" = "The refund was processed and items were returned to inventory.";
+
+"POS_Cancel_Confirm_Title" = "Void & Cancel Transaction?";
+"POS_Cancel_Confirm_Msg" = "You are about to cancel this transaction and restock all its items (%@ items) to branch inventory. This cannot be undone.";
+"POS_Cancel_Reason_Prompt" = "Cancellation Reason";
+"POS_Cancel_Reason_Placeholder" = "Enter reason for voiding transaction...";
+"POS_Cancel_Success_Title" = "Transaction Cancelled";
+"POS_Cancel_Success_Msg" = "The transaction was cancelled and products returned to branch stock.";
+
+"POS_Vault_LiveStatus" = "Vault Connected";
+"POS_Shift_Active" = "Shift Active & Stable";
+"POS_Shift_StartSale" = "New Fast Sale";
+"POS_Card_CallCustomer" = "Call Customer";
+"POS_Card_WhatsAppCustomer" = "WhatsApp Chat";
+"POS_Spectrum_CashRatio" = "Cash Ratio";
+"POS_Spectrum_CardRatio" = "Card Ratio";
+"POS_Dossier_Print" = "Print Thermal Receipt";
+"POS_Shift_Summary_Title" = "Register Shift Status";
+"POS_Shift_Summary_Desc" = "Register terminal is ready with synchronized prices and branch custody.";
+

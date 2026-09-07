@@ -68,6 +68,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _groupQuantity = [PPSafeNumber(dict[@"groupQuantity"]) integerValue] ?: _quantity;
         _baseUnitQuantity = [PPSafeNumber(dict[@"baseUnitQuantity"]) integerValue] ?: (_groupQuantity * _unitsPerGroup);
         _unitGroupPriceMinor = [PPSafeNumber(dict[@"unitGroupPriceMinor"]) integerValue] ?: (NSInteger)round(_price * 100.0);
+        _refundedQuantity = [PPSafeNumber(dict[@"refundedQuantity"]) integerValue];
+        _refundedUnitIds = PPPOSStringArray(dict[@"refundedUnitIds"]);
     }
     return self;
 }
@@ -125,6 +127,21 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         _items = parsedItems.copy;
         id createdAt = dict[@"createdAt"] ?: dict[@"timestamp"];
         if ([createdAt isKindOfClass:FIRTimestamp.class]) _createdAt = [(FIRTimestamp *)createdAt dateValue];
+
+        _refundedAmount = PPSafeDouble(dict[@"refundedAmount"]);
+        _refundReason = PPSafeString(dict[@"refundReason"] ?: dict[@"refundedReason"]);
+        id refundedAt = dict[@"refundedAt"];
+        if ([refundedAt isKindOfClass:FIRTimestamp.class]) _refundedAt = [(FIRTimestamp *)refundedAt dateValue];
+        _refundedBy = PPSafeString(dict[@"refundedBy"]);
+
+        _cancellationReason = PPSafeString(dict[@"cancellationReason"] ?: dict[@"cancelReason"] ?: dict[@"reason"]);
+        id cancelledAt = dict[@"cancelledAt"];
+        if ([cancelledAt isKindOfClass:FIRTimestamp.class]) _cancelledAt = [(FIRTimestamp *)cancelledAt dateValue];
+        _cancelledBy = PPSafeString(dict[@"cancelledBy"]);
+
+        _branchID = PPSafeString(dict[@"branchId"] ?: dict[@"branchID"]);
+        _branchName = PPSafeString(dict[@"branchName"]);
+        _cashierName = PPSafeString(dict[@"cashierName"] ?: dict[@"operatorName"]);
     }
     return self;
 }
@@ -1020,6 +1037,88 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                                     }];
 
         if (completion) completion(receipt, nil);
+    }];
+}
+
+- (void)cancelTransaction:(NSString *)transactionId
+           expectedStatus:(nullable NSString *)expectedStatus
+                   reason:(NSString *)reason
+               completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
+    NSString *trimmedID = [transactionId stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *trimmedReason = [reason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedID.length == 0) {
+        if (completion) completion(NO, PPPOSServiceError(400, @"transactionId is required."));
+        return;
+    }
+    if (trimmedReason.length < 3) {
+        if (completion) completion(NO, PPPOSServiceError(400, @"A cancellation reason (at least 3 characters) is required."));
+        return;
+    }
+
+    NSString *commandId = [NSString stringWithFormat:@"pos-cancel-%@", [NSUUID UUID].UUIDString];
+    NSDictionary *payload = @{
+        @"action": @"cancel",
+        @"transactionId": trimmedID,
+        @"commandId": commandId,
+        @"expectedStatus": (expectedStatus.length > 0 ? expectedStatus.lowercaseString : @"completed"),
+        @"reason": trimmedReason,
+        @"currency": @"QAR"
+    };
+
+    [self pp_invokeCallable:@"processTransaction"
+                    payload:payload
+                 completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(NO, error);
+            return;
+        }
+        NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        BOOL ok = [resp[@"ok"] boolValue];
+        if (completion) completion(ok, nil);
+    }];
+}
+
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+               completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
+    NSString *trimmedID = [transactionId stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *trimmedReason = [reason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedID.length == 0) {
+        if (completion) completion(NO, PPPOSServiceError(400, @"transactionId is required."));
+        return;
+    }
+    if (trimmedReason.length < 3) {
+        if (completion) completion(NO, PPPOSServiceError(400, @"A refund reason (at least 3 characters) is required."));
+        return;
+    }
+
+    NSString *commandId = [NSString stringWithFormat:@"pos-refund-%@", [NSUUID UUID].UUIDString];
+    NSMutableDictionary *payload = [NSMutableDictionary dictionary];
+    payload[@"action"] = @"refund";
+    payload[@"transactionId"] = trimmedID;
+    payload[@"commandId"] = commandId;
+    payload[@"reason"] = trimmedReason;
+    payload[@"currency"] = (currency.length > 0 ? currency.uppercaseString : @"QAR");
+    payload[@"refundAmount"] = @(refundAmount);
+    if (refundItems && refundItems.count > 0) {
+        payload[@"refundItems"] = refundItems;
+    } else {
+        payload[@"refundItems"] = @[ @{ @"productId": @"__FULL_REFUND__", @"quantity": @(1) } ];
+    }
+
+    [self pp_invokeCallable:@"processTransaction"
+                    payload:payload
+                 completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(NO, error);
+            return;
+        }
+        NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        BOOL ok = [resp[@"ok"] boolValue];
+        if (completion) completion(ok, nil);
     }];
 }
 

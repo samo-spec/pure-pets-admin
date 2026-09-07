@@ -503,7 +503,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
                                     .fill(dotColor)
                                     .frame(width: 6, height: 6)
                             }
-                            Text(sub)
+                            Text(verbatim: sub.normalizedEnglishDigits)
                                 .font(AdminType.caption2)
                                 .foregroundStyle(statusDotColor ?? AdminSurface.secondaryText)
                                 .lineLimit(1)
@@ -570,10 +570,30 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
 // MARK: - Sovereign English Numeric Input & Normalization
 
 extension String {
-    /// Normalizes Arabic-Indic (٠-٩) and Eastern Arabic (۰-۹) numerals into ASCII English digits (0-9).
-    /// If `allowsDecimal` is true, replaces Arabic decimal separators (٫, ،, ,) with `.`, ensuring at most one decimal point.
-    /// If `allowsDecimal` is false, discards any non-digit character.
-    public func normalizedEnglishDigits(allowsDecimal: Bool = true) -> String {
+    /// Normalizes Arabic-Indic (٠-٩) and Eastern Arabic (۰-۹) numerals into ASCII English digits (0-9),
+    /// preserving all words, letters, punctuation, whitespace, and symbols.
+    public var normalizedEnglishDigits: String {
+        let arabicToEnglishMap: [Character: Character] = [
+            "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+            "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+            "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
+            "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9"
+        ]
+        var result = ""
+        result.reserveCapacity(count)
+        for ch in self {
+            if let mapped = arabicToEnglishMap[ch] {
+                result.append(mapped)
+            } else {
+                result.append(ch)
+            }
+        }
+        return result
+    }
+
+    /// Sanitizes numeric user input to only allow ASCII digits (and optionally a single decimal point),
+    /// transliterating Arabic-Indic numerals and decimal separators while discarding any other character.
+    public func sanitizedNumericInput(allowsDecimal: Bool = true) -> String {
         let arabicToEnglishMap: [Character: Character] = [
             "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
             "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
@@ -597,9 +617,43 @@ extension String {
         return result
     }
 
-    /// Convenience getter for decimal-tolerant English numeric normalization.
-    public var normalizedEnglishDigits: String {
-        normalizedEnglishDigits(allowsDecimal: true)
+    /// Backwards-compatible overload for callers explicitly passing `allowsDecimal: Bool`
+    /// to sanitize numeric input fields (e.g. price or quantity textfields).
+    public func normalizedEnglishDigits(allowsDecimal: Bool) -> String {
+        sanitizedNumericInput(allowsDecimal: allowsDecimal)
+    }
+}
+
+extension Int {
+    /// Always returns standard ASCII English digits (0-9).
+    public var englishDigits: String {
+        "\(self)".normalizedEnglishDigits(allowsDecimal: false)
+    }
+}
+
+extension Double {
+    /// Always returns standard ASCII English digits (0-9) with formatted decimals.
+    public func englishDigits(decimals: Int = 2, trimZeroDecimals: Bool = false) -> String {
+        let formatted = String(format: "%.*f", decimals, self)
+        let normalized = formatted.normalizedEnglishDigits(allowsDecimal: true)
+        if trimZeroDecimals && normalized.hasSuffix(".00") {
+            return String(normalized.dropLast(3))
+        }
+        return normalized
+    }
+}
+
+extension CGFloat {
+    /// Always returns standard ASCII English digits (0-9) with formatted decimals.
+    public func englishDigits(decimals: Int = 2, trimZeroDecimals: Bool = false) -> String {
+        Double(self).englishDigits(decimals: decimals, trimZeroDecimals: trimZeroDecimals)
+    }
+}
+
+extension NSNumber {
+    /// Always returns standard ASCII English digits (0-9).
+    public var englishDigits: String {
+        stringValue.normalizedEnglishDigits(allowsDecimal: true)
     }
 }
 

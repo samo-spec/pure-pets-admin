@@ -80,7 +80,11 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
 - (NSArray<PetAccessory *> *)_mapDocs:(NSArray<FIRDocumentSnapshot *> *)docs {
     NSMutableArray<PetAccessory *> *arr = [NSMutableArray arrayWithCapacity:docs.count];
     for (FIRDocumentSnapshot *doc in docs) {
-        [arr addObject:[self _mapDoc:doc]];
+        PetAccessory *item = [self _mapDoc:doc];
+        if (item.isDeleted) {
+            continue;
+        }
+        [arr addObject:item];
     }
     [arr sortUsingComparator:^NSComparisonResult(PetAccessory *a, PetAccessory *b) {
         if (a.createdAt && b.createdAt) {
@@ -360,7 +364,17 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         q = [q queryWhereField:kFieldActive isEqualTo:@YES];
     }
     return [q addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-        [self _dispatchCount:block value:(error ? 0 : (NSInteger)snap.documents.count)];
+        if (error) {
+            [self _dispatchCount:block value:0];
+            return;
+        }
+        NSInteger count = 0;
+        for (FIRDocumentSnapshot *doc in snap.documents) {
+            if (![doc.data[@"isDeleted"] boolValue]) {
+                count++;
+            }
+        }
+        [self _dispatchCount:block value:count];
     }];
 }
 
@@ -372,7 +386,17 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         q = [q queryWhereField:kFieldActive isEqualTo:@YES];
     }
     return [q addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
-        [self _dispatchCount:block value:(error ? 0 : (NSInteger)snap.documents.count)];
+        if (error) {
+            [self _dispatchCount:block value:0];
+            return;
+        }
+        NSInteger count = 0;
+        for (FIRDocumentSnapshot *doc in snap.documents) {
+            if (![doc.data[@"isDeleted"] boolValue]) {
+                count++;
+            }
+        }
+        [self _dispatchCount:block value:count];
     }];
 }
 

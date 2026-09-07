@@ -40,6 +40,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (class, nonatomic, readonly) UIColor *ppQuickActionAdoption;
 
 @property (class, nonatomic, readonly) UIColor *ppBackground;
+@property (class, nonatomic, readonly) UIColor *ppBackgroundSecondary;
 @property (class, nonatomic, readonly) UIColor *ppSurfaceBase;
 @property (class, nonatomic, readonly) UIColor *ppSurface;
 @property (class, nonatomic, readonly) UIColor *ppSurfaceRaised;

@@ -2,14 +2,249 @@
 //  POSHistoryView.swift
 //  PurePetsAdmin
 //
-//  POS receipts list with date, total, items count, payment method badge.
+//  Sovereign POS Financial Command Ledger & Thermal Vault.
+//  Reinvented from absolute first principles:
+//  - Sovereign Financial Pulse Instrument with live liquidity figure
+//  - Interactive Cash vs Card proportional spectrum bar
+//  - Horizon Time Capsule Ribbon (Today, Yesterday, Week, Month, All Time)
+//  - Living Transaction Dossier Cards with tactile receipt slip styling
+//  - Instant copyable cryptopill receipt IDs with haptic feedback
+//  - Customer Contact Conduit (Direct Call & WhatsApp actions)
+//  - Itemized Specimen Strips with unit ring tags
+//  - Operational Shift Readiness Card (eliminating the low-density whitespace void)
+//  - Surgical Refund Studio with inventory restocking
+//  - High-consequence Void / Cancellation Sheet
+//  - Native Thermal Print Dispatch
 //
 
 import SwiftUI
+import UIKit
 
-// MARK: - Sendable
+// MARK: - Sendable & Identifiable Conformance
 
 extension PPPOSReceipt: @unchecked Sendable {}
+
+extension PPPOSReceipt: Identifiable {
+    public var id: String { receiptID }
+}
+
+// MARK: - WhatsApp Digital Receipt Dispatcher (Direct Chat + PDF in Clipboard)
+
+@MainActor
+enum POSReceiptWhatsAppSender {
+    static func buildReceiptMessage(for receipt: PPPOSReceipt) -> String {
+        let isRTL = Language.isRTL()
+        let formattedID = POSReceiptFormat.receiptID(receipt.receiptID)
+
+        if isRTL {
+            let greeting = !receipt.customerName.isEmpty ? "مرحباً بك يا \(receipt.customerName) في بيور بتس 🐾" : "مرحباً بكم في بيور بتس 🐾"
+            let invoiceSnippet = !formattedID.isEmpty ? " (فاتورة رقم: \(formattedID))" : ""
+
+            return """
+            \(greeting)
+            نسعد دائماً بخدمتكم ونتمنى لأليفكم دوام الصحة والعافية ✨
+
+            مرفق إيصال الشراء الإلكتروني\(invoiceSnippet) 🧾
+            شاكرين ومقدّرين ثقتكم واختياركم بيور بتس 🤍
+
+            بيور بتس | رعاية تليق بأليفك
+            📞 خدمة العملاء: +974 5999 7720
+            🌐 https://pure-pets.net
+            """
+        } else {
+            let greeting = !receipt.customerName.isEmpty ? "Hello \(receipt.customerName), welcome to Pure Pets 🐾" : "Welcome to Pure Pets 🐾"
+            let invoiceSnippet = !formattedID.isEmpty ? " (Invoice #\(formattedID))" : ""
+
+            return """
+            \(greeting)
+            It is our pleasure to serve you, and we wish your pet great health and happiness ✨
+
+            Attached is your electronic receipt\(invoiceSnippet) 🧾
+            Thank you for choosing Pure Pets! 🤍
+
+            Pure Pets | Care Fitting Your Pet
+            📞 Customer Care: +974 5999 7720
+            🌐 https://pure-pets.net
+            """
+        }
+    }
+
+    static func sendReceipt(for receipt: PPPOSReceipt) {
+        let message = buildReceiptMessage(for: receipt)
+
+        // 1. Copy PDF binary data and high-res rendered image to UIPasteboard
+        // NOTE: We deliberately do NOT put plain text in the pasteboard so WhatsApp exclusively pastes the high-res receipt image directly
+        var pasteboardDict: [String: Any] = [:]
+
+        if let pdfData = try? POSReceiptPDFExporter.pdfData(for: receipt) {
+            pasteboardDict["com.adobe.pdf"] = pdfData
+            if let image = POSReceiptPDFExporter.renderPDFPageToImage(pdfData: pdfData) {
+                if let pngData = image.pngData() {
+                    pasteboardDict["public.png"] = pngData
+                }
+                UIPasteboard.general.image = image
+            }
+        }
+
+        if !pasteboardDict.isEmpty {
+            UIPasteboard.general.setItems([pasteboardDict], options: [:])
+        }
+
+        // 2. Feedback
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+        // 3. Format Phone Number
+        var cleanPhone = receipt.customerPhone.filter { $0.isNumber }
+        if !cleanPhone.hasPrefix("974") && cleanPhone.count == 8 {
+            cleanPhone = "974" + cleanPhone
+        }
+
+        // 4. Safely encode message for URL query (escaping + & # properly)
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&#")
+        let encodedText = message.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+
+        // 5. Open direct WhatsApp chat with the customer
+        if !cleanPhone.isEmpty {
+            let nativeAppURL = URL(string: "whatsapp://send?phone=\(cleanPhone)&text=\(encodedText)")
+            let webURL = URL(string: "https://wa.me/\(cleanPhone)?text=\(encodedText)")
+
+            if let nativeAppURL, UIApplication.shared.canOpenURL(nativeAppURL) {
+                UIApplication.shared.open(nativeAppURL)
+            } else if let webURL, UIApplication.shared.canOpenURL(webURL) {
+                UIApplication.shared.open(webURL)
+            }
+        } else {
+            let nativeAppURL = URL(string: "whatsapp://send?text=\(encodedText)")
+            let webURL = URL(string: "https://api.whatsapp.com/send?text=\(encodedText)")
+
+            if let nativeAppURL, UIApplication.shared.canOpenURL(nativeAppURL) {
+                UIApplication.shared.open(nativeAppURL)
+            } else if let webURL, UIApplication.shared.canOpenURL(webURL) {
+                UIApplication.shared.open(webURL)
+            }
+        }
+    }
+}
+
+// MARK: - Date Horizons
+
+enum POSDateHorizon: String, CaseIterable, Identifiable {
+    case today
+    case yesterday
+    case week
+    case month
+    case all
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .today:
+            return Language.get("POS_Horizon_Today", alter: "اليوم")
+        case .yesterday:
+            return Language.get("POS_Horizon_Yesterday", alter: "أمس")
+        case .week:
+            return Language.get("POS_Horizon_Week", alter: "الأسبوع")
+        case .month:
+            return Language.get("POS_Horizon_Month", alter: "الشهر")
+        case .all:
+            return Language.get("POS_Horizon_All", alter: "الكل")
+        }
+    }
+
+    func matches(date: Date?) -> Bool {
+        guard let date else { return self == .all }
+        let calendar = Calendar.current
+        let now = Date()
+
+        switch self {
+        case .today:
+            return calendar.isDateInToday(date)
+        case .yesterday:
+            return calendar.isDateInYesterday(date)
+        case .week:
+            guard let sevenDaysAgo = calendar.date(byAdding: .day, value: -7, to: now) else { return true }
+            return date >= sevenDaysAgo && date <= now
+        case .month:
+            guard let thirtyDaysAgo = calendar.date(byAdding: .day, value: -30, to: now) else { return true }
+            return date >= thirtyDaysAgo && date <= now
+        case .all:
+            return true
+        }
+    }
+}
+
+// MARK: - Payment Method Filters
+
+enum POSPaymentFilter: String, CaseIterable, Identifiable {
+    case all
+    case cash
+    case card
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .all:
+            return Language.get("POS_Filter_All", alter: "الكل")
+        case .cash:
+            return Language.get("POS_Filter_Cash", alter: "نقدي")
+        case .card:
+            return Language.get("POS_Filter_Card", alter: "شبكة")
+        }
+    }
+
+    func matches(method: String) -> Bool {
+        let lower = method.lowercased()
+        switch self {
+        case .all:
+            return true
+        case .cash:
+            return lower.contains("cash")
+        case .card:
+            return lower.contains("card") || lower.contains("qib") || lower.contains("naps") || lower.contains("apple") || lower.contains("pos")
+        }
+    }
+}
+
+// MARK: - Status Filters
+
+enum POSStatusFilter: String, CaseIterable, Identifiable {
+    case all
+    case completed
+    case refunded
+    case cancelled
+
+    var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .all:
+            return Language.get("POS_Filter_All", alter: "الكل")
+        case .completed:
+            return Language.get("POS_Filter_Completed", alter: "مكتمل")
+        case .refunded:
+            return Language.get("POS_Filter_Refunded", alter: "مسترد")
+        case .cancelled:
+            return Language.get("POS_Filter_Cancelled", alter: "ملغي")
+        }
+    }
+
+    func matches(receipt: PPPOSReceipt) -> Bool {
+        let status = receipt.status.lowercased()
+        switch self {
+        case .all:
+            return true
+        case .completed:
+            return (status == "completed" || status.isEmpty) && receipt.refundedAmount <= 0
+        case .refunded:
+            return status == "refunded" || status == "partially_refunded" || receipt.refundedAmount > 0
+        case .cancelled:
+            return status == "cancelled" || status == "voided"
+        }
+    }
+}
 
 // MARK: - POS History ViewModel
 
@@ -18,6 +253,17 @@ final class POSHistoryViewModel: ObservableObject {
     @Published private(set) var receipts: [PPPOSReceipt] = []
     @Published private(set) var isLoading = false
     @Published var errorMessage: String?
+
+    // Filters
+    @Published var selectedHorizon: POSDateHorizon = .today
+    @Published var selectedPaymentFilter: POSPaymentFilter = .all
+    @Published var selectedStatusFilter: POSStatusFilter = .all
+    @Published var searchQuery: String = ""
+
+    // Reversal Operation In-Flight States
+    @Published var isSubmittingReversal: Bool = false
+    @Published var reversalError: String?
+
     private var loadGeneration = UUID()
 
     func load(branchID: String?) {
@@ -27,11 +273,13 @@ final class POSHistoryViewModel: ObservableObject {
         receipts = []
         isLoading = true
         errorMessage = nil
+
         guard !branchID.isEmpty else {
             isLoading = false
             errorMessage = Language.get("BranchContext_SelectBranch_Prompt", alter: "يرجى تحديد الفرع")
             return
         }
+
         PPPOSService.shared().fetchPOSHistory(branchID: branchID) { [weak self] receipts, error in
             Task { @MainActor in
                 guard let self, self.loadGeneration == generation,
@@ -46,18 +294,182 @@ final class POSHistoryViewModel: ObservableObject {
         }
     }
 
-    var totalRevenue: Double {
-        receipts.reduce(0) { $0 + $1.total }
+    // MARK: - Horizon Filtered Set (Authoritative for Telemetry)
+
+    var horizonReceipts: [PPPOSReceipt] {
+        receipts.filter { selectedHorizon.matches(date: $0.createdAt) }
     }
 
-    var totalTransactions: Int { receipts.count }
+    // MARK: - Filtered Receipts (Horizon + Query + Status + Payment)
+
+    var filteredReceipts: [PPPOSReceipt] {
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return horizonReceipts.filter { receipt in
+            // Payment filter
+            guard selectedPaymentFilter.matches(method: receipt.paymentMethod) else { return false }
+
+            // Status filter
+            guard selectedStatusFilter.matches(receipt: receipt) else { return false }
+
+            // Search query filter
+            if !query.isEmpty {
+                let idMatch = receipt.receiptID.lowercased().contains(query)
+                let normIdMatch = POSReceiptFormat.receiptID(receipt.receiptID).lowercased().contains(query)
+                let customerNameMatch = receipt.customerName.lowercased().contains(query)
+                let customerPhoneMatch = receipt.customerPhone.lowercased().contains(query)
+                let cashierMatch = (receipt.cashierName ?? "").lowercased().contains(query)
+                let itemMatch = receipt.items.contains(where: { item in
+                    item.name.lowercased().contains(query) ||
+                    item.itemID.lowercased().contains(query) ||
+                    item.unitRingTags.contains(where: { $0.lowercased().contains(query) })
+                })
+                return idMatch || normIdMatch || customerNameMatch || customerPhoneMatch || cashierMatch || itemMatch
+            }
+
+            return true
+        }
+    }
+
+    // MARK: - Telemetry & Vital Signs (Based on selectedHorizon)
+
+    var totalRevenue: Double {
+        horizonReceipts.reduce(0.0) { sum, receipt in
+            let status = receipt.status.lowercased()
+            if status == "cancelled" || status == "voided" { return sum }
+            let net = max(0.0, receipt.total - receipt.refundedAmount)
+            return sum + net
+        }
+    }
+
+    var cashRevenue: Double {
+        horizonReceipts.reduce(0.0) { sum, receipt in
+            let status = receipt.status.lowercased()
+            if status == "cancelled" || status == "voided" { return sum }
+            guard receipt.paymentMethod.lowercased().contains("cash") else { return sum }
+            return sum + max(0.0, receipt.total - receipt.refundedAmount)
+        }
+    }
+
+    var cardRevenue: Double {
+        horizonReceipts.reduce(0.0) { sum, receipt in
+            let status = receipt.status.lowercased()
+            if status == "cancelled" || status == "voided" { return sum }
+            guard !receipt.paymentMethod.lowercased().contains("cash") else { return sum }
+            return sum + max(0.0, receipt.total - receipt.refundedAmount)
+        }
+    }
+
+    var totalRefunded: Double {
+        horizonReceipts.reduce(0.0) { $0 + $1.refundedAmount }
+    }
+
+    var totalTransactions: Int {
+        horizonReceipts.filter {
+            let st = $0.status.lowercased()
+            return st != "cancelled" && st != "voided"
+        }.count
+    }
 
     var totalItemsSold: Int {
-        receipts.reduce(0) { $0 + $1.items.count }
+        horizonReceipts.reduce(0) { sum, receipt in
+            let st = receipt.status.lowercased()
+            if st == "cancelled" || st == "voided" { return sum }
+            let itemsCount = receipt.items.reduce(0) { iSum, item in
+                iSum + max(0, item.quantity - item.refundedQuantity)
+            }
+            return sum + itemsCount
+        }
+    }
+
+    var averageBasket: Double {
+        guard totalTransactions > 0 else { return 0.0 }
+        return totalRevenue / Double(totalTransactions)
+    }
+
+    var cashRatio: Double {
+        let gross = cashRevenue + cardRevenue
+        guard gross > 0 else { return 0.5 }
+        return cashRevenue / gross
+    }
+
+    // MARK: - Reversal Actions
+
+    @discardableResult
+    func cancelTransaction(
+        receipt: PPPOSReceipt,
+        reason: String
+    ) async -> Bool {
+        isSubmittingReversal = true
+        reversalError = nil
+
+        let result: Result<Bool, Error> = await withCheckedContinuation { continuation in
+            PPPOSService.shared().cancelTransaction(
+                transactionID: receipt.receiptID,
+                expectedStatus: receipt.status.isEmpty ? "completed" : receipt.status,
+                reason: reason
+            ) { success, error in
+                if let error {
+                    continuation.resume(returning: .failure(error))
+                } else {
+                    continuation.resume(returning: .success(success))
+                }
+            }
+        }
+
+        isSubmittingReversal = false
+        switch result {
+        case .success(let ok):
+            if ok {
+                load(branchID: BranchContextStore.shared.activeBranch?.branchID)
+            }
+            return ok
+        case .failure(let error):
+            reversalError = error.localizedDescription
+            return false
+        }
+    }
+
+    @discardableResult
+    func refundTransaction(
+        receipt: PPPOSReceipt,
+        refundAmount: Double,
+        refundItems: [[String: Any]]?,
+        reason: String
+    ) async -> Bool {
+        isSubmittingReversal = true
+        reversalError = nil
+
+        let result: Result<Bool, Error> = await withCheckedContinuation { continuation in
+            PPPOSService.shared().refundTransaction(
+                transactionID: receipt.receiptID,
+                refundAmount: refundAmount,
+                refundItems: refundItems,
+                reason: reason,
+                currency: receipt.currency.isEmpty ? "QAR" : receipt.currency
+            ) { success, error in
+                if let error {
+                    continuation.resume(returning: .failure(error))
+                } else {
+                    continuation.resume(returning: .success(success))
+                }
+            }
+        }
+
+        isSubmittingReversal = false
+        switch result {
+        case .success(let ok):
+            if ok {
+                load(branchID: BranchContextStore.shared.activeBranch?.branchID)
+            }
+            return ok
+        case .failure(let error):
+            reversalError = error.localizedDescription
+            return false
+        }
     }
 }
 
-// MARK: - POS History View
+// MARK: - Sovereign POS History View
 
 struct AdminPOSHistoryView: View {
     let session: AdminSession
@@ -65,7 +477,15 @@ struct AdminPOSHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var branchStore = BranchContextStore.shared
     @StateObject private var viewModel = POSHistoryViewModel()
-    @State private var selectedReceipt: POSCompletedReceipt? = nil
+
+    // Presentation States
+    @State private var selectedDossierReceipt: PPPOSReceipt? = nil
+    @State private var receiptForThermalPrint: POSCompletedReceipt? = nil
+    @State private var receiptForRefund: PPPOSReceipt? = nil
+    @State private var receiptForCancel: PPPOSReceipt? = nil
+    @State private var copyToastText: String? = nil
+    @State private var isShowingFastSell: Bool = false
+    @State private var isSearchActive: Bool = false
 
     init(session: AdminSession, onDismiss: (() -> Void)? = nil) {
         self.session = session
@@ -77,65 +497,226 @@ struct AdminPOSHistoryView: View {
             AdminSurface.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                dossierHeaderView
-                summaryHeader
-                Divider().background(AdminSurface.hairline)
+                // 1. Sovereign Navigation Header with Vault Connectivity Beacon
+                navigationHeaderView
 
-                if viewModel.isLoading {
-                    Spacer()
-                    ProgressView().tint(AdminSurface.primary).scaleEffect(1.2)
-                    Spacer()
-                } else if viewModel.receipts.isEmpty {
-                    Spacer()
-                    AdminEmptyStateView(
-                        symbol: "receipt.fill",
-                        title: Language.get("POS_History_Empty", alter: "لا توجد سجلات بيع"),
-                        subtitle: Language.get("POS_History_Empty_Sub", alter: "ستظهر المعاملات المكتملة هنا")
-                    )
-                    Spacer()
-                } else if let error = viewModel.errorMessage {
-                    Spacer()
-                    AdminErrorBanner(message: error, retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) })
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                    Spacer()
-                } else {
-                    receiptsList
+                // 2. Compact Multi-Branch Switcher Bar
+                PPAdminBranchSwitcherBar(style: .compact)
+                    .padding(.horizontal, AdminSpacing.base)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
+
+                // 3. Scrollable Financial Command Ledger
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.md) {
+                        // Sovereign Financial Pulse Instrument
+                        financialPulseInstrument
+
+                        // Faceted Search & Filter Intelligence Matrix
+                        filterMatrixView
+
+                        // Transaction Ledger Cards
+                        ledgerSection
+
+                        // Operational Shift Readiness Card (Eliminates low-density empty void)
+                        if viewModel.filteredReceipts.count < 3 && !viewModel.isLoading {
+                            shiftReadinessCard
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, AdminSpacing.sm)
                 }
+                .refreshable {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                }
+            }
+
+            // Copy Toast Notification
+            if let toast = copyToastText {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                        Text(toast)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.black.opacity(0.85), in: Capsule())
+                    .padding(.bottom, 32)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .zIndex(100)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(item: $selectedReceipt) { receipt in
-            POSCompletedReceiptSheet(receipt: receipt, notice: nil)
+        .onAppear {
+            viewModel.load(branchID: branchStore.activeBranch?.branchID)
         }
-        .onAppear { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
         .onChange(of: branchStore.activeBranch?.branchID) { branchID in
             viewModel.load(branchID: branchID)
         }
+        // Thermal Receipt Sheet
+        .sheet(item: $receiptForThermalPrint) { completedReceipt in
+            POSCompletedReceiptSheet(receipt: completedReceipt, notice: nil)
+        }
+        // Transaction Dossier Modal
+        .sheet(item: $selectedDossierReceipt) { receipt in
+            POSTransactionDossierSheet(
+                receipt: receipt,
+                onPrint: {
+                    selectedDossierReceipt = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
+                    }
+                },
+                onRefund: {
+                    selectedDossierReceipt = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        receiptForRefund = receipt
+                    }
+                },
+                onCancel: {
+                    selectedDossierReceipt = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        receiptForCancel = receipt
+                    }
+                },
+                onCopied: { text in
+                    showToast(text)
+                }
+            )
+        }
+        // Refund Studio Sheet
+        .sheet(item: $receiptForRefund) { receipt in
+            POSRefundStudioSheet(
+                receipt: receipt,
+                viewModel: viewModel,
+                onSuccess: {
+                    receiptForRefund = nil
+                    showToast(Language.get("POS_Refund_Success_Title", alter: "تم الاسترداد بنجاح"))
+                }
+            )
+        }
+        // Cancel / Void Confirmation Sheet
+        .sheet(item: $receiptForCancel) { receipt in
+            POSCancelConfirmationSheet(
+                receipt: receipt,
+                viewModel: viewModel,
+                onSuccess: {
+                    receiptForCancel = nil
+                    showToast(Language.get("POS_Cancel_Success_Title", alter: "تم إلغاء المعاملة"))
+                }
+            )
+        }
+        // Fast Sell Launch Sheet
+        .sheet(isPresented: $isShowingFastSell) {
+            AdminPOSFastSellView(session: session) {
+                isShowingFastSell = false
+                viewModel.load(branchID: branchStore.activeBranch?.branchID)
+            }
+        }
     }
 
-    // MARK: - Sovereign Navigation Bar
+    // MARK: - Navigation Header with Vault Beacon
 
-    private var dossierHeaderView: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xs) {
-            AdminSovereignNavigationBar(
-                title: Language.get("POS_History_Title", alter: "سجل مبيعات نقطة البيع"),
-                subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة العمليات"),
-                onBack: {
+    private var navigationHeaderView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                // Back Button (RTL Safe)
+                Button(action: {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
                     if let onDismiss {
                         onDismiss()
                     } else {
                         dismiss()
                     }
+                }) {
+                    Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 42, height: 42)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
                 }
-            ) {
+                .buttonStyle(.plain)
+
+                // Title & Vault Connected Beacon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
+                        .font(AdminType.title3)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(uiColor: .systemGreen))
+                            .frame(width: 7, height: 7)
+                            .shadow(color: Color(uiColor: .systemGreen).opacity(0.6), radius: 4, x: 0, y: 0)
+
+                        Text(Language.get("POS_Vault_LiveStatus", alter: "متصل بالخزينة"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(Color(uiColor: .systemGreen))
+
+                        if let branch = branchStore.activeBranch?.localizedName() {
+                            Text("•")
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(branch)
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Search Toggle Button
+                Button {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        isSearchActive.toggle()
+                    }
+                } label: {
+                    Image(systemName: isSearchActive ? "magnifyingglass.circle.fill" : "magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(isSearchActive ? Color(uiColor: .ppPrimary) : AdminSurface.primaryText)
+                        .frame(width: 42, height: 42)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                        )
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                }
+                .buttonStyle(.plain)
+
+                // Refresh Button
                 if viewModel.isLoading {
-                    ProgressView().tint(AdminSurface.primary)
+                    ProgressView()
+                        .tint(AdminSurface.primary)
+                        .scaleEffect(0.9)
+                        .frame(width: 42, height: 42)
                 } else {
-                    Button(action: { viewModel.load(branchID: branchStore.activeBranch?.branchID) }) {
+                    Button(action: {
+                        let impact = UIImpactFeedbackGenerator(style: .medium)
+                        impact.impactOccurred()
+                        viewModel.load(branchID: branchStore.activeBranch?.branchID)
+                    }) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(AdminSurface.primaryText)
-                            .frame(width: 44, height: 44)
+                            .frame(width: 42, height: 42)
                             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             .overlay(
                                 RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -147,180 +728,1703 @@ struct AdminPOSHistoryView: View {
                     .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
                 }
             }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.top, AdminSpacing.sm)
+            .padding(.bottom, AdminSpacing.xs)
 
             if let error = viewModel.errorMessage {
-                AdminErrorBanner(message: error, retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) })
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 4)
+                AdminErrorBanner(
+                    message: error,
+                    retry: { viewModel.load(branchID: branchStore.activeBranch?.branchID) }
+                )
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, 4)
             }
         }
     }
 
-    private var summaryHeader: some View {
-        HStack(spacing: AdminSpacing.md) {
-            SummaryChip(
-                label: Language.get("POS_History_Revenue", alter: "\u{0627}\u{0644}\u{0625}\u{064a}\u{0631}\u{0627}\u{062f}\u{0627}\u{062a}"),
-                value: formatCurrency(viewModel.totalRevenue),
-                symbol: "dollarsign.circle.fill",
-                color: .green
-            )
-            SummaryChip(
-                label: Language.get("POS_History_Transactions", alter: "\u{0627}\u{0644}\u{0645}\u{0639}\u{0627}\u{0645}\u{0644}\u{0627}\u{062a}"),
-                value: "\(viewModel.totalTransactions)",
-                symbol: "receipt.fill",
-                color: AdminSurface.primary
-            )
-            SummaryChip(
-                label: Language.get("POS_History_Items", alter: "\u{0627}\u{0644}\u{0645}\u{0646}\u{062a}\u{062c}\u{0627}\u{062a}"),
-                value: "\(viewModel.totalItemsSold)",
-                symbol: "shippingbox.fill",
-                color: .blue
-            )
-        }
-        .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.vertical, AdminSpacing.md)
-    }
+    // MARK: - Sovereign Financial Pulse Instrument
 
-    private var receiptsList: some View {
-        ScrollView {
-            LazyVStack(spacing: AdminSpacing.sm) {
-                ForEach(viewModel.receipts, id: \.receiptID) { receipt in
-                    Button {
-                        selectedReceipt = POSCompletedReceipt(receipt: receipt)
-                    } label: {
-                        ReceiptCard(receipt: receipt)
-                    }
-                    .buttonStyle(.plain)
+    private var financialPulseInstrument: some View {
+        VStack(spacing: AdminSpacing.sm) {
+            // Horizon Time Capsule Ribbon
+            horizonPillSelector
+
+            // Hero Liquidity Figure & Activity Counter
+            VStack(spacing: 4) {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+                    Text(Language.get("POS_Telemetry_NetRevenue", alter: "صافي الإيرادات"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(verbatim: viewModel.totalRevenue.englishDigits(decimals: 2))
+                        .font(AdminType.largeTitle)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.6)
+                        .lineLimit(1)
+
+                    Text(Language.get("QAR", alter: "ر.ق"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .systemGreen))
+                        .frame(width: 6, height: 6)
+                    Text(String(format: Language.get("POS_Telemetry_CompletedSales_Fmt", alter: "%@ عملية معتمدة"), viewModel.totalTransactions.englishDigits))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
                 }
             }
-            .padding(.horizontal, AdminSpacing.screenMargin)
-            .padding(.vertical, AdminSpacing.sm)
-        }
-        .refreshable {
-            viewModel.load(branchID: branchStore.activeBranch?.branchID)
-            try? await Task.sleep(nanoseconds: 300_000_000)
-        }
-    }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
 
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "QAR"
-        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
-    }
-}
+            // Dual-Channel Liquidity Splitter Spectrum Bar
+            spectrumBarView
 
-// MARK: - Subviews
+            Divider()
+                .background(AdminSurface.hairline)
+                .padding(.vertical, 2)
 
-private struct SummaryChip: View {
-    let label: String
-    let value: String
-    let symbol: String
-    let color: Color
+            // Micro-Telemetry Dial Ribbon
+            HStack(spacing: 8) {
+                telemetryDial(
+                    symbol: "cart.fill",
+                    color: Color(uiColor: .systemTeal),
+                    title: Language.get("POS_Telemetry_AvgBasket", alter: "متوسط السلة"),
+                    value: viewModel.averageBasket.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                )
 
-    var body: some View {
-        HStack(spacing: AdminSpacing.sm) {
-            Image(systemName: symbol)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(color)
-                .frame(width: 32, height: 32)
-                .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                telemetryDial(
+                    symbol: "shippingbox.fill",
+                    color: Color(uiColor: .systemBlue),
+                    title: Language.get("POS_Telemetry_UnitsSold", alter: "القطع المباعة"),
+                    value: "\(viewModel.totalItemsSold.englishDigits) " + Language.get("POS_Items", alter: "قطع")
+                )
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value)
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(label)
-                    .font(AdminType.caption2)
-                    .foregroundColor(AdminSurface.secondaryText)
+                telemetryDial(
+                    symbol: "arrow.uturn.backward.circle.fill",
+                    color: viewModel.totalRefunded > 0 ? Color(uiColor: .systemOrange) : Color.gray,
+                    title: Language.get("POS_Telemetry_Refunds", alter: "المستردات"),
+                    value: viewModel.totalRefunded.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                )
             }
         }
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 4)
+    }
+
+    // MARK: - Horizon Time Capsule Ribbon
+
+    private var horizonPillSelector: some View {
+        HStack(spacing: 4) {
+            ForEach(POSDateHorizon.allCases, id: \.self) { horizon in
+                let isSelected = viewModel.selectedHorizon == horizon
+                Button {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        viewModel.selectedHorizon = horizon
+                    }
+                } label: {
+                    Text(horizon.localizedTitle)
+                        .font(isSelected ? AdminType.captionBold : AdminType.caption)
+                        .foregroundColor(isSelected ? .white : AdminSurface.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            isSelected ?
+                                AnyView(Capsule().fill(Color(uiColor: .ppPrimary))) :
+                                AnyView(EmptyView())
+                        )
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Color(uiColor: .ppBackgroundSecondary), in: Capsule())
+    }
+
+    // MARK: - Cash vs Card Spectrum Split Bar
+
+    private var spectrumBarView: some View {
+        VStack(spacing: 8) {
+            GeometryReader { geo in
+                let totalWidth = geo.size.width
+                let cashRatio = CGFloat(viewModel.cashRatio)
+                let cashWidth = max(8, min(totalWidth - 8, totalWidth * cashRatio))
+                let cardWidth = max(8, totalWidth - cashWidth)
+
+                HStack(spacing: 3) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(uiColor: .systemGreen))
+                        .frame(width: viewModel.totalRevenue > 0 ? cashWidth : totalWidth * 0.5, height: 9)
+
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color(uiColor: .systemIndigo))
+                        .frame(width: viewModel.totalRevenue > 0 ? cardWidth : totalWidth * 0.5, height: 9)
+                }
+            }
+            .frame(height: 9)
+
+            // Interactive Split Filter Badges
+            HStack {
+                Button {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    withAnimation(.spring()) {
+                        viewModel.selectedPaymentFilter = (viewModel.selectedPaymentFilter == .cash) ? .all : .cash
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .systemGreen))
+                            .frame(width: 7, height: 7)
+                        Text(Language.get("POS_Telemetry_Cash", alter: "نقدي"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(verbatim: viewModel.cashRevenue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(viewModel.selectedPaymentFilter == .cash ? Color(uiColor: .systemGreen) : AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        viewModel.selectedPaymentFilter == .cash ? Color(uiColor: .systemGreen).opacity(0.12) : Color.clear,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    withAnimation(.spring()) {
+                        viewModel.selectedPaymentFilter = (viewModel.selectedPaymentFilter == .card) ? .all : .card
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .systemIndigo))
+                            .frame(width: 7, height: 7)
+                        Text(Language.get("POS_Telemetry_Card", alter: "شبكة"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(verbatim: viewModel.cardRevenue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(viewModel.selectedPaymentFilter == .card ? Color(uiColor: .systemIndigo) : AdminSurface.primaryText)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        viewModel.selectedPaymentFilter == .card ? Color(uiColor: .systemIndigo).opacity(0.12) : Color.clear,
+                        in: Capsule()
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func telemetryDial(
+        symbol: String,
+        color: Color,
+        title: String,
+        value: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                Image(systemName: symbol)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Text(verbatim: value)
+                .font(PPBrandFont.bold(size: 13, relativeTo: .subheadline))
+                .foregroundColor(AdminSurface.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AdminSpacing.md)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
-        .accessibilityElement(children: .combine)
+        .padding(8)
+        .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.7), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Faceted Filter Matrix View
+
+    private var filterMatrixView: some View {
+        VStack(spacing: AdminSpacing.xs) {
+            // Expandable Search Bar
+            if isSearchActive || !viewModel.searchQuery.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    TextField(
+                        Language.get("POS_Search_Placeholder", alter: "ابحث برقم الإيصال، اسم العميل، الهاتف، أو الصنف..."),
+                        text: $viewModel.searchQuery
+                    )
+                    .font(AdminType.body)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                    if !viewModel.searchQuery.isEmpty {
+                        Button {
+                            viewModel.searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // Filter Chips Scrollable Row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    // Payment Filters
+                    ForEach(POSPaymentFilter.allCases, id: \.self) { filter in
+                        let isSelected = viewModel.selectedPaymentFilter == filter
+                        Button {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            viewModel.selectedPaymentFilter = filter
+                        } label: {
+                            HStack(spacing: 4) {
+                                if filter == .cash {
+                                    Image(systemName: "banknote.fill").font(.system(size: 10))
+                                } else if filter == .card {
+                                    Image(systemName: "creditcard.fill").font(.system(size: 10))
+                                }
+                                Text(filter.localizedTitle)
+                                    .font(AdminType.caption)
+                            }
+                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                isSelected ?
+                                    Color(uiColor: .ppPrimary) :
+                                    Color(uiColor: .ppBackgroundSecondary),
+                                in: Capsule()
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Divider().frame(height: 16)
+
+                    // Status Filters
+                    ForEach(POSStatusFilter.allCases, id: \.self) { filter in
+                        let isSelected = viewModel.selectedStatusFilter == filter
+                        Button {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            viewModel.selectedStatusFilter = filter
+                        } label: {
+                            Text(filter.localizedTitle)
+                                .font(AdminType.caption)
+                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    isSelected ?
+                                        Color(uiColor: .ppPrimary) :
+                                        Color(uiColor: .ppBackgroundSecondary),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    // MARK: - Ledger Cards Section
+
+    @ViewBuilder
+    private var ledgerSection: some View {
+        if viewModel.isLoading && viewModel.receipts.isEmpty {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .tint(AdminSurface.primary)
+                    .scaleEffect(1.2)
+                    .padding(.top, 30)
+                Text(Language.get("Loading", alter: "جاري التحميل..."))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 30)
+        } else if viewModel.filteredReceipts.isEmpty {
+            AdminEmptyStateView(
+                symbol: "receipt.fill",
+                title: Language.get("POS_History_Empty", alter: "لا توجد معاملات بيع"),
+                subtitle: viewModel.searchQuery.isEmpty ?
+                    Language.get("POS_History_Empty_Sub", alter: "ستظهر المعاملات المكتملة هنا فور إتمامها") :
+                    Language.get("POS_CatalogEmptyHint", alter: "غيّر عبارة البحث أو الفلاتر لعرض النتائج")
+            )
+            .padding(.top, 16)
+        } else {
+            LazyVStack(spacing: AdminSpacing.sm) {
+                ForEach(viewModel.filteredReceipts, id: \.receiptID) { receipt in
+                    POSTransactionCard(
+                        receipt: receipt,
+                        onTap: {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            selectedDossierReceipt = receipt
+                        },
+                        onPrint: {
+                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                            impact.impactOccurred()
+                            receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
+                        },
+                        onCopyID: { id in
+                            UIPasteboard.general.string = id
+                            let notif = UINotificationFeedbackGenerator()
+                            notif.notificationOccurred(.success)
+                            showToast(Language.get("POS_Receipt_Copy_Success", alter: "تم نسخ رقم الإيصال إلى الحافظة"))
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Operational Shift Readiness Card (Eliminates Low-Density Whitespace Void)
+
+    private var shiftReadinessCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "storefront.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(Color(uiColor: .ppPrimary))
+                    .frame(width: 48, height: 48)
+                    .background(Color(uiColor: .ppPrimary).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("POS_Shift_Summary_Title", alter: "حالة وردية المبيعات"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.get("POS_Shift_Summary_Desc", alter: "نقطة البيع جاهزة، والأسعار وعهد المخزون محدثة ومربوطة بالفرع الحالي."))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+            }
+
+            Button {
+                let impact = UIImpactFeedbackGenerator(style: .medium)
+                impact.impactOccurred()
+                isShowingFastSell = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text(Language.get("POS_Shift_StartSale", alter: "تسجيل عملية بيع جديدة"))
+                        .font(AdminType.headline)
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(Color(uiColor: .ppPrimary), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+    }
+
+    private func showToast(_ text: String) {
+        withAnimation(.spring()) {
+            copyToastText = text
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+            withAnimation(.easeOut) {
+                if copyToastText == text {
+                    copyToastText = nil
+                }
+            }
+        }
     }
 }
 
-private struct ReceiptCard: View {
+// MARK: - Living Transaction Dossier Card
+
+private struct POSTransactionCard: View {
     let receipt: PPPOSReceipt
+    let onTap: () -> Void
+    let onPrint: () -> Void
+    let onCopyID: (String) -> Void
 
     var body: some View {
-        VStack(spacing: AdminSpacing.sm) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(POSReceiptFormat.receiptID(receipt.receiptID))
-                        .font(AdminType.headline.monospaced())
-                        .foregroundColor(AdminSurface.primaryText)
+        Button(action: onTap) {
+            VStack(spacing: AdminSpacing.sm) {
+                // 1. Top Header: Cryptopill Slug + Timestamp + Status Badge
+                HStack(alignment: .center) {
+                    // Monospaced Cryptopill Slug with Tap-to-Copy
+                    Button {
+                        onCopyID(receipt.receiptID)
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    // Timestamp
                     if let date = receipt.createdAt {
                         Text(formattedDate(date))
                             .font(AdminType.caption2)
                             .foregroundColor(AdminSurface.secondaryText)
                     }
-                }
-                Spacer()
-                paymentMethodBadge
-            }
 
-            HStack {
-                Label(
-                    "\(receipt.items.count) \(Language.get("POS_Items", alter: "\u{0639}\u{0646}\u{0627}\u{0635}\u{0631}"))",
-                    systemImage: "shippingbox.fill"
-                )
-                .font(AdminType.captionBold)
-                .foregroundColor(AdminSurface.secondaryText)
-                Spacer()
-                Text(formatCurrency(receipt.total))
-                    .font(AdminType.title3)
-                    .foregroundColor(AdminSurface.primaryText)
+                    // Status Badge
+                    statusBadge
+                }
+
+                // 2. Customer Contact Conduit (Direct Call & WhatsApp)
+                if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.crop.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+
+                        Text(receipt.customerName.isEmpty ? receipt.customerPhone : receipt.customerName)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        if !receipt.customerPhone.isEmpty {
+                            // Call Action
+                            Button {
+                                let clean = receipt.customerPhone.filter { $0.isNumber || $0 == "+" }
+                                if let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) {
+                                    UIApplication.shared.open(url)
+                                }
+                            } label: {
+                                Image(systemName: "phone.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(uiColor: .systemGreen))
+                            }
+                            .buttonStyle(.plain)
+
+                            // WhatsApp Action
+                            Button {
+                                POSReceiptWhatsAppSender.sendReceipt(for: receipt)
+                            } label: {
+                                Image(systemName: "message.circle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(Color(uiColor: .systemTeal))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                // 3. Purchased Items Specimen Strip
+                if !receipt.items.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bag.fill")
+                            .font(.system(size: 11))
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        Text(itemsPreviewText)
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+
+                        Spacer()
+
+                        if let cashier = receipt.cashierName, !cashier.isEmpty {
+                            Text(verbatim: String(format: Language.get("POS_Card_Cashier", alter: "الكاشير: %@"), cashier))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+
+                Divider().background(AdminSurface.hairline)
+
+                // 4. Bottom Line: Payment Badge + Items Count + Total + Thermal Print
+                HStack(alignment: .center, spacing: 8) {
+                    paymentMethodBadge
+
+                    Label(
+                        String(format: Language.get("POS_Card_Items_Count", alter: "%@ عناصر"), receipt.items.count.englishDigits),
+                        systemImage: "shippingbox.fill"
+                    )
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                    Spacer()
+
+                    // Grand Total Display
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            .font(PPBrandFont.bold(size: 19, relativeTo: .subheadline))
+                            .foregroundColor(receiptIsCancelled ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .monospacedDigit()
+
+                        if receipt.refundedAmount > 0 {
+                            Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("POS_Status_Refunded", alter: "مسترد"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .systemOrange))
+                        }
+                    }
+
+                    // Direct Print Button
+                    Button(action: onPrint) {
+                        Image(systemName: "printer.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .frame(width: 34, height: 34)
+                            .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "طباعة"))
+                }
             }
+            .padding(AdminSpacing.base)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+            )
+            .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
         }
-        .padding(AdminSpacing.base)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
-        .accessibilityElement(children: .combine)
+        .buttonStyle(.plain)
+    }
+
+    private var receiptIsCancelled: Bool {
+        let st = receipt.status.lowercased()
+        return st == "cancelled" || st == "voided"
+    }
+
+    private var itemsPreviewText: String {
+        let names = receipt.items.prefix(2).map { "\($0.name) × \($0.quantity.englishDigits)" }
+        let joined = names.joined(separator: " • ")
+        if receipt.items.count > 2 {
+            let extra = (receipt.items.count - 2).englishDigits
+            return "\(joined) +\(extra)"
+        }
+        return joined
+    }
+
+    private var statusBadge: some View {
+        let status = receipt.status.lowercased()
+        if status == "cancelled" || status == "voided" {
+            return AdminStatusBadge(
+                text: Language.get("POS_Status_Cancelled", alter: "ملغي"),
+                status: .error
+            )
+        } else if status == "refunded" {
+            return AdminStatusBadge(
+                text: Language.get("POS_Status_Refunded", alter: "مسترد بالكامل"),
+                status: .warning
+            )
+        } else if status == "partially_refunded" || receipt.refundedAmount > 0 {
+            return AdminStatusBadge(
+                text: Language.get("POS_Status_PartiallyRefunded", alter: "مسترد جزئياً"),
+                status: .warning
+            )
+        } else {
+            return AdminStatusBadge(
+                text: Language.get("POS_Status_Completed", alter: "مكتمل"),
+                status: .success
+            )
+        }
     }
 
     private var paymentMethodBadge: some View {
         let method = receipt.paymentMethod.lowercased()
         let text = POSReceiptFormat.paymentMethod(receipt.paymentMethod)
         let status: AdminStatusBadge.Status
-        switch method {
-        case "cash":
+        if method.contains("cash") {
             status = .success
-        case "card", "qib":
+        } else if method.contains("card") || method.contains("qib") || method.contains("pos") {
             status = .info
-        case "cheque", "fawry":
+        } else if method.contains("cheque") || method.contains("fawry") {
             status = .warning
-        case "bank_transfer":
-            status = .info
-        default:
+        } else {
             status = .neutral
         }
-        return AdminStatusBadge(
-            text: text,
-            status: status
-        )
-    }
-
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencyCode = "QAR"
-        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
+        return AdminStatusBadge(text: text, status: status)
     }
 
     private func formattedDate(_ date: Date) -> String {
+        let calendar = Calendar.current
+        let formatter = DateFormatter()
+        if calendar.isDateInToday(date) {
+            formatter.timeStyle = .short
+            formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
+            return formatter.string(from: date)
+        } else {
+            formatter.dateStyle = .short
+            formatter.timeStyle = .short
+            formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
+            return formatter.string(from: date)
+        }
+    }
+}
+
+// MARK: - Transaction Dossier Sheet (Full Inspection & Operational Workflows)
+
+struct POSTransactionDossierSheet: View {
+    let receipt: PPPOSReceipt
+    let onPrint: () -> Void
+    let onRefund: () -> Void
+    let onCancel: () -> Void
+    let onCopied: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                dossierHeader
+
+                Divider().background(AdminSurface.hairline)
+
+                // Scrollable Content
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.md) {
+                        // Cancellation or Refund Banner
+                        if isCancelled {
+                            cancellationBanner
+                        } else if isRefunded {
+                            refundBanner
+                        }
+
+                        // Customer Contact Conduit
+                        if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
+                            customerConduitCard
+                        }
+
+                        // Itemized Products Section
+                        itemizedProductsSection
+
+                        // Financial Breakdown Section
+                        financialBreakdownSection
+
+                        // Operator Metadata Section
+                        metadataSection
+                    }
+                    .padding(AdminSpacing.screenMargin)
+                }
+
+                // Command Action Bar
+                commandActionBar
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var isCancelled: Bool {
+        let st = receipt.status.lowercased()
+        return st == "cancelled" || st == "voided"
+    }
+
+    private var isRefunded: Bool {
+        receipt.status.lowercased() == "refunded" || receipt.status.lowercased() == "partially_refunded" || receipt.refundedAmount > 0
+    }
+
+    private var isFullyRefunded: Bool {
+        receipt.status.lowercased() == "refunded" || (receipt.refundedAmount >= receipt.total && receipt.total > 0)
+    }
+
+    private var dossierHeader: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Language.get("POS_Dossier_Title", alter: "ملف المعاملة المالية"))
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                HStack(spacing: 6) {
+                    Text(verbatim: POSReceiptFormat.receiptID(receipt.receiptID))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+
+                    if let branch = receipt.branchName ?? BranchContextStore.shared.activeBranch?.localizedName() {
+                        Text("•")
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(branch)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+            }
+
+            Spacer()
+
+            AdminSquircleCloseButton {
+                dismiss()
+            }
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.vertical, AdminSpacing.md)
+    }
+
+    // MARK: - Cancellation & Refund Banners
+
+    private var cancellationBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "xmark.octagon.fill")
+                .font(.system(size: 20))
+                .foregroundColor(Color(uiColor: .systemRed))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("POS_Status_Cancelled", alter: "معاملة ملغاة ومبطلة"))
+                    .font(AdminType.headline)
+                    .foregroundColor(Color(uiColor: .systemRed))
+
+                if let reason = receipt.cancellationReason, !reason.isEmpty {
+                    Text(verbatim: reason)
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+
+                if let by = receipt.cancelledBy, !by.isEmpty {
+                    Text(verbatim: "بواسطة: \(by)")
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(uiColor: .systemRed).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(uiColor: .systemRed).opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    private var refundBanner: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "arrow.uturn.backward.circle.fill")
+                .font(.system(size: 20))
+                .foregroundColor(Color(uiColor: .systemOrange))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("POS_Status_PartiallyRefunded", alter: "معاملة مستردة"))
+                    .font(AdminType.headline)
+                    .foregroundColor(Color(uiColor: .systemOrange))
+
+                Text(verbatim: "المبلغ المسترد: \(receipt.refundedAmount.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                if let reason = receipt.refundReason, !reason.isEmpty {
+                    Text(verbatim: "السبب: \(reason)")
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+            }
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(uiColor: .systemOrange).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color(uiColor: .systemOrange).opacity(0.3), lineWidth: 1)
+        )
+    }
+
+    // MARK: - Customer Conduit Card
+
+    private var customerConduitCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Dossier_Customer_Section", alter: "بيانات العميل"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            HStack(spacing: 12) {
+                Image(systemName: "person.circle.fill")
+                    .font(.system(size: 34))
+                    .foregroundColor(Color(uiColor: .ppPrimary))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    if !receipt.customerName.isEmpty {
+                        Text(receipt.customerName)
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+                    }
+                    if !receipt.customerPhone.isEmpty {
+                        Text(verbatim: receipt.customerPhone)
+                            .font(AdminType.caption.monospaced())
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Spacer()
+
+                // Call & WhatsApp Actions
+                if !receipt.customerPhone.isEmpty {
+                    HStack(spacing: 8) {
+                        Button {
+                            let clean = receipt.customerPhone.filter { $0.isNumber || $0 == "+" }
+                            if let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) {
+                                UIApplication.shared.open(url)
+                            }
+                        } label: {
+                            Image(systemName: "phone.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(Color(uiColor: .systemGreen))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button {
+                            POSReceiptWhatsAppSender.sendReceipt(for: receipt)
+                        } label: {
+                            Image(systemName: "message.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(Color(uiColor: .systemTeal))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Itemized Products Section
+
+    private var itemizedProductsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Dossier_Items_Section", alter: "العناصر المشتراة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            VStack(spacing: 8) {
+                ForEach(0..<receipt.items.count, id: \.self) { idx in
+                    let item = receipt.items[idx]
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.name.isEmpty ? Language.get("POS_Receipt_UnnamedItem", alter: "عنصر") : item.name)
+                                .font(AdminType.body)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            HStack(spacing: 6) {
+                                Text(verbatim: "\(item.quantity.englishDigits) × \(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق"))")
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+
+                                if item.refundedQuantity > 0 {
+                                    Text(verbatim: "(\(item.refundedQuantity.englishDigits) مسترد)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(Color(uiColor: .systemOrange))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color(uiColor: .systemOrange).opacity(0.1), in: Capsule())
+                                }
+                            }
+
+                            // Unit Ring Tags
+                            if !item.unitRingTags.isEmpty {
+                                HStack(spacing: 4) {
+                                    ForEach(item.unitRingTags, id: \.self) { tag in
+                                        Text(verbatim: "#\(tag)")
+                                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                                            .foregroundColor(AdminSurface.secondaryText)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 4))
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        let lineTotal = item.lineTotal > 0 ? item.lineTotal : (item.price * Double(item.quantity))
+                        Text(verbatim: lineTotal.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+                            .monospacedDigit()
+                    }
+                    .padding(.vertical, 4)
+
+                    if idx < receipt.items.count - 1 {
+                        Divider().background(AdminSurface.hairline)
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+            )
+        }
+    }
+
+    // MARK: - Financial Breakdown Section
+
+    private var financialBreakdownSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Dossier_Financial_Section", alter: "التفاصيل المالية"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            VStack(spacing: 10) {
+                summaryRow(
+                    label: Language.get("POS_Subtotal", alter: "المجموع الفرعي"),
+                    value: (receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount).englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                )
+
+                if receipt.discount > 0 {
+                    summaryRow(
+                        label: Language.get("POS_Discount", alter: "الخصم"),
+                        value: "−" + receipt.discount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                        valueColor: Color(uiColor: .systemGreen)
+                    )
+                }
+
+                if receipt.paymentMethod.lowercased().contains("cash") {
+                    if receipt.cashReceived > 0 {
+                        summaryRow(
+                            label: Language.get("POS_CashReceived", alter: "المستلم نقداً"),
+                            value: receipt.cashReceived.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                        )
+                    }
+                    if receipt.changeDue > 0 {
+                        summaryRow(
+                            label: Language.get("POS_ChangeDue", alter: "المتبقي للعميل"),
+                            value: receipt.changeDue.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"),
+                            valueColor: Color(uiColor: .systemBlue)
+                        )
+                    }
+                }
+
+                Divider().background(AdminSurface.hairline)
+
+                // Grand Total
+                HStack {
+                    Text(Language.get("POS_GrandTotal", alter: "الإجمالي النهائي"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Spacer()
+
+                    Text(verbatim: receipt.total.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                        .font(PPBrandFont.bold(size: 22, relativeTo: .title2))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .monospacedDigit()
+                }
+
+                if receipt.refundedAmount > 0 {
+                    HStack {
+                        Text(Language.get("POS_Telemetry_Refunds", alter: "إجمالي المسترد"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(uiColor: .systemOrange))
+
+                        Spacer()
+
+                        Text(verbatim: "−" + receipt.refundedAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                            .font(AdminType.headline)
+                            .foregroundColor(Color(uiColor: .systemOrange))
+                            .monospacedDigit()
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+            )
+        }
+    }
+
+    private func summaryRow(label: String, value: String, valueColor: Color = AdminSurface.primaryText) -> some View {
+        HStack {
+            Text(label)
+                .font(AdminType.body)
+                .foregroundColor(AdminSurface.secondaryText)
+            Spacer()
+            Text(verbatim: value)
+                .font(AdminType.body)
+                .foregroundColor(valueColor)
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: - Metadata Section
+
+    private var metadataSection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(Language.get("POS_Dossier_Date", alter: "وقت المعاملة"))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                if let date = receipt.createdAt {
+                    Text(formattedFullDate(date))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+            }
+
+            if let cashier = receipt.cashierName, !cashier.isEmpty {
+                HStack {
+                    Text("كاشير العملية")
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                    Text(cashier)
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+            }
+
+            HStack {
+                Text("معرّف المعاملة الخادمي")
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = receipt.receiptID
+                    onCopied(receipt.receiptID)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(verbatim: String(receipt.receiptID.prefix(16)) + "...")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 10))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .background(Color(uiColor: .ppBackgroundSecondary).opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: - Command Action Bar
+
+    private var commandActionBar: some View {
+        VStack(spacing: 10) {
+            Divider().background(AdminSurface.hairline)
+
+            HStack(spacing: 10) {
+                // Thermal Receipt Button
+                Button(action: onPrint) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "printer.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+
+                // Refund Button
+                Button(action: onRefund) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("POS_Action_Refund", alter: "استرداد"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(isCancelled || isFullyRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color(uiColor: .systemOrange).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isCancelled || isFullyRefunded)
+
+                // Cancel / Void Button
+                Button(action: onCancel) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                        Text(Language.get("POS_Action_Cancel", alter: "إلغاء"))
+                            .font(AdminType.captionBold)
+                    }
+                    .foregroundColor(isCancelled || isRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemRed))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .background(Color(uiColor: .systemRed).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(isCancelled || isRefunded)
+            }
+            .padding(.horizontal, AdminSpacing.screenMargin)
+            .padding(.bottom, 14)
+        }
+        .background(AdminSurface.surface)
+    }
+
+    private func formattedFullDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.locale = Locale(identifier: Language.currentLanguageCode() == "ar" ? "ar" : "en")
+        formatter.timeStyle = .medium
+        formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - POS Refund Studio Sheet
+
+struct POSRefundStudioSheet: View {
+    let receipt: PPPOSReceipt
+    @ObservedObject var viewModel: POSHistoryViewModel
+    let onSuccess: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var isFullRefund: Bool = true
+    @State private var itemQuantities: [String: Int] = [:]
+    @State private var selectedReason: String = ""
+    @State private var customReason: String = ""
+
+    private let reasonPresets: [String] = [
+        Language.get("POS_Refund_Reason_Chip_Customer", alter: "رغبة العميل"),
+        Language.get("POS_Refund_Reason_Chip_Defect", alter: "عيب مصنعي"),
+        Language.get("POS_Refund_Reason_Chip_Error", alter: "خطأ في الفاتورة"),
+        Language.get("POS_Refund_Reason_Chip_Damaged", alter: "صنف تالف")
+    ]
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_RefundStudio_Title", alter: "استوديو الاسترداد المالي"))
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(Language.get("POS_RefundStudio_Sub", alter: "إرجاع الكميات للمخزون واسترداد المبلغ"))
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    AdminSquircleCloseButton {
+                        dismiss()
+                    }
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.vertical, AdminSpacing.md)
+
+                Divider().background(AdminSurface.hairline)
+
+                // Scrollable Body
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.md) {
+                        // Error Banner
+                        if let error = viewModel.reversalError {
+                            AdminErrorBanner(message: error)
+                        }
+
+                        // Mode Selector: Full Refund vs Partial
+                        HStack(spacing: 10) {
+                            modeButton(
+                                title: Language.get("POS_Refund_Full_Action", alter: "استرداد كامل"),
+                                isSelected: isFullRefund
+                            ) {
+                                isFullRefund = true
+                            }
+
+                            modeButton(
+                                title: Language.get("POS_Refund_Select_Items", alter: "تحديد أصناف"),
+                                isSelected: !isFullRefund
+                            ) {
+                                isFullRefund = false
+                            }
+                        }
+
+                        // If Partial Refund: Item Steppers
+                        if !isFullRefund {
+                            itemSelectionSection
+                        }
+
+                        // Restock & Ledger Notice
+                        HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "shippingbox.and.arrow.backward.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+
+                            Text(Language.get("POS_Refund_Restock_Notice", alter: "سيتم إعادة كميات الأصناف المحددة تلقائياً إلى عهدة الفرع وتوثيق القيد في المحاسبة."))
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(12)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        // Reason Selection
+                        reasonSection
+
+                        // Summary of Refund
+                        refundSummarySection
+                    }
+                    .padding(AdminSpacing.screenMargin)
+                }
+
+                // Submit Button
+                VStack(spacing: 8) {
+                    Divider().background(AdminSurface.hairline)
+
+                    Button(action: executeRefund) {
+                        HStack(spacing: 8) {
+                            if viewModel.isSubmittingReversal {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                            }
+
+                            let amountStr = calculatedRefundAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق")
+                            Text(String(format: Language.get("POS_Refund_Confirm_Button", alter: "تأكيد الاسترداد المالي (%@)"), amountStr))
+                                .font(AdminType.headline)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            canSubmit ? Color(uiColor: .systemOrange) : Color.gray.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmit || viewModel.isSubmittingReversal)
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.bottom, 16)
+                }
+                .background(AdminSurface.surface)
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .onAppear {
+            initializeQuantities()
+        }
+    }
+
+    private func modeButton(title: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(AdminType.headline)
+                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(
+                    isSelected ? Color(uiColor: .ppPrimary) : Color(uiColor: .ppBackgroundSecondary),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func initializeQuantities() {
+        for item in receipt.items {
+            let available = max(0, item.quantity - item.refundedQuantity)
+            itemQuantities[item.itemID] = isFullRefund ? available : 0
+        }
+    }
+
+    private var itemSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("POS_Refund_Select_Items", alter: "تحديد الأصناف والكميات"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            VStack(spacing: 8) {
+                ForEach(receipt.items, id: \.itemID) { item in
+                    let available = max(0, item.quantity - item.refundedQuantity)
+                    let currentQty = itemQuantities[item.itemID] ?? 0
+
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.name)
+                                .font(AdminType.body)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            Text(verbatim: "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • المتاح: \(available.englishDigits)")
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        Spacer()
+
+                        // Stepper: - / qty / +
+                        HStack(spacing: 12) {
+                            Button {
+                                if currentQty > 0 {
+                                    itemQuantities[item.itemID] = currentQty - 1
+                                }
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(currentQty > 0 ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(currentQty <= 0)
+
+                            Text(verbatim: currentQty.englishDigits)
+                                .font(AdminType.headline)
+                                .frame(minWidth: 24)
+
+                            Button {
+                                if currentQty < available {
+                                    itemQuantities[item.itemID] = currentQty + 1
+                                }
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(currentQty < available ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(currentQty >= available)
+                        }
+                    }
+                    .padding(.vertical, 4)
+
+                    Divider().background(AdminSurface.hairline)
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    private var reasonSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("POS_Refund_Reason_Title", alter: "سبب الاسترداد (مطلوب)"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            // Preset Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(reasonPresets, id: \.self) { preset in
+                        let isSelected = selectedReason == preset
+                        Button {
+                            selectedReason = preset
+                            customReason = preset
+                        } label: {
+                            Text(preset)
+                                .font(AdminType.caption)
+                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(
+                                    isSelected ? Color(uiColor: .ppPrimary) : Color(uiColor: .ppBackgroundSecondary),
+                                    in: Capsule()
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            // Custom Reason Field
+            TextField(Language.get("POS_Refund_Reason_Placeholder", alter: "اذكر سبب استرداد العميل..."), text: $customReason)
+                .font(AdminType.body)
+                .padding(12)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 0.8)
+                )
+        }
+    }
+
+    private var refundSummarySection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("المبلغ المسترد الإجمالي")
+                    .font(AdminType.headline)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+
+                Text(verbatim: calculatedRefundAmount.englishDigits(decimals: 2) + " " + Language.get("QAR", alter: "ر.ق"))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(Color(uiColor: .systemOrange))
+                    .monospacedDigit()
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var calculatedRefundAmount: Double {
+        if isFullRefund {
+            return max(0.0, receipt.total - receipt.refundedAmount)
+        } else {
+            var sum: Double = 0
+            for item in receipt.items {
+                let qty = itemQuantities[item.itemID] ?? 0
+                sum += Double(qty) * item.price
+            }
+            return min(sum, max(0.0, receipt.total - receipt.refundedAmount))
+        }
+    }
+
+    private var canSubmit: Bool {
+        let amount = calculatedRefundAmount
+        let reason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return amount > 0 && reason.count >= 3
+    }
+
+    private func executeRefund() {
+        let finalReason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        let amount = calculatedRefundAmount
+
+        var itemsPayload: [[String: Any]]? = nil
+        if !isFullRefund {
+            var mapped: [[String: Any]] = []
+            for item in receipt.items {
+                let qty = itemQuantities[item.itemID] ?? 0
+                if qty > 0 {
+                    mapped.append([
+                        "productId": item.itemID,
+                        "quantity": qty,
+                        "refundAmount": Double(qty) * item.price
+                    ])
+                }
+            }
+            itemsPayload = mapped
+        }
+
+        Task {
+            let success = await viewModel.refundTransaction(
+                receipt: receipt,
+                refundAmount: amount,
+                refundItems: itemsPayload,
+                reason: finalReason
+            )
+            if success {
+                dismiss()
+                onSuccess()
+            }
+        }
+    }
+}
+
+// MARK: - POS Cancel / Void Confirmation Sheet
+
+struct POSCancelConfirmationSheet: View {
+    let receipt: PPPOSReceipt
+    @ObservedObject var viewModel: POSHistoryViewModel
+    let onSuccess: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var cancelReason: String = ""
+
+    private let cancelPresets: [String] = [
+        "خطأ في إدخال الأصناف",
+        "طلب العميل الإلغاء فوراً",
+        "فشل استلام الدفع الخارجي",
+        "عملية مكررة"
+    ]
+
+    var body: some View {
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Close button
+                HStack {
+                    Spacer()
+                    AdminSquircleCloseButton {
+                        dismiss()
+                    }
+                }
+                .padding(.horizontal, AdminSpacing.screenMargin)
+                .padding(.top, AdminSpacing.md)
+
+                VStack(spacing: AdminSpacing.lg) {
+                    // Warning Icon
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(Color(uiColor: .systemRed))
+
+                    VStack(spacing: 6) {
+                        Text(Language.get("POS_Cancel_Confirm_Title", alter: "إلغاء وإبطال المعاملة بالكامل؟"))
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(AdminSurface.primaryText)
+                            .multilineTextAlignment(.center)
+
+                        let itemsCount = receipt.items.count.englishDigits
+                        Text(String(format: Language.get("POS_Cancel_Confirm_Msg", alter: "أنت على وشك إلغاء هذه المعاملة وإعادة كافة عناصرها (%@ صنف) إلى مخزون الفرع. لا يمكن التراجع عن هذا الإجراء."), itemsCount))
+                            .font(AdminType.body)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+
+                    // Error Banner
+                    if let error = viewModel.reversalError {
+                        AdminErrorBanner(message: error)
+                    }
+
+                    // Reason Presets
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(Language.get("POS_Cancel_Reason_Prompt", alter: "سبب إلغاء المعاملة"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(cancelPresets, id: \.self) { preset in
+                                    let isSelected = cancelReason == preset
+                                    Button {
+                                        cancelReason = preset
+                                    } label: {
+                                        Text(preset)
+                                            .font(AdminType.caption)
+                                            .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                            .padding(.horizontal, 12)
+                                            .padding(.vertical, 6)
+                                            .background(
+                                                isSelected ? Color(uiColor: .systemRed) : Color(uiColor: .ppBackgroundSecondary),
+                                                in: Capsule()
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+
+                        TextField(Language.get("POS_Cancel_Reason_Placeholder", alter: "اكتب سبب إبطال هذه المعاملة..."), text: $cancelReason)
+                            .font(AdminType.body)
+                            .padding(12)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder), lineWidth: 0.8)
+                            )
+                    }
+
+                    Spacer()
+
+                    // Confirm Void Button
+                    Button(action: executeCancel) {
+                        HStack(spacing: 8) {
+                            if viewModel.isSubmittingReversal {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: "xmark.octagon.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                            }
+                            Text("تأكيد إبطال وإلغاء المعاملة")
+                                .font(AdminType.headline)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 52)
+                        .background(
+                            canSubmit ? Color(uiColor: .systemRed) : Color.gray.opacity(0.4),
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canSubmit || viewModel.isSubmittingReversal)
+                }
+                .padding(AdminSpacing.screenMargin)
+            }
+        }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    private var canSubmit: Bool {
+        cancelReason.trimmingCharacters(in: .whitespacesAndNewlines).count >= 3
+    }
+
+    private func executeCancel() {
+        let reason = cancelReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        Task {
+            let success = await viewModel.cancelTransaction(receipt: receipt, reason: reason)
+            if success {
+                dismiss()
+                onSuccess()
+            }
+        }
     }
 }

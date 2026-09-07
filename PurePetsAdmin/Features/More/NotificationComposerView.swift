@@ -92,7 +92,6 @@ final class AdminNotificationComposerViewModel: ObservableObject {
     // UI & Simulator Controls
     @Published var previewMode: AdminNotificationPreviewMode = .lockScreen
     @Published var isTemplatesSheetPresented: Bool = false
-    @Published var isBroadcastConfirmPresented: Bool = false
     @Published var dispatchState: AdminNotificationDispatchState = .draft
 
     // Maximum server recipient constraint
@@ -224,6 +223,9 @@ final class AdminNotificationComposerViewModel: ObservableObject {
         if isSending {
             return Language.get("NotificationComposer_Status_Sending", alter: "جارٍ إرسال الإشعار الفوري...")
         }
+        if case .error(let msg) = dispatchState {
+            return msg
+        }
         if !isTitleValid {
             return Language.get("NotificationComposer_Validation_TitleRequired", alter: "يرجى كتابة عنوان الإشعار")
         }
@@ -329,18 +331,30 @@ final class AdminNotificationComposerViewModel: ObservableObject {
     func handleDispatchTap() {
         guard canDispatch else { return }
 
-        // Mass broadcast protection safety gate
+        // Mass broadcast protection safety gate using branded PPAlert
         if selectedAudience == .everyone || selectedAudience == .allUsers {
-            isBroadcastConfirmPresented = true
             let generator = UINotificationFeedbackGenerator()
             generator.notificationOccurred(.warning)
+
+            PPAlertHelper.showConfirmation(
+                in: nil,
+                title: Language.get("NotificationComposer_Broadcast_Confirm_Title", alter: "تأكيد إرسال إشعار عام"),
+                subtitle: Language.get("NotificationComposer_Broadcast_Confirm_Message", alter: "أنت على وشك إرسال إشعار فوري لجميع الأجهزة النشطة في التطبيق. هل ترغب في المتابعة؟"),
+                confirmButton: Language.get("NotificationComposer_Action_ConfirmBroadcast", alter: "نعم، بث الإشعار الآن"),
+                cancelButton: Language.get("Cancel", alter: "إلغاء"),
+                icon: UIImage(systemName: "bell.badge.fill"),
+                confirmBlock: { [weak self] _, didConfirm in
+                    guard didConfirm else { return }
+                    self?.executeDispatch()
+                },
+                cancelBlock: nil
+            )
         } else {
             executeDispatch()
         }
     }
 
     func executeDispatch() {
-        isBroadcastConfirmPresented = false
         dispatchState = .sending
 
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -368,9 +382,15 @@ final class AdminNotificationComposerViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 if let errorDescription = errorDescription {
-                    self.dispatchState = .error(errorDescription.isEmpty ? Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار") : errorDescription)
+                    let failMsg = errorDescription.isEmpty ? Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار") : errorDescription
+                    self.dispatchState = .error(failMsg)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
+                    PPAlertHelper.showError(
+                        in: nil,
+                        title: Language.get("NotificationComposer_Failed_Title", alter: "فشل الإرسال"),
+                        subtitle: failMsg
+                    )
                     return
                 }
 
@@ -379,6 +399,11 @@ final class AdminNotificationComposerViewModel: ObservableObject {
                     self.dispatchState = .error(failMsg)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
+                    PPAlertHelper.showError(
+                        in: nil,
+                        title: Language.get("NotificationComposer_Failed_Title", alter: "فشل الإرسال"),
+                        subtitle: failMsg
+                    )
                     return
                 }
 
@@ -487,17 +512,6 @@ struct AdminNotificationComposerView: View {
         }
         .sheet(isPresented: $viewModel.isTemplatesSheetPresented) {
             AdminTemplatesSheet(viewModel: viewModel)
-        }
-        .alert(
-            Language.get("NotificationComposer_Broadcast_Confirm_Title", alter: "تأكيد إرسال إشعار عام"),
-            isPresented: $viewModel.isBroadcastConfirmPresented
-        ) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("NotificationComposer_Action_ConfirmBroadcast", alter: "نعم، بث الإشعار الآن"), role: .destructive) {
-                viewModel.executeDispatch()
-            }
-        } message: {
-            Text(Language.get("NotificationComposer_Broadcast_Confirm_Message", alter: "أنت على وشك إرسال إشعار فوري لجميع الأجهزة النشطة في التطبيق. هل ترغب في المتابعة؟"))
         }
     }
 

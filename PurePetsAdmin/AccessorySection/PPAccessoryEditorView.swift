@@ -160,9 +160,9 @@ struct PPQuantityGroupDraft: Identifiable, Equatable, Sendable {
 
     var unitsCountText: String {
         if unitsPerGroup == 1 {
-            return Language.get("Unit_Single_Piece", alter: "1 قطعة")
+            return Language.get("Unit_Single_Piece", alter: "1 قطعة").normalizedEnglishDigits
         }
-        return String(format: Language.get("Unit_Multiple_Pieces_Format", alter: "%d قطع"), unitsPerGroup)
+        return String(format: Language.get("Unit_Multiple_Pieces_Format", alter: "%@ قطع"), unitsPerGroup.englishDigits).normalizedEnglishDigits
     }
 }
 
@@ -1596,7 +1596,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             return formattedCurrency(minimum)
         }
         let currencySymbol = Language.get("QAR", alter: "ر.ق")
-        return String(format: "%.2f–%.2f %@", minimum, maximum, currencySymbol)
+        return String(format: "%.2f–%.2f %@", minimum, maximum, currencySymbol).normalizedEnglishDigits
     }
 
     var customerFacingPriceIsResolved: Bool {
@@ -1639,9 +1639,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private func formattedCurrency(_ value: Double) -> String {
         let currencySymbol = Language.get("QAR", alter: "ر.ق")
         if value == floor(value) {
-            return String(format: "%.0f %@", value, currencySymbol)
+            return String(format: "%.0f %@", value, currencySymbol).normalizedEnglishDigits
         }
-        return String(format: "%.2f %@", value, currencySymbol)
+        return String(format: "%.2f %@", value, currencySymbol).normalizedEnglishDigits
     }
 
     // MARK: - Image Operations
@@ -3309,17 +3309,17 @@ struct PPBilingualInputField: View {
             }
 
             // Single-Footprint Input Box (Smooth AR / EN state flip)
-            ZStack(alignment: selectedLanguage == .arabic ? .trailing : .leading) {
+            ZStack(alignment: .center) {
                 TextField(arabicPlaceholder, text: $arabicText)
                     .font(AdminType.body)
                     .focused($isArabicFocused)
                     .environment(\.layoutDirection, .rightToLeft)
-                    .multilineTextAlignment(.trailing)
+                    .multilineTextAlignment(.leading)
                     .textContentType(.name)
                     .submitLabel(.next)
                     .onSubmit { onSubmit?() }
                     .forceKeyboardLanguage(.arabic)
-                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .trailing)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded, alignment: .leading)
                     .contentShape(Rectangle())
                     .opacity(selectedLanguage == .arabic ? 1 : 0)
                     .allowsHitTesting(selectedLanguage == .arabic)
@@ -3376,16 +3376,13 @@ struct PPBilingualInputField: View {
             }
             .onChange(of: selectedLanguage) { newLang in
                 if isFieldFocused {
-                    // Dismiss current field first so SwiftUI can complete
-                    // the opacity/hitTesting swap before re-focusing.
-                    isArabicFocused = false
-                    isEnglishFocused = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        if newLang == .arabic {
-                            isArabicFocused = true
-                        } else {
-                            isEnglishFocused = true
-                        }
+                    // Seamless direct focus transition without dropping keyboard
+                    if newLang == .arabic {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    } else {
+                        isEnglishFocused = true
+                        isArabicFocused = false
                     }
                 }
             }
@@ -3413,10 +3410,8 @@ struct PPBilingualInputField: View {
                         selectedLanguage = .english
                     }
                     UISelectionFeedbackGenerator().selectionChanged()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isEnglishFocused = true
-                        isArabicFocused = false
-                    }
+                    isEnglishFocused = true
+                    isArabicFocused = false
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3425,7 +3420,7 @@ struct PPBilingualInputField: View {
                         Text(Language.get("Bilingual_EnglishMissingAction", alter: "الإنجليزية مفقودة • انقر للإضافة"))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
-                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
                     }
@@ -3440,10 +3435,8 @@ struct PPBilingualInputField: View {
                         selectedLanguage = .arabic
                     }
                     UISelectionFeedbackGenerator().selectionChanged()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isArabicFocused = true
-                        isEnglishFocused = false
-                    }
+                    isArabicFocused = true
+                    isEnglishFocused = false
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3452,7 +3445,7 @@ struct PPBilingualInputField: View {
                         Text(Language.get("Bilingual_ArabicMissingAction", alter: "العربية مطلوبة • انقر للإضافة"))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
-                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
                     }
@@ -3466,7 +3459,7 @@ struct PPBilingualInputField: View {
 
             let currentCount = selectedLanguage == .arabic ? arabicText.count : englishText.count
             if currentCount > 0 {
-                Text("\(currentCount)/90")
+                Text(verbatim: "\(currentCount.englishDigits)/90")
                     .font(AdminType.caption2)
                     .foregroundStyle(currentCount > 90 ? Color.red : AdminSurface.secondaryText.opacity(0.6))
                     .monospacedDigit()
@@ -3530,15 +3523,16 @@ struct PPBilingualTextEditorField: View {
             }
 
             // Single-Footprint Multiline Editor (Smooth AR / EN state flip)
-            ZStack(alignment: selectedLanguage == .arabic ? .topTrailing : .topLeading) {
+            ZStack(alignment: .top) {
                 // Arabic Editor Layer
-                ZStack(alignment: .topTrailing) {
+                ZStack(alignment: .topLeading) {
                     if arabicText.isEmpty {
                         Text(arabicPlaceholder)
                             .font(AdminType.body)
                             .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
                             .environment(\.layoutDirection, .rightToLeft)
-                            .multilineTextAlignment(.trailing)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, AdminSpacing.md)
                             .padding(.vertical, 12)
                             .allowsHitTesting(false)
@@ -3547,12 +3541,13 @@ struct PPBilingualTextEditorField: View {
                         .font(AdminType.body)
                         .focused($isArabicFocused)
                         .environment(\.layoutDirection, .rightToLeft)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: .infinity, minHeight: minHeight)
+                        .multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
                         .padding(AdminSpacing.xs)
                         .scrollContentBackgroundIfAvailable()
                         .forceKeyboardLanguage(.arabic)
                 }
+                .environment(\.layoutDirection, .rightToLeft)
                 .frame(maxWidth: .infinity, minHeight: minHeight)
                 .contentShape(Rectangle())
                 .opacity(selectedLanguage == .arabic ? 1 : 0)
@@ -3566,6 +3561,7 @@ struct PPBilingualTextEditorField: View {
                             .foregroundStyle(AdminSurface.secondaryText.opacity(0.65))
                             .environment(\.layoutDirection, .leftToRight)
                             .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, AdminSpacing.md)
                             .padding(.vertical, 12)
                             .allowsHitTesting(false)
@@ -3576,11 +3572,12 @@ struct PPBilingualTextEditorField: View {
                         .environment(\.layoutDirection, .leftToRight)
                         .multilineTextAlignment(.leading)
                         .keyboardType(.asciiCapable)
-                        .frame(maxWidth: .infinity, minHeight: minHeight)
+                        .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
                         .padding(AdminSpacing.xs)
                         .scrollContentBackgroundIfAvailable()
                         .forceKeyboardLanguage(.english)
                 }
+                .environment(\.layoutDirection, .leftToRight)
                 .frame(maxWidth: .infinity, minHeight: minHeight)
                 .contentShape(Rectangle())
                 .opacity(selectedLanguage == .english ? 1 : 0)
@@ -3621,16 +3618,13 @@ struct PPBilingualTextEditorField: View {
             }
             .onChange(of: selectedLanguage) { newLang in
                 if isFieldFocused {
-                    // Dismiss current field first so SwiftUI can complete
-                    // the opacity/hitTesting swap before re-focusing.
-                    isArabicFocused = false
-                    isEnglishFocused = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        if newLang == .arabic {
-                            isArabicFocused = true
-                        } else {
-                            isEnglishFocused = true
-                        }
+                    // Seamless direct focus transition without dropping keyboard
+                    if newLang == .arabic {
+                        isArabicFocused = true
+                        isEnglishFocused = false
+                    } else {
+                        isEnglishFocused = true
+                        isArabicFocused = false
                     }
                 }
             }
@@ -3658,10 +3652,8 @@ struct PPBilingualTextEditorField: View {
                         selectedLanguage = .english
                     }
                     UISelectionFeedbackGenerator().selectionChanged()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isEnglishFocused = true
-                        isArabicFocused = false
-                    }
+                    isEnglishFocused = true
+                    isArabicFocused = false
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3670,7 +3662,7 @@ struct PPBilingualTextEditorField: View {
                         Text(Language.get("Bilingual_DescEnglishMissingAction", alter: "الوصف بالإنجليزي مفقود • انقر للإضافة"))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
-                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(Color(red: 245/255, green: 158/255, blue: 11/255))
                     }
@@ -3685,10 +3677,8 @@ struct PPBilingualTextEditorField: View {
                         selectedLanguage = .arabic
                     }
                     UISelectionFeedbackGenerator().selectionChanged()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        isArabicFocused = true
-                        isEnglishFocused = false
-                    }
+                    isArabicFocused = true
+                    isEnglishFocused = false
                 } label: {
                     HStack(spacing: 4) {
                         Circle()
@@ -3697,7 +3687,7 @@ struct PPBilingualTextEditorField: View {
                         Text(Language.get("Bilingual_DescArabicMissingAction", alter: "الوصف بالعربي غير مدخل • انقر للإضافة"))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
-                        Image(systemName: selectedLanguage == .arabic ? "arrow.backward" : "arrow.forward")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 8, weight: .bold))
                             .foregroundStyle(Color(red: 239/255, green: 68/255, blue: 68/255))
                     }
@@ -3781,6 +3771,22 @@ struct PPAccessoryEditorScreen: View {
                         guard let field = field else { return }
                         withAnimation(.easeOut(duration: 0.28)) {
                             proxy.scrollTo(field, anchor: .center)
+                        }
+                    }
+                    .onChange(of: bilingualLanguage) { _ in
+                        guard let field = focusedField else { return }
+                        withAnimation(.easeOut(duration: 0.22)) {
+                            proxy.scrollTo(field, anchor: .center)
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            withAnimation(.easeOut(duration: 0.20)) {
+                                proxy.scrollTo(field, anchor: .center)
+                            }
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                proxy.scrollTo(field, anchor: .center)
+                            }
                         }
                     }
                 }
@@ -4087,8 +4093,8 @@ struct PPAccessoryEditorScreen: View {
                     HStack(spacing: 2) {
                         Image(systemName: "camera.fill")
                             .font(.system(size: 8))
-                        Text("\(viewModel.totalImageCount)")
-                            .font(.system(size: 10, weight: .bold))
+                        Text(verbatim: viewModel.totalImageCount.englishDigits)
+                            .font(PPBrandFont.bold(size: 10))
                     }
                     .foregroundColor(.white)
                     .padding(.horizontal, 6)
@@ -4144,13 +4150,13 @@ struct PPAccessoryEditorScreen: View {
 
                 // Pricing Readout
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(viewModel.formattedFinalPrice)
+                    Text(verbatim: viewModel.formattedFinalPrice.normalizedEnglishDigits)
                         .font(AdminType.title3)
                         .foregroundStyle(AdminSurface.primary)
                         .monospacedDigit()
 
                     if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
-                        Text(String(format: "%.0f %@", viewModel.basePrice, Language.get("QAR", alter: "ر.ق")))
+                        Text(verbatim: String(format: "%.0f %@", viewModel.basePrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                             .strikethrough(true, color: Color.gray)
                             .font(AdminType.caption2)
                             .foregroundColor(AdminCommandInk.tertiary)
@@ -4169,8 +4175,8 @@ struct PPAccessoryEditorScreen: View {
                 Image(systemName: "barcode")
                     .font(.system(size: 34, weight: .light))
                     .foregroundStyle(AdminSurface.primaryText)
-                Text(viewModel.isIndividualLivePet ? (viewModel.livePetUnits.first?.ringTag.isEmpty == false ? viewModel.livePetUnits.first!.ringTag : "RING-TAG") : "BATCH-SKU")
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                Text(verbatim: (viewModel.isIndividualLivePet ? (viewModel.livePetUnits.first?.ringTag.isEmpty == false ? viewModel.livePetUnits.first!.ringTag : "RING-TAG") : "BATCH-SKU").normalizedEnglishDigits)
+                    .font(PPBrandFont.bold(size: 9))
                     .foregroundStyle(AdminCommandInk.secondary)
             }
             .frame(width: 86, height: 82)
@@ -4182,7 +4188,7 @@ struct PPAccessoryEditorScreen: View {
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminSurface.primary)
                     Spacer()
-                    Text(viewModel.isIndividualLivePet ? "\(viewModel.livePetUnits.count) سجل فردي" : "كمية: \(viewModel.quantity)")
+                    Text(verbatim: (viewModel.isIndividualLivePet ? "\(viewModel.livePetUnits.count.englishDigits) سجل فردي" : "كمية: \(viewModel.quantity.englishDigits)").normalizedEnglishDigits)
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(Color(uiColor: .ppSuccess))
                         .padding(.horizontal, 6)
@@ -4203,7 +4209,7 @@ struct PPAccessoryEditorScreen: View {
                     Text(Language.get("POSTerminalPrice", alter: "سعر المحاسبة:"))
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.secondary)
-                    Text(viewModel.formattedFinalPrice)
+                    Text(verbatim: viewModel.formattedFinalPrice.normalizedEnglishDigits)
                         .font(AdminType.headline)
                         .foregroundStyle(AdminSurface.primaryText)
                         .monospacedDigit()
@@ -4310,7 +4316,7 @@ struct PPAccessoryEditorScreen: View {
                     .font(AdminType.headline)
                     .foregroundStyle(AdminSurface.primaryText)
                 Spacer()
-                Text("\(viewModel.totalImageCount)/9 " + Language.get("Photos", alter: "صور"))
+                Text(verbatim: "\(viewModel.totalImageCount.englishDigits)/9 " + Language.get("Photos", alter: "صور"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
             }
@@ -4613,7 +4619,7 @@ struct PPAccessoryEditorScreen: View {
                     .font(AdminType.headline)
                     .foregroundStyle(AdminSurface.primaryText)
                 Spacer()
-                Text("\(viewModel.livePetUnits.count)/100 " + Language.get("Units", alter: "حيوان"))
+                Text(verbatim: "\(viewModel.livePetUnits.count.englishDigits)/100 " + Language.get("Units", alter: "حيوان"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(Color(uiColor: .ppSuccess))
             }
@@ -4656,8 +4662,8 @@ struct PPAccessoryEditorScreen: View {
             HStack {
                 // Unit Number Badge
                 HStack(spacing: 4) {
-                    Text("#\(index + 1)")
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    Text(verbatim: "#\((index + 1).englishDigits)")
+                        .font(PPBrandFont.bold(size: 13))
                     Text(Language.get("AnimalUnit", alter: "حيوان"))
                         .font(AdminType.caption2)
                 }
@@ -4706,7 +4712,7 @@ struct PPAccessoryEditorScreen: View {
 
                 HStack(spacing: 8) {
                     TextField("QA-RING-000", text: binding.ringTag)
-                        .font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .font(PPBrandFont.bold(size: 15))
                         .textInputAutocapitalization(.characters)
                         .environment(\.layoutDirection, .leftToRight)
 
@@ -5022,7 +5028,7 @@ struct PPAccessoryEditorScreen: View {
                     .foregroundStyle(AdminCommandInk.secondary)
 
                     TextField("0.00", text: $viewModel.priceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $viewModel.priceText, allowsDecimal: true)
                         .focused($focusedField, equals: .price)
                         .padding(14)
@@ -5037,7 +5043,7 @@ struct PPAccessoryEditorScreen: View {
                             .foregroundStyle(AdminCommandInk.secondary)
 
                         TextField("0", text: $viewModel.discountPercentText)
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(PPBrandFont.bold(size: 18))
                             .englishNumericInput(text: $viewModel.discountPercentText, allowsDecimal: true)
                             .focused($focusedField, equals: .discountPercent)
                             .padding(14)
@@ -5078,13 +5084,13 @@ struct PPAccessoryEditorScreen: View {
                 Text(Language.get("FinalCustomerPrice", alter: "السعر النهائي في التطبيق للعميل"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
-                Text(viewModel.formattedFinalPrice)
+                Text(verbatim: viewModel.formattedFinalPrice.normalizedEnglishDigits)
                     .font(AdminType.title2)
                     .foregroundStyle(AdminSurface.primary)
             }
             Spacer()
             if viewModel.calculatedFinalPrice < viewModel.basePrice && viewModel.basePrice > 0 {
-                Text(String(format: Language.get("DiscountSavings", alter: "خصم %.0f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice))
+                Text(verbatim: String(format: Language.get("DiscountSavings", alter: "خصم %.0f ر.ق"), viewModel.basePrice - viewModel.calculatedFinalPrice).normalizedEnglishDigits)
                     .font(AdminType.captionBold)
                     .foregroundStyle(Color(uiColor: .ppSuccess))
                     .padding(.horizontal, 10)
@@ -5130,7 +5136,7 @@ struct PPAccessoryEditorScreen: View {
                         .foregroundStyle(Color(uiColor: .systemTeal))
 
                     TextField("0.00", text: $viewModel.wholesalePriceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
                         .focused($focusedField, equals: .wholesalePrice)
                         .padding(14)
@@ -5152,7 +5158,7 @@ struct PPAccessoryEditorScreen: View {
                 Text(Language.get("Summary_Retail_Label", alter: "التجزئة"))
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
-                Text(viewModel.defaultRetailGroupSummary)
+                Text(verbatim: viewModel.defaultRetailGroupSummary.normalizedEnglishDigits)
                     .font(AdminType.subheadlineBold)
                     .foregroundStyle(AdminSurface.primaryText)
             }
@@ -5162,7 +5168,7 @@ struct PPAccessoryEditorScreen: View {
                     Text(Language.get("Summary_Wholesale_Label", alter: "الجملة"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(Color(uiColor: .systemTeal))
-                    Text(wholesaleSummary)
+                    Text(verbatim: wholesaleSummary.normalizedEnglishDigits)
                         .font(AdminType.subheadlineBold)
                         .foregroundStyle(Color(uiColor: .systemTeal))
                 }
@@ -5265,7 +5271,7 @@ struct PPAccessoryEditorScreen: View {
                                 .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
                         }
                     }
-                    Text(group.unitsCountText)
+                    Text(verbatim: group.unitsCountText.normalizedEnglishDigits)
                         .font(AdminType.caption2)
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
@@ -5274,12 +5280,12 @@ struct PPAccessoryEditorScreen: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")))
+                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice))
+                        Text(verbatim: String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }
@@ -5311,10 +5317,10 @@ struct PPAccessoryEditorScreen: View {
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminCommandInk.secondary)
                 HStack(spacing: 8) {
-                    Text(String(format: "%.1f%%", margin))
-                        .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    Text(verbatim: String(format: "%.1f%%", margin).normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: 20))
                         .foregroundStyle(Color(uiColor: .ppSuccess))
-                    Text(String(format: "+%.0f %@", profit, Language.get("QAR", alter: "ر.ق")))
+                    Text(verbatim: String(format: "+%.0f %@", profit, Language.get("QAR", alter: "ر.ق")).normalizedEnglishDigits)
                         .font(AdminType.calloutBold)
                         .foregroundStyle(AdminSurface.primaryText)
                 }
@@ -5349,13 +5355,13 @@ struct PPAccessoryEditorScreen: View {
                 }
                 .disabled(viewModel.quantity <= 1)
 
-                Text("\(viewModel.quantity)")
-                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                Text(verbatim: viewModel.quantity.englishDigits)
+                    .font(PPBrandFont.bold(size: 22))
                     .frame(maxWidth: .infinity)
                     .multilineTextAlignment(.center)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        quantityAlertText = "\(viewModel.quantity)"
+                        quantityAlertText = viewModel.quantity.englishDigits
                         showQuantityAlert = true
                     }
 
@@ -5513,7 +5519,7 @@ struct PPAccessoryEditorScreen: View {
                 .font(AdminType.caption2Bold)
                 .foregroundStyle(AdminCommandInk.secondary)
             TextField("0.00", text: text)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
+                .font(PPBrandFont.bold(size: 15))
                 .englishNumericInput(text: text, allowsDecimal: true)
                 .padding(12)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -5634,7 +5640,7 @@ struct PPQuantityGroupInspectorSheet: View {
                     TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
                         .font(AdminType.body)
                         .environment(\.layoutDirection, .rightToLeft)
-                        .multilineTextAlignment(.trailing)
+                        .multilineTextAlignment(.leading)
                         .padding(12)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .forceKeyboardLanguage(.arabic)
@@ -5664,7 +5670,7 @@ struct PPQuantityGroupInspectorSheet: View {
                     Button {
                         let current = Int(unitsText) ?? 1
                         if current > 1 {
-                            unitsText = "\(current - 1)"
+                            unitsText = (current - 1).englishDigits
                             group.unitsPerGroup = current - 1
                         }
                     } label: {
@@ -5676,7 +5682,7 @@ struct PPQuantityGroupInspectorSheet: View {
                     .buttonStyle(.plain)
 
                     TextField("1", text: $unitsText)
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 20))
                         .multilineTextAlignment(.center)
                         .englishNumericInput(text: $unitsText, allowsDecimal: false)
                         .padding(10)
@@ -5689,7 +5695,7 @@ struct PPQuantityGroupInspectorSheet: View {
 
                     Button {
                         let current = Int(unitsText) ?? 1
-                        unitsText = "\(current + 1)"
+                        unitsText = (current + 1).englishDigits
                         group.unitsPerGroup = current + 1
                     } label: {
                         Image(systemName: "plus")
@@ -5747,7 +5753,7 @@ struct PPQuantityGroupInspectorSheet: View {
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
                     TextField("0.00", text: $group.retailPriceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
                         .padding(12)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -5780,7 +5786,7 @@ struct PPQuantityGroupInspectorSheet: View {
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
                     TextField("0.00", text: $group.wholesalePriceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
                         .padding(12)
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -5914,7 +5920,7 @@ private struct PPAccessorySpeciesPickerSheet: View {
                                                     .foregroundStyle(AdminSurface.primaryText)
 
                                                 if subKindsCount > 0 {
-                                                    Text("\(subKindsCount) " + Language.get("BreedsAvailable", alter: "سلالة مسجلة"))
+                                                    Text(verbatim: "\(subKindsCount.englishDigits) " + Language.get("BreedsAvailable", alter: "سلالة مسجلة"))
                                                         .font(AdminType.caption2)
                                                         .foregroundStyle(AdminCommandInk.secondary)
                                                 }
@@ -6404,15 +6410,15 @@ private struct PPLivePetIntakeJourney: View {
                         }
                         .padding(.horizontal, AdminSpacing.screenMargin)
                         .padding(.top, AdminSpacing.sm)
-                        .padding(.bottom, AdminSpacing.lg)
+                        .padding(.bottom, 140)
                     }
                 }
                 .scrollDismissesKeyboardCompat()
                 .onChange(of: focusedField) { field in
-                    guard let field = field else { return }
-                    withAnimation(.easeOut(duration: 0.28)) {
-                        proxy.scrollTo(field, anchor: .center)
-                    }
+                    scrollToFocusedField(proxy: proxy, targetField: field)
+                }
+                .onChange(of: bilingualLanguage) { _ in
+                    scrollToFocusedField(proxy: proxy)
                 }
             }
             .id(viewModel.activeStage)
@@ -6652,6 +6658,24 @@ private struct PPLivePetIntakeJourney: View {
             .accessibilityHidden(true)
     }
 
+    private func scrollToFocusedField(proxy: ScrollViewProxy, targetField: FocusedField? = nil) {
+        let field = targetField ?? focusedField
+        guard let field = field else { return }
+        withAnimation(.easeOut(duration: 0.22)) {
+            proxy.scrollTo(field, anchor: .center)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+            withAnimation(.easeOut(duration: 0.20)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
+    }
+
     private func showDiscardAlert() {
         PPAlertHelper.showConfirmation(
             in: nil,
@@ -6873,9 +6897,8 @@ private struct PPLivePetIntakeJourney: View {
     }
 
     private var compassStepNumber: some View {
-        Text(String(format: "%02d", viewModel.activeStage.rawValue + 1))
-            .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 24 : 32, weight: .bold, design: .rounded))
-            .monospacedDigit()
+        Text(verbatim: String(format: "%02d", viewModel.activeStage.rawValue + 1).normalizedEnglishDigits)
+            .font(PPBrandFont.bold(size: dynamicTypeSize.isAccessibilitySize ? 24 : 32))
             .foregroundStyle(AdminSurface.primary)
     }
 
@@ -7542,11 +7565,11 @@ private struct PPLivePetIntakeJourney: View {
                 // reverses inside an Arabic layout.
                 VStack(alignment: .trailing, spacing: 0) {
                     HStack(spacing: 1) {
-                        Text("\(readyCount)")
-                            .font(.system(size: 22, weight: .bold, design: .rounded))
+                        Text(verbatim: readyCount.englishDigits)
+                            .font(PPBrandFont.bold(size: 22))
                             .foregroundStyle(blocked == 0 ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
-                        Text("/\(total)")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                        Text(verbatim: "/\(total.englishDigits)")
+                            .font(PPBrandFont.bold(size: 14))
                             .foregroundStyle(AdminSurface.secondaryText)
                             .padding(.top, 5)
                     }
@@ -7573,7 +7596,7 @@ private struct PPLivePetIntakeJourney: View {
 
             if blocked > 0 {
                 Label(
-                    String(format: tr("LivePetIntake_BlockedCount", "%ld حيوانات تنتظر بيانات ناقصة"), blocked),
+                    String(format: tr("LivePetIntake_BlockedCount", "%ld حيوانات تنتظر بيانات ناقصة"), blocked).normalizedEnglishDigits,
                     systemImage: "exclamationmark.circle.fill"
                 )
                 .font(AdminType.caption)
@@ -7621,8 +7644,8 @@ private struct PPLivePetIntakeJourney: View {
                     Button {
                         setExpandedUnit(active ? nil : unit.id)
                     } label: {
-                        Text("\(index + 1)")
-                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        Text(verbatim: (index + 1).englishDigits)
+                            .font(PPBrandFont.bold(size: 13))
                             .monospacedDigit()
                             .foregroundStyle(active ? .white : readiness.tint)
                             .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
@@ -7663,8 +7686,8 @@ private struct PPLivePetIntakeJourney: View {
                 Text(tr("LivePetIntake_AddAnimal", "إضافة حيوان آخر"))
                     .font(AdminType.calloutBold)
                 Spacer(minLength: AdminSpacing.xs)
-                Text("\(count)/100")
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                Text(verbatim: "\(count.englishDigits)/100")
+                    .font(PPBrandFont.bold(size: 12))
                     .monospacedDigit()
                     .environment(\.layoutDirection, .leftToRight)
                     .foregroundStyle(AdminSurface.secondaryText)
@@ -7861,10 +7884,10 @@ private struct PPLivePetIntakeJourney: View {
                         }
                     }
 
-                    Text(ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring)
+                    Text(ring.isEmpty ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة") : ring.normalizedEnglishDigits)
                         .font(ring.isEmpty
                             ? AdminType.calloutBold
-                            : .system(size: 16, weight: .bold, design: .monospaced))
+                            : PPBrandFont.bold(size: 16))
                         .foregroundStyle(ring.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
                         .environment(\.layoutDirection, ring.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
                         .lineLimit(1)
@@ -7874,9 +7897,9 @@ private struct PPLivePetIntakeJourney: View {
                         genderTag(unit.gender)
 
                         if isPositiveMoney(unit.sellingPriceText) {
-                            Text(String(
+                            Text(verbatim: String(
                                 format: tr("LivePetIntake_UnitPriceFormat", "%@ ر.ق"),
-                                unit.sellingPriceText
+                                unit.sellingPriceText.normalizedEnglishDigits
                             ))
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(AdminSurface.primaryText)
@@ -7952,9 +7975,8 @@ private struct PPLivePetIntakeJourney: View {
                     .foregroundStyle(readiness.tint)
                     .transition(.opacity)
             } else {
-                Text(String(format: "%02d", index + 1))
-                    .font(.system(size: 13, weight: .bold, design: .monospaced))
-                    .monospacedDigit()
+                Text(verbatim: String(format: "%02d", index + 1).normalizedEnglishDigits)
+                    .font(PPBrandFont.bold(size: 13))
                     .foregroundStyle(AdminSurface.primaryText)
                     .environment(\.layoutDirection, .leftToRight)
             }
@@ -7971,8 +7993,8 @@ private struct PPLivePetIntakeJourney: View {
         .frame(width: 52, height: 52)
         .overlay(alignment: .bottomTrailing) {
             if photo != nil {
-                Text("\(index + 1)")
-                    .font(.system(size: 9, weight: .heavy, design: .rounded))
+                Text(verbatim: (index + 1).englishDigits)
+                    .font(PPBrandFont.bold(size: 9))
                     .monospacedDigit()
                     .foregroundStyle(.white)
                     .frame(width: 19, height: 19)
@@ -8401,8 +8423,8 @@ private struct PPLivePetIntakeJourney: View {
             }
             .frame(width: 22, height: 22)
 
-            Text(String(format: "%02d", sequence))
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
+            Text(verbatim: String(format: "%02d", sequence).normalizedEnglishDigits)
+                .font(PPBrandFont.bold(size: 10))
                 .foregroundStyle(AdminSurface.primary)
                 .environment(\.layoutDirection, .leftToRight)
 
@@ -8448,7 +8470,7 @@ private struct PPLivePetIntakeJourney: View {
                     text: binding.ringTag,
                     prompt: promptText("QA-RING-000")
                 )
-                .font(.system(size: 17, weight: .bold, design: .monospaced))
+                .font(PPBrandFont.bold(size: 17))
                 .foregroundStyle(AdminSurface.primaryText)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled(true)
@@ -8553,7 +8575,7 @@ private struct PPLivePetIntakeJourney: View {
 
     private func moneyTextField(text: Binding<String>, field: FocusedField, label: String) -> some View {
         TextField("", text: text, prompt: promptText("0.00"))
-            .font(.system(size: 18, weight: .bold, design: .rounded))
+            .font(PPBrandFont.bold(size: 18))
             .foregroundStyle(AdminSurface.primaryText)
             .englishNumericInput(text: text, allowsDecimal: true)
             .monospacedDigit()
@@ -8910,9 +8932,8 @@ private struct PPLivePetIntakeJourney: View {
                     viewModel.quantity = max(1, viewModel.quantity - 1)
                 }
 
-                Text("\(viewModel.quantity)")
-                    .font(.system(size: 30, weight: .bold, design: .rounded))
-                    .monospacedDigit()
+                Text(verbatim: viewModel.quantity.englishDigits)
+                    .font(PPBrandFont.bold(size: 30))
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel(String(
                         format: tr("LivePetIntake_QuantityAccessibility", "الكمية %ld"),
@@ -8934,7 +8955,7 @@ private struct PPLivePetIntakeJourney: View {
                 VStack(alignment: .leading, spacing: AdminSpacing.sm) {
                     fieldLabel(tr("LivePetIntake_GroupCost", "تكلفة الحيوان الواحد (ر.ق)"), required: true)
                     TextField("0.00", text: $viewModel.liveGroupCostText)
-                        .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 17))
                         .englishNumericInput(text: $viewModel.liveGroupCostText, allowsDecimal: true)
                         .focused($focusedField, equals: .groupCost)
                         .padding(.horizontal, AdminSpacing.md)
@@ -9102,7 +9123,7 @@ private struct PPLivePetIntakeJourney: View {
                         required: true
                     )
                     TextField("0.00", text: $viewModel.priceText)
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 24))
                         .englishNumericInput(text: $viewModel.priceText, allowsDecimal: true)
                         .focused($focusedField, equals: .standardPrice)
                         .multilineTextAlignment(.leading)
@@ -9169,10 +9190,9 @@ private struct PPLivePetIntakeJourney: View {
                         : tr("LivePetIntake_CustomerPrice", "السعر الظاهر للعميل"))
                         .font(AdminType.captionBold)
                         .foregroundStyle(AdminSurface.secondaryText)
-                    Text(viewModel.customerFacingPriceText)
-                        .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 28 : 36, weight: .bold, design: .rounded))
+                    Text(verbatim: viewModel.customerFacingPriceText.normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: dynamicTypeSize.isAccessibilitySize ? 28 : 36))
                         .foregroundStyle(AdminSurface.primary)
-                        .monospacedDigit()
                         .environment(\.layoutDirection, .leftToRight)
                         .minimumScaleFactor(0.75)
                 }
@@ -9185,10 +9205,10 @@ private struct PPLivePetIntakeJourney: View {
             if viewModel.liveInventoryMode == .quantity,
                viewModel.calculatedFinalPrice < viewModel.basePrice,
                viewModel.basePrice > 0 {
-                Text(String(
+                Text(verbatim: String(
                     format: tr("LivePetIntake_SavingsFormat", "وفر العميل %.2f ر.ق"),
                     viewModel.basePrice - viewModel.calculatedFinalPrice
-                ))
+                ).normalizedEnglishDigits)
                 .font(AdminType.captionBold)
                 .foregroundStyle(Color(uiColor: .ppSuccess))
             }
@@ -9213,7 +9233,7 @@ private struct PPLivePetIntakeJourney: View {
         VStack(alignment: .leading, spacing: AdminSpacing.sm) {
             fieldLabel(title, required: false)
             TextField("0", text: text)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .font(PPBrandFont.bold(size: 18))
                 .englishNumericInput(text: text, allowsDecimal: true)
                 .focused($focusedField, equals: focus)
                 .padding(.horizontal, AdminSpacing.md)
@@ -9230,27 +9250,27 @@ private struct PPLivePetIntakeJourney: View {
                     .font(AdminType.calloutBold)
                     .foregroundStyle(AdminSurface.primaryText)
                 Spacer()
-                Text("\(viewModel.livePetUnits.count)")
+                Text(verbatim: viewModel.livePetUnits.count.englishDigits)
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminSurface.primary)
             }
 
             ForEach(Array(viewModel.livePetUnits.enumerated()), id: \.element.id) { index, unit in
                 HStack(spacing: AdminSpacing.sm) {
-                    Text(String(format: "%02d", index + 1))
-                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    Text(verbatim: String(format: "%02d", index + 1).normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: 12))
                         .foregroundStyle(AdminSurface.secondaryText)
                     Text(unit.ringTag.isEmpty
                         ? tr("LivePetIntake_IdentifierMissing", "الهوية مطلوبة")
-                        : unit.ringTag)
-                        .font(unit.ringTag.isEmpty ? AdminType.caption : .system(size: 13, weight: .medium, design: .monospaced))
+                        : unit.ringTag.normalizedEnglishDigits)
+                        .font(unit.ringTag.isEmpty ? AdminType.caption : PPBrandFont.medium(size: 13))
                         .foregroundStyle(unit.ringTag.isEmpty ? Color(uiColor: .ppWarning) : AdminSurface.primaryText)
                         .environment(\.layoutDirection, unit.ringTag.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
                         .lineLimit(1)
                     Spacer()
                     Text(unit.sellingPriceText.isEmpty
                         ? "—"
-                        : String(format: tr("LivePetIntake_UnitPriceFormat", "%@ ر.ق"), unit.sellingPriceText))
+                        : String(format: tr("LivePetIntake_UnitPriceFormat", "%@ ر.ق"), unit.sellingPriceText.normalizedEnglishDigits))
                         .font(AdminType.captionBold)
                         .foregroundStyle(AdminSurface.primary)
                         .environment(\.layoutDirection, .leftToRight)
@@ -9284,7 +9304,7 @@ private struct PPLivePetIntakeJourney: View {
                 Text(tr("LivePetIntake_Margin", "الهامش المتوقع"))
                     .font(AdminType.caption)
                     .foregroundStyle(AdminSurface.secondaryText)
-                Text(String(format: "%.1f%%  •  +%.2f %@", telemetry.marginPercent, telemetry.netProfit, tr("QAR", "ر.ق")))
+                Text(verbatim: String(format: "%.1f%%  •  +%.2f %@", telemetry.marginPercent, telemetry.netProfit, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                     .font(AdminType.calloutBold)
                     .foregroundStyle(AdminSurface.primaryText)
                     .environment(\.layoutDirection, .leftToRight)
@@ -9328,7 +9348,7 @@ private struct PPLivePetIntakeJourney: View {
                     fieldLabel(tr("Wholesale_Price_QAR", "سعر بيع الجملة للوحدة الافتراضية (ر.ق)"), required: true)
 
                     TextField("0.00", text: $viewModel.wholesalePriceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
                         .focused($focusedField, equals: .wholesalePrice)
                         .padding(AdminSpacing.md)
@@ -9448,12 +9468,12 @@ private struct PPLivePetIntakeJourney: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")))
+                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice))
+                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }
@@ -9510,7 +9530,7 @@ private struct PPLivePetIntakeJourney: View {
                     .foregroundStyle(AdminSurface.secondaryText)
                     .lineLimit(2)
 
-                Text(viewModel.customerFacingPriceText)
+                Text(verbatim: viewModel.customerFacingPriceText.normalizedEnglishDigits)
                     .font(AdminType.title3)
                     .foregroundStyle(AdminSurface.primary)
                     .monospacedDigit()
@@ -9658,7 +9678,15 @@ private struct PPLivePetIntakeJourney: View {
 
             readinessRow(
                 title: tr("LivePetIntake_ReviewIdentity", "الاسم والنوع"),
-                value: viewModel.selectedCategoryDisplayTitle ?? tr("LivePetIntake_NotComplete", "غير مكتمل"),
+                value: {
+                    if let main = viewModel.selectedCategoryDisplayTitle, !main.isEmpty {
+                        if let sub = viewModel.selectedSubCategoryDisplayTitle, !sub.isEmpty {
+                            return "\(main) • \(sub)"
+                        }
+                        return main
+                    }
+                    return tr("LivePetIntake_NotComplete", "غير مكتمل")
+                }(),
                 complete: validationMessage(for: .identity) == nil,
                 stage: .identity
             )
@@ -10286,8 +10314,8 @@ private struct PPLivePetJourneyMapSheet: View {
                     RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
                         .fill(selected ? AdminSurface.primary : AdminSurface.control)
                         .frame(width: 48, height: 48)
-                    Text(String(format: "%02d", stage.rawValue + 1))
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    Text(verbatim: String(format: "%02d", stage.rawValue + 1).normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: 14))
                         .foregroundStyle(selected ? .white : AdminSurface.primary)
                 }
                 VStack(alignment: .leading, spacing: AdminSpacing.xs) {
@@ -10593,7 +10621,7 @@ private struct PPCatalogMultiChoiceSheet: View {
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primary)
                     } else if !selectedIDs.isEmpty {
-                        Text(String(format: Language.get("CatalogIntake_SelectedCountFormat", alter: "تم تحديد %ld"), selectedIDs.count))
+                        Text(verbatim: String(format: Language.get("CatalogIntake_SelectedCountFormat", alter: "تم تحديد %@"), selectedIDs.count.englishDigits).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     } else {
@@ -11430,31 +11458,31 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
         case "kg":
             if val < 1.0 {
                 let grams = Int(val * 1000)
-                return "\(formattedVal) كجم (\(grams) جم)"
+                return "\(formattedVal) كجم (\(grams) جم)".normalizedEnglishDigits
             }
-            return "\(formattedVal) كجم"
+            return "\(formattedVal) كجم".normalizedEnglishDigits
         case "g":
             if val >= 1000 {
                 let kg = val / 1000.0
                 let kgStr = String(format: "%.2f", kg).replacingOccurrences(of: ".00", with: "")
-                return "\(formattedVal) جم (\(kgStr) كجم)"
+                return "\(formattedVal) جم (\(kgStr) كجم)".normalizedEnglishDigits
             }
-            return "\(formattedVal) جم"
+            return "\(formattedVal) جم".normalizedEnglishDigits
         case "l":
             if val < 1.0 {
                 let ml = Int(val * 1000)
-                return "\(formattedVal) لتر (\(ml) مل)"
+                return "\(formattedVal) لتر (\(ml) مل)".normalizedEnglishDigits
             }
-            return "\(formattedVal) لتر"
+            return "\(formattedVal) لتر".normalizedEnglishDigits
         case "ml":
             if val >= 1000 {
                 let liters = val / 1000.0
                 let lStr = String(format: "%.2f", liters).replacingOccurrences(of: ".00", with: "")
-                return "\(formattedVal) مل (\(lStr) لتر)"
+                return "\(formattedVal) مل (\(lStr) لتر)".normalizedEnglishDigits
             }
-            return "\(formattedVal) مل"
+            return "\(formattedVal) مل".normalizedEnglishDigits
         default:
-            return "\(formattedVal) \(weightUnit)"
+            return "\(formattedVal) \(weightUnit)".normalizedEnglishDigits
         }
     }
 
@@ -11556,10 +11584,10 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
                                 }
                             } label: {
                                 HStack(spacing: 2) {
-                                    Text(preset)
-                                        .font(.system(size: 12, weight: isSelected ? .bold : .medium, design: .rounded))
+                                    Text(verbatim: preset.normalizedEnglishDigits)
+                                        .font(PPBrandFont.bold(size: 12))
                                     Text(weightUnit)
-                                        .font(.system(size: 10, weight: .regular, design: .rounded))
+                                        .font(PPBrandFont.medium(size: 10))
                                 }
                                 .foregroundStyle(
                                     isSelected
@@ -11596,7 +11624,7 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
     private var numericInputField: some View {
         HStack(spacing: 8) {
             TextField("0.0", text: $weightText)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .font(PPBrandFont.bold(size: 24))
                 .foregroundStyle(AdminSurface.primaryText)
                 .englishNumericInput(text: $weightText, allowsDecimal: true)
                 .focused($isInternalFocused)
@@ -11644,7 +11672,7 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
             }
         } label: {
             Text(unit)
-                .font(.system(size: 13, weight: isSelected ? .bold : .medium, design: .rounded))
+                .font(PPBrandFont.medium(size: 13))
                 .foregroundStyle(unitButtonForeground(isSelected: isSelected))
                 .frame(minWidth: 32)
                 .frame(height: 34)
@@ -11716,13 +11744,13 @@ private struct PPAccessoryExpirySentinel: View {
         if days < 0 {
             return (Language.get("Expiry_Expired", alter: "منتهي الصلاحية!"), Color(uiColor: .ppError), "exclamationmark.octagon.fill")
         } else if days < 30 {
-            return (String(format: Language.get("Expiry_Urgent_Days", alter: "تنبيه: متبقي %ld يوماً فقط"), days), Color(uiColor: .ppError), "exclamationmark.triangle.fill")
+            return (String(format: Language.get("Expiry_Urgent_Days", alter: "تنبيه: متبقي %ld يوماً فقط"), days).normalizedEnglishDigits, Color(uiColor: .ppError), "exclamationmark.triangle.fill")
         } else if days <= 90 {
             let months = max(1, days / 30)
-            return (String(format: Language.get("Expiry_Moderate_Months", alter: "صلاحية متوسطة (متبقي %ld أشهر)"), months), Color(red: 0.96, green: 0.62, blue: 0.15), "clock.badge.exclamationmark.fill")
+            return (String(format: Language.get("Expiry_Moderate_Months", alter: "صلاحية متوسطة (متبقي %ld أشهر)"), months).normalizedEnglishDigits, Color(red: 0.96, green: 0.62, blue: 0.15), "clock.badge.exclamationmark.fill")
         } else {
             let months = days / 30
-            return (String(format: Language.get("Expiry_Excellent_Months", alter: "صلاحية ممتازة (متبقي %ld شهراً)"), months), Color(red: 0.06, green: 0.72, blue: 0.51), "checkmark.seal.fill")
+            return (String(format: Language.get("Expiry_Excellent_Months", alter: "صلاحية ممتازة (متبقي %ld شهراً)"), months).normalizedEnglishDigits, Color(red: 0.06, green: 0.72, blue: 0.51), "checkmark.seal.fill")
         }
     }
 
@@ -11779,8 +11807,8 @@ private struct PPAccessoryExpirySentinel: View {
 
                         Spacer()
 
-                        Text(expiryDateFormatted)
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        Text(verbatim: expiryDateFormatted.normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 12))
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     .padding(.horizontal, 10)
@@ -11796,7 +11824,7 @@ private struct PPAccessoryExpirySentinel: View {
 
                     // Quick Shelf-Life Extension Presets
                     HStack(spacing: 6) {
-                        shelfLifePresetButton(label: "+6 أشهر", months: 6)
+                        shelfLifePresetButton(label: "+6 أشهر".normalizedEnglishDigits, months: 6)
                         shelfLifePresetButton(label: "+سنة", months: 12)
                         shelfLifePresetButton(label: "+سنتين", months: 24)
                         shelfLifePresetButton(label: "+3 سنوات", months: 36)
@@ -11927,15 +11955,15 @@ private struct PPAccessoryFoodIntakeJourney: View {
                             }
                             .padding(.horizontal, AdminSpacing.screenMargin)
                             .padding(.top, AdminSpacing.sm)
-                            .padding(.bottom, AdminSpacing.lg)
+                            .padding(.bottom, 140)
                         }
                     }
                     .scrollDismissesKeyboardCompat()
                     .onChange(of: focusedField) { field in
-                        guard let field = field else { return }
-                        withAnimation(.easeOut(duration: 0.28)) {
-                            proxy.scrollTo(field, anchor: .center)
-                        }
+                        scrollToFocusedField(proxy: proxy, targetField: field)
+                    }
+                    .onChange(of: bilingualLanguage) { _ in
+                        scrollToFocusedField(proxy: proxy)
                     }
                 }
                 .id(viewModel.activeStage)
@@ -12768,7 +12796,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         Text(tr("CatalogIntake_FinalPrice", "السعر النهائي"))
                             .font(AdminType.caption)
                             .foregroundStyle(AdminSurface.secondaryText)
-                        Text(String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")))
+                        Text(verbatim: String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.title2)
                             .foregroundStyle(AdminSurface.primary)
                             .environment(\.layoutDirection, .leftToRight)
@@ -12797,7 +12825,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         quantityButton(symbol: "minus", enabled: viewModel.quantity > 0) {
                             viewModel.quantity = max(0, viewModel.quantity - 1)
                         }
-                        Text("\(viewModel.quantity)")
+                        Text(verbatim: viewModel.quantity.englishDigits)
                             .font(AdminType.title)
                             .monospacedDigit()
                             .frame(maxWidth: .infinity)
@@ -12907,7 +12935,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     fieldLabel(tr("Wholesale_Price_QAR", "سعر بيع الجملة للوحدة الافتراضية (ر.ق)"), required: true)
 
                     TextField("0.00", text: $viewModel.wholesalePriceText)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 18))
                         .englishNumericInput(text: $viewModel.wholesalePriceText, allowsDecimal: true)
                         .focused($focusedField, equals: .wholesalePrice)
                         .padding(AdminSpacing.md)
@@ -13027,12 +13055,12 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
                 VStack(alignment: .trailing, spacing: 2) {
                     if group.retailEnabled {
-                        Text(String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")))
+                        Text(verbatim: String(format: "%.0f %@", group.retailPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
                             .foregroundStyle(AdminSurface.primaryText)
                     }
                     if group.wholesaleEnabled {
-                        Text(String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice))
+                        Text(verbatim: String(format: tr("Wholesale_Price_Format", "جملة: %.0f ر.ق"), group.wholesalePrice).normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundStyle(Color(uiColor: .systemTeal))
                     }
@@ -13132,21 +13160,21 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         )
                     }
                     reviewRow(
-                        symbol: "square.grid.2x2.fill",
-                        title: tr("CatalogIntake_ReviewCategory", "الفئة"),
+                        symbol: "pawprint.fill",
+                        title: tr("CatalogIntake_ReviewMainKind", "النوع الرئيسي"),
                         value: viewModel.selectedCategoryDisplayTitle ?? tr("CatalogIntake_NotSet", "غير محدد")
                     )
-                    if let subCat = viewModel.selectedSubCategoryDisplayTitle, !subCat.isEmpty {
-                        reviewRow(
-                            symbol: "folder.fill",
-                            title: tr("CatalogIntake_ReviewSubCategory", "التصنيف الفرعي"),
-                            value: subCat
-                        )
-                    }
+                    reviewRow(
+                        symbol: "tag.fill",
+                        title: tr("CatalogIntake_ReviewSubKind", "النوع الفرعي"),
+                        value: (viewModel.selectedSubCategoryDisplayTitle?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+                            ? viewModel.selectedSubCategoryDisplayTitle!
+                            : tr("CatalogIntake_NotSet", "غير محدد")
+                    )
                     reviewRow(
                         symbol: "circle.on.square.intersection.dotted",
                         title: tr("CatalogIntake_ReviewRetailPrice", "سعر القطاعي"),
-                        value: String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")),
+                        value: String(format: "%.2f %@", viewModel.calculatedFinalPrice, tr("QAR", "ر.ق")).normalizedEnglishDigits,
                         forceLTR: true
                     )
                     let wholesalePriceValue: Double = {
@@ -13159,21 +13187,21 @@ private struct PPAccessoryFoodIntakeJourney: View {
                         symbol: "shippingbox.fill",
                         title: tr("CatalogIntake_ReviewWholesalePrice", "سعر الجملة"),
                         value: viewModel.wholesaleEnabled
-                            ? (wholesalePriceValue > 0 ? String(format: "%.2f %@", wholesalePriceValue, tr("QAR", "ر.ق")) : tr("CatalogIntake_NotSet", "غير محدد"))
+                            ? (wholesalePriceValue > 0 ? String(format: "%.2f %@", wholesalePriceValue, tr("QAR", "ر.ق")).normalizedEnglishDigits : tr("CatalogIntake_NotSet", "غير محدد"))
                             : tr("CatalogIntake_Disabled", "غير مفعل"),
                         forceLTR: viewModel.wholesaleEnabled && wholesalePriceValue > 0
                     )
                     reviewRow(
                         symbol: "number.square.fill",
                         title: tr("CatalogIntake_ReviewQuantity", "الكمية"),
-                        value: "\(viewModel.quantity)",
+                        value: viewModel.quantity.englishDigits,
                         forceLTR: true
                     )
                     if viewModel.isFood && viewModel.hasExpiryDate {
                         reviewRow(
                             symbol: "calendar.badge.clock",
                             title: tr("CatalogIntake_ReviewExpiry", "انتهاء الصلاحية"),
-                            value: viewModel.expiryDate.formatted(date: .abbreviated, time: .omitted)
+                            value: viewModel.expiryDate.formatted(date: .abbreviated, time: .omitted).normalizedEnglishDigits
                         )
                     }
                 }
@@ -13202,7 +13230,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 .font(AdminType.footnote)
                 .foregroundStyle(AdminSurface.secondaryText)
             Spacer(minLength: AdminSpacing.sm)
-            Text(value)
+            Text(verbatim: value.normalizedEnglishDigits)
                 .font(AdminType.footnoteBold)
                 .foregroundStyle(AdminSurface.primaryText)
                 .multilineTextAlignment(.trailing)
@@ -13514,6 +13542,24 @@ private struct PPAccessoryFoodIntakeJourney: View {
     private func fieldFocusBorder(_ focused: Bool) -> some View {
         RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
             .strokeBorder(focused ? AdminSurface.primary : AdminSurface.hairline, lineWidth: focused ? 1.5 : 0.75)
+    }
+
+    private func scrollToFocusedField(proxy: ScrollViewProxy, targetField: FocusedField? = nil) {
+        let field = targetField ?? focusedField
+        guard let field = field else { return }
+        withAnimation(.easeOut(duration: 0.22)) {
+            proxy.scrollTo(field, anchor: .center)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) {
+            withAnimation(.easeOut(duration: 0.20)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                proxy.scrollTo(field, anchor: .center)
+            }
+        }
     }
 
     private func showCatalogDiscardAlert() {

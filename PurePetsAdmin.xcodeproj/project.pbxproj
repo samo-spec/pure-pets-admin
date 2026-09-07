@@ -84,6 +84,7 @@
 		B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A100012FAA000100B0A001 /* PPVetsListView.swift */; };
 		B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200012FAA000100B0A001 /* PPInventoryListView.swift */; };
 		B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */; };
+		B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
 		BF4031A37BA040D3A26BE0C8 /* BranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6564A1528C24320B208A2D2 /* BranchesView.swift */; };
 		BFA92434ABD548479D7C6D92 /* AccountingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B81D643527420280F321EA /* AccountingView.swift */; };
@@ -178,6 +179,7 @@
 		F28AE2812E578720007279F5 /* UIView.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE2802E57871F007279F5 /* UIView.m */; };
 		F28AE2842E579FAF007279F5 /* UIImageView.m in Sources */ = {isa = PBXBuildFile; fileRef = F28AE2832E579FAF007279F5 /* UIImageView.m */; };
 		F28AE2862E57A1EA007279F5 /* DeviceAdministrator.json in Resources */ = {isa = PBXBuildFile; fileRef = F28AE2852E57A1EA007279F5 /* DeviceAdministrator.json */; };
+		F28AE2882E57A1EA007279F5 /* Shop2.json in Resources */ = {isa = PBXBuildFile; fileRef = F28AE2872E57A1EA007279F5 /* Shop2.json */; };
 		F28B83F02E70A49100697671 /* PPBannersListVC.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B83EF2E70A49100697671 /* PPBannersListVC.m */; };
 		F28B83FD2E70A52300697671 /* PPBannerViewModel.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B83FC2E70A52300697671 /* PPBannerViewModel.m */; };
 		F28B83FE2E70A52300697671 /* PPBannerCell.m in Sources */ = {isa = PBXBuildFile; fileRef = F28B83F42E70A52300697671 /* PPBannerCell.m */; };
@@ -454,6 +456,7 @@
 		B0A100012FAA000100B0A001 /* PPVetsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPVetsListView.swift; sourceTree = "<group>"; };
 		B0A200012FAA000100B0A001 /* PPInventoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryListView.swift; sourceTree = "<group>"; };
 		B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryEditorView.swift; sourceTree = "<group>"; };
+		B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPLivePetBasicDataEditorView.swift; sourceTree = "<group>"; };
 		B4B25A3F0AC9C2AC1635B8EF /* PPImageCollectionRow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollectionRow.h; sourceTree = "<group>"; };
 		B7D4E5F62A1B4C6D8E9F0011 /* PPFirebaseCompat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFirebaseCompat.h; sourceTree = "<group>"; };
 		BA5C4EF51A2F4831BE0C1FA2 /* NotificationComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/NotificationComposerView.swift; sourceTree = "<group>"; };
@@ -619,6 +622,7 @@
 		F28AE2822E579F9F007279F5 /* UIImageView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UIImageView.h; sourceTree = "<group>"; };
 		F28AE2832E579FAF007279F5 /* UIImageView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UIImageView.m; sourceTree = "<group>"; };
 		F28AE2852E57A1EA007279F5 /* DeviceAdministrator.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = DeviceAdministrator.json; sourceTree = "<group>"; };
+		F28AE2872E57A1EA007279F5 /* Shop2.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = Shop2.json; sourceTree = "<group>"; };
 		F28B83EE2E70A49100697671 /* PPBannersListVC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPBannersListVC.h; sourceTree = "<group>"; };
 		F28B83EF2E70A49100697671 /* PPBannersListVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPBannersListVC.m; sourceTree = "<group>"; };
 		F28B83F12E70A52300697671 /* MainBannerModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainBannerModel.h; sourceTree = "<group>"; };
@@ -1399,6 +1403,7 @@
 			isa = PBXGroup;
 			children = (
 				F28AE2852E57A1EA007279F5 /* DeviceAdministrator.json */,
+				F28AE2872E57A1EA007279F5 /* Shop2.json */,
 				F28AE26D2E56D5D5007279F5 /* Beiruti-Bold.ttf */,
 				F28AE26E2E56D5D5007279F5 /* Beiruti-Medium.ttf */,
 				F28AE26F2E56D5D5007279F5 /* Beiruti-Regular.ttf */,
@@ -1803,6 +1808,7 @@
 				F2A347CC2E58601100C6713D /* AccessoryManager.m */,
 				B0A200012FAA000100B0A001 /* PPInventoryListView.swift */,
 				B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */,
+				B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */,
 			);
 			path = AccessorySection;
 			sourceTree = "<group>";
@@ -2138,6 +2144,7 @@
 				F28AE2702E56D5D5007279F5 /* Beiruti-Regular.ttf in Resources */,
 				F28AE2712E56D5D5007279F5 /* Beiruti-Bold.ttf in Resources */,
 				F28AE2862E57A1EA007279F5 /* DeviceAdministrator.json in Resources */,
+				F28AE2882E57A1EA007279F5 /* Shop2.json in Resources */,
 				F28AE2722E56D5D5007279F5 /* Beiruti-Medium.ttf in Resources */,
 				F28AE12F2E569026007279F5 /* Assets.xcassets in Resources */,
 				F2E33F2B30055F98005E31C6 /* README.md in Resources */,
@@ -2381,6 +2388,7 @@
 				B0A100022FAA000100B0A002 /* PPVetsListView.swift in Sources */,
 				B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */,
 				B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */,
+				B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */,
 				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,
 				F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */,
 				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,

@@ -483,3 +483,91 @@ public final class PPBranchInventoryService: ObservableObject {
         }
     }
 }
+
+// MARK: - Branch Inventory Error Helper
+
+public enum PPBranchInventoryErrorHelper {
+    public static func localizedMessage(for error: Error) -> String {
+        let nsError = error as NSError
+
+        // 1. Extract details dictionary or string from userInfo
+        var detailMessage: String?
+        if let detailsDict = (nsError.userInfo["details"] as? [String: Any]) ?? (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any]) {
+            if let domainCode = detailsDict["domainCode"] as? String {
+                switch domainCode {
+                case "INSUFFICIENT_BRANCH_STOCK":
+                    return Language.get("Branch_Stock_Insufficient", alter: "الكمية المتوفرة في الفرع غير كافية لإتمام التحويل.")
+                case "BRANCH_NOT_FOUND", "SOURCE_BRANCH_NOT_FOUND":
+                    return Language.get("Branch_Stock_SourceBranchNotFound", alter: "لم يتم العثور على فرع المصدر في النظام.")
+                case "DEST_BRANCH_NOT_FOUND":
+                    return Language.get("Branch_Stock_DestBranchNotFound", alter: "لم يتم العثور على فرع الاستلام في النظام.")
+                case "BRANCH_INACTIVE":
+                    return Language.get("Branch_Stock_Inactive", alter: "الفرع المحدد غير نشط حالياً.")
+                case "PRODUCT_NOT_FOUND":
+                    return Language.get("Branch_Stock_ProductNotFound", alter: "لم يتم العثور على المنتج في قاعدة البيانات.")
+                case "SAME_SOURCE_DESTINATION_BRANCH":
+                    return Language.get("Branch_Stock_SameBranch", alter: "لا يمكن التحويل من وإلى نفس الفرع.")
+                case "INVALID_ADJUSTMENT_QUANTITY":
+                    return Language.get("Branch_Stock_InvalidQuantity", alter: "يرجى تحديد كمية صالحة للتعديل.")
+                default:
+                    break
+                }
+            }
+            detailMessage = (detailsDict["message"] as? String) ?? (detailsDict["error"] as? String)
+        } else if let detailsStr = nsError.userInfo["details"] as? String, !detailsStr.isEmpty {
+            detailMessage = detailsStr
+        }
+
+        if let msg = detailMessage, !msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return msg
+        }
+
+        // 2. Extract standard localized description
+        let localizedDesc = (nsError.userInfo[NSLocalizedDescriptionKey] as? String) ?? error.localizedDescription
+        let trimmed = localizedDesc.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 3. Map Firebase Functions standard codes into clear Arabic
+        let isFunctionsDomain = nsError.domain == "com.firebase.functions" || nsError.domain == FunctionsErrorDomain
+        if isFunctionsDomain {
+            switch nsError.code {
+            case 7, FunctionsErrorCode.permissionDenied.rawValue:
+                return Language.get("Branch_Stock_PermissionDenied", alter: "ليس لديك صلاحية لإجراء تعديلات المخزون أو الوصول لهذا الفرع.")
+            case 16, FunctionsErrorCode.unauthenticated.rawValue:
+                return Language.get("Branch_Stock_Unauthenticated", alter: "انتهت صلاحية الجلسة، يرجى إعادة تسجيل الدخول.")
+            case 5, FunctionsErrorCode.notFound.rawValue:
+                if trimmed.lowercased().contains("branch") {
+                    return Language.get("Branch_Stock_BranchNotFound", alter: "الفرع المحدد غير مسجل أو غير موجود.")
+                }
+                if trimmed.lowercased().contains("product") {
+                    return Language.get("Branch_Stock_ProductNotFound", alter: "الصنف غير موجود في المخزون.")
+                }
+                return Language.get("Branch_Stock_NotFound", alter: "البيانات المطلوبة غير موجودة في النظام.")
+            case 9, FunctionsErrorCode.failedPrecondition.rawValue:
+                if trimmed.lowercased().contains("insufficient") {
+                    return Language.get("Branch_Stock_Insufficient", alter: "الكمية المتوفرة في الفرع غير كافية لإتمام التحويل.")
+                }
+                if trimmed.lowercased().contains("inactive") {
+                    return Language.get("Branch_Stock_Inactive", alter: "أحد الفروع المحددة غير نشط حالياً.")
+                }
+                return Language.get("Branch_Stock_PreconditionFailed", alter: "تعذر تنفيذ العملية بسبب عدم استيفاء شروط المخزون.")
+            case 3, FunctionsErrorCode.invalidArgument.rawValue:
+                if trimmed.lowercased().contains("same") {
+                    return Language.get("Branch_Stock_SameBranch", alter: "لا يمكن التحويل من وإلى نفس الفرع.")
+                }
+                return Language.get("Branch_Stock_InvalidArgument", alter: "بيانات العملية غير صحيحة، يرجى مراجعة المدخلات.")
+            case 13, FunctionsErrorCode.internal.rawValue:
+                return Language.get("Branch_Stock_InternalError", alter: "حدث خطأ في الخادم أثناء معالجة المخزون. يرجى مراجعة سجل الحركات أو المحاولة لاحقاً.")
+            default:
+                break
+            }
+        }
+
+        // 4. Return trimmed description if it's descriptive and not a raw token
+        if !trimmed.isEmpty && trimmed != "INTERNAL" && !trimmed.contains("com.firebase.functions") && !trimmed.lowercased().contains("the operation couldn") {
+            return trimmed
+        }
+
+        return Language.get("Branch_Stock_GeneralError", alter: "حدث خطأ أثناء تعديل المخزون. يرجى المحاولة مرة أخرى.")
+    }
+}
+

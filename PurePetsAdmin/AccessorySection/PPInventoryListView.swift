@@ -1224,14 +1224,22 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     }
 
     func remove(unit: PPLivePetInventoryUnit, reason: String) async -> Bool {
-        await perform({
+        let unitID = unit.id
+        // Optimistically remove unit from active units list so the row disappears immediately
+        self.units.removeAll { $0.id == unitID }
+        self.objectWillChange.send()
+        let ok = await perform({
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "remove_unit",
                 productID: self.item.accessoryID,
                 commandID: PPLivePetInventoryService.commandID("remove-unit"),
-                payload: ["unitId": unit.id, "reason": reason]
+                payload: ["unitId": unitID, "reason": reason]
             )
         }, successKey: "LivePet_Remove_Success", successFallback: "تمت إزالة السجل المتاح من المخزون مع حفظ الأثر التشغيلي.")
+        if !ok {
+            await load()
+        }
+        return ok
     }
 
     func updatePrice(unit: PPLivePetInventoryUnit, price: Double) async -> Bool {
@@ -1460,6 +1468,7 @@ final class PPInventoryListViewModel: ObservableObject {
     private var branchInventoryCancellable: AnyCancellable?
     private var pendingQuantityDeltas: [String: Int] = [:]
     private var pendingDebounceWorkItems: [String: DispatchWorkItem] = [:]
+    private var pendingDeletedIDs = Set<String>()
 
     func effectiveStock(for item: PetAccessory) -> Int {
         let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1546,7 +1555,9 @@ final class PPInventoryListViewModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                     return
                 }
-                self.allItems = (items ?? []).sorted { a, b in
+                self.allItems = (items ?? []).filter { item in
+                    !item.isDeleted && !self.pendingDeletedIDs.contains(item.accessoryID)
+                }.sorted { a, b in
                     let dateA = a.createdAt
                     let dateB = b.createdAt
                     if dateA != dateB {
@@ -1574,6 +1585,7 @@ final class PPInventoryListViewModel: ObservableObject {
     func applyFilter() {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         var result = allItems.filter { item in
+            if item.isDeleted || pendingDeletedIDs.contains(item.accessoryID) { return false }
             let stock = effectiveStock(for: item)
             switch activeFilter {
             case .all:
@@ -1627,7 +1639,9 @@ final class PPInventoryListViewModel: ObservableObject {
         await withCheckedContinuation { continuation in
             AccessoryManager.shared().fetchAccessories(of: currentKind) { [weak self] items, _ in
                 DispatchQueue.main.async {
-                    self?.allItems = (items ?? []).sorted { a, b in
+                    self?.allItems = (items ?? []).filter { item in
+                        !item.isDeleted && !(self?.pendingDeletedIDs.contains(item.accessoryID) ?? false)
+                    }.sorted { a, b in
                         let dateA = a.createdAt
                         let dateB = b.createdAt
                         if dateA != dateB {
@@ -1686,15 +1700,33 @@ final class PPInventoryListViewModel: ObservableObject {
                     referenceId: "admin_inventory_list",
                     reason: "manual_adjustment",
                     notes: "Adjusted from admin inventory list"
-                ) { result in
+                ) { [weak self] result in
                     if case .failure(let error) = result {
-                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                        DispatchQueue.main.async {
+                            item.quantity -= batchedDelta
+                            if item.quantity <= 0 {
+                                item.quantity = 0
+                                item.noStock = true
+                            }
+                            self?.objectWillChange.send()
+                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                        }
                     }
                 }
             } else {
-                AccessoryManager.shared().adjustQuantity(by: batchedDelta, forAccessoryID: docID) { error in
+                AccessoryManager.shared().adjustQuantity(by: batchedDelta, forAccessoryID: docID) { [weak self] error in
                     if let error = error {
-                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                        DispatchQueue.main.async {
+                            item.quantity -= batchedDelta
+                            if item.quantity <= 0 {
+                                item.quantity = 0
+                                item.noStock = true
+                            }
+                            self?.objectWillChange.send()
+                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                        }
                     }
                 }
             }
@@ -1728,7 +1760,10 @@ final class PPInventoryListViewModel: ObservableObject {
         AccessoryManager.shared().setNoStock(item.noStock, forAccessoryID: docID) { _ in }
         AccessoryManager.shared().updateQuantity(item.quantity, forAccessoryID: docID) { error in
             if let error = error {
-                PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                DispatchQueue.main.async {
+                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                }
             }
         }
 
@@ -1745,7 +1780,10 @@ final class PPInventoryListViewModel: ObservableObject {
                     notes: "Marked out of stock from inventory list"
                 ) { result in
                     if case .failure(let error) = result {
-                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                        DispatchQueue.main.async {
+                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                        }
                     }
                 }
             }
@@ -1757,6 +1795,14 @@ final class PPInventoryListViewModel: ObservableObject {
     func deleteAccessory(_ item: PetAccessory) {
         let docID = item.accessoryID
         guard !docID.isEmpty else { return }
+
+        // Optimistically remove from view model immediately so the card disappears at once
+        pendingDeletedIDs.insert(docID)
+        allItems.removeAll { $0.accessoryID == docID }
+        filteredItems.removeAll { $0.accessoryID == docID }
+        applyFilter()
+        objectWillChange.send()
+
         PPHUD.showIndeterminate(in: nil, title: Language.get("Deleting", alter: "جاري الحذف..."), subtitle: nil)
         if item.isLivePet {
             Task { @MainActor in
@@ -1766,6 +1812,15 @@ final class PPInventoryListViewModel: ObservableObject {
                         productID: docID,
                         payload: ["reason": "admin_ios_soft_delete"]
                     )
+                    // Also soft-delete linked live-pet marketplace ad if present
+                    let db = Firestore.firestore()
+                    try? await db.collection("pet_ads").document("ad_live_\(docID)").setData([
+                        "status": 0,
+                        "visibility": 1,
+                        "isDeleted": true,
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ], merge: true)
+
                     PPHUD.dismiss()
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     PPHUD.showSuccess(
@@ -1773,6 +1828,8 @@ final class PPInventoryListViewModel: ObservableObject {
                         subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون")
                     )
                 } catch {
+                    self.pendingDeletedIDs.remove(docID)
+                    Task { await self.refresh() }
                     PPHUD.dismiss()
                     PPHUD.showError(
                         Language.get("Error", alter: "خطأ"),
@@ -1782,15 +1839,23 @@ final class PPInventoryListViewModel: ObservableObject {
             }
             return
         }
-        AccessoryManager.shared().deleteAccessory(withID: docID) { error in
+        AccessoryManager.shared().deleteAccessory(withID: docID) { [weak self] error in
             PPHUD.dismiss()
             if let error = error {
-                PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                DispatchQueue.main.async {
+                    self?.pendingDeletedIDs.remove(docID)
+                    Task { await self?.refresh() }
+                    PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                }
             } else {
                 DispatchQueue.main.async {
+                    self?.allItems.removeAll { $0.accessoryID == docID }
+                    self?.filteredItems.removeAll { $0.accessoryID == docID }
+                    self?.applyFilter()
+                    self?.objectWillChange.send()
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    PPHUD.showSuccess(Language.get("Deleted", alter: "تم الحذف بنجاح"), subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون"))
                 }
-                PPHUD.showSuccess(Language.get("Deleted", alter: "تم الحذف بنجاح"), subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون"))
             }
         }
     }
@@ -1936,7 +2001,7 @@ public struct PPInventoryListView: View {
         VStack(alignment: .leading, spacing: AdminSpacing.xs) {
             AdminSovereignNavigationBar(
                 title: viewModel.navigationTitle,
-                subtitle: Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + (viewModel.totalCount > 0 ? " • " + String(format: Language.get("Total_Items_Format", alter: "%d صنف مسجل"), viewModel.totalCount) : ""),
+                subtitle: (Language.get("CommandCenter_Work_Workspace", alter: "مساحة المخزون") + (viewModel.totalCount > 0 ? " • " + String(format: Language.get("Total_Items_Format", alter: "%@ صنف مسجل"), viewModel.totalCount.englishDigits) : "")).normalizedEnglishDigits,
                 statusDotColor: Color(uiColor: .ppSuccess),
                 onBack: {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -2039,21 +2104,21 @@ public struct PPInventoryListView: View {
                         .foregroundColor(AdminSurface.primaryText)
 
                     if viewModel.totalValuation > 0 {
-                        Text(String(format: Language.get("Inventory_Valuation_Format", alter: "القيمة الإجمالية للمخزون: %.2f ر.ق"), viewModel.totalValuation))
+                        Text(verbatim: String(format: Language.get("Inventory_Valuation_Format", alter: "القيمة الإجمالية للمخزون: %.2f ر.ق"), viewModel.totalValuation).normalizedEnglishDigits)
                             .font(AdminType.caption1)
                             .foregroundColor(AdminCommandInk.secondary)
                     }
 
                     if viewModel.unpricedItemsCount > 0 {
                         Label {
-                            Text(
+                            Text(verbatim:
                                 String(
                                     format: Language.get(
                                         "Inventory_Unpriced_Items_Format",
-                                        alter: "لم يُحدَّد سعر البيع لعدد %ld من الأصناف. لا تشملها قيمة المخزون."
+                                        alter: "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون."
                                     ),
-                                    viewModel.unpricedItemsCount
-                                )
+                                    viewModel.unpricedItemsCount.englishDigits
+                                ).normalizedEnglishDigits
                             )
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -2176,8 +2241,8 @@ public struct PPInventoryListView: View {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(color)
                 Spacer()
-                Text("\(count)")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text(verbatim: count.englishDigits)
+                    .font(PPBrandFont.bold(size: 18))
                     .foregroundStyle(color)
                     .minimumScaleFactor(0.80)
             }
@@ -2230,11 +2295,11 @@ public struct PPInventoryListView: View {
             .background(AdminSurface.control, in: Capsule())
 
             HStack {
-                Text(String(format: Language.get("Inventory_Available_Ratio", alter: "نسبة التوفر: %.0f%%"), (CGFloat(viewModel.inStockCount) / CGFloat(total)) * 100.0))
+                Text(verbatim: String(format: Language.get("Inventory_Available_Ratio", alter: "نسبة التوفر: %.0f%%"), (CGFloat(viewModel.inStockCount) / CGFloat(total)) * 100.0).normalizedEnglishDigits)
                     .font(AdminType.caption2)
                     .foregroundStyle(AdminCommandInk.tertiary)
                 Spacer()
-                Text(String(format: Language.get("Inventory_Showing_Count", alter: "%d معروض"), viewModel.filteredItems.count))
+                Text(verbatim: String(format: Language.get("Inventory_Showing_Count", alter: "%@ معروض"), viewModel.filteredItems.count.englishDigits).normalizedEnglishDigits)
                     .font(AdminType.caption2Bold)
                     .foregroundStyle(AdminSurface.primary)
             }
@@ -2319,8 +2384,8 @@ public struct PPInventoryListView: View {
                                 Text(filter.defaultTitle)
                                     .font(isSelected ? AdminType.captionBold : AdminType.caption1)
 
-                                Text("\(count)")
-                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                Text(verbatim: count.englishDigits)
+                                    .font(PPBrandFont.bold(size: 11))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
                                     .background(
@@ -2384,7 +2449,7 @@ public struct PPInventoryListView: View {
                             viewModel.toggleStockAvailability(for: item)
                         },
                         onDelete: {
-                            confirmDelete(item: item)
+                            viewModel.deleteAccessory(item)
                         }
                     )
                     onPushViewController(detailVC)
@@ -2847,6 +2912,89 @@ public struct PPInventoryListView: View {
 
 // MARK: - Flagship Category-Defining Inventory Specimen Monolith
 
+// MARK: - Category Specimen Aura Theme Engine
+
+private struct CategorySpecimenAuraTheme {
+    let gradient: [Color]
+    let glyphName: String
+    let accentTint: Color
+    let categoryName: String
+
+    static func resolve(for item: PetAccessory) -> CategorySpecimenAuraTheme {
+        // Live Pet Archetypes
+        if item.isLivePet {
+            let catName = MainKindsModel.kindName(forID: item.petMainCategoryID).lowercased()
+            if catName.contains("طير") || catName.contains("طيور") || catName.contains("bird") {
+                return CategorySpecimenAuraTheme(
+                    gradient: [Color(red: 251/255, green: 146/255, blue: 60/255), Color(red: 234/255, green: 88/255, blue: 12/255)],
+                    glyphName: "bird.fill",
+                    accentTint: Color(red: 234/255, green: 88/255, blue: 12/255),
+                    categoryName: Language.get("Birds", alter: "طيور")
+                )
+            } else if catName.contains("قط") || catName.contains("cat") {
+                return CategorySpecimenAuraTheme(
+                    gradient: [Color(red: 167/255, green: 139/255, blue: 250/255), Color(red: 124/255, green: 58/255, blue: 237/255)],
+                    glyphName: "cat.fill",
+                    accentTint: Color(red: 124/255, green: 58/255, blue: 237/255),
+                    categoryName: Language.get("Cats", alter: "قطط")
+                )
+            } else if catName.contains("كلب") || catName.contains("كلاب") || catName.contains("dog") {
+                return CategorySpecimenAuraTheme(
+                    gradient: [Color(red: 52/255, green: 211/255, blue: 153/255), Color(red: 5/255, green: 150/255, blue: 105/255)],
+                    glyphName: "dog.fill",
+                    accentTint: Color(red: 5/255, green: 150/255, blue: 105/255),
+                    categoryName: Language.get("Dogs", alter: "كلاب")
+                )
+            } else if catName.contains("سمك") || catName.contains("أسماك") || catName.contains("fish") {
+                return CategorySpecimenAuraTheme(
+                    gradient: [Color(red: 56/255, green: 189/255, blue: 248/255), Color(red: 2/255, green: 132/255, blue: 199/255)],
+                    glyphName: "fish.fill",
+                    accentTint: Color(red: 2/255, green: 132/255, blue: 199/255),
+                    categoryName: Language.get("Aquatic", alter: "أسماك")
+                )
+            } else {
+                return CategorySpecimenAuraTheme(
+                    gradient: [Color(red: 244/255, green: 114/255, blue: 182/255), Color(red: 225/255, green: 29/255, blue: 72/255)],
+                    glyphName: "pawprint.fill",
+                    accentTint: Color(red: 225/255, green: 29/255, blue: 72/255),
+                    categoryName: Language.get("LivePets", alter: "أليف")
+                )
+            }
+        }
+
+        // Food Archetype
+        if item.isFood {
+            return CategorySpecimenAuraTheme(
+                gradient: [Color(red: 251/255, green: 191/255, blue: 36/255), Color(red: 217/255, green: 119/255, blue: 6/255)],
+                glyphName: "takeoutbag.and.cup.and.straw.fill",
+                accentTint: Color(red: 217/255, green: 119/255, blue: 6/255),
+                categoryName: Language.get("Food", alter: "طعام")
+            )
+        }
+
+        // Medicine Archetype
+        if item.isPetMedicine {
+            return CategorySpecimenAuraTheme(
+                gradient: [Color(red: 45/255, green: 212/255, blue: 191/255), Color(red: 13/255, green: 148/255, blue: 136/255)],
+                glyphName: "cross.case.fill",
+                accentTint: Color(red: 13/255, green: 148/255, blue: 136/255),
+                categoryName: Language.get("Medicine", alter: "صيدلية")
+            )
+        }
+
+        // General Accessories Archetype
+        let catDisplay = item.accessoryCategoryName ?? item.category ?? (item.petMainCategoryID > 0 ? (MainKindsModel.kindName(forID: item.petMainCategoryID) ?? "") : "")
+        return CategorySpecimenAuraTheme(
+            gradient: [Color(red: 96/255, green: 165/255, blue: 250/255), Color(red: 37/255, green: 99/255, blue: 235/255)],
+            glyphName: "sparkles",
+            accentTint: Color(red: 37/255, green: 99/255, blue: 235/255),
+            categoryName: catDisplay.isEmpty ? Language.get("Accessory", alter: "إكسسوار") : catDisplay
+        )
+    }
+}
+
+// MARK: - Flagship Category-Defining Inventory Specimen Monolith
+
 @available(iOS 16.0, *)
 private struct FlagshipInventoryCard: View {
     let item: PetAccessory
@@ -2855,9 +3003,6 @@ private struct FlagshipInventoryCard: View {
     let onAdjustQuantity: (Int) -> Void
     let onToggleStock: () -> Void
     let onDelete: () -> Void
-
-    @State private var showQuantityAlert: Bool = false
-    @State private var inputQuantityText: String = ""
 
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
@@ -2912,58 +3057,27 @@ private struct FlagshipInventoryCard: View {
         if (item.noStock && !item.isLivePet) || qty <= 0 {
             return Language.get("OutOfStock", alter: "نفذ من المخزون")
         } else if qty <= 3 {
-            return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%d)"), qty)
+            return String(format: Language.get("LowStock_Qty_Format", alter: "وشك النفاذ (%@)"), qty.englishDigits).normalizedEnglishDigits
         } else {
-            return String(format: Language.get("InStock_Qty_Format", alter: "متوفر (%d)"), qty)
-        }
-    }
-
-    private var stockStatusIcon: String {
-        let qty = displayQuantity
-        if qty <= 0 || item.noStock {
-            return "xmark.circle.fill"
-        } else if qty <= 3 {
-            return "exclamationmark.triangle.fill"
-        } else {
-            return "checkmark.circle.fill"
+            return String(format: Language.get("InStock_Qty_Format", alter: "متوفر (%@)"), qty.englishDigits).normalizedEnglishDigits
         }
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             // Main Specimen Presentation Chamber (Tappable Area)
             Button(action: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onTap()
             }) {
                 HStack(alignment: .top, spacing: 14) {
-                    // Visual Specimen Vessel (92x92)
-                    specimenShowcase
-                        .frame(width: 92, height: 92)
-                        .clipped()
+                    // Visual Specimen Vitrine (88x88)
+                    specimenVitrine
 
-                    // Identity, Lineage & Valuation Track
+                    // Nomenclature, Runway & Valuation Track
                     VStack(alignment: .leading, spacing: 6) {
-                        // Top Meta Runway: Origin + Condition + Weight + Vitality Pill (Adaptive)
-                        ViewThatFits(in: .horizontal) {
-                            HStack(alignment: .center, spacing: 6) {
-                                topMetaChipsLeading
-                                Spacer(minLength: 4)
-                                stockVitalityPill
-                            }
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                HStack(alignment: .center, spacing: 6) {
-                                    topMetaChipsLeading
-                                    Spacer(minLength: 4)
-                                }
-                                HStack(alignment: .center, spacing: 6) {
-                                    topMetaChipsTrailing
-                                    Spacer(minLength: 4)
-                                    stockVitalityPill
-                                }
-                            }
-                        }
+                        // Architectural Metadata Runway
+                        architecturalMetadataRunway
 
                         // Specimen Nomenclature (Title)
                         Text(item.name)
@@ -2976,107 +3090,22 @@ private struct FlagshipInventoryCard: View {
                         Spacer(minLength: 2)
 
                         // Financial Valuation Readout
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(finalPriceFormatted)
-                                .font(AdminType.title3)
-                                .foregroundColor(item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning))
-                                .monospacedDigit()
-
-                            if let original = originalPriceFormatted {
-                                Text(original)
-                                    .font(AdminType.caption)
-                                    .foregroundColor(AdminCommandInk.tertiary)
-                                    .strikethrough()
-                            }
-
-                            if let wp = item.wholesalePrice?.doubleValue, wp > 0 {
-                                HStack(spacing: 3) {
-                                    Text(Language.get("Wholesale_Short", alter: "جملة:"))
-                                        .font(.system(size: 10, weight: .bold))
-                                    Text(String(format: "%.0f %@", wp, Language.get("QAR", alter: "ر.ق")))
-                                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                                }
-                                .foregroundColor(Color(uiColor: .systemTeal))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
-                            }
-                        }
+                        financialValuationReadout
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .padding(14)
                 .contentShape(Rectangle())
             }
             .buttonStyle(CatalogPressStyle())
 
-            // Integrated Tactile Horizon Cockpit
-            HStack(alignment: .center, spacing: 10) {
-                // Catalog Availability / Store Visibility Switch
-                if !item.isLivePet {
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        onToggleStock()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
-                                .font(.system(size: 11, weight: .bold))
+            // Tactical Horizon Negative-Space Divider
+            Divider()
+                .background(AdminSurface.hairline.opacity(0.65))
 
-                            Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
-                                .font(AdminType.caption2Bold)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.85)
-                        }
-                        .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
-                        .padding(.horizontal, 10)
-                        .frame(height: 36)
-                        .background(
-                            (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.09),
-                            in: Capsule(style: .continuous)
-                        )
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.22), lineWidth: 0.75)
-                        )
-                    }
-                    .buttonStyle(CatalogPressStyle())
-                    .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
-                }
-
-                Spacer(minLength: 6)
-
-                // Stepper or Live Pet Unit Registry
-                if item.isLivePet {
-                    Button(action: {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onTap()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "pawprint.fill")
-                                .font(.system(size: 11, weight: .bold))
-                            Text(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات"))
-                                .font(AdminType.captionBold)
-                            Image(systemName: "chevron.forward")
-                                .font(.system(size: 9, weight: .bold))
-                        }
-                        .foregroundColor(AdminSurface.primary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 36)
-                        .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
-                        .overlay(
-                            Capsule(style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(0.20), lineWidth: 0.75)
-                        )
-                    }
-                    .buttonStyle(CatalogPressStyle())
-                } else {
-                    // Quantum Precision Stepper
-                    quantumStepper
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            // Integrated Tactical Horizon Cockpit
+            tacticalHorizonCockpit
         }
+        .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AdminSurface.surface)
@@ -3088,7 +3117,12 @@ private struct FlagshipInventoryCard: View {
         )
         .contextMenu {
             Button(action: onEdit) {
-                Label(Language.get("Edit", alter: "تعديل الصنف"), systemImage: "pencil")
+                Label {
+                    Text(Language.get("Edit", alter: "تعديل الصنف"))
+                        .font(PPBrandFont.bold(size: 16))
+                } icon: {
+                    Image(systemName: "pencil")
+                }
             }
 
             Button(action: {
@@ -3099,24 +3133,385 @@ private struct FlagshipInventoryCard: View {
                     PetAccessory.share(item, from: root)
                 }
             }) {
-                Label(Language.get("Share", alter: "مشاركة الصنف"), systemImage: "square.and.arrow.up")
+                Label {
+                    Text(Language.get("Share", alter: "مشاركة الصنف"))
+                        .font(PPBrandFont.bold(size: 16))
+                } icon: {
+                    Image(systemName: "square.and.arrow.up")
+                }
             }
 
             if !item.isLivePet {
                 Button(action: onToggleStock) {
-                    Label(
-                        item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"),
-                        systemImage: item.noStock ? "checkmark.circle" : "xmark.circle"
-                    )
+                    Label {
+                        Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: item.noStock ? "checkmark.circle" : "xmark.circle")
+                    }
                 }
             }
 
             Divider()
 
             Button(role: .destructive, action: onDelete) {
-                Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
+                Label {
+                    Text(Language.get("Delete", alter: "حذف من المخزون"))
+                        .font(PPBrandFont.bold(size: 16))
+                } icon: {
+                    Image(systemName: "trash")
+                }
             }
         }
+    }
+
+    // MARK: - Architectural Metadata Runway
+
+    private var architecturalMetadataRunway: some View {
+        let aura = CategorySpecimenAuraTheme.resolve(for: item)
+        let branchDisplayName = item.resolvedBranchName()
+        let condText = PetAccessory.conditionText(for: item)
+
+        return HStack(spacing: 5) {
+            // Taxonomy Capsule with live tint
+            HStack(spacing: 3.5) {
+                Circle()
+                    .fill(aura.accentTint)
+                    .frame(width: 5, height: 5)
+                Text(aura.categoryName)
+                    .font(AdminType.caption2Bold)
+                    .foregroundColor(aura.accentTint)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2.5)
+            .background(aura.accentTint.opacity(0.10), in: Capsule(style: .continuous))
+
+            // Branch Beacon
+            if !branchDisplayName.isEmpty {
+                HStack(spacing: 3) {
+                    Image(systemName: "building.2")
+                        .font(.system(size: 8))
+                    Text(branchDisplayName)
+                        .font(AdminType.caption2)
+                        .lineLimit(1)
+                }
+                .foregroundColor(AdminCommandInk.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+            }
+
+            // Condition Tag (e.g. جديد / مستعمل)
+            if !condText.isEmpty {
+                Text(condText)
+                    .font(AdminType.caption2Bold)
+                    .foregroundColor(Color(red: 234/255, green: 88/255, blue: 12/255))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2.5)
+                    .background(Color(red: 234/255, green: 88/255, blue: 12/255).opacity(0.10), in: Capsule(style: .continuous))
+                    .lineLimit(1)
+            }
+
+            // Package Weight Chip
+            if let weight = item.weightText, !weight.isEmpty {
+                HStack(spacing: 2) {
+                    Image(systemName: "scalemass.fill")
+                        .font(.system(size: 8))
+                    Text(weight)
+                        .font(AdminType.caption2)
+                }
+                .foregroundColor(AdminCommandInk.tertiary)
+                .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Financial Valuation Readout
+
+    private var financialValuationReadout: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(verbatim: finalPriceFormatted.normalizedEnglishDigits)
+                .font(AdminType.title3)
+                .foregroundColor(item.hasResolvedSellingPrice ? AdminSurface.primary : Color(uiColor: .ppWarning))
+                .monospacedDigit()
+
+            if let original = originalPriceFormatted {
+                Text(verbatim: original.normalizedEnglishDigits)
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminCommandInk.tertiary)
+                    .strikethrough()
+            }
+
+            if let wp = item.wholesalePrice?.doubleValue, wp > 0 {
+                HStack(spacing: 3) {
+                    Text(Language.get("Wholesale_Short", alter: "جملة:"))
+                        .font(PPBrandFont.bold(size: 10))
+                    Text(verbatim: "\(wp.englishDigits(decimals: 0)) \(Language.get("QAR", alter: "ر.ق"))")
+                        .font(PPBrandFont.bold(size: 11))
+                        .monospacedDigit()
+
+                    // Margin intelligence readout
+                    let fp = item.finalPrice.doubleValue
+                    if fp > wp && fp > 0 {
+                        let marginPercent = Int(round(((fp - wp) / fp) * 100.0))
+                        Text(verbatim: "• \(marginPercent.englishDigits)%")
+                            .font(PPBrandFont.bold(size: 10))
+                            .foregroundColor(Color(uiColor: .systemTeal).opacity(0.85))
+                    }
+                }
+                .foregroundColor(Color(uiColor: .systemTeal))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule(style: .continuous))
+            }
+        }
+    }
+
+    // MARK: - Specimen Visual Vitrine (88x88)
+
+    private var specimenVitrine: some View {
+        ZStack(alignment: .topLeading) {
+            // Artwork Vessel (Image or Procedural Aura)
+            Group {
+                if let imageURL = imageURL {
+                    AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 88, height: 88)) {
+                        ZStack {
+                            AdminSurface.control
+                            ProgressView()
+                                .tint(AdminSurface.primary)
+                        }
+                        .frame(width: 88, height: 88)
+                    }
+                    .frame(width: 88, height: 88)
+                    .clipped()
+                } else {
+                    proceduralAuraVitrine
+                }
+            }
+            .frame(width: 88, height: 88)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
+
+            // Dynamic Discount Ribbon
+            if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
+                Text(verbatim: "-\(percent.intValue.englishDigits)%")
+                    .font(PPBrandFont.bold(size: 10))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5.5)
+                    .padding(.vertical, 2.5)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(uiColor: .ppError), Color(red: 225/255, green: 29/255, blue: 72/255)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    )
+                    .shadow(color: Color(uiColor: .ppError).opacity(0.35), radius: 3, x: 0, y: 1.5)
+                    .padding(5)
+            }
+
+            // Multi-Photo Stack Pip
+            if item.imageURLsArray.count > 1 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        HStack(spacing: 2) {
+                            Image(systemName: "photo.stack.fill")
+                                .font(.system(size: 7.5, weight: .bold))
+                            Text(verbatim: item.imageURLsArray.count.englishDigits)
+                                .font(PPBrandFont.bold(size: 8.5))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 4.5)
+                        .padding(.vertical, 2)
+                        .background(Color.black.opacity(0.65), in: Capsule(style: .continuous))
+                        .shadow(color: Color.black.opacity(0.25), radius: 2, y: 1)
+                        .padding(5)
+                    }
+                }
+            }
+        }
+        .frame(width: 88, height: 88)
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+
+    private var proceduralAuraVitrine: some View {
+        let aura = CategorySpecimenAuraTheme.resolve(for: item)
+        return ZStack {
+            // Soft atmospheric ambient gradient
+            LinearGradient(
+                colors: [aura.gradient[0].opacity(0.18), aura.gradient[1].opacity(0.08)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            // Inner soft luminous focal aura
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [aura.gradient[0].opacity(0.30), aura.gradient[1].opacity(0.0)],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: 36
+                    )
+                )
+                .frame(width: 56, height: 56)
+
+            // Category Vector Archetype Glyph
+            Image(systemName: aura.glyphName)
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: aura.gradient,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .shadow(color: aura.accentTint.opacity(0.3), radius: 4, y: 2)
+        }
+        .frame(width: 88, height: 88)
+    }
+
+    // MARK: - Integrated Tactical Horizon Cockpit
+
+    private var tacticalHorizonCockpit: some View {
+        HStack(alignment: .center, spacing: 8) {
+            // Store Visibility Sentinel
+            if !item.isLivePet {
+                storeVisibilitySentinel
+            }
+
+            Spacer(minLength: 4)
+
+            // Stepper or Live Pet Unit Registry
+            if item.isLivePet {
+                livePetRosterButton
+            } else {
+                quantumPrecisionStepper
+            }
+        }
+    }
+
+    private var storeVisibilitySentinel: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onToggleStock()
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
+                    .font(.system(size: 11, weight: .bold))
+
+                Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
+                    .font(AdminType.caption2Bold)
+                    .lineLimit(1)
+            }
+            .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(
+                (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.09),
+                in: Capsule(style: .continuous)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.24), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
+    }
+
+    private var livePetRosterButton: some View {
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onTap()
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text(Language.get("LivePet_Manage_Units", alter: "سجل الحيوانات"))
+                    .font(AdminType.captionBold)
+                Text(verbatim: "(\(displayQuantity.englishDigits))")
+                    .font(PPBrandFont.bold(size: 11))
+                    .monospacedDigit()
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .foregroundColor(AdminSurface.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(CatalogPressStyle())
+    }
+
+    private var quantumPrecisionStepper: some View {
+        HStack(spacing: 0) {
+            // Decrement (-)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onAdjustQuantity(-1)
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(displayQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CatalogPressStyle())
+            .disabled(displayQuantity <= 0)
+
+            // Tabular Count with Stock Vitality Tint & Rolling Transition
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(stockTone)
+                    .frame(width: 5, height: 5)
+
+                Text(verbatim: displayQuantity.englishDigits)
+                    .font(PPBrandFont.bold(size: 14))
+                    .monospacedDigit()
+                    .foregroundColor(stockTone == Color(uiColor: .ppError) ? Color(uiColor: .ppError) : AdminSurface.primaryText)
+                    .contentTransition(.numericText())
+            }
+            .padding(.horizontal, 8)
+            .frame(minWidth: 44)
+            .frame(height: 36)
+            .contentShape(Rectangle())
+            .accessibilityLabel(stockStatusText)
+            .onTapGesture {
+                promptQuantityEdit()
+            }
+
+            // Increment (+)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                onAdjustQuantity(1)
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(CatalogPressStyle())
+        }
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+        )
     }
 
     private func promptQuantityEdit() {
@@ -3126,7 +3521,7 @@ private struct FlagshipInventoryCard: View {
             title: Language.get("EditQuantity", alter: "تعديل الكمية"),
             subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
             placeholder: Language.get("Quantity", alter: "الكمية"),
-            initialText: "\(displayQuantity)",
+            initialText: displayQuantity.englishDigits,
             confirmText: Language.get("Save", alter: "حفظ"),
             cancelText: Language.get("Cancel", alter: "إلغاء"),
             secureEntry: false,
@@ -3142,208 +3537,6 @@ private struct FlagshipInventoryCard: View {
                 }
             }
         }
-    }
-
-    // MARK: - Runway Meta Chips
-
-    @ViewBuilder
-    private var topMetaChipsLeading: some View {
-        let branchDisplayName = item.resolvedBranchName()
-        if !branchDisplayName.isEmpty {
-            Text(branchDisplayName)
-                .font(AdminType.caption2Bold)
-                .foregroundColor(AdminSurface.primary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
-                .lineLimit(1)
-        }
-
-        if let sku = item.sku, !sku.isEmpty {
-            Text("SKU: \(sku)")
-                .font(AdminType.caption2Bold)
-                .foregroundColor(AdminCommandInk.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2.5)
-                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .minimumScaleFactor(0.85)
-        }
-
-        let condText = PetAccessory.conditionText(for: item)
-        if !condText.isEmpty {
-            Text(condText)
-                .font(AdminType.caption2)
-                .foregroundColor(AdminCommandInk.secondary)
-                .lineLimit(1)
-        }
-    }
-
-    @ViewBuilder
-    private var topMetaChipsTrailing: some View {
-        if let weight = item.weightText, !weight.isEmpty {
-            HStack(spacing: 2) {
-                Image(systemName: "scalemass.fill")
-                    .font(.system(size: 8))
-                Text(weight)
-                    .font(AdminType.caption2)
-            }
-            .foregroundColor(AdminCommandInk.tertiary)
-            .lineLimit(1)
-        }
-    }
-
-    private var stockVitalityPill: some View {
-        HStack(spacing: 4) {
-            Image(systemName: stockStatusIcon)
-                .font(.system(size: 8, weight: .bold))
-            Text(stockStatusText)
-                .font(AdminType.caption2Bold)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
-        }
-        .foregroundColor(stockTone)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3.5)
-        .background(
-            stockTone.opacity(0.10),
-            in: Capsule(style: .continuous)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(stockTone.opacity(0.25), lineWidth: 0.5)
-        )
-        .fixedSize(horizontal: true, vertical: false)
-        .layoutPriority(1)
-    }
-
-    // MARK: - Specimen Visual Showcase (92x92)
-
-    private var specimenShowcase: some View {
-        ZStack(alignment: .topLeading) {
-            productThumbnail
-                .frame(width: 92, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
-                )
-
-            // Dynamic Discount Tag
-            if hasDiscount, let percent = item.discountPercent, percent.intValue > 0 {
-                HStack(spacing: 1) {
-                    Text("-\(percent.intValue)%")
-                        .font(.system(size: 9.5, weight: .black, design: .rounded))
-                        .foregroundColor(.white)
-                }
-                .padding(.horizontal, 5.5)
-                .padding(.vertical, 2.5)
-                .background(
-                    LinearGradient(
-                        colors: [Color(uiColor: .ppError), Color(uiColor: .ppPrimary)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                )
-                .shadow(color: Color(uiColor: .ppError).opacity(0.35), radius: 3, x: 0, y: 1.5)
-                .padding(6)
-            }
-        }
-        .frame(width: 92, height: 92)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    // MARK: - Quantum Stepper
-
-    private var quantumStepper: some View {
-        HStack(spacing: 0) {
-            // Decrement (-)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(-1)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundColor(displayQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.5))
-                    .frame(width: 36, height: 34)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(CatalogPressStyle())
-            .disabled(displayQuantity <= 0)
-
-            // Monospaced Count Display
-            Text("\(displayQuantity)")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundColor(AdminSurface.primaryText)
-                .frame(minWidth: 32)
-                .multilineTextAlignment(.center)
-                .contentTransition(.numericText())
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    promptQuantityEdit()
-                }
-
-            // Increment (+)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(1)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 36, height: 34)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(CatalogPressStyle())
-        }
-        .background(AdminSurface.control.opacity(0.70), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 11, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.70), lineWidth: 0.75)
-        )
-    }
-
-    // MARK: - Product Thumbnail Loader
-
-    @ViewBuilder
-    private var productThumbnail: some View {
-        Group {
-            if let imageURL = imageURL {
-                AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 92, height: 92)) {
-                    ZStack {
-                        AdminSurface.control
-                        ProgressView()
-                            .tint(AdminSurface.primary)
-                    }
-                    .frame(width: 92, height: 92)
-                }
-                .frame(width: 92, height: 92)
-                .clipped()
-            } else {
-                placeholderThumbnail
-            }
-        }
-        .frame(width: 92, height: 92)
-        .clipped()
-    }
-
-    private var placeholderThumbnail: some View {
-        ZStack {
-            LinearGradient(
-                colors: [AdminSurface.control, AdminSurface.surface],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            Image(systemName: "shippingbox.fill")
-                .font(.system(size: 26, weight: .medium))
-                .foregroundColor(AdminCommandInk.tertiary.opacity(0.7))
-        }
-        .frame(width: 92, height: 92)
-        .clipped()
     }
 }
 
@@ -3370,7 +3563,9 @@ public struct PPInventoryItemDetailView: View {
     @State private var isLightboxPresented: Bool = false
     @State private var currentQuantity: Int = 0
     @State private var showTransferSheet: Bool = false
+    @State private var showBasicDataEditor: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
+    @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
@@ -3555,6 +3750,11 @@ public struct PPInventoryItemDetailView: View {
                 }
             )
         }
+        .sheet(isPresented: $showBasicDataEditor) {
+            PPLivePetBasicDataEditorView(item: item) { _ in
+                viewModel?.applyFilter()
+            }
+        }
         .onChange(of: branchInventory.inventoryMap) { _ in
             if !item.isLivePet {
                 let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
@@ -3654,6 +3854,14 @@ public struct PPInventoryItemDetailView: View {
                     onOpenFullEditor()
                 } label: {
                     Label(Language.get("Edit", alter: "تعديل الصنف"), systemImage: "pencil")
+                }
+
+                if item.isLivePet {
+                    Button {
+                        showBasicDataEditor = true
+                    } label: {
+                        Label(Language.get("LivePet_EditBasicData", alter: "تعديل البيانات الأساسية"), systemImage: "pencil.and.list.clipboard")
+                    }
                 }
 
                 Button {
@@ -3989,7 +4197,7 @@ public struct PPInventoryItemDetailView: View {
                         .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
 
                     Text(copiedField == "sku" ? Language.get("Copied", alter: "تم النسخ بنجاح") : specimenIdentifierText)
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .font(PPBrandFont.bold(size: 12))
                         .foregroundStyle(copiedField == "sku" ? Color(uiColor: .ppSuccess) : AdminSurface.primaryText)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -4059,21 +4267,21 @@ public struct PPInventoryItemDetailView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.inventoryDisplayPrice)
-                            .font(Font.custom("Beiruti-Bold", size: 28))
+                        Text(verbatim: item.inventoryDisplayPrice.normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 28))
                             .foregroundStyle(AdminSurface.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
 
                         if let orig = originalPriceFormatted {
                             HStack(spacing: 6) {
-                                Text(orig)
-                                    .font(Font.custom("Beiruti-Regular", size: 12))
+                                Text(verbatim: orig.normalizedEnglishDigits)
+                                    .font(PPBrandFont.regular(size: 12))
                                     .strikethrough()
                                     .foregroundStyle(AdminCommandInk.tertiary)
                                 if let percent = item.discountPercent, percent.intValue > 0 {
-                                    Text("-\(percent.intValue)%")
-                                        .font(Font.custom("Beiruti-Bold", size: 10))
+                                    Text(verbatim: "-\(percent.intValue.englishDigits)%")
+                                        .font(PPBrandFont.bold(size: 10))
                                         .foregroundStyle(Color(uiColor: .ppError))
                                         .padding(.horizontal, 5)
                                         .padding(.vertical, 1.5)
@@ -4094,8 +4302,8 @@ public struct PPInventoryItemDetailView: View {
                             HStack(spacing: 4) {
                                 Image(systemName: "building.2.fill")
                                     .font(.system(size: 10))
-                                Text(String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.2f ر.ق"), wp))
-                                    .font(Font.custom("Beiruti-Bold", size: 12))
+                                Text(verbatim: String(format: Language.get("Wholesale_Price_Format", alter: "جملة: %.2f ر.ق"), wp).normalizedEnglishDigits)
+                                    .font(PPBrandFont.bold(size: 12))
                             }
                             .foregroundStyle(Color(uiColor: .systemTeal))
 
@@ -4103,8 +4311,8 @@ public struct PPInventoryItemDetailView: View {
                                 HStack(spacing: 3) {
                                     Image(systemName: "arrow.up.right")
                                         .font(.system(size: 8, weight: .bold))
-                                    Text(String(format: "+%.2f ر.ق (%.0f%%)", margin.margin, margin.percent))
-                                        .font(Font.custom("Beiruti-Bold", size: 11))
+                                    Text(verbatim: String(format: "+%.2f ر.ق (%.0f%%)", margin.margin, margin.percent).normalizedEnglishDigits)
+                                        .font(PPBrandFont.bold(size: 11))
                                 }
                                 .foregroundStyle(Color(uiColor: .ppSuccess))
                                 .padding(.horizontal, 6)
@@ -4134,8 +4342,8 @@ public struct PPInventoryItemDetailView: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                         Spacer()
                         if let activeBranch = BranchContextStore.shared.activeBranch {
-                            Text(activeBranch.code.isEmpty ? activeBranch.localizedName() : activeBranch.code)
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            Text(verbatim: (activeBranch.code.isEmpty ? activeBranch.localizedName() : activeBranch.code).normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 10))
                                 .foregroundStyle(AdminSurface.primary)
                                 .padding(.horizontal, 5)
                                 .padding(.vertical, 2)
@@ -4144,8 +4352,8 @@ public struct PPInventoryItemDetailView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("\(displayedQuantity)")
-                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text(verbatim: displayedQuantity.englishDigits)
+                            .font(PPBrandFont.bold(size: 28))
                             .foregroundStyle(stockTone)
                             .lineLimit(1)
                             .contentShape(Rectangle())
@@ -4168,8 +4376,8 @@ public struct PPInventoryItemDetailView: View {
                         }
                         .frame(height: 4)
 
-                        Text(stockStatusText)
-                            .font(Font.custom("Beiruti-Bold", size: 11))
+                        Text(verbatim: stockStatusText.normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 11))
                             .foregroundStyle(stockTone)
                             .lineLimit(1)
                     }
@@ -4189,8 +4397,8 @@ public struct PPInventoryItemDetailView: View {
                             .buttonStyle(CatalogPressStyle())
                             .disabled(currentQuantity <= 0)
 
-                            Text("\(currentQuantity)")
-                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            Text(verbatim: currentQuantity.englishDigits)
+                                .font(PPBrandFont.bold(size: 14))
                                 .foregroundStyle(AdminSurface.primaryText)
                                 .frame(minWidth: 32)
                                 .multilineTextAlignment(.center)
@@ -4559,13 +4767,19 @@ public struct PPInventoryItemDetailView: View {
                     notes: "Adjusted from detail view stepper"
                 ) { result in
                     if case .failure(let error) = result {
-                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                        DispatchQueue.main.async {
+                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                        }
                     }
                 }
             } else {
                 AccessoryManager.shared().adjustQuantity(by: effectiveDelta, forAccessoryID: item.accessoryID) { error in
                     if let error = error {
-                        PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+                        DispatchQueue.main.async {
+                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                        }
                     }
                 }
             }
@@ -4854,15 +5068,18 @@ public struct PPInventoryItemDetailView: View {
     // MARK: - Individual Animal Ledger
 
     private var individualAnimalLedger: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let activeUnits = liveModel.units.filter { $0.status != "REMOVED" && $0.status != "DECEASED" && $0.status != "TRANSFERRED" }
+        let historyUnits = liveModel.units.filter { $0.status == "REMOVED" || $0.status == "DECEASED" || $0.status == "TRANSFERRED" }
+
+        return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
                     Text(String(
-                        format: Language.get("LivePetDossier_UnitLedgerCount", alter: "%ld سجلات هوية مستقلة"),
-                        liveModel.units.count
+                        format: Language.get("LivePetDossier_ActiveUnitLedgerCount", alter: "%ld سجلات هوية نشطة"),
+                        activeUnits.count
                     ))
                     .font(Font.custom("Beiruti-Regular", size: 12))
                     .foregroundStyle(AdminCommandInk.secondary)
@@ -4877,13 +5094,55 @@ public struct PPInventoryItemDetailView: View {
 
             if liveModel.isLoading && liveModel.units.isEmpty {
                 dossierLoadingState
-            } else if liveModel.units.isEmpty {
+            } else if activeUnits.isEmpty && historyUnits.isEmpty {
                 dossierUnitEmptyState
             } else {
-                VStack(spacing: 8) {
-                    ForEach(liveModel.units) { unit in
-                        livePetUnitRow(unit)
+                if !activeUnits.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(activeUnits) { unit in
+                            livePetUnitRow(unit)
+                        }
                     }
+                } else {
+                    dossierUnitEmptyState
+                }
+
+                if !historyUnits.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showHistoryUnits.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: showHistoryUnits ? "chevron.down" : "chevron.forward")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                Text(String(
+                                    format: Language.get("LivePet_Units_Archived_Count", alter: "السجلات المؤرشفة والمزالة (%ld)"),
+                                    historyUnits.count
+                                ))
+                                .font(Font.custom("Beiruti-SemiBold", size: 13))
+                                .foregroundStyle(AdminCommandInk.secondary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+                            .padding(.horizontal, 10)
+                            .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+
+                        if showHistoryUnits {
+                            VStack(spacing: 8) {
+                                ForEach(historyUnits) { unit in
+                                    livePetUnitRow(unit)
+                                        .opacity(0.7)
+                                }
+                            }
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .padding(.top, 4)
                 }
             }
         }
@@ -5038,8 +5297,8 @@ public struct PPInventoryItemDetailView: View {
 
                 // Identity + Badges Track
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(identity)
-                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                    Text(verbatim: identity.normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -5151,66 +5410,76 @@ public struct PPInventoryItemDetailView: View {
         }
     }
 
+    private func livePetMenuActionLabel(title: String, systemImage: String) -> some View {
+        Label {
+            Text(title)
+                .font(PPBrandFont.bold(size: 16))
+        } icon: {
+            Image(systemName: systemImage)
+        }
+    }
+
     @ViewBuilder
     private func livePetUnitActions(_ unit: PPLivePetInventoryUnit) -> some View {
         if unit.status == "AVAILABLE" {
             Button { selectUnitAction(.reserve(unit)) } label: {
-                Label(Language.get("LivePet_Reserve_Action", alter: "حجز لعميل"), systemImage: "calendar.badge.plus")
+                livePetMenuActionLabel(title: Language.get("LivePet_Reserve_Action", alter: "حجز لعميل"), systemImage: "calendar.badge.plus")
             }
             .disabled(!liveModel.canSell)
             Button { selectUnitAction(.transfer(unit)) } label: {
-                Label(Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
+                livePetMenuActionLabel(title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
             }
             .disabled(!liveModel.canManageStock)
             Button { selectUnitAction(.quarantine(unit)) } label: {
-                Label(Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر"), systemImage: "cross.case")
+                livePetMenuActionLabel(title: Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر"), systemImage: "cross.case")
             }
             .disabled(!liveModel.canManageStock)
             Button { selectUnitAction(.price(unit)) } label: {
-                Label(Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
+                livePetMenuActionLabel(title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
             }
             .disabled(!liveModel.canManageStock)
             Button(role: .destructive) { selectUnitAction(.remove(unit)) } label: {
-                Label(Language.get("LivePet_Remove_Action", alter: "إزالة من المخزون"), systemImage: "minus.circle")
+                livePetMenuActionLabel(title: Language.get("LivePet_Remove_Action", alter: "إزالة من المخزون"), systemImage: "minus.circle")
             }
             .disabled(!liveModel.canManageStock)
             Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
+                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
         } else if unit.status == "RESERVED" {
             if let reservation = liveModel.reservation(for: unit) {
                 Button { selectUnitAction(.reservation(reservation)) } label: {
-                    Label(Language.get("LivePet_Manage_Reservation", alter: "إدارة الحجز"), systemImage: "creditcard")
+                    livePetMenuActionLabel(title: Language.get("LivePet_Manage_Reservation", alter: "إدارة الحجز"), systemImage: "creditcard")
                 }
             } else {
                 Button { Task { await liveModel.load() } } label: {
-                    Label(Language.get("Refresh", alter: "تحديث"), systemImage: "arrow.clockwise")
+                    livePetMenuActionLabel(title: Language.get("Refresh", alter: "تحديث"), systemImage: "arrow.clockwise")
                 }
             }
             Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة وإلغاء الحجز"), systemImage: "heart.slash")
+                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة وإلغاء الحجز"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
         } else if unit.status == "QUARANTINED" {
             Button { selectUnitAction(.releaseQuarantine(unit)) } label: {
-                Label(Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر"), systemImage: "checkmark.shield")
+                livePetMenuActionLabel(title: Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر"), systemImage: "checkmark.shield")
             }
             .disabled(!liveModel.canReleaseQuarantine)
             Button { selectUnitAction(.transfer(unit)) } label: {
-                Label(Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
+                livePetMenuActionLabel(title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
             }
             .disabled(!liveModel.canManageStock)
             Button { selectUnitAction(.price(unit)) } label: {
-                Label(Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
+                livePetMenuActionLabel(title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
             }
             .disabled(!liveModel.canManageStock)
             Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                Label(Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
+                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
             }
             .disabled(!liveModel.canManageStock)
         } else {
             Text(Language.get("LivePet_Terminal_No_Actions", alter: "هذه حالة نهائية للعرض فقط"))
+                .font(Font.custom("Beiruti-Bold", size: 14))
         }
     }
 
@@ -5653,8 +5922,8 @@ private struct PPLivePetActionPortalDeck: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Text(identity)
-                            .font(.system(size: 18, weight: .bold, design: .monospaced))
+                        Text(verbatim: identity.normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 18))
                             .foregroundStyle(AdminSurface.primaryText)
 
                         Button {
@@ -6155,8 +6424,13 @@ private struct PPLivePetActionPortalDeck: View {
                 self?.onToggleStock?()
             },
             onDelete: { [weak self] in
-                self?.onDelete?()
-                self?.navigationController?.popViewController(animated: true)
+                guard let self = self else { return }
+                self.onDelete?()
+                if let nav = self.navigationController {
+                    nav.popViewController(animated: true)
+                } else {
+                    self.dismiss(animated: true)
+                }
             }
         )
 
@@ -6209,7 +6483,10 @@ private struct PPInventoryItemDossierSheet: View {
             onToggleStock: {
                 viewModel.toggleStockAvailability(for: item)
             },
-            onDelete: nil
+            onDelete: {
+                dismiss()
+                viewModel.deleteAccessory(item)
+            }
         )
     }
 }
@@ -6756,8 +7033,8 @@ private struct PPLivePetOperationSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(unit.ringTag.isEmpty ? unit.id : unit.ringTag)
-                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                Text(verbatim: (unit.ringTag.isEmpty ? unit.id : unit.ringTag).normalizedEnglishDigits)
+                    .font(PPBrandFont.bold(size: 16))
                     .foregroundStyle(AdminSurface.primaryText)
                 HStack(spacing: 6) {
                     Text(liveUnitStatus(unit.status))
@@ -6855,8 +7132,8 @@ private struct PPLivePetOperationSheet: View {
                             .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(1)
                         if !branchCode.isEmpty {
-                            Text("# " + branchCode)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            Text(verbatim: "# " + branchCode.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 11))
                                 .foregroundStyle(AdminSurface.primary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -7159,7 +7436,7 @@ private struct PPLivePetOperationSheet: View {
             HStack(spacing: 8) {
                 TextField(title, text: text)
                     .englishNumericInput(text: text, allowsDecimal: true)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .font(PPBrandFont.bold(size: 16))
                 Text("ر.ق")
                     .font(Font.custom("Beiruti-Bold", size: 13))
                     .foregroundStyle(AdminSurface.primary)
@@ -7189,7 +7466,7 @@ private struct PPLivePetOperationSheet: View {
             }
             TextField(title, text: text)
                 .englishNumericInput(text: text, allowsDecimal: false)
-                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                .font(PPBrandFont.bold(size: 16))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -7267,8 +7544,8 @@ private struct PPLivePetOperationSheet: View {
                                     .foregroundStyle(AdminSurface.primaryText)
                                     .lineLimit(1)
                                 if !b.code.isEmpty {
-                                    Text("# " + b.code)
-                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    Text(verbatim: "# " + b.code.normalizedEnglishDigits)
+                                        .font(PPBrandFont.bold(size: 11))
                                         .foregroundStyle(AdminSurface.primary)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
@@ -7799,8 +8076,8 @@ private struct PPBranchSelectionStudioSheet: View {
                             .lineLimit(1)
 
                         if !branch.code.isEmpty {
-                            Text("# " + branch.code)
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            Text(verbatim: "# " + branch.code.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 11))
                                 .foregroundStyle(AdminSurface.primary)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
@@ -7856,8 +8133,8 @@ private struct PPBranchSelectionStudioSheet: View {
                             HStack(spacing: 3) {
                                 Image(systemName: "phone.fill")
                                     .font(.system(size: 9))
-                                Text(branch.phone)
-                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                Text(verbatim: branch.phone.normalizedEnglishDigits)
+                                    .font(PPBrandFont.medium(size: 11))
                             }
                             .foregroundStyle(AdminSurface.secondaryText)
                         }
@@ -8090,8 +8367,8 @@ private struct PPStockTransferSheet: View {
                     }
 
                     if let barcode = item.barcode, !barcode.isEmpty {
-                        Text("#" + barcode)
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        Text(verbatim: ("#" + barcode).normalizedEnglishDigits)
+                            .font(PPBrandFont.bold(size: 10))
                             .foregroundStyle(AdminCommandInk.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
@@ -8104,8 +8381,8 @@ private struct PPStockTransferSheet: View {
                     Circle()
                         .fill(Color(uiColor: .ppSuccess))
                         .frame(width: 6, height: 6)
-                    Text(String(format: Language.get("Stock_Transfer_CurrentStockFormat", alter: "المتوفر في عهدة الفرع: %ld وحدة"), availableQuantity))
-                        .font(Font.custom("Beiruti-SemiBold", size: 12))
+                    Text(verbatim: String(format: Language.get("Stock_Transfer_CurrentStockFormat", alter: "المتوفر في عهدة الفرع: %@ وحدة"), availableQuantity.englishDigits).normalizedEnglishDigits)
+                        .font(PPBrandFont.bold(size: 12))
                         .foregroundStyle(Color(uiColor: .ppSuccess))
                 }
                 .padding(.top, 2)
@@ -8188,18 +8465,18 @@ private struct PPStockTransferSheet: View {
                     // Source Stock Live Projection Pill
                     VStack(alignment: Language.isRTL() ? .leading : .trailing, spacing: 2) {
                         HStack(spacing: 3) {
-                            Text("\(availableQuantity)")
-                                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                            Text(verbatim: availableQuantity.englishDigits)
+                                .font(PPBrandFont.medium(size: 14))
                                 .foregroundStyle(AdminSurface.secondaryText)
                             Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
                                 .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(AdminSurface.secondaryText)
-                            Text("\(remainingSourceStock)")
-                                .font(.system(size: 16, weight: .bold, design: .monospaced))
+                            Text(verbatim: remainingSourceStock.englishDigits)
+                                .font(PPBrandFont.bold(size: 16))
                                 .foregroundStyle(remainingSourceStock <= 0 ? Color(uiColor: .ppError) : AdminSurface.primaryText)
                         }
-                        Text("-\(transferQuantity)")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        Text(verbatim: "-\(transferQuantity.englishDigits)")
+                            .font(PPBrandFont.bold(size: 11))
                             .foregroundStyle(Color(uiColor: .ppError))
                     }
                 }
@@ -8227,7 +8504,7 @@ private struct PPStockTransferSheet: View {
                         Image(systemName: Language.isRTL() ? "arrow.down" : "arrow.down")
                             .font(.system(size: 10, weight: .black))
                             .foregroundStyle(Color.white)
-                        Text(String(format: Language.get("Stock_Transfer_TransferringCount", alter: "ترحيل %ld قطعة"), transferQuantity))
+                        Text(verbatim: String(format: Language.get("Stock_Transfer_TransferringCount", alter: "ترحيل %@ قطعة"), transferQuantity.englishDigits).normalizedEnglishDigits)
                             .font(Font.custom("Beiruti-Bold", size: 12))
                             .foregroundStyle(Color.white)
                     }
@@ -8305,12 +8582,12 @@ private struct PPStockTransferSheet: View {
                                 Image(systemName: "arrow.down.circle.fill")
                                     .font(.system(size: 12, weight: .bold))
                                     .foregroundStyle(Color(uiColor: .ppSuccess))
-                                Text("+\(transferQuantity)")
-                                    .font(.system(size: 16, weight: .bold, design: .monospaced))
+                                Text(verbatim: "+\(transferQuantity.englishDigits)")
+                                    .font(PPBrandFont.bold(size: 16))
                                     .foregroundStyle(Color(uiColor: .ppSuccess))
                             }
                             Text(Language.get("Stock_Transfer_IncomingLabel", alter: "رصيد وارد"))
-                                .font(Font.custom("Beiruti-Regular", size: 10.5))
+                                .font(Language.isRTL() ? Font.custom("Beiruti-Regular", size: 10.5) : .system(size: 10.5))
                                 .foregroundStyle(AdminSurface.secondaryText)
                         }
                     }
@@ -8343,8 +8620,8 @@ private struct PPStockTransferSheet: View {
 
                 Spacer()
 
-                Text(String(format: Language.get("Stock_Transfer_MaxFormat", alter: "الحد الأقصى المتاح: %ld"), availableQuantity))
-                    .font(Font.custom("Beiruti-SemiBold", size: 11.5))
+                Text(verbatim: String(format: Language.get("Stock_Transfer_MaxFormat", alter: "الحد الأقصى المتاح: %@"), availableQuantity.englishDigits).normalizedEnglishDigits)
+                    .font(Font.custom("Beiruti-Bold", size: 11.5))
                     .foregroundStyle(AdminSurface.secondaryText)
             }
 
@@ -8380,13 +8657,13 @@ private struct PPStockTransferSheet: View {
 
                     // Center Numeric Readout
                     VStack(spacing: 1) {
-                        Text("\(transferQuantity)")
-                            .font(.system(size: 40, weight: .black, design: .monospaced))
+                        Text(verbatim: transferQuantity.englishDigits)
+                            .font(PPBrandFont.bold(size: 40))
                             .foregroundStyle(AdminSurface.primaryText)
                             .contentTransition(.numericText())
 
-                        Text(String(format: Language.get("Stock_Transfer_OutOfTotal", alter: "من أصل %ld وحدة"), availableQuantity))
-                            .font(Font.custom("Beiruti-Regular", size: 11.5))
+                        Text(verbatim: String(format: Language.get("Stock_Transfer_OutOfTotal", alter: "من أصل %@ وحدة"), availableQuantity.englishDigits).normalizedEnglishDigits)
+                            .font(Language.isRTL() ? Font.custom("Beiruti-Regular", size: 11.5) : .system(size: 11.5))
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
@@ -8441,11 +8718,11 @@ private struct PPStockTransferSheet: View {
                     .frame(height: 6)
 
                     HStack {
-                        Text(String(format: Language.get("Stock_Transfer_Ratio_Format", alter: "ترحيل %.0f%% من مخزون الفرع"), transferRatio * 100))
-                            .font(Font.custom("Beiruti-Regular", size: 11))
+                        Text(verbatim: String(format: Language.get("Stock_Transfer_Ratio_Format", alter: "ترحيل %.0f%% من مخزون الفرع"), transferRatio * 100).normalizedEnglishDigits)
+                            .font(Language.isRTL() ? Font.custom("Beiruti-Regular", size: 11) : .system(size: 11))
                             .foregroundStyle(AdminSurface.secondaryText)
                         Spacer()
-                        Text(String(format: Language.get("Stock_Transfer_Remaining_Count", alter: "المتبقي: %ld"), remainingSourceStock))
+                        Text(verbatim: String(format: Language.get("Stock_Transfer_Remaining_Count", alter: "المتبقي: %@"), remainingSourceStock.englishDigits).normalizedEnglishDigits)
                             .font(Font.custom("Beiruti-Bold", size: 11))
                             .foregroundStyle(remainingSourceStock <= 0 ? Color(uiColor: .ppError) : AdminSurface.primary)
                     }
@@ -8456,7 +8733,7 @@ private struct PPStockTransferSheet: View {
                 HStack(spacing: 7) {
                     ForEach([1, 5, 10], id: \.self) { val in
                         if val <= availableQuantity {
-                            quantumPresetButton(label: "\(val)", isSelected: transferQuantity == val) {
+                            quantumPresetButton(label: val.englishDigits, isSelected: transferQuantity == val) {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
                                     transferQuantity = val
@@ -8506,7 +8783,7 @@ private struct PPStockTransferSheet: View {
 
     private func quantumPresetButton(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label)
+            Text(verbatim: label.normalizedEnglishDigits)
                 .font(Font.custom("Beiruti-Bold", size: 12.5))
                 .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
                 .frame(maxWidth: .infinity)
@@ -8623,11 +8900,11 @@ private struct PPStockTransferSheet: View {
                     Image(systemName: "info.circle.fill")
                         .font(.system(size: 11))
                         .foregroundStyle(AdminSurface.primary)
-                    Text(String(
-                        format: Language.get("Stock_Transfer_Summary_Format", alter: "ترحيل %ld قطعة إلى %@"),
-                        transferQuantity,
+                    Text(verbatim: String(
+                        format: Language.get("Stock_Transfer_Summary_Format", alter: "ترحيل %@ قطعة إلى %@"),
+                        transferQuantity.englishDigits,
                         destinationBranchDisplayName
-                    ))
+                    ).normalizedEnglishDigits)
                     .font(Font.custom("Beiruti-Bold", size: 12))
                     .foregroundStyle(AdminSurface.primaryText)
                     .lineLimit(1)
@@ -8689,11 +8966,11 @@ private struct PPStockTransferSheet: View {
                 subtitle: String(
                     format: Language.get(
                         "Stock_Transfer_Warning_Full_Msg",
-                        alter: "أنت على وشك ترحيل كامل رصيد هذا الصنف (%ld قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟"
+                        alter: "أنت على وشك ترحيل كامل رصيد هذا الصنف (%@ قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟"
                     ),
-                    transferQuantity,
+                    transferQuantity.englishDigits,
                     destinationBranchDisplayName
-                ),
+                ).normalizedEnglishDigits,
                 confirmButton: Language.get("Stock_Transfer_Proceed", alter: "تأكيد ونقل الرصيد"),
                 cancelButton: Language.get("Cancel", alter: "إلغاء"),
                 icon: UIImage(systemName: "exclamationmark.triangle.fill"),
@@ -8735,11 +9012,12 @@ private struct PPStockTransferSheet: View {
                     self.dismiss()
                 case .failure(let error):
                     UINotificationFeedbackGenerator().notificationOccurred(.error)
-                    self.errorMessage = error.localizedDescription
+                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    self.errorMessage = message
                     PPAlertHelper.showFail(
                         in: nil,
                         title: Language.get("Error", alter: "خطأ في نقل المخزون"),
-                        subtitle: error.localizedDescription,
+                        subtitle: message,
                         completion: nil
                     )
                 }

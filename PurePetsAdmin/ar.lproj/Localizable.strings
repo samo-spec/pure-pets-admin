@@ -2998,7 +2998,7 @@
 "CatalogIntake_AllCategoriesSub" = "مناسب للكلاب، القطط، الطيور، وجميع الحيوانات الأليفة";
 "CatalogIntake_AllSubcategoriesPrompt" = "جميع السلالات والتصنيفات الفرعية";
 "CatalogIntake_AllSubcategoriesSub" = "شامل لكل السلالات والتفريعات بدون استثناء";
-"CatalogIntake_SelectedCountFormat" = "تم تحديد %ld";
+"CatalogIntake_SelectedCountFormat" = "تم تحديد %@";
 "Confirm_Selection" = "تأكيد الاختيار";
 "Stock_Transfer_Action" = "نقل كمية إلى فرع آخر";
 "Stock_Transfer_Title" = "نقل مخزون الصنف بين الفروع";
@@ -4256,7 +4256,7 @@
 "Staff_Role_Delete_Confirm_Title" = "حذف هذا الدور المخصص؟";
 "Staff_Role_Delete_Confirm_Message_Format" = "سيؤدي حذف %@ إلى إزالة تعريف هذا الدور نهائيًا. راجع تعيينات الموظفين المتأثرة قبل المتابعة.";
 "Inventory_Price_Unavailable" = "السعر غير متاح";
-"Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %ld من الأصناف. لا تشملها قيمة المخزون.";
+"Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون.";
 
 /* إيصال البيع السريع */
 "POS_Receipt_Title" = "إيصال بيع";
@@ -5053,18 +5053,18 @@
 
 /* Inventory & Live Pets Localization */
 "LivePets" = "حيوانات حية";
-"Total_Items_Format" = "%d صنف مسجل";
+"Total_Items_Format" = "%@ صنف مسجل";
 "Inventory_Live_Radar" = "رصد المخزون الحي • مزامنة لحظية";
 "Inventory_Valuation_Format" = "القيمة الإجمالية للمخزون: %.2f ر.ق";
-"Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %ld من الأصناف. لا تشملها قيمة المخزون.";
+"Inventory_Unpriced_Items_Format" = "لم يُحدَّد سعر البيع لعدد %@ من الأصناف. لا تشملها قيمة المخزون.";
 "InStock" = "متوفر";
 "LowStock" = "مخزون حرج";
 "OutOfStock" = "نفذ";
 "Offers" = "تخفيضات";
-"InStock_Qty_Format" = "متوفر (%d)";
-"LowStock_Qty_Format" = "مخزون منخفض (%d)";
+"InStock_Qty_Format" = "متوفر (%@)";
+"LowStock_Qty_Format" = "وشك النفاذ (%@)";
 "Inventory_Available_Ratio" = "نسبة التوفر: %.0f%%";
-"Inventory_Showing_Count" = "%d معروض";
+"Inventory_Showing_Count" = "%@ معروض";
 "Inventory_Search_Placeholder" = "ابحث بالاسم، الباركود، المتجر، أو المعرّف...";
 "Condition_New" = "جديد";
 "Condition_Used" = "مستعمل";
@@ -5213,6 +5213,11 @@
 "CatalogIntake_ReviewItem" = "الصنف";
 "CatalogIntake_NotSet" = "غير محدد";
 "CatalogIntake_ReviewCategory" = "الفئة";
+"CatalogIntake_ReviewMainKind" = "النوع الرئيسي";
+"CatalogIntake_ReviewSubKind" = "النوع الفرعي";
+"CatalogIntake_ReviewSubCategory" = "التصنيف الفرعي";
+"CatalogIntake_ReviewSKU" = "رمز SKU";
+"CatalogIntake_ReviewBarcode" = "الباركود";
 "CatalogIntake_ReviewPrice" = "السعر النهائي";
 "CatalogIntake_ReviewRetailPrice" = "سعر القطاعي";
 "CatalogIntake_ReviewWholesalePrice" = "سعر الجملة";
@@ -5324,6 +5329,8 @@
 "LivePetDossier_AccessLimited" = "غير متاح بصلاحيتك";
 "LivePetDossier_UnitLedgerTitle" = "سجل الحيوانات الفردية";
 "LivePetDossier_UnitLedgerCount" = "%ld سجلات هوية مستقلة";
+"LivePetDossier_ActiveUnitLedgerCount" = "%ld سجلات هوية نشطة";
+"LivePet_Units_Archived_Count" = "السجلات المؤرشفة والمزالة (%ld)";
 "LivePetDossier_LoadingHint" = "يتم جلب الحالة الحالية قبل إتاحة الإجراءات.";
 "LivePetDossier_UnitsRestricted" = "سجلات الحيوانات الفردية غير متاحة لصلاحيتك.";
 "LivePetDossier_EmptyUnitsHint" = "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.";
@@ -6139,7 +6146,97 @@
 "Stock_Transfer_Select_Branch" = "اختر فرع الاستلام (المحول إليه)";
 "Stock_Transfer_Search_Branch" = "ابحث عن اسم أو كود الفرع...";
 "Stock_Transfer_Warning_Full_Title" = "تنبيه: تصفية كامل مخزون الفرع";
-"Stock_Transfer_Warning_Full_Msg" = "أنت على وشك ترحيل كامل رصيد هذا الصنف (%ld قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟";
+"Stock_Transfer_Warning_Full_Msg" = "أنت على وشك ترحيل كامل رصيد هذا الصنف (%@ قطعة) إلى %@. سيصبح رصيد الفرع الحالي صفراً. هل ترغب بالمتابعة؟";
 "Stock_Transfer_Proceed" = "تأكيد ونقل الرصيد";
-"Stock_Transfer_Summary_Format" = "ترحيل %ld قطعة إلى %@";
+"Stock_Transfer_Summary_Format" = "ترحيل %@ قطعة إلى %@";
 "Stock_Transfer_Change_Branch" = "تغيير الفرع";
+
+/* Sovereign POS History & Transaction Ledger */
+"POS_Horizon_Today" = "اليوم";
+"POS_Horizon_Yesterday" = "أمس";
+"POS_Horizon_Week" = "الأسبوع";
+"POS_Horizon_Month" = "الشهر";
+"POS_Horizon_All" = "الكل";
+
+"POS_Telemetry_NetRevenue" = "صافي الإيرادات";
+"POS_Telemetry_Cash" = "نقدي";
+"POS_Telemetry_Card" = "شبكة / بطاقة";
+"POS_Telemetry_AvgBasket" = "متوسط السلة";
+"POS_Telemetry_Refunds" = "المستردات";
+"POS_Telemetry_UnitsSold" = "القطع المباعة";
+"POS_Telemetry_CompletedSales" = "المعاملات";
+
+"POS_Search_Placeholder" = "ابحث برقم الإيصال، اسم العميل، الهاتف، أو الصنف...";
+"POS_Filter_All" = "الكل";
+"POS_Filter_Cash" = "نقدي";
+"POS_Filter_Card" = "شبكة";
+"POS_Filter_Completed" = "مكتمل";
+"POS_Filter_Refunded" = "مسترد";
+"POS_Filter_Cancelled" = "ملغي";
+
+"POS_Status_Completed" = "مكتمل";
+"POS_Status_PartiallyRefunded" = "مسترد جزئياً";
+"POS_Status_Refunded" = "مسترد بالكامل";
+"POS_Status_Cancelled" = "ملغي";
+
+"POS_Card_Items_Count" = "%@ عناصر";
+"POS_Card_Item_Single" = "عنصر واحد";
+"POS_Card_TapToView" = "انقر لعرض الملف والإجراءات";
+"POS_Card_Cashier" = "الكاشير: %@";
+"POS_Receipt_Copy_Success" = "تم نسخ رقم الإيصال إلى الحافظة";
+
+"POS_Dossier_Title" = "ملف المعاملة المالية";
+"POS_Dossier_Sub" = "توثيق البيع • مسار الاسترداد والإلغاء";
+"POS_Dossier_ReceiptID" = "رقم الإيصال";
+"POS_Dossier_Branch" = "الفرع";
+"POS_Dossier_Date" = "وقت المعاملة";
+"POS_Dossier_Customer_Section" = "بيانات العميل";
+"POS_Customer_Call" = "اتصال هاتفي";
+"POS_Customer_WhatsApp" = "محادثة واتساب";
+"POS_Dossier_Items_Section" = "العناصر المشتراة";
+"POS_Dossier_Financial_Section" = "التفاصيل المالية";
+"POS_Subtotal" = "المجموع الفرعي";
+"POS_Discount" = "الخصم";
+"POS_CashReceived" = "المبلغ المستلم نقداً";
+"POS_ChangeDue" = "المتبقي للعميل";
+"POS_GrandTotal" = "الإجمالي النهائي";
+"POS_Action_PrintReceipt" = "عرض وطباعة الإيصال";
+"POS_Action_WhatsAppReceipt" = "إرسال الإيصال عبر واتساب";
+"POS_Action_Refund" = "استرداد مالي";
+"POS_Action_Cancel" = "إلغاء وإبطال البيع";
+
+"POS_RefundStudio_Title" = "استوديو الاسترداد المالي";
+"POS_RefundStudio_Sub" = "إرجاع الكميات للمخزون واسترداد المبلغ";
+"POS_Refund_Full_Action" = "استرداد كامل للعملية";
+"POS_Refund_Select_Items" = "تحديد الأصناف والكميات المستردة";
+"POS_Refund_Qty_To_Return" = "الكمية المرتجعة";
+"POS_Refund_Max_Available" = "المتاح للاسترداد: %@";
+"POS_Refund_Reason_Title" = "سبب الاسترداد (مطلوب)";
+"POS_Refund_Reason_Placeholder" = "اذكر سبب استرداد العميل...";
+"POS_Refund_Reason_Chip_Customer" = "رغبة العميل";
+"POS_Refund_Reason_Chip_Defect" = "عيب مصنعي";
+"POS_Refund_Reason_Chip_Error" = "خطأ في الفاتورة";
+"POS_Refund_Reason_Chip_Damaged" = "صنف تالف";
+"POS_Refund_Restock_Notice" = "سيتم إعادة كميات الأصناف المحددة تلقائياً إلى عهدة الفرع وتوثيق القيد في المحاسبة.";
+"POS_Refund_Confirm_Button" = "تأكيد الاسترداد المالي (%@)";
+"POS_Refund_Success_Title" = "تم الاسترداد بنجاح";
+"POS_Refund_Success_Msg" = "تم تسجيل الاسترداد المالي وإعادة المنتجات إلى المخزون.";
+
+"POS_Cancel_Confirm_Title" = "إلغاء وإبطال المعاملة بالكامل؟";
+"POS_Cancel_Confirm_Msg" = "أنت على وشك إلغاء هذه المعاملة وإعادة كافة عناصرها (%@ صنف) إلى مخزون الفرع. لا يمكن التراجع عن هذا الإجراء.";
+"POS_Cancel_Reason_Prompt" = "سبب إلغاء المعاملة";
+"POS_Cancel_Reason_Placeholder" = "اكتب سبب إبطال هذه المعاملة...";
+"POS_Cancel_Success_Title" = "تم إلغاء المعاملة";
+"POS_Cancel_Success_Msg" = "تم إلغاء العملية وإعادة المنتجات إلى مخزون الفرع.";
+
+"POS_Vault_LiveStatus" = "متصل بالخزينة";
+"POS_Shift_Active" = "الوردية نشطة ومستقرة";
+"POS_Shift_StartSale" = "تسجيل عملية بيع جديدة";
+"POS_Card_CallCustomer" = "اتصال بالعميل";
+"POS_Card_WhatsAppCustomer" = "محادثة واتساب";
+"POS_Spectrum_CashRatio" = "نسبة النقد";
+"POS_Spectrum_CardRatio" = "نسبة الشبكة";
+"POS_Dossier_Print" = "طباعة إيصال حراري";
+"POS_Shift_Summary_Title" = "حالة وردية المبيعات";
+"POS_Shift_Summary_Desc" = "نقطة البيع جاهزة، والأسعار وعهد المخزون محدثة ومربوطة بالفرع الحالي.";
+

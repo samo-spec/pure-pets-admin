@@ -161,7 +161,7 @@ final class InventoryViewModel: ObservableObject {
                     self.errorMessage = error.localizedDescription
                     return
                 }
-                self.items = (items ?? []).sorted { a, b in
+                self.items = (items ?? []).filter { !$0.isDeleted }.sorted { a, b in
                     let dateA = a.createdAt
                     let dateB = b.createdAt
                     if dateA != dateB {
@@ -181,10 +181,28 @@ final class InventoryViewModel: ObservableObject {
 
     func deleteItem(_ accessory: PetAccessory) {
         let docID = accessory.accessoryID
+        guard !docID.isEmpty else { return }
+        if accessory.isLivePet {
+            Task { @MainActor in
+                do {
+                    _ = try await PPLivePetInventoryService.callInventory(
+                        action: "delete",
+                        productID: docID,
+                        payload: ["reason": "admin_ios_soft_delete"]
+                    )
+                    self.items.removeAll { $0.accessoryID == docID }
+                } catch {
+                    self.errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
+                }
+            }
+            return
+        }
         AccessoryManager.shared().deleteAccessory(withID: docID) { [weak self] error in
             Task { @MainActor in
                 if let error {
                     self?.errorMessage = error.localizedDescription
+                } else {
+                    self?.items.removeAll { $0.accessoryID == docID }
                 }
             }
         }
@@ -207,7 +225,7 @@ final class InventoryViewModel: ObservableObject {
             ) { [weak self] result in
                 Task { @MainActor in
                     if case .failure(let error) = result {
-                        self?.errorMessage = error.localizedDescription
+                        self?.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
                     }
                 }
             }
@@ -215,7 +233,9 @@ final class InventoryViewModel: ObservableObject {
             let docID = accessory.accessoryID
             AccessoryManager.shared().updateQuantity(qty, forAccessoryID: docID) { [weak self] error in
                 Task { @MainActor in
-                    if let error { self?.errorMessage = error.localizedDescription }
+                    if let error {
+                        self?.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    }
                 }
             }
         }
@@ -226,7 +246,9 @@ final class InventoryViewModel: ObservableObject {
         let newNoStock = !accessory.noStock
         AccessoryManager.shared().setNoStock(newNoStock, forAccessoryID: docID) { [weak self] error in
             Task { @MainActor in
-                if let error { self?.errorMessage = error.localizedDescription }
+                if let error {
+                    self?.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                }
             }
         }
 
@@ -244,7 +266,7 @@ final class InventoryViewModel: ObservableObject {
                 ) { [weak self] result in
                     Task { @MainActor in
                         if case .failure(let error) = result {
-                            self?.errorMessage = error.localizedDescription
+                            self?.errorMessage = PPBranchInventoryErrorHelper.localizedMessage(for: error)
                         }
                     }
                 }
@@ -374,19 +396,19 @@ struct AdminInventoryView: View {
         HStack(spacing: AdminSpacing.md) {
             QuickStat(
                 label: Language.get("Inventory_Total", alter: "\u{0627}\u{0644}\u{0643}\u{0644}"),
-                value: "\(viewModel.totalCount)",
+                value: viewModel.totalCount.englishDigits,
                 symbol: "cube.box.fill",
                 color: AdminSurface.primary
             )
             QuickStat(
                 label: Language.get("Inventory_In_Stock", alter: "\u{0645}\u{062a}\u{0648}\u{0641}\u{0631}"),
-                value: "\(viewModel.inStockCount)",
+                value: viewModel.inStockCount.englishDigits,
                 symbol: "checkmark.circle.fill",
                 color: .green
             )
             QuickStat(
                 label: Language.get("Inventory_Low_Stock", alter: "\u{0645}\u{0646}\u{062e}\u{0641}\u{0636}"),
-                value: "\(viewModel.lowStockCount)",
+                value: viewModel.lowStockCount.englishDigits,
                 symbol: "exclamationmark.triangle.fill",
                 color: .orange
             )
@@ -482,7 +504,7 @@ private struct QuickStat: View {
                 .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(value)
+                Text(verbatim: value.normalizedEnglishDigits)
                     .font(AdminType.headline)
                     .foregroundColor(AdminSurface.primaryText)
                     .monospacedDigit()
@@ -551,7 +573,7 @@ private struct InventoryItemRow: View {
                     }
 
                     if let sku = item.sku, !sku.isEmpty {
-                        Text("SKU: \(sku)")
+                        Text(verbatim: "SKU: \(sku)".normalizedEnglishDigits)
                             .font(AdminType.caption2Bold)
                             .foregroundColor(AdminSurface.secondaryText)
                             .padding(.horizontal, 4)
@@ -562,7 +584,7 @@ private struct InventoryItemRow: View {
 
                 HStack(spacing: AdminSpacing.sm) {
                     Label(
-                        "\(availableStock)",
+                        availableStock.englishDigits,
                         systemImage: "cube.box.fill"
                     )
                     .font(AdminType.caption2Bold)
@@ -585,12 +607,12 @@ private struct InventoryItemRow: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(formatPrice(displayPrice))
+                Text(verbatim: formatPrice(displayPrice).normalizedEnglishDigits)
                     .font(AdminType.calloutBold)
                     .foregroundColor(AdminSurface.primaryText)
 
                 if displayPrice != item.price.doubleValue {
-                    Text(formatPrice(item.price.doubleValue))
+                    Text(verbatim: formatPrice(item.price.doubleValue).normalizedEnglishDigits)
                         .font(AdminType.caption2)
                         .foregroundColor(.green)
                         .strikethrough(false)
@@ -635,6 +657,7 @@ private struct InventoryItemRow: View {
         formatter.numberStyle = .currency
         formatter.currencyCode = "QAR"
         formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_QA")
-        return formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
+        let formatted = formatter.string(from: NSNumber(value: value)) ?? String(format: "%.2f %@", value, Language.get("QAR", alter: "ر.ق"))
+        return formatted.normalizedEnglishDigits
     }
 }

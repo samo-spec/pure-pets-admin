@@ -223,6 +223,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _branchID = @"";
         _branchCode = @"";
         _imageURLsArray = @[];
+        _relatedAccessories = @[];
         _createdAt = [NSDate date];
         _accessKindType = AccessTypeAccessory;
         _condition = AccessConditionsNew;
@@ -325,6 +326,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     dict[@"isAllCategories"] = @(self.isAllCategories);
     dict[@"isAllSubCategories"] = @(self.isAllSubCategories);
     if (self.AccessoryCategoryID) dict[@"AccessoryCategoryID"] = self.AccessoryCategoryID;
+    if (self.relatedAccessories) dict[@"relatedAccessories"] = self.relatedAccessories;
     dict[@"cityID"] = @(self.cityID);
 
     // Dates and ownership
@@ -483,7 +485,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
 }
 
 - (BOOL)isLivePet {
-    return self.accessKindType == AccessTypeLivePet;
+    return self.accessKindType == AccessTypeLivePet || self.accessKindType == AccessTypeLivePets;
 }
 
 - (BOOL)isFood {
@@ -673,6 +675,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _isAllCategories = [dict[@"isAllCategories"] boolValue];
         _isAllSubCategories = [dict[@"isAllSubCategories"] boolValue];
         _AccessoryCategoryID = [dict[@"AccessoryCategoryID"] isKindOfClass:NSString.class] ? dict[@"AccessoryCategoryID"] : nil;
+        _relatedAccessories = PPAccessoryStringArray(dict[@"relatedAccessories"]);
         _cityID = [dict[@"cityID"] ?: @(0) integerValue];
         
         id rawCreated = dict[@"createdAt"] ?: dict[@"created_at"] ?: dict[@"timestamp"] ?: dict[@"date"] ?: dict[@"updatedAt"];
@@ -704,6 +707,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         
         _accessKindType = ({
             NSInteger rawKind = [dict[@"accessKindType"] integerValue];
+            if (rawKind == 0 && dict[@"type"] != nil) {
+                rawKind = [dict[@"type"] integerValue];
+            }
             AccessKindType parsed;
             switch (rawKind) {
                 case AccessTypeFood:     parsed = AccessTypeFood;     break;
@@ -712,10 +718,20 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
                 default:                 parsed = AccessTypeAccessory; break;
             }
             if (parsed == AccessTypeAccessory) {
-                NSString *productType = dict[@"product_type"];
+                NSString *productType = dict[@"product_type"] ?: dict[@"productType"];
                 if ([productType isKindOfClass:[NSString class]] &&
-                    [productType caseInsensitiveCompare:@"live"] == NSOrderedSame) {
+                    ([productType caseInsensitiveCompare:@"live"] == NSOrderedSame ||
+                     [productType caseInsensitiveCompare:@"live_pet"] == NSOrderedSame ||
+                     [productType caseInsensitiveCompare:@"livepet"] == NSOrderedSame)) {
                     parsed = AccessTypeLivePet;
+                } else if ([dict[@"isLivePet"] boolValue]) {
+                    parsed = AccessTypeLivePet;
+                } else {
+                    NSString *category = dict[@"category"];
+                    if ([category isKindOfClass:[NSString class]] &&
+                        [category caseInsensitiveCompare:@"Live Pets"] == NSOrderedSame) {
+                        parsed = AccessTypeLivePet;
+                    }
                 }
             }
             parsed;
@@ -735,7 +751,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _hasOffer = [dict[@"hasOffer"] boolValue];
         _showInAppMarket = [dict[@"showInAppMarket"] boolValue];
         _isBlocked = [dict[@"isBlocked"] boolValue];
-        _isDeleted = [dict[@"isDeleted"] boolValue];
+        _isDeleted = [dict[@"isDeleted"] boolValue] || [dict[@"is_deleted"] boolValue] || [dict[@"deleted"] boolValue];
         _isDisabled = [dict[@"isDisabled"] boolValue];
         _active = dict[@"active"] == nil ? YES : [dict[@"active"] boolValue];
 
@@ -781,6 +797,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.isAllCategories = source.isAllCategories;
     copy.isAllSubCategories = source.isAllSubCategories;
     copy.AccessoryCategoryID = [source.AccessoryCategoryID copy];
+    copy.relatedAccessories = [source.relatedAccessories copy];
     copy.cityID = source.cityID;
     copy.condition = source.condition;
     copy.accessKindType = source.accessKindType;
