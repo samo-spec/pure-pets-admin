@@ -450,11 +450,13 @@ public struct AdminPrimaryPillButton: View {
 }
 
 /// Sovereign Glassmorphic Navigation Bar pinned to safe area with squircle back button, title stack, and trailing action.
+@MainActor
 public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
     public let title: String
     public var subtitle: String?
     public var statusDotColor: Color?
     public var isModal: Bool
+    public var customTopSpacing: CGFloat?
     public var onBack: () -> Void
     public var onSubtitleTap: (() -> Void)?
     public var isSubtitleActionActive: Bool
@@ -465,6 +467,7 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         subtitle: String? = nil,
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
+        customTopSpacing: CGFloat? = nil,
         onBack: @escaping () -> Void,
         onSubtitleTap: (() -> Void)? = nil,
         isSubtitleActionActive: Bool = false,
@@ -474,14 +477,27 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         self.subtitle = subtitle
         self.statusDotColor = statusDotColor
         self.isModal = isModal
+        self.customTopSpacing = customTopSpacing
         self.onBack = onBack
         self.onSubtitleTap = onSubtitleTap
         self.isSubtitleActionActive = isSubtitleActionActive
         self.trailingContent = trailingContent()
     }
 
+    private var statusBarHeight: CGFloat {
+        if let customTopSpacing { return customTopSpacing }
+        if isModal { return 0 }
+        return PPStatusBarHelper.statusBarHeight
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
+            // Top empty space above navigation bar items equal to status bar height
+            if statusBarHeight > 0 {
+                Color.clear
+                    .frame(height: statusBarHeight)
+            }
+
             HStack(spacing: 12) {
                 if isModal {
                     AdminSquircleCloseButton(action: onBack)
@@ -536,11 +552,11 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
             .padding(.horizontal, AdminSpacing.screenMargin)
             .padding(.top, 8)
             .padding(.bottom, 12)
-            .background(
-                Color.clear
-                    .ignoresSafeArea(edges: .top)
-            )
         }
+        .background(
+            Color.clear
+                .ignoresSafeArea(edges: .top)
+        )
     }
 }
 
@@ -550,6 +566,7 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
         subtitle: String? = nil,
         statusDotColor: Color? = Color(uiColor: .ppSuccess),
         isModal: Bool = false,
+        customTopSpacing: CGFloat? = nil,
         onBack: @escaping () -> Void,
         onSubtitleTap: (() -> Void)? = nil,
         isSubtitleActionActive: Bool = false
@@ -559,6 +576,7 @@ extension AdminSovereignNavigationBar where TrailingContent == EmptyView {
             subtitle: subtitle,
             statusDotColor: statusDotColor,
             isModal: isModal,
+            customTopSpacing: customTopSpacing,
             onBack: onBack,
             onSubtitleTap: onSubtitleTap,
             isSubtitleActionActive: isSubtitleActionActive,

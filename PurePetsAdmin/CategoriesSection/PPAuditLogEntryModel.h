@@ -87,6 +87,13 @@ typedef NS_ENUM(NSInteger, PPAuditSeverity) {
 - (NSString *)diffPillText;
 - (UIColor *)severityColor;
 
+- (BOOL)isAutomatedSystem;
+- (NSString *)humanizedTargetCollectionName;
+- (NSString *)cleanTargetUid;
+- (BOOL)isZeroMutationSync;
+- (NSArray<NSString *> *)modifiedKeyNames;
+- (NSString *)smartMutationSummary;
+
 @end
 
 NS_ASSUME_NONNULL_END

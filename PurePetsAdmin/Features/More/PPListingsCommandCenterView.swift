@@ -46,6 +46,50 @@ public enum PPListingRailFilter: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Species Taxonomy
+
+public enum SpeciesTaxonomy: String, CaseIterable, Sendable {
+    case birds
+    case cats
+    case dogs
+    case falcons
+    case horses
+    case other
+
+    public var iconName: String {
+        switch self {
+        case .birds: return "bird.fill"
+        case .cats: return "pawprint.fill"
+        case .dogs: return "pawprint.fill"
+        case .falcons: return "wind"
+        case .horses: return "figure.equestrian.sports"
+        case .other: return "pawprint.fill"
+        }
+    }
+
+    public var localizedTitle: String {
+        switch self {
+        case .birds: return Language.get("Listing_Taxonomy_Bird", alter: "طيور وببغاوات")
+        case .cats: return Language.get("Listing_Taxonomy_Cat", alter: "قطط وفصائلها")
+        case .dogs: return Language.get("Listing_Taxonomy_Dog", alter: "كلاب وجراء")
+        case .falcons: return Language.get("Listing_Taxonomy_Falcon", alter: "صقور وجوارح")
+        case .horses: return Language.get("Listing_Taxonomy_Horse", alter: "خيول وفروسية")
+        case .other: return Language.get("Listing_Taxonomy_General", alter: "أليف متنوع")
+        }
+    }
+
+    public var accentColor: Color {
+        switch self {
+        case .birds: return Color.orange
+        case .cats: return Color.teal
+        case .dogs: return Color.indigo
+        case .falcons: return Color(red: 0.78, green: 0.52, blue: 0.28)
+        case .horses: return Color.green
+        case .other: return AdminSurface.primary
+        }
+    }
+}
+
 // MARK: - Listing Item Model
 
 public struct PPListingModerationModel: Identifiable, Equatable, Sendable {
@@ -68,6 +112,7 @@ public struct PPListingModerationModel: Identifiable, Equatable, Sendable {
     public var updatedAt: Date?
     public var location: String
     public var petAge: String
+    public var rejectionReason: String?
 
     public var isMarketplace: Bool { source == "pet_ads" }
     public var isAdoption: Bool { source == "adopt_pets" }
@@ -76,12 +121,43 @@ public struct PPListingModerationModel: Identifiable, Equatable, Sendable {
     public var isArchived: Bool { status == 4 }
     public var isRejected: Bool { status == 5 }
 
+    public var taxonomy: SpeciesTaxonomy {
+        let corpus = "\(title) \(category) \(subcategory) \(desc)".lowercased()
+
+        let birdTokens = ["كوكتيل", "كروان", "ببغاء", "طائر", "طيور", "كاسكو", "روز", "بادجي", "كناري", "حمام", "بلبل", "cockatiel", "parrot", "bird", "canary"]
+        for token in birdTokens {
+            if corpus.contains(token) { return .birds }
+        }
+
+        let catTokens = ["قط", "قطط", "بسة", "بسه", "شيرازي", "هملايا", "سيامي", "بريطاني", "cat", "kitten", "persian"]
+        for token in catTokens {
+            if corpus.contains(token) { return .cats }
+        }
+
+        let dogTokens = ["كلب", "كلاب", "جرو", "هاسكي", "بولدوج", "بيتبول", "جيرمن", "dog", "puppy", "husky"]
+        for token in dogTokens {
+            if corpus.contains(token) { return .dogs }
+        }
+
+        let falconTokens = ["صقر", "صقور", "شواهين", "شاهين", "حر", "جير", "falcon", "hawk", "raptor"]
+        for token in falconTokens {
+            if corpus.contains(token) { return .falcons }
+        }
+
+        let horseTokens = ["خيل", "خيول", "حصان", "مهرة", "فرس", "horse", "equestrian", "stallion"]
+        for token in horseTokens {
+            if corpus.contains(token) { return .horses }
+        }
+
+        return .other
+    }
+
     public var statusTitle: String {
         switch status {
-        case 0: return Language.get("Status_Pending", alter: "قيد المراجعة")
-        case 1: return Language.get("Status_Active", alter: "نشط ومعتمد")
-        case 4: return Language.get("Status_Archived", alter: "مؤرشف")
-        case 5: return Language.get("Status_Rejected", alter: "مرفوض")
+        case 0: return Language.get("Listing_Status_Pending_Badge", alter: "بانتظار المراجعة")
+        case 1: return Language.get("Listing_Status_Active_Badge", alter: "نشط ومعتمد")
+        case 4: return Language.get("Listing_Status_Archived_Badge", alter: "مؤرشف")
+        case 5: return Language.get("Listing_Status_Rejected_Badge", alter: "مرفوض")
         default: return Language.get("Status_Unknown", alter: "غير محدد")
         }
     }
@@ -127,6 +203,10 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
     @Published public var searchQuery: String = ""
     @Published public var selectedFilter: PPListingRailFilter = .all
 
+    // Publisher Isolation Filter
+    @Published public var activePublisherUIDFilter: String? = nil
+    @Published public var activePublisherName: String? = nil
+
     // State & Loading
     @Published public var isLoading: Bool = true
     @Published public var errorMessage: String? = nil
@@ -140,6 +220,9 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
 
     // Inspection Dossier Selection
     @Published public var selectedListingForDossier: PPListingModerationModel? = nil
+
+    // Rejection Reason Modal Selection
+    @Published public var itemForRejectionSheet: PPListingModerationModel? = nil
 
     nonisolated(unsafe) private var marketplaceListener: ListenerRegistration?
     nonisolated(unsafe) private var adoptionListener: ListenerRegistration?
@@ -245,6 +328,7 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
         let isBlocked = (data["isBlocked"] as? Bool) ?? false
         let viewsCount = (data["viewsCount"] as? Int) ?? 0
         let petAge = (data["petAge"] as? String) ?? ""
+        let rejectionReason = data["rejectionReason"] as? String
 
         let location = (data["locationName"] as? String)
             ?? (data["cityName"] as? String)
@@ -275,7 +359,8 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             createdAt: createdAt,
             updatedAt: updatedAt,
             location: location,
-            petAge: petAge
+            petAge: petAge,
+            rejectionReason: rejectionReason
         )
     }
 
@@ -319,7 +404,8 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             createdAt: createdAt,
             updatedAt: createdAt,
             location: location,
-            petAge: ""
+            petAge: "",
+            rejectionReason: nil
         )
     }
 
@@ -347,6 +433,11 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
 
     public var filteredListings: [PPListingModerationModel] {
         listings.filter { item in
+            // 0. Publisher Filter Check
+            if let pubUID = activePublisherUIDFilter, !pubUID.isEmpty {
+                guard item.ownerID == pubUID else { return false }
+            }
+
             // 1. Rail Filter Check
             let passesRail: Bool
             switch selectedFilter {
@@ -374,9 +465,26 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             let inOwner = item.ownerName.lowercased().contains(query) || item.ownerID.lowercased().contains(query)
             let inCategory = item.category.lowercased().contains(query)
             let inLocation = item.location.lowercased().contains(query)
+            let inTaxonomy = item.taxonomy.localizedTitle.lowercased().contains(query)
 
-            return inTitle || inOwner || inCategory || inLocation
+            return inTitle || inOwner || inCategory || inLocation || inTaxonomy
         }
+    }
+
+    // MARK: - Publisher Filter Actions
+
+    public func filterByPublisher(uid: String, name: String) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        activePublisherUIDFilter = uid
+        activePublisherName = name.isEmpty ? uid : name
+        selectedFilter = .all
+        searchQuery = ""
+    }
+
+    public func clearPublisherFilter() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        activePublisherUIDFilter = nil
+        activePublisherName = nil
     }
 
     // MARK: - Moderation Actions
@@ -406,25 +514,34 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
         }
     }
 
-    public func rejectListing(_ item: PPListingModerationModel) {
+    public func rejectListing(_ item: PPListingModerationModel, reason: String? = nil) {
         guard item.isMarketplace else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()
-        db.collection("pet_ads").document(item.id).updateData([
+        var patchData: [String: Any] = [
             "status": 5,
             "isApproved": false,
             "updatedAt": FieldValue.serverTimestamp()
-        ]) { [weak self] error in
+        ]
+        let cleanReason = reason?.trimmingCharacters(in: .whitespaces)
+        if let cleanReason = cleanReason, !cleanReason.isEmpty {
+            patchData["rejectionReason"] = cleanReason
+        }
+
+        db.collection("pet_ads").document(item.id).updateData(patchData) { [weak self] error in
             guard let self = self else { return }
             if let error = error {
                 self.errorMessage = error.localizedDescription
             } else {
                 self.toastMessage = Language.get("ListingRejectedSuccess", alter: "تم رفض الإعلان وإيقافه")
                 self.showSuccessToast = true
-                self.writeAuditLog(action: "reject_listing", item: item)
+                self.writeAuditLog(action: "reject_listing", item: item, reason: cleanReason)
                 if self.selectedListingForDossier?.id == item.id {
                     self.selectedListingForDossier = nil
+                }
+                if self.itemForRejectionSheet?.id == item.id {
+                    self.itemForRejectionSheet = nil
                 }
             }
         }
@@ -454,19 +571,24 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
         }
     }
 
-    private func writeAuditLog(action: String, item: PPListingModerationModel) {
+    private func writeAuditLog(action: String, item: PPListingModerationModel, reason: String? = nil) {
         let adminUid = Auth.auth().currentUser?.uid ?? "system_admin"
+        var details: [String: Any] = [
+            "title": item.title,
+            "source": item.source,
+            "price": item.price,
+            "ownerID": item.ownerID,
+            "ownerName": item.ownerName
+        ]
+        if let reason = reason, !reason.isEmpty {
+            details["rejectionReason"] = reason
+        }
         Firestore.firestore().collection("AdminAuditLogs").addDocument(data: [
             "action": action,
             "targetCollection": item.source,
             "targetId": item.id,
             "adminUid": adminUid,
-            "details": [
-                "title": item.title,
-                "source": item.source,
-                "price": item.price,
-                "ownerID": item.ownerID
-            ],
+            "details": details,
             "timestamp": FieldValue.serverTimestamp()
         ])
     }
@@ -493,11 +615,85 @@ public struct PPListingsCommandCenterScreen: View {
                     // Safe Area Offset for Sovereign Navigation Bar
                     Spacer().frame(height: 72)
 
+                    // Floating Success Toast if triggered
+                    if viewModel.showSuccessToast {
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                            Text(viewModel.toastMessage)
+                                .font(AdminType.calloutBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.4), lineWidth: 1)
+                        )
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .onAppear {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                                withAnimation {
+                                    viewModel.showSuccessToast = false
+                                }
+                            }
+                        }
+                    }
+
                     // Error Banner if needed
                     if let err = viewModel.errorMessage {
                         AdminErrorBanner(message: err) {
                             viewModel.errorMessage = nil
                         }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                    }
+
+                    // Active Publisher Filter Banner
+                    if let publisherUID = viewModel.activePublisherUIDFilter {
+                        HStack(spacing: 10) {
+                            Image(systemName: "person.crop.circle.badge.checkmark")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(AdminSurface.primary)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("Listing_View_Publisher_Ads", alter: "إعلانات الناشر"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                Text(viewModel.activePublisherName ?? publisherUID)
+                                    .font(AdminType.calloutBold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                viewModel.clearPublisherFilter()
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 13))
+                                    Text(Language.get("Listing_Reject_Cancel_Action", alter: "إلغاء"))
+                                        .font(AdminType.caption2Bold)
+                                }
+                                .foregroundStyle(Color(uiColor: .ppError))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 5)
+                                .background(Color(uiColor: .ppError).opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(0.4), lineWidth: 1)
+                        )
                         .padding(.horizontal, AdminSpacing.screenMargin)
                     }
 
@@ -528,6 +724,9 @@ public struct PPListingsCommandCenterScreen: View {
 
             // Sovereign Glassmorphic Navigation Bar
             sovereignNavigationBar
+        }
+        .sheet(item: $viewModel.itemForRejectionSheet) { item in
+            ListingRejectionReasonSheet(item: item, viewModel: viewModel)
         }
         .background(
             NavigationLink(
@@ -564,8 +763,8 @@ public struct PPListingsCommandCenterScreen: View {
         AdminSovereignNavigationBar(
             title: Language.get("ListingsAdmin_Title", alter: "إدارة الإعلانات والقوائم"),
             subtitle: viewModel.pendingCount > 0
-                ? "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان") + " • \(viewModel.pendingCount) " + Language.get("PendingAction", alter: "بانتظار المراجعة")
-                : "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان معروض وموثق"),
+                ? "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان") + " • \(viewModel.pendingCount) " + Language.get("Listing_Queue_Critical", alter: "إعلانات تحتاج تدقيقك الفوري")
+                : "\(viewModel.totalCount) " + Language.get("TotalListings", alter: "إعلان") + " • " + Language.get("Listing_Queue_Healthy", alter: "كافة الإعلانات معتمدة ومحدثة"),
             statusDotColor: viewModel.pendingCount > 0 ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess),
             onBack: {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -707,9 +906,11 @@ public struct PPListingsCommandCenterScreen: View {
 
                                 Text(filter.localizedTitle)
                                     .font(AdminType.caption1Bold)
+                                    .fixedSize(horizontal: true, vertical: false)
 
                                 Text("\(count)")
                                     .font(.system(size: 10, weight: .heavy, design: .rounded))
+                                    .monospacedDigit()
                                     .padding(.horizontal, 5)
                                     .padding(.vertical, 2)
                                     .background(
@@ -761,18 +962,18 @@ public struct PPListingsCommandCenterScreen: View {
     private func listingCard(_ item: PPListingModerationModel) -> some View {
         VStack(spacing: 10) {
             HStack(spacing: 14) {
-                // High-Res Media Thumbnail Slot with Channel Badge
+                // High-Res Media Thumbnail Slot with Channel & Taxonomy Badges
                 ZStack(alignment: .bottomLeading) {
                     if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
-                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 86, height: 86)) {
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 90, height: 90)) {
                             thumbnailPlaceholder(item)
                         }
-                        .frame(width: 86, height: 86)
+                        .frame(width: 90, height: 90)
                         .clipped()
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
                         thumbnailPlaceholder(item)
-                            .frame(width: 86, height: 86)
+                            .frame(width: 90, height: 90)
                             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
 
@@ -798,12 +999,24 @@ public struct PPListingsCommandCenterScreen: View {
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
 
-                    // Subtitle: Location & Owner
-                    HStack(spacing: 4) {
+                    // Taxonomy & Location Row
+                    HStack(spacing: 6) {
+                        // Taxonomy micro-pill
+                        HStack(spacing: 3) {
+                            Image(systemName: item.taxonomy.iconName)
+                                .font(.system(size: 9))
+                            Text(item.taxonomy.localizedTitle)
+                                .font(.system(size: 10, weight: .semibold))
+                        }
+                        .foregroundStyle(item.taxonomy.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(item.taxonomy.accentColor.opacity(0.12), in: Capsule())
+
                         if !item.location.isEmpty {
                             HStack(spacing: 2) {
                                 Image(systemName: "mappin.circle.fill")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 9))
                                     .foregroundStyle(AdminCommandInk.secondary)
                                 Text(item.location)
                                     .font(AdminType.caption2)
@@ -847,6 +1060,22 @@ public struct PPListingsCommandCenterScreen: View {
                         .padding(.vertical, 2)
                         .background(item.statusColor.opacity(0.12), in: Capsule())
                     }
+
+                    // Rejection Reason Callout (if rejected and present)
+                    if item.isRejected, let reason = item.rejectionReason, !reason.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 8))
+                                .foregroundStyle(Color(uiColor: .ppError))
+                            Text(reason)
+                                .font(AdminType.caption2)
+                                .foregroundStyle(Color(uiColor: .ppError))
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    }
                 }
 
                 // Left Chevron Navigation Indicator
@@ -855,7 +1084,7 @@ public struct PPListingsCommandCenterScreen: View {
                     .foregroundStyle(AdminCommandInk.tertiary)
             }
 
-            // Inline Quick Action Bar (For Pending Market Listings)
+            // Inline High-Velocity Triage Bar (For Pending Market Listings)
             if item.isPending && item.isMarketplace && viewModel.canModerate {
                 Divider().background(Color(uiColor: .ppSurfaceBorder).opacity(0.5))
 
@@ -865,7 +1094,7 @@ public struct PPListingsCommandCenterScreen: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "checkmark.circle.fill")
-                            Text(Language.get("QuickApprove", alter: "اعتماد فوري"))
+                            Text(Language.get("Listing_Quick_Approve", alter: "اعتماد فوري"))
                         }
                         .font(AdminType.caption1Bold)
                         .foregroundColor(.white)
@@ -875,16 +1104,21 @@ public struct PPListingsCommandCenterScreen: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        viewModel.rejectListing(item)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.itemForRejectionSheet = item
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "xmark.circle.fill")
-                            Text(Language.get("QuickReject", alter: "رفض الإعلان"))
+                            Text(Language.get("Listing_Quick_Reject", alter: "رفض مع السبب"))
                         }
                         .font(AdminType.caption1Bold)
-                        .foregroundColor(.white)
+                        .foregroundColor(Color(uiColor: .ppError))
                         .frame(maxWidth: .infinity, minHeight: 34)
-                        .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .background(Color(uiColor: .ppError).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppError).opacity(0.35), lineWidth: 0.8)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -902,10 +1136,10 @@ public struct PPListingsCommandCenterScreen: View {
     private func thumbnailPlaceholder(_ item: PPListingModerationModel) -> some View {
         ZStack {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(AdminSurface.control)
-            Image(systemName: item.isMarketplace ? "pawprint.fill" : "heart.fill")
-                .font(.system(size: 26))
-                .foregroundStyle(AdminSurface.primary.opacity(0.4))
+                .fill(item.taxonomy.accentColor.opacity(0.12))
+            Image(systemName: item.taxonomy.iconName)
+                .font(.system(size: 28))
+                .foregroundStyle(item.taxonomy.accentColor)
         }
     }
 
@@ -965,39 +1199,80 @@ public struct PPListingDetailDossierSheet: View {
     public var body: some View {
         VStack(spacing: 0) {
             AdminSovereignNavigationBar(
-                    title: Language.get("ListingDossierTitle", alter: "ملف فحص الإعلان"),
-                    subtitle: item.title,
-                    statusDotColor: item.statusColor,
-                    isModal: !isPushMode,
-                    onBack: {
-                        if let onBack = onBack {
-                            onBack()
-                        } else {
-                            dismiss()
-                        }
+                title: Language.get("ListingDossierTitle", alter: "ملف فحص الإعلان"),
+                subtitle: item.title,
+                statusDotColor: item.statusColor,
+                isModal: !isPushMode,
+                onBack: {
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
                     }
-                )
+                }
+            )
 
-                ZStack(alignment: .bottom) {
-                    AdminSurface.background.ignoresSafeArea()
+            ZStack(alignment: .bottom) {
+                AdminSurface.background.ignoresSafeArea()
 
-                    ScrollView {
+                ScrollView {
                     VStack(spacing: 18) {
-                        // Hero Image Slot
-                        if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
-                            AdminRemoteImage(url: url, contentMode: .fill) {
-                                heroImagePlaceholder
-                            }
-                            .frame(height: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
-                            )
-                        } else {
-                            heroImagePlaceholder
-                                .frame(height: 180)
+                        // Hero Media Showcase Slot with Taxonomy Tag
+                        ZStack(alignment: .topTrailing) {
+                            if let url = URL(string: item.imageUrl), !item.imageUrl.isEmpty {
+                                AdminRemoteImage(url: url, contentMode: .fill) {
+                                    heroImagePlaceholder
+                                }
+                                .frame(height: 220)
                                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.8)
+                                )
+                            } else {
+                                heroImagePlaceholder
+                                    .frame(height: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                            }
+
+                            // Taxonomy Overlay Badge
+                            HStack(spacing: 4) {
+                                Image(systemName: item.taxonomy.iconName)
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(item.taxonomy.localizedTitle)
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(item.taxonomy.accentColor, in: Capsule())
+                            .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                            .padding(12)
+                        }
+
+                        // Rejection Alert Banner (if rejected)
+                        if item.isRejected, let reason = item.rejectionReason, !reason.isEmpty {
+                            HStack(spacing: 12) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundStyle(Color(uiColor: .ppError))
+
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(Language.get("Listing_Reject_Title", alter: "سبب الرفض المسجل:"))
+                                        .font(AdminType.caption1Bold)
+                                        .foregroundStyle(Color(uiColor: .ppError))
+                                    Text(reason)
+                                        .font(AdminType.callout)
+                                        .foregroundStyle(AdminSurface.primaryText)
+                                }
+                                Spacer()
+                            }
+                            .padding(14)
+                            .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppError).opacity(0.4), lineWidth: 1)
+                            )
                         }
 
                         // Identity & Status Card
@@ -1049,11 +1324,22 @@ public struct PPListingDetailDossierSheet: View {
                         .padding(16)
                         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                        // Publisher Dossier
-                        VStack(alignment: .leading, spacing: 10) {
-                            Label(Language.get("PublisherDossier", alter: "بيانات المعلن والناشر"), systemImage: "person.crop.circle.badge.checkmark")
-                                .font(AdminType.headline)
-                                .foregroundStyle(AdminSurface.primaryText)
+                        // Publisher Trust & Isolation Dossier
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Label(Language.get("PublisherDossier", alter: "بيانات المعلن والناشر"), systemImage: "person.crop.circle.badge.checkmark")
+                                    .font(AdminType.headline)
+                                    .foregroundStyle(AdminSurface.primaryText)
+
+                                Spacer()
+
+                                Text(Language.get("Listing_Publisher_Verified", alter: "معلن معتمد"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(Color(uiColor: .ppSuccess))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                            }
 
                             HStack(spacing: 12) {
                                 ZStack {
@@ -1076,6 +1362,49 @@ public struct PPListingDetailDossierSheet: View {
                                         .lineLimit(1)
                                 }
                                 Spacer()
+                            }
+
+                            Divider().background(Color(uiColor: .ppSurfaceBorder).opacity(0.5))
+
+                            // Action buttons: Copy UID & View All Publisher Ads
+                            HStack(spacing: 10) {
+                                Button {
+                                    UIPasteboard.general.string = item.ownerID
+                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                    viewModel.toastMessage = Language.get("Listing_UID_Copied", alter: "تم نسخ معرف المعلن")
+                                    viewModel.showSuccessToast = true
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "doc.on.doc.fill")
+                                            .font(.system(size: 11))
+                                        Text(Language.get("Listing_Copy_UID", alter: "نسخ المعرف"))
+                                    }
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    viewModel.filterByPublisher(uid: item.ownerID, name: item.ownerName)
+                                    if let onBack = onBack {
+                                        onBack()
+                                    } else {
+                                        dismiss()
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "rectangle.stack.fill")
+                                            .font(.system(size: 11))
+                                        Text(Language.get("Listing_View_Publisher_Ads", alter: "إعلانات الناشر"))
+                                    }
+                                    .font(AdminType.caption1Bold)
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                         .padding(16)
@@ -1131,10 +1460,15 @@ public struct PPListingDetailDossierSheet: View {
     private var heroImagePlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(AdminSurface.control)
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 44))
-                .foregroundStyle(AdminSurface.primary.opacity(0.4))
+                .fill(item.taxonomy.accentColor.opacity(0.12))
+            VStack(spacing: 8) {
+                Image(systemName: item.taxonomy.iconName)
+                    .font(.system(size: 48))
+                    .foregroundStyle(item.taxonomy.accentColor)
+                Text(item.taxonomy.localizedTitle)
+                    .font(AdminType.caption1Bold)
+                    .foregroundStyle(item.taxonomy.accentColor)
+            }
         }
     }
 
@@ -1155,7 +1489,11 @@ public struct PPListingDetailDossierSheet: View {
             if viewModel.canModerate && item.status != 1 {
                 Button {
                     viewModel.approveListing(item)
-                    dismiss()
+                    if let onBack = onBack {
+                        onBack()
+                    } else {
+                        dismiss()
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.seal.fill")
@@ -1171,8 +1509,8 @@ public struct PPListingDetailDossierSheet: View {
 
             if viewModel.canModerate && item.status != 5 {
                 Button {
-                    viewModel.rejectListing(item)
-                    dismiss()
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.itemForRejectionSheet = item
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "xmark.seal.fill")
@@ -1217,6 +1555,199 @@ public struct PPListingDetailDossierSheet: View {
         )
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+}
+
+// MARK: - Rejection Reason Sheet
+
+public struct ListingRejectionReasonSheet: View {
+    public let item: PPListingModerationModel
+    @ObservedObject public var viewModel: PPListingsCommandCenterViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedPreset: String? = nil
+    @State private var customReason: String = ""
+
+    private let presetReasons: [(key: String, title: String)] = [
+        ("Listing_Reject_Reason_Photos", Language.get("Listing_Reject_Reason_Photos", alter: "صور غير واضحة أو مخالفة لمعايير العرض")),
+        ("Listing_Reject_Reason_Price", Language.get("Listing_Reject_Reason_Price", alter: "سعر غير واقعي أو مضلل")),
+        ("Listing_Reject_Reason_Prohibited", Language.get("Listing_Reject_Reason_Prohibited", alter: "حيوان أو صنف محظور عرضه في المنصة")),
+        ("Listing_Reject_Reason_Duplicate", Language.get("Listing_Reject_Reason_Duplicate", alter: "إعلان مكرر أو بيانات غير مكتملة")),
+        ("Listing_Reject_Reason_Terms", Language.get("Listing_Reject_Reason_Terms", alter: "مخالفة عامة لشروط الاستخدام والخدمة"))
+    ]
+
+    public init(item: PPListingModerationModel, viewModel: PPListingsCommandCenterViewModel) {
+        self.item = item
+        self.viewModel = viewModel
+    }
+
+    private var effectiveReason: String {
+        var reasons: [String] = []
+        if let selectedPreset = selectedPreset, !selectedPreset.isEmpty {
+            reasons.append(selectedPreset)
+        }
+        let customClean = customReason.trimmingCharacters(in: .whitespaces)
+        if !customClean.isEmpty {
+            reasons.append(customClean)
+        }
+        return reasons.joined(separator: " - ")
+    }
+
+    private var canSubmit: Bool {
+        !effectiveReason.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    public var body: some View {
+        NavigationStack {
+            ZStack {
+                AdminSurface.background.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Header info card
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color(uiColor: .ppError).opacity(0.14))
+                                    .frame(width: 46, height: 46)
+                                Image(systemName: "exclamationmark.octagon.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(Color(uiColor: .ppError))
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(Language.get("Listing_Reject_Title", alter: "رفض الإعلان"))
+                                    .font(AdminType.headline)
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(item.title.isEmpty ? Language.get("UntitledListing", alter: "إعلان بدون عنوان") : item.title)
+                                    .font(AdminType.caption1)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+                        )
+
+                        Text(Language.get("Listing_Reject_Subtitle", alter: "حدد سبب الرفض لتوثيقه في سجل التدقيق وإشعار المعلن:"))
+                            .font(AdminType.calloutBold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        // Preset radio-list
+                        VStack(spacing: 10) {
+                            ForEach(presetReasons, id: \.key) { preset in
+                                let isSelected = selectedPreset == preset.title
+                                Button {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    withAnimation(.easeInOut(duration: 0.18)) {
+                                        if selectedPreset == preset.title {
+                                            selectedPreset = nil
+                                        } else {
+                                            selectedPreset = preset.title
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 18, weight: isSelected ? .bold : .regular))
+                                            .foregroundStyle(isSelected ? Color(uiColor: .ppError) : AdminCommandInk.tertiary)
+
+                                        Text(preset.title)
+                                            .font(AdminType.callout)
+                                            .foregroundStyle(isSelected ? AdminSurface.primaryText : AdminCommandInk.secondary)
+                                            .multilineTextAlignment(.leading)
+
+                                        Spacer()
+                                    }
+                                    .padding(14)
+                                    .background(
+                                        isSelected ? Color(uiColor: .ppError).opacity(0.08) : AdminSurface.surface,
+                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .strokeBorder(
+                                                isSelected ? Color(uiColor: .ppError).opacity(0.5) : Color(uiColor: .ppSurfaceBorder).opacity(0.6),
+                                                lineWidth: isSelected ? 1.2 : 0.75
+                                            )
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        // Custom reason input
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(Language.get("Listing_Reject_Reason_Custom", alter: "سبب إضافي أو مخصص..."))
+                                .font(AdminType.caption1Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            TextField(
+                                Language.get("Listing_Reject_Reason_Placeholder", alter: "اكتب تفاصيل سبب الرفض هنا..."),
+                                text: $customReason,
+                                axis: .vertical
+                            )
+                            .font(AdminType.callout)
+                            .lineLimit(3...5)
+                            .padding(12)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.7), lineWidth: 0.75)
+                            )
+                        }
+
+                        // Action buttons
+                        VStack(spacing: 10) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                viewModel.rejectListing(item, reason: effectiveReason)
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "xmark.seal.fill")
+                                    Text(Language.get("Listing_Reject_Confirm_Action", alter: "تأكيد الرفض والإيقاف"))
+                                }
+                                .font(AdminType.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .background(
+                                    canSubmit ? Color(uiColor: .ppError) : Color(uiColor: .ppError).opacity(0.35),
+                                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!canSubmit)
+
+                            Button {
+                                dismiss()
+                            } label: {
+                                Text(Language.get("Listing_Reject_Cancel_Action", alter: "إلغاء"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.top, 10)
+                    }
+                    .padding(18)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(Language.get("Close", alter: "إغلاق")) {
+                        dismiss()
+                    }
+                }
+            }
+        }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }

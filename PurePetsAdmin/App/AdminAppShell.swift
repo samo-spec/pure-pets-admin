@@ -49,9 +49,7 @@ struct AdminAppShell: View {
                     .ignoresSafeArea()
 
                 case .work:
-                    AdminModuleListView(
-                        tab: .work,
-                        routes: available([.payments, .paymentSettings, .fulfillment, .pointOfSale, .pointOfSaleHistory, .accessories, .food, .livePets]),
+                    AdminWorkDeckView(
                         session: session,
                         router: router,
                         commandState: commandState,
@@ -550,6 +548,1324 @@ struct V6CardButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .opacity(configuration.isPressed ? 0.68 : 1)
+    }
+}
+
+// MARK: - Work Deck (Category-Defining Operations Cockpit)
+
+@MainActor
+private struct AdminWorkDeckView: View {
+    let session: AdminSession
+    @ObservedObject var router: AdminRouter
+    @ObservedObject var commandState: CommandCenterState
+    let onOpenCommand: () -> Void
+
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingBranchSwitcher = false
+
+    private var isPadWide: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
+    private var navigationConfiguration: PPGlobalNavigationConfiguration {
+        PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: Language.get(AdminTab.work.titleKey, alter: "العمل"),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: "عمليات PURE PETS"),
+            subtitle: Language.get("CommandCenter_Work_Detail", alter: "مسارات المدفوعات والتنفيذ ونقطة البيع المتاحة لدورك."),
+            showsContextFilament: false
+        )
+    }
+
+    private var canPOS: Bool { AdminRoute.pointOfSale.isAuthorized(for: session) }
+    private var canPOSHistory: Bool { AdminRoute.pointOfSaleHistory.isAuthorized(for: session) }
+    private var canFulfillment: Bool { AdminRoute.fulfillment.isAuthorized(for: session) }
+    private var canPayments: Bool { AdminRoute.payments.isAuthorized(for: session) }
+    private var canPaymentSettings: Bool { AdminRoute.paymentSettings.isAuthorized(for: session) }
+    private var canAccessories: Bool { AdminRoute.accessories.isAuthorized(for: session) }
+    private var canFood: Bool { AdminRoute.food.isAuthorized(for: session) }
+    private var canLivePets: Bool { AdminRoute.livePets.isAuthorized(for: session) }
+
+    private var hasAnyAuthorizedRoute: Bool {
+        canPOS || canPOSHistory || canFulfillment || canPayments || canPaymentSettings || canAccessories || canFood || canLivePets
+    }
+
+    var body: some View {
+        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+            Group {
+                if !hasAnyAuthorizedRoute {
+                    AdminEmptyRoutesView()
+                        .padding(.horizontal, AdminShellMetric.pageMargin)
+                } else if isPadWide {
+                    iPadDeckLayout
+                } else {
+                    iPhoneDeckLayout
+                }
+            }
+            .padding(.bottom, 104)
+        }
+        .sheet(isPresented: $showingBranchSwitcher) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    // MARK: - iPhone Tactile Layout
+
+    private var iPhoneDeckLayout: some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            // 1. Branch Horizon Capsule
+            branchHorizonPill
+
+            // 2. Command Health Pulse Strip
+            if AdminTab.command.isAuthorized(for: session) {
+                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+            }
+
+            // 3. Hero POS Terminal Tile (Flagship Frontline)
+            if canPOS {
+                heroPOSTile
+            }
+
+            // 4. Twin Operational Radar (Fulfillment + Sales History)
+            if canFulfillment || canPOSHistory {
+                twinOperationalRadar
+            }
+
+            // 5. Financial Sentinel Card
+            if canPayments || canPaymentSettings {
+                financialSentinelCard
+            }
+
+            // 6. Tri-Vault Inventory Horizon
+            if canAccessories || canFood || canLivePets {
+                triVaultInventorySection
+            }
+        }
+        .padding(.horizontal, AdminShellMetric.pageMargin)
+    }
+
+    // MARK: - iPad Countertop Command Deck Layout
+
+    private var iPadDeckLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Unified Operations Command Horizon Bar (Spans full width)
+            iPadOperationsHorizonBar
+
+            // 2. Primary Operations Dual Wings
+            HStack(alignment: .top, spacing: 20) {
+                // Wing A: Flagship POS Terminal Console + Financial Governance Desk
+                VStack(spacing: 18) {
+                    if canPOS {
+                        iPadPOSTerminalConsole
+                    }
+
+                    if canPayments || canPaymentSettings {
+                        iPadFinancialControlCard
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                // Wing B: Live Operational Radar (Fulfillment Dispatch + Sales History + System Health)
+                VStack(spacing: 18) {
+                    if canFulfillment {
+                        iPadFulfillmentCard
+                    }
+
+                    if canPOSHistory {
+                        iPadPOSHistoryCard
+                    }
+
+                    if AdminTab.command.isAuthorized(for: session) {
+                        iPadSystemHealthCard
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            // 3. Tri-Vault Inventory Command Bay (Full width, 3 generous columns, ZERO truncation)
+            if canAccessories || canFood || canLivePets {
+                iPadInventoryVaultBay
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Shared / iPhone Components
+
+    private var branchHorizonPill: some View {
+        Button {
+            triggerHaptic(.light)
+            showingBranchSwitcher = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(branchStore.currentBranchDisplayName.isEmpty
+                             ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                             : branchStore.currentBranchDisplayName)
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                            Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 10))
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع النشط"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(Language.get("BranchContext_Switch_Action", alter: "تبديل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    private var heroPOSTile: some View {
+        Button {
+            triggerHaptic(.medium)
+            router.present(.pointOfSale, session: session)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(red: 0.09, green: 0.10, blue: 0.13))
+                    .overlay(
+                        RadialGradient(
+                            colors: [AdminSurface.primary.opacity(0.35), Color.clear],
+                            center: Language.isRTL() ? .topLeading : .topTrailing,
+                            startRadius: 0,
+                            endRadius: 180
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.20), radius: 14, x: 0, y: 6)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center) {
+                        HStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(AdminSurface.primary.opacity(0.20))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "cart.fill.badge.plus")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Language.get("POS_Title", alter: "نقطة البيع السريع"))
+                                    .font(AdminType.headline)
+                                    .foregroundColor(.white)
+
+                                if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                    Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                        .font(PPBrandFont.bold(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.60))
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(Color(uiColor: .ppSuccess))
+                                .frame(width: 7, height: 7)
+                            Text(Language.get("POS_Live_Ready_Badge", alter: "جاهز للفوترة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("POS_Terminal_Action_Header", alter: "إصدار فاتورة جديدة ومسح الباركود"))
+                            .font(AdminType.title3)
+                            .foregroundColor(.white)
+
+                        Text(Language.get("POS_Hero_Subtitle", alter: "فواتير مباشرة، قراءة الباركود، واحتساب الخصومات والدفع الفوري"))
+                            .font(AdminType.footnote)
+                            .foregroundColor(Color.white.opacity(0.78))
+                            .lineLimit(2)
+                    }
+
+                    HStack {
+                        HStack(spacing: 7) {
+                            Image(systemName: "barcode.viewfinder")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(Language.get("POS_Launch_Terminal", alter: "بدء عملية البيع الآن"))
+                                .font(AdminType.calloutBold)
+                            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Color.white, in: Capsule())
+                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+
+                        Spacer()
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    private var twinOperationalRadar: some View {
+        HStack(spacing: 12) {
+            if canFulfillment {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.fulfillment, session: session)
+                } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(uiColor: .ppWarning).opacity(0.14))
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(Color(uiColor: .ppWarning))
+                            }
+                            .frame(width: 38, height: 38)
+
+                            Spacer()
+
+                            if let awaiting = commandState.snapshot?.operations.awaitingFulfillment, awaiting > 0 {
+                                Text(verbatim: "\(awaiting)")
+                                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Color(uiColor: .ppWarning), in: Capsule())
+                            }
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Fulfillment_Title", alter: "طلبات التنفيذ"))
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            Text(fulfillmentStatusText)
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+
+            if canPOSHistory {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.pointOfSaleHistory, session: session)
+                } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(AdminSurface.primary.opacity(0.12))
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+                            .frame(width: 38, height: 38)
+
+                            Spacer()
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("POS_History_Title", alter: "سجل المبيعات"))
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            Text(Language.get("POS_History_Subtitle_Short", alter: "الإيصالات، الاسترجاع، والإلغاء"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+        }
+    }
+
+    private var fulfillmentStatusText: String {
+        if let count = commandState.snapshot?.operations.awaitingFulfillment, count > 0 {
+            return String(format: Language.get("Fulfillment_Pending_Count_Format", alter: "%d بانتظار التجهيز"), count)
+        }
+        return Language.get("Fulfillment_All_Clear", alter: "جميع الطلبات مكتملة")
+    }
+
+    private var financialSentinelCard: some View {
+        VStack(spacing: 0) {
+            if canPayments {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.payments, session: session)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color(uiColor: .ppSuccess).opacity(0.12))
+                            Image(systemName: "creditcard.fill")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                        }
+                        .frame(width: 40, height: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("PaymentMgmt_Dashboard_Title", alter: "إدارة المدفوعات"))
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            Text(Language.get("PaymentMgmt_Subtitle_Short", alter: "عمليات QIB، التحصيل، وتدقيق العمليات"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    .padding(14)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+
+            if canPayments && canPaymentSettings {
+                Divider()
+                    .padding(.leading, 64)
+                    .background(AdminSurface.hairline)
+            }
+
+            if canPaymentSettings {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.paymentSettings, session: session)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(AdminSurface.secondaryText.opacity(0.10))
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .frame(width: 34, height: 34)
+
+                        Text(Language.get("PaymentMgmt_Dashboard_Settings_Title", alter: "أساسيات وتكوين الدفع"))
+                            .font(AdminType.callout)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    private var triVaultInventorySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(Language.get("Inventory_Vault_Section_Title", alter: "خزائن المخزون والمنتجات"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .textCase(.uppercase)
+
+                Spacer()
+
+                Text(Language.get("Inventory_Vault_Badge", alter: "مزامنة فورية بالفرع"))
+                    .font(AdminType.caption2)
+                    .foregroundColor(AdminSurface.primary)
+            }
+
+            VStack(spacing: 10) {
+                if canAccessories {
+                    inventoryVaultRow(
+                        title: Language.get("Manage Accessories", alter: "إدارة الإكسسوارات"),
+                        subtitle: Language.get("Accessories_Vault_Desc", alter: "أطواق، ألعاب، ومستلزمات العناية والرعاية"),
+                        icon: "cube.box.fill",
+                        tintColor: Color(uiColor: .systemTeal),
+                        route: .accessories
+                    )
+                }
+
+                if canFood {
+                    inventoryVaultRow(
+                        title: Language.get("manageFood", alter: "إدارة الطعام والتغذية"),
+                        subtitle: Language.get("Food_Vault_Desc", alter: "أغذية جافة ورطبة، مكملات ومكافآت غذائية"),
+                        icon: "bag.fill",
+                        tintColor: Color(uiColor: .systemOrange),
+                        route: .food
+                    )
+                }
+
+                if canLivePets {
+                    inventoryVaultRow(
+                        title: Language.get("Manage Live Pets", alter: "إدارة الحيوانات الحية"),
+                        subtitle: Language.get("LivePets_Vault_Desc", alter: "الطيور، القطط، الكلاب، السجلات والشرائح"),
+                        icon: "pawprint.fill",
+                        tintColor: Color(uiColor: .ppPrimary),
+                        route: .livePets
+                    )
+                }
+            }
+        }
+    }
+
+    private func inventoryVaultRow(
+        title: String,
+        subtitle: String,
+        icon: String,
+        tintColor: Color,
+        route: AdminRoute
+    ) -> some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(route, session: session)
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(tintColor.opacity(0.14))
+                    Image(systemName: icon)
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(tintColor)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(14)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPad Subviews
+
+    // MARK: - iPad Operations Horizon Bar
+
+    private var iPadOperationsHorizonBar: some View {
+        HStack(spacing: 16) {
+            // Leading: Branch Context & Switch Trigger
+            Button {
+                triggerHaptic(.light)
+                showingBranchSwitcher = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .frame(width: 40, height: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(branchStore.currentBranchDisplayName.isEmpty
+                                 ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                                 : branchStore.currentBranchDisplayName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                    .font(PPBrandFont.bold(size: 11))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع الميداني النشط"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(8)
+                        .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Trailing: Cashier Profile & Live Shift Status
+            HStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Text(session.displayName.prefix(1))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(session.displayName)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(session.localizedRoleName)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Divider()
+                    .frame(height: 24)
+                    .background(AdminSurface.hairline)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.5), radius: 4)
+
+                    Text(Language.get("Shift_Active_Label", alter: "الوردية نشطة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Flagship Obsidian POS Terminal Console
+
+    private var iPadPOSTerminalConsole: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(red: 0.08, green: 0.09, blue: 0.12))
+                .overlay(
+                    RadialGradient(
+                        colors: [AdminSurface.primary.opacity(0.32), Color.clear],
+                        center: Language.isRTL() ? .topLeading : .topTrailing,
+                        startRadius: 0,
+                        endRadius: 260
+                    )
+                )
+                .overlay(
+                    RadialGradient(
+                        colors: [Color.blue.opacity(0.12), Color.clear],
+                        center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
+                        startRadius: 0,
+                        endRadius: 200
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.24), Color.white.opacity(0.05)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 18) {
+                // Console Header: Hardware Badge + Live Status Beacon
+                HStack(alignment: .center) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.22))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "cart.fill.badge.plus")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(Language.get("POS_Hardware_Console_Title", alter: "وحدة البيع المباشر (POS)"))
+                                    .font(AdminType.title3)
+                                    .foregroundColor(.white)
+
+                                if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                    Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                        .font(PPBrandFont.bold(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.65))
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.white.opacity(0.10), in: Capsule())
+                                }
+                            }
+
+                            Text(Language.get("POS_Hardware_Sub_Eyebrow", alter: "محطة الفوترة السريعة بالفرع"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.white.opacity(0.60))
+                        }
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 8, height: 8)
+                            .shadow(color: Color(uiColor: .ppSuccess).opacity(0.6), radius: 4)
+
+                        Text(Language.get("POS_Ready_Short", alter: "جاهز للتحصيل الفوري"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.14), in: Capsule())
+                }
+
+                // Central Headline & Workflow Explanation
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Language.get("POS_Main_Invoice_Action", alter: "إصدار فواتير ومسح الباركود"))
+                        .font(AdminType.title2)
+                        .foregroundColor(.white)
+
+                    Text(Language.get("POS_Hero_Subtitle_Extended", alter: "قراءة الباركود، حساب فوري للخصومات، تحصيل كاش أو عبر البطاقة البنكية، وطباعة إيصالات QIB المعتمدة."))
+                        .font(AdminType.callout)
+                        .foregroundColor(Color.white.opacity(0.80))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Dominant Primary Action Button
+                Button {
+                    triggerHaptic(.medium)
+                    router.present(.pointOfSale, session: session)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 18, weight: .bold))
+
+                        Text(Language.get("POS_Launch_Terminal_Primary", alter: "فتح نقطة البيع وبدء الفاتورة"))
+                            .font(AdminType.headline)
+
+                        Spacer()
+
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 4)
+                }
+                .buttonStyle(V6CardButtonStyle())
+
+                // Tactical Speed-Dial Dock
+                HStack(spacing: 10) {
+                    // Shortcut 1: Fast Barcode Scan
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.pointOfSale, session: session)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "viewfinder")
+                                .font(.system(size: 13, weight: .semibold))
+                            Text(Language.get("POS_Quick_Scan_Action", alter: "مسح باركود"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(.white.opacity(0.90))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+
+                    // Shortcut 2: Today's Ledger
+                    if canPOSHistory {
+                        Button {
+                            triggerHaptic(.light)
+                            router.present(.pointOfSaleHistory, session: session)
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(Language.get("POS_Today_Receipts", alter: "فواتير اليوم"))
+                                    .font(AdminType.captionBold)
+                            }
+                            .foregroundColor(.white.opacity(0.90))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(22)
+        }
+    }
+
+    // MARK: - Financial Governance Module
+
+    private var iPadFinancialControlCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .ppSuccess).opacity(0.14))
+                    Image(systemName: "creditcard.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("PaymentMgmt_Dashboard_Title", alter: "المالية وبوابات الدفع والتسويات"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.get("PaymentMgmt_Section_Subtitle", alter: "عمليات التحصيل الإلكتروني، نقاط البيع، وإعدادات QIB"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+            }
+
+            VStack(spacing: 8) {
+                if canPayments {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.payments, session: session)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "dollarsign.circle.fill")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("PaymentMgmt_Records_Title", alter: "إدارة وسجلات المدفوعات"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Text(Language.get("PaymentMgmt_Records_Sub", alter: "مراجعة العمليات، تدقيق التحصيلات، والتسويات اليومية"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(V6CardButtonStyle())
+                }
+
+                if canPaymentSettings {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.paymentSettings, session: session)
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(AdminSurface.primary)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get("PaymentMgmt_Dashboard_Settings_Title", alter: "إعدادات أجهزة وبوابات الدفع"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+                                Text(Language.get("PaymentMgmt_Settings_Sub", alter: "تكوين ماكينات QIB، نقاط الدفع، وعمولات العمليات"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                        )
+                    }
+                    .buttonStyle(V6CardButtonStyle())
+                }
+            }
+        }
+        .padding(18)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Operational Radar Modules
+
+    private var iPadFulfillmentCard: some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(.fulfillment, session: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(uiColor: .ppWarning).opacity(0.14))
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppWarning))
+                    }
+                    .frame(width: 46, height: 46)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Fulfillment_Title", alter: "طلبات التنفيذ والتوصيل"))
+                            .font(AdminType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(Language.get("Fulfillment_Live_Queue", alter: "طلبات المتجر الإلكتروني بانتظار التحضير"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    if let count = commandState.snapshot?.operations.awaitingFulfillment, count > 0 {
+                        HStack(spacing: 4) {
+                            Text(verbatim: "\(count)")
+                                .font(.system(size: 15, weight: .black, design: .rounded))
+                            Text(Language.get("Fulfillment_Pending_Unit", alter: "طلب"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 5)
+                        .background(Color(uiColor: .ppWarning), in: Capsule())
+                    } else {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("Fulfillment_All_Clear", alter: "مكتمل"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                    }
+                }
+
+                Text(Language.get("Fulfillment_Hub_Desc", alter: "متابعة تجهيز وتعبئة طلبيات العملاء، مراجعة الفواتير المحجوزة، وتوجيه الشحنات لمناديب التوصيل أو الاستلام من الفرع."))
+                    .font(AdminType.footnote)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    HStack(spacing: 6) {
+                        Text(Language.get("Fulfillment_Open_Action", alter: "فتح منصة تجهيز الطلبات"))
+                            .font(AdminType.calloutBold)
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(Color(uiColor: .ppWarning))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color(uiColor: .ppWarning).opacity(0.12), in: Capsule())
+
+                    Spacer()
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    private var iPadPOSHistoryCard: some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(.pointOfSaleHistory, session: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .frame(width: 46, height: 46)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("POS_History_Title", alter: "سجل العمليات والمبيعات"))
+                            .font(AdminType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        Text(Language.get("POS_History_Archive_Eyebrow", alter: "أرشيف فواتير الكاشير والتحصيل"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Text(Language.get("POS_History_Subtitle_Long", alter: "استعراض كافة الفواتير المصدرة اليوم، إعادة طباعة الإيصالات للعملاء، وتوثيق المرتجعات أو إلغاء العمليات."))
+                    .font(AdminType.footnote)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    HStack(spacing: 6) {
+                        Text(Language.get("POS_History_Review_Action", alter: "استعراض سجل الفواتير"))
+                            .font(AdminType.calloutBold)
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+
+                    Spacer()
+                }
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    private var iPadSystemHealthCard: some View {
+        Button(action: onOpenCommand) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .ppSuccess).opacity(0.12))
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .frame(width: 40, height: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("CommandCenter_Title", alter: "مركز العمليات المركزي"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Text(Language.get("CommandCenter_Health_Stable", alter: "كافة المؤشرات التشغيلية منتظمة"))
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+
+                Spacer()
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(14)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - Tri-Vault Inventory Command Bay (Full Width, Zero Truncation)
+
+    private var iPadInventoryVaultBay: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("Inventory_Vault_Section_Title", alter: "خزائن المخزون والمنتجات بالفرع"))
+                        .font(AdminType.title3)
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.get("Inventory_Live_Sync_Full", alter: "مزامنة لحظية حية مع المستودع المركزي وقواعد بيانات الكتالوج"))
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+            }
+
+            HStack(spacing: 16) {
+                if canAccessories {
+                    iPadVaultColumnCard(
+                        title: Language.get("Manage Accessories", alter: "إدارة المستلزمات والأطواق"),
+                        subtitle: Language.get("Accessories_Vault_Desc_Full", alter: "أطواق، ألعاب، مستلزمات العناية والرعاية، وإكسسوارات الحيوانات"),
+                        badge: Language.get("Accessories_Badge", alter: "مستلزمات"),
+                        icon: "cube.box.fill",
+                        tint: Color(uiColor: .systemTeal),
+                        route: .accessories
+                    )
+                }
+
+                if canFood {
+                    iPadVaultColumnCard(
+                        title: Language.get("manageFood", alter: "إدارة الطعام والتغذية"),
+                        subtitle: Language.get("Food_Vault_Desc_Full", alter: "دراي فود، معلبات، مكملات صحية ومكافآت غذائية لكافة الفصائل"),
+                        badge: Language.get("Food_Badge", alter: "أغذية ومكملات"),
+                        icon: "bag.fill",
+                        tint: Color(uiColor: .systemOrange),
+                        route: .food
+                    )
+                }
+
+                if canLivePets {
+                    iPadVaultColumnCard(
+                        title: Language.get("Manage Live Pets", alter: "إدارة الحيوانات الأليفة"),
+                        subtitle: Language.get("LivePets_Vault_Desc_Full", alter: "الطيور، القطط، الكلاب، السجلات البيطرية، التطعيمات والشرائح"),
+                        badge: Language.get("LivePets_Badge", alter: "سجلات حية"),
+                        icon: "pawprint.fill",
+                        tint: Color(uiColor: .ppPrimary),
+                        route: .livePets
+                    )
+                }
+            }
+        }
+        .padding(22)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    private func iPadVaultColumnCard(
+        title: String,
+        subtitle: String,
+        badge: String,
+        icon: String,
+        tint: Color,
+        route: AdminRoute
+    ) -> some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(route, session: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(tint.opacity(0.14))
+                        Image(systemName: icon)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(tint)
+                    }
+                    .frame(width: 44, height: 44)
+
+                    Spacer()
+
+                    Text(badge)
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(tint.opacity(0.12), in: Capsule())
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(subtitle)
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                HStack {
+                    Text(Language.get("Inventory_Manage_Action", alter: "فتح الخزينة وإدارة المخزون"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(tint)
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(tint)
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 180, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - Tactile Haptic Trigger
+
+    private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
     }
 }
 

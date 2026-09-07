@@ -1990,20 +1990,33 @@ private extension View {
 @MainActor
 public enum PPStatusBarHelper {
     public static var statusBarHeight: CGFloat {
-        if let window = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .flatMap(\.windows)
-            .first(where: \.isKeyWindow) {
-            let topInset = window.safeAreaInsets.top
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap(\.windows)
+        if let keyWindow = windows.first(where: \.isKeyWindow) {
+            let topInset = keyWindow.safeAreaInsets.top
             if topInset > 0 { return topInset }
         }
-        if let statusBarManager = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first?.statusBarManager {
+        if let windowWithInset = windows.first(where: { $0.safeAreaInsets.top > 0 }) {
+            return windowWithInset.safeAreaInsets.top
+        }
+        if let statusBarManager = scenes.first?.statusBarManager {
             let height = statusBarManager.statusBarFrame.height
             if height > 0 { return height }
         }
         return 47.0
+    }
+
+    public static var safeAreaBottomInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let windows = scenes.flatMap(\.windows)
+        if let keyWindow = windows.first(where: \.isKeyWindow) {
+            let bottomInset = keyWindow.safeAreaInsets.bottom
+            if bottomInset > 0 { return bottomInset }
+        }
+        if let windowWithInset = windows.first(where: { $0.safeAreaInsets.bottom > 0 }) {
+            return windowWithInset.safeAreaInsets.bottom
+        }
+        return 34.0
     }
 }
 

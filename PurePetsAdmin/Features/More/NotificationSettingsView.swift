@@ -229,6 +229,7 @@ struct AdminNotificationSettingsView: View {
                 }
                 .padding(.horizontal, AdminSpacing.screenMargin)
                 .padding(.top, AdminSpacing.md)
+                .padding(.bottom, PPStatusBarHelper.safeAreaBottomInset + 24)
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 sovereignNavigationBar

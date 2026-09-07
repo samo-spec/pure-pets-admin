@@ -180,13 +180,14 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
         return PPAuditActionCategoryDestructive;
     }
     if ([act hasPrefix:@"set_permission"] || [act hasPrefix:@"set_role"] || [act hasPrefix:@"set_admin"] ||
-        [act isEqualToString:@"set_unblocked"] || [act containsString:@"auth"] || [act containsString:@"login"]) {
+        [act isEqualToString:@"set_unblocked"] || [act containsString:@"auth"] || [act containsString:@"login"] ||
+        [act containsString:@"profile"] || [act containsString:@"userscol"] || [act containsString:@"user_profile"]) {
         return PPAuditActionCategorySecurity;
     }
     if ([act containsString:@"service"] || [act containsString:@"category"] || [act containsString:@"accessory"] || [act containsString:@"ad_"]) {
         return PPAuditActionCategoryServices;
     }
-    if ([act containsString:@"branch"] || [act containsString:@"agent"] || [act containsString:@"banner"] || [act containsString:@"settings"]) {
+    if ([act containsString:@"branch"] || [act containsString:@"agent"] || [act containsString:@"banner"] || [act containsString:@"settings"] || [act containsString:@"notification"]) {
         return PPAuditActionCategoryOperations;
     }
     if ([act containsString:@"pos"] || [act containsString:@"transaction"] || [act containsString:@"order"] ||
@@ -238,6 +239,15 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
     if ([act isEqualToString:@"delete_user"]) return kLang(@"Audit_ActionDeleteUser");
     if ([act isEqualToString:@"update_user"]) return kLang(@"Audit_ActionUpdateUser");
 
+    if ([act isEqualToString:@"Public User Profile Sync"] || [act isEqualToString:@"public_user_profile_sync"]) {
+        return [Language isRTL] ? @"مزامنة الملف الشخصي العام" : @"Public User Profile Sync";
+    }
+    if ([act isEqualToString:@"Userscol Update"] || [act isEqualToString:@"userscol_update"]) {
+        return [Language isRTL] ? @"تحديث بيانات المستخدم" : @"User Record Update";
+    }
+    if ([act isEqualToString:@"Notification Device Refreshed"] || [act isEqualToString:@"notification_device_refreshed"]) {
+        return [Language isRTL] ? @"تحديث جهاز الإشعارات" : @"Notification Device Refreshed";
+    }
     if ([act isEqualToString:@"UPDATE_SERVICE_TITLES_3_WORDS_MAX"]) {
         return [Language isRTL] ? @"تحديث عناوين الخدمات (حد أقصى ٣ كلمات)" : @"Update Service Titles (3 Words Max)";
     }
@@ -364,12 +374,20 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
     return self.before.count > 0 || self.after.count > 0;
 }
 
+- (BOOL)isAutomatedSystem {
+    NSString *raw = [NSString stringWithFormat:@"%@ %@", self.adminUid ?: @"", self.metadata[@"actorName"] ?: @""].lowercaseString;
+    return ([raw containsString:@"system"] || [raw containsString:@"trigger"] || [raw containsString:@"cron"] || [raw containsString:@"bot"] || [raw containsString:@"worker"] || [raw containsString:@"sync"]);
+}
+
 - (NSString *)actorDisplayName {
     if (self.metadata[@"adminName"] && [self.metadata[@"adminName"] isKindOfClass:[NSString class]] && [self.metadata[@"adminName"] length] > 0) {
         return self.metadata[@"adminName"];
     }
     if (self.metadata[@"actorName"] && [self.metadata[@"actorName"] isKindOfClass:[NSString class]] && [self.metadata[@"actorName"] length] > 0) {
         return self.metadata[@"actorName"];
+    }
+    if ([self isAutomatedSystem]) {
+        return [Language isRTL] ? @"نظام المعالجة التلقائي" : @"Automated System Engine";
     }
     if (self.adminUid.length > 0) {
         if (self.adminUid.length > 12) {
@@ -380,20 +398,74 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
     return kLang(@"Audit_Actor_Title");
 }
 
-- (NSString *)targetDisplayName {
+- (NSString *)humanizedTargetCollectionName {
     NSString *coll = self.targetCollection ?: @"";
+    if ([coll isEqualToString:@"PublicUserProfiles"]) return [Language isRTL] ? @"ملف المستخدم" : @"User Profile";
+    if ([coll isEqualToString:@"UsersCol"]) return [Language isRTL] ? @"حساب المستخدم" : @"User Account";
+    if ([coll isEqualToString:@"Orders"]) return [Language isRTL] ? @"طلب متجر" : @"Order";
+    if ([coll isEqualToString:@"serviceOffers"]) return [Language isRTL] ? @"خدمة" : @"Service";
+    if ([coll isEqualToString:@"pet_ads"]) return [Language isRTL] ? @"إعلان أليف" : @"Pet Ad";
+    if ([coll isEqualToString:@"cartItems"]) return [Language isRTL] ? @"سلة المشتريات" : @"Cart";
+    if ([coll isEqualToString:@"PermisstionsCol"]) return [Language isRTL] ? @"صلاحيات النظام" : @"Permissions";
+    return coll.length > 0 ? coll : ([Language isRTL] ? @"سجل النظام" : @"System Entity");
+}
+
+- (NSString *)cleanTargetUid {
     NSString *tid = self.targetUid ?: @"";
-    if (tid.length > 12) {
-        tid = [NSString stringWithFormat:@"%@...", [tid substringToIndex:8]];
+    if (tid.length > 14) {
+        return [NSString stringWithFormat:@"#%@", [tid substringToIndex:10]];
     }
-    if (coll.length > 0 && tid.length > 0) {
-        return [NSString stringWithFormat:@"%@/%@", coll, tid];
-    } else if (tid.length > 0) {
-        return tid;
-    } else if (coll.length > 0) {
-        return coll;
+    return tid.length > 0 ? [NSString stringWithFormat:@"#%@", tid] : @"";
+}
+
+- (NSString *)targetDisplayName {
+    NSString *humanColl = [self humanizedTargetCollectionName];
+    NSString *cleanId = [self cleanTargetUid];
+    if (humanColl.length > 0 && cleanId.length > 0) {
+        return [NSString stringWithFormat:@"%@ • %@", humanColl, cleanId];
+    } else if (cleanId.length > 0) {
+        return cleanId;
+    } else if (humanColl.length > 0) {
+        return humanColl;
     }
     return @"--";
+}
+
+- (BOOL)isZeroMutationSync {
+    return [self addedKeysCount] == 0 && [self modifiedKeysCount] == 0 && [self removedKeysCount] == 0;
+}
+
+- (NSArray<NSString *> *)modifiedKeyNames {
+    NSMutableArray<NSString *> *keys = [NSMutableArray array];
+    for (PPAuditDiffItem *item in [self computedDiff]) {
+        if (item.diffType == PPAuditDiffTypeModified || item.diffType == PPAuditDiffTypeAdded) {
+            [keys addObject:item.key];
+        }
+    }
+    return keys.copy;
+}
+
+- (NSString *)smartMutationSummary {
+    NSString *trans = [self stateTransitionSummary];
+    if (trans.length > 0) {
+        return trans;
+    }
+    if ([self isZeroMutationSync]) {
+        return [Language isRTL] ? @"فحص ومزامنة متطابقة ١٠٠٪" : @"Verified Sync • 100% Intact";
+    }
+    NSInteger mod = [self modifiedKeysCount];
+    NSInteger added = [self addedKeysCount];
+    NSInteger rem = [self removedKeysCount];
+    NSArray<NSString *> *keys = [self modifiedKeyNames];
+    
+    if (mod == 1 && added == 0 && rem == 0 && keys.count > 0) {
+        return [Language isRTL] ? [NSString stringWithFormat:@"تعديل حقل: [%@]", keys.firstObject] : [NSString stringWithFormat:@"Modified: [%@]", keys.firstObject];
+    }
+    if (keys.count > 0 && keys.count <= 2) {
+        NSString *joined = [keys componentsJoinedByString:@", "];
+        return [Language isRTL] ? [NSString stringWithFormat:@"تحديث: %@", joined] : [NSString stringWithFormat:@"Updated: %@", joined];
+    }
+    return [NSString stringWithFormat:@"Δ +%ld ~%ld -%ld", (long)added, (long)mod, (long)rem];
 }
 
 - (nullable NSString *)stateTransitionSummary {
@@ -407,6 +479,9 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
 
 - (NSString *)diffPillText {
     if (![self hasDiff]) return @"";
+    if ([self isZeroMutationSync]) {
+        return [Language isRTL] ? @"مزامنة سليمة" : @"Sync OK";
+    }
     NSInteger added = [self addedKeysCount];
     NSInteger mod = [self modifiedKeysCount];
     NSInteger rem = [self removedKeysCount];

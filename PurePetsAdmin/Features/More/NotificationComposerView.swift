@@ -1287,11 +1287,17 @@ struct AdminNotificationComposerView: View {
             .padding(.horizontal, AdminSpacing.screenMargin)
             .padding(.top, 10)
             .padding(.bottom, 12)
-            .background(
-                AdminSurface.surface
-                    .ignoresSafeArea(edges: .bottom)
-            )
+
+            // Safe area bottom inset clearance for home indicator
+            if PPStatusBarHelper.safeAreaBottomInset > 0 {
+                Color.clear
+                    .frame(height: PPStatusBarHelper.safeAreaBottomInset)
+            }
         }
+        .background(
+            AdminSurface.surface
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 }
 
