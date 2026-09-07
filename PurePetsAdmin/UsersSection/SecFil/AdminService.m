@@ -55,6 +55,33 @@
     }];
 }
 
++ (void)pp_loadStaffRevision:(NSString *)uid
+                  completion:(void (^)(NSInteger revision, NSError * _Nullable error))completion {
+    [[[[FIRFirestore firestore] collectionWithPath:@"staff_users"] documentWithPath:(uid ?: @"")]
+        getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(0, error);
+            return;
+        }
+        NSNumber *stored = [snapshot.data[@"revision"] isKindOfClass:NSNumber.class]
+            ? snapshot.data[@"revision"]
+            : @0;
+        if (completion) completion(MAX(0, stored.integerValue), nil);
+    }];
+}
+
++ (void)pp_callIAMCommand:(NSString *)name
+                   payload:(NSDictionary *)payload
+                    reason:(NSString *)reason
+         expectedRevision:(NSInteger)expectedRevision
+                completion:(AdminServiceCompletion)completion {
+    NSMutableDictionary *command = [(payload ?: @{}) mutableCopy];
+    command[@"idempotencyKey"] = NSUUID.UUID.UUIDString;
+    command[@"expectedRevision"] = @(MAX(0, expectedRevision));
+    command[@"reason"] = reason ?: @"admin_app_iam_command";
+    [self pp_callCallable:name payload:command completion:completion];
+}
+
 #pragma mark - Staff Management (new Cloud Functions)
 
 + (void)createStaffMemberWithEmail:(NSString *)email
@@ -72,7 +99,11 @@
     } mutableCopy];
     if (permissions) payload[@"permissions"] = permissions;
     if (scope)       payload[@"scope"] = scope;
-    [self pp_callCallable:@"createStaffMember" payload:payload completion:completion];
+    [self pp_callIAMCommand:@"createStaffMember"
+                    payload:payload
+                     reason:@"admin_app_create_staff_member"
+          expectedRevision:0
+                 completion:completion];
 }
 
 + (void)assignExistingUserAsStaff:(NSString *)uid
@@ -86,7 +117,11 @@
     } mutableCopy];
     if (permissions) payload[@"permissions"] = permissions;
     if (scope)       payload[@"scope"] = scope;
-    [self pp_callCallable:@"assignExistingUserAsStaff" payload:payload completion:completion];
+    [self pp_callIAMCommand:@"assignExistingUserAsStaff"
+                    payload:payload
+                     reason:@"admin_app_promote_existing_user"
+          expectedRevision:0
+                 completion:completion];
 }
 
 + (void)updateStaffMember:(NSString *)uid
@@ -98,12 +133,50 @@
     if ([updates isKindOfClass:NSDictionary.class]) {
         [payload addEntriesFromDictionary:updates];
     }
-    [self pp_callCallable:@"updateStaffMember" payload:payload completion:completion];
+    NSNumber *explicitRevision = [payload[@"expectedRevision"] isKindOfClass:NSNumber.class]
+        ? payload[@"expectedRevision"]
+        : nil;
+    if (explicitRevision) {
+        [payload removeObjectForKey:@"expectedRevision"];
+        [self pp_callIAMCommand:@"updateStaffMember"
+                        payload:payload
+                         reason:@"admin_app_update_staff_member"
+              expectedRevision:explicitRevision.integerValue
+                     completion:completion];
+        return;
+    }
+    [self pp_loadStaffRevision:uid completion:^(NSInteger revision, NSError * _Nullable error) {
+        if (error) {
+            [self pp_completeOnMain:completion result:nil error:error];
+            return;
+        }
+        [self pp_callIAMCommand:@"updateStaffMember"
+                        payload:payload
+                         reason:@"admin_app_update_staff_member"
+              expectedRevision:revision
+                     completion:completion];
+    }];
 }
 
 + (void)disableStaffMember:(NSString *)uid
                 completion:(AdminServiceCompletion)completion {
-    [self pp_callCallable:@"disableStaffMember" payload:@{@"uid": uid ?: @""} completion:completion];
+    [self pp_loadStaffRevision:uid completion:^(NSInteger revision, NSError * _Nullable error) {
+        if (error) {
+            [self pp_completeOnMain:completion result:nil error:error];
+            return;
+        }
+        [self disableStaffMember:uid expectedRevision:revision completion:completion];
+    }];
+}
+
++ (void)disableStaffMember:(NSString *)uid
+          expectedRevision:(NSInteger)expectedRevision
+                completion:(AdminServiceCompletion)completion {
+    [self pp_callIAMCommand:@"disableStaffMember"
+                    payload:@{@"uid": uid ?: @""}
+                     reason:@"admin_app_disable_staff_member"
+          expectedRevision:expectedRevision
+                 completion:completion];
 }
 
 #pragma mark - User Access Management (new)

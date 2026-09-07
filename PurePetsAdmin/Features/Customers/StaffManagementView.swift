@@ -113,7 +113,9 @@ final class AdminStaffManagementViewModel: ObservableObject {
     @Published var selectedFilter: StaffStatusFilter = .all
     @Published private(set) var isLoading: Bool = true
     @Published private(set) var errorMessage: String? = nil
-    @Published private(set) var canManage: Bool = false
+    @Published private(set) var canCreateStaff: Bool = false
+    @Published private(set) var canUpdateStaff: Bool = false
+    @Published private(set) var canDisableStaff: Bool = false
 
     private nonisolated(unsafe) var staffListener: (any ListenerRegistration)?
 
@@ -145,7 +147,9 @@ final class AdminStaffManagementViewModel: ObservableObject {
 
     func evaluatePermissions() {
         let staff = PPStaffAuth.shared().cachedCurrentStaff
-        self.canManage = staff?.hasPermission(kStaffPermStaffManage) ?? false
+        self.canCreateStaff = staff?.hasPermission(kStaffPermIamStaffCreate) ?? false
+        self.canUpdateStaff = staff?.hasPermission(kStaffPermIamStaffUpdate) ?? false
+        self.canDisableStaff = staff?.hasPermission(kStaffPermIamStaffDisable) ?? false
     }
 
     func startListening() {
@@ -238,9 +242,12 @@ final class AdminStaffManagementViewModel: ObservableObject {
     }
 
     func disableMember(_ member: PPStaffDoc, completion: @escaping @MainActor @Sendable (Bool, String?) -> Void) {
-        guard !member.uid.isEmpty else { return }
+        guard canDisableStaff, !member.uid.isEmpty else {
+            completion(false, Language.get("StatusNoAccess", alter: "لا تملك صلاحية تنفيذ هذا الإجراء"))
+            return
+        }
         let uid = member.uid
-        AdminService.disableStaffMember(uid) { _, error in
+        AdminService.disableStaffMember(uid, expectedRevision: member.revision) { _, error in
             let errDesc = error?.localizedDescription
             DispatchQueue.main.async {
                 if let errDesc {
@@ -464,7 +471,7 @@ struct AdminStaffManagementView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Flagship Quick Provisioning Action (+ Create Account)
-                if viewModel.canManage {
+                if viewModel.canCreateStaff {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         isCreatingNew = true
@@ -746,7 +753,7 @@ struct AdminStaffManagementView: View {
                 symbol: "person.3.sequence",
                 title: Language.get("Staff_Preview_Empty", alter: "لا يوجد أعضاء فريق بعد"),
                 subtitle: Language.get("MissionControl_Staff_SourceEmpty_Subtitle", alter: "أنشئ أول حساب موظف لإدارة الصلاحيات."),
-                actionTitle: viewModel.canManage ? Language.get("Staff_Create_New", alter: nil) : nil,
+                actionTitle: viewModel.canCreateStaff ? Language.get("Staff_Create_New", alter: nil) : nil,
                 action: { isCreatingNew = true }
             )
         } else if viewModel.filteredStaff.isEmpty {
@@ -768,12 +775,16 @@ struct AdminStaffManagementView: View {
 
     private func staffMemberCard(member: PPStaffDoc) -> some View {
         let isCurrent = Auth.auth().currentUser?.uid == member.uid
+        let isActionable = viewModel.canUpdateStaff && !isCurrent
 
         return StaffMemberSovereignCard(
             member: member,
             isCurrent: isCurrent,
+            isActionable: isActionable,
             onTap: {
-                selectedMemberForEdit = member
+                if isActionable {
+                    selectedMemberForEdit = member
+                }
             }
         )
     }
@@ -818,6 +829,7 @@ struct AdminStaffManagementView: View {
 private struct StaffMemberSovereignCard: View {
     let member: PPStaffDoc
     let isCurrent: Bool
+    let isActionable: Bool
     let onTap: () -> Void
 
     private var isRTL: Bool { Language.isRTL() }
@@ -894,6 +906,7 @@ private struct StaffMemberSovereignCard: View {
             .shadow(color: Color.black.opacity(0.035), radius: 8, y: 3)
         }
         .buttonStyle(StaffCardPressStyle())
+        .disabled(!isActionable)
         .accessibilityElement(children: .combine)
     }
 
@@ -1079,15 +1092,17 @@ private struct StaffMemberSovereignCard: View {
             .background((isActive ? Color.green : Color.orange).opacity(0.08), in: Capsule())
 
             // Chevron Action Disc
-            ZStack {
-                Circle()
-                    .fill(AdminSurface.control)
-                    .frame(width: 28, height: 28)
-                    .overlay(Circle().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.6))
+            if isActionable {
+                ZStack {
+                    Circle()
+                        .fill(AdminSurface.control)
+                        .frame(width: 28, height: 28)
+                        .overlay(Circle().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.6))
 
-                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                    Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                }
             }
         }
     }
@@ -1152,6 +1167,15 @@ struct AdminStaffMemberEditorView: View {
     @State private var isProfileLoading: Bool = false
 
     private var isEditing: Bool { staffDoc != nil }
+    private var currentStaff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
+    private var canCreateStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffCreate) ?? false }
+    private var canUpdateStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffUpdate) ?? false }
+    private var canDisableStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffDisable) ?? false }
+    private var canSubmitCommand: Bool { isEditing ? canUpdateStaff : canCreateStaff }
+    private var canChangeStatus: Bool {
+        guard isEditing else { return false }
+        return staffDoc?.status == .active ? canDisableStaff : canUpdateStaff
+    }
 
     init(staffDoc: PPStaffDoc?, onDismiss: @escaping () -> Void, onSaved: @escaping (String) -> Void) {
         self.staffDoc = staffDoc
@@ -1331,7 +1355,7 @@ struct AdminStaffMemberEditorView: View {
                     .shadow(color: AdminSurface.primary.opacity(0.32), radius: 6, x: 0, y: 2)
                 }
                 .buttonStyle(.plain)
-                .disabled(isSaving)
+                .disabled(isSaving || !canSubmitCommand)
                 .accessibilityLabel(Language.get("Save", alter: "حفظ"))
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
@@ -1714,6 +1738,8 @@ struct AdminStaffMemberEditorView: View {
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .disabled(!canChangeStatus)
+                .opacity(canChangeStatus ? 1 : 0.62)
 
                 // Pod 2: Permissions Count & Inspector Trigger
                 Button {
@@ -2750,6 +2776,19 @@ struct AdminStaffMemberEditorView: View {
     private func saveSettings() {
         validationError = nil
 
+        guard canSubmitCommand else {
+            validationError = Language.get("StatusNoAccess", alter: "لا تملك صلاحية تنفيذ هذا الإجراء")
+            return
+        }
+
+        if isEditing,
+           staffDoc?.status == .active,
+           !isActive,
+           !canDisableStaff {
+            validationError = Language.get("StatusNoAccess", alter: "لا تملك صلاحية تعطيل حسابات الموظفين")
+            return
+        }
+
         if !isGlobalScope && selectedBranchIDs.isEmpty {
             validationError = Language.get("Staff_Error_BranchRequired", alter: "يرجى تحديد فرع عمل واحد على الأقل، أو تفعيل الوصول الشامل لكافة الفروع.")
             return
@@ -2804,7 +2843,8 @@ struct AdminStaffMemberEditorView: View {
             let updates: [String: Any] = [
                 "role": selectedRole.rawValue,
                 "status": isActive ? PPStaffStatus.active.rawValue : PPStaffStatus.disabled.rawValue,
-                "scope": scopeDict
+                "scope": scopeDict,
+                "expectedRevision": staffDoc?.revision ?? 0
             ]
 
             AdminService.updateStaffMember(uid, updates: updates) { _, error in

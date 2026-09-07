@@ -99,12 +99,10 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
 
 - (BOOL)hasPermission:(NSString *)permission {
     if (permission.length == 0) return NO;
-    if (self.grantsAllPermissions) return YES;
     return PPStaffMatchesPermission(self.permissions, permission);
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)permissions {
-    if (self.grantsAllPermissions) return YES;
     for (NSString *permission in permissions ?: @[]) {
         if ([self hasPermission:permission]) return YES;
     }
@@ -112,7 +110,7 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
 }
 
 - (BOOL)hasGlobalScope {
-    return self.grantsAllPermissions || PPAdminSessionStrictGlobalScope(self.scope);
+    return PPAdminSessionStrictGlobalScope(self.scope);
 }
 
 @end
@@ -148,7 +146,9 @@ static void PPAdminLogPermissionsAndSession(PPAdminSessionSnapshot *snapshot, PP
     // Firestore Rules. UserModel is populated below only for legacy screens.
     snapshot.permissions = staffDoc.permissions ?: @[];
     snapshot.scope = staffDoc.scope ?: @{};
-    snapshot.grantsAllPermissions = staffDoc.isAdmin;
+    // Compatibility property retained for Swift/Objective-C ABI stability.
+    // Canonical role labels never expand the explicit permission projection.
+    snapshot.grantsAllPermissions = NO;
     return snapshot;
 }
 

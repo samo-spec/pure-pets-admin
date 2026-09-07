@@ -9,6 +9,10 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+FOUNDATION_EXPORT NSString * const PPStaffIAMPolicyVersion;
+FOUNDATION_EXPORT NSString * const PPStaffIAMSchemaVersion;
+FOUNDATION_EXPORT NSString * const PPStaffIAMPolicySHA256;
+
 #pragma mark - Staff Role Types and Constants
 
 typedef NSString * PPStaffRole NS_TYPED_ENUM;
@@ -29,7 +33,7 @@ extern PPStaffRole const PPStaffRoleViewer;
 extern PPStaffRole const PPStaffRoleSecurityAdmin;
 extern PPStaffRole const PPStaffRoleComplianceAuditor;
 
-#pragma mark - Permission Keys Constants (123 Permissions)
+#pragma mark - Permission Keys Constants (138 Permissions)
 
 extern NSString * const kStaffPermDashboardView;
 extern NSString * const kStaffPermNovaView;
@@ -72,9 +76,6 @@ extern NSString * const kStaffPermDeliveryCODReconcile;
 extern NSString * const kStaffPermDeliverySettingsManage;
 extern NSString * const kStaffPermPosView;
 extern NSString * const kStaffPermPosSell;
-extern NSString * const kStaffPermPosSellWholesale;
-extern NSString * const kStaffPermCatalogPricingManage;
-extern NSString * const kStaffPermCatalogWholesaleManage;
 extern NSString * const kStaffPermPosHistory;
 extern NSString * const kStaffPermBranchesView;
 extern NSString * const kStaffPermBranchesManage;
@@ -154,14 +155,34 @@ extern NSString * const kStaffPermHotelSettingsManage;
 extern NSString * const kStaffPermHotelOverride;
 extern NSString * const kStaffPermBannersView;
 extern NSString * const kStaffPermBannersManage;
+extern NSString * const kStaffPermIamStaffRead;
+extern NSString * const kStaffPermIamStaffCreate;
+extern NSString * const kStaffPermIamStaffUpdate;
+extern NSString * const kStaffPermIamStaffDisable;
+extern NSString * const kStaffPermIamRoleRead;
+extern NSString * const kStaffPermIamRoleCreate;
+extern NSString * const kStaffPermIamRoleUpdate;
+extern NSString * const kStaffPermIamRoleDelete;
+extern NSString * const kStaffPermIamBindingRead;
+extern NSString * const kStaffPermIamBindingGrant;
+extern NSString * const kStaffPermIamBindingRevoke;
+extern NSString * const kStaffPermIamElevationRequest;
+extern NSString * const kStaffPermIamElevationApprove;
+extern NSString * const kStaffPermIamElevationRevoke;
+extern NSString * const kStaffPermIamProjectionReconcile;
+extern NSString * const kStaffPermIamPolicyRead;
+extern NSString * const kStaffPermIamPolicyUpdate;
+extern NSString * const kStaffPermIamRootAssign;
 
 #pragma mark - Catalog Accessors
 
+FOUNDATION_EXPORT NSArray<PPStaffRole> * PPStaffAllRoleKeys(void);
 FOUNDATION_EXPORT NSArray<NSString *> * PPStaffAllPermissionKeys(void);
+FOUNDATION_EXPORT NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void);
 FOUNDATION_EXPORT NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role);
 FOUNDATION_EXPORT BOOL PPStaffIsAdminRole(PPStaffRole role);
 FOUNDATION_EXPORT BOOL PPStaffIsRootRole(PPStaffRole role);
-FOUNDATION_EXPORT PPStaffRole PPStaffNormalizedRole(id _Nullable value);
+FOUNDATION_EXPORT PPStaffRole _Nullable PPStaffNormalizedRole(id _Nullable value);
 FOUNDATION_EXPORT NSString * PPStaffLocalizedRoleName(PPStaffRole role);
 
 NS_ASSUME_NONNULL_END

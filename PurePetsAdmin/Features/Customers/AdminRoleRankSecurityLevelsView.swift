@@ -10,6 +10,7 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
+import FirebaseFunctions
 
 // MARK: - 1. Security Clearance Tier Definition
 
@@ -362,6 +363,7 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
     public let accentHex: String?
     public let permissions: Set<String>
     public let assignedStaffUids: Set<String>
+    public var revision: Int = 0
 
     public var localizedTitle: String {
         Language.isRTL() ? titleAr : titleEn
@@ -411,6 +413,9 @@ public final class AdminRoleRankViewModel: ObservableObject {
     @Published public private(set) var isLoading: Bool = true
     @Published public private(set) var errorMessage: String? = nil
     @Published public private(set) var canManage: Bool = false
+    @Published public private(set) var canCreateRole: Bool = false
+    @Published public private(set) var canUpdateRole: Bool = false
+    @Published public private(set) var canDeleteRole: Bool = false
 
     // Sheets & Dialogs State
     @Published public var inspectingMatrixRole: PlatformRoleModel? = nil
@@ -435,7 +440,10 @@ public final class AdminRoleRankViewModel: ObservableObject {
 
     public func evaluatePermissions() {
         let staff = PPStaffAuth.shared().cachedCurrentStaff
-        self.canManage = staff?.hasPermission(kStaffPermStaffManage) ?? false
+        self.canCreateRole = staff?.hasPermission(kStaffPermIamRoleCreate) ?? false
+        self.canUpdateRole = staff?.hasPermission(kStaffPermIamRoleUpdate) ?? false
+        self.canDeleteRole = staff?.hasPermission(kStaffPermIamRoleDelete) ?? false
+        self.canManage = canCreateRole || canUpdateRole || canDeleteRole
     }
 
     public func startListening() {
@@ -727,6 +735,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
         // 2. Custom Roles Parsed from Firestore
         for doc in rawCustomRoleDocs {
             let data = doc.data()
+            if (data["status"] as? String) == "retired" { continue }
             let nameMap = data["name"] as? [String: String] ?? [:]
             let descMap = data["description"] as? [String: String] ?? [:]
             let perms = data["permissions"] as? [String] ?? []
@@ -747,11 +756,13 @@ public final class AdminRoleRankViewModel: ObservableObject {
             let descEn = descMap["en"] ?? descAr
 
             let staffUids = staffRoleMap[doc.documentID] ?? staffRoleMap["custom_\(doc.documentID)"] ?? []
+            let roleKey = doc.documentID.hasPrefix("custom_") ? doc.documentID : "custom_\(doc.documentID)"
+            let revision = (data["revision"] as? NSNumber)?.intValue ?? 0
 
             roles.append(
                 PlatformRoleModel(
                     id: doc.documentID,
-                    key: "custom_\(doc.documentID)",
+                    key: roleKey,
                     titleAr: titleAr,
                     titleEn: titleEn,
                     descAr: descAr,
@@ -762,7 +773,8 @@ public final class AdminRoleRankViewModel: ObservableObject {
                     iconName: icon,
                     accentHex: accent,
                     permissions: Set(perms),
-                    assignedStaffUids: staffUids
+                    assignedStaffUids: staffUids,
+                    revision: revision
                 )
             )
         }
@@ -798,6 +810,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
 
     public func saveCustomRole(
         existingId: String?,
+        expectedRevision: Int,
         titleAr: String,
         titleEn: String,
         descAr: String,
@@ -809,12 +822,12 @@ public final class AdminRoleRankViewModel: ObservableObject {
         permissions: Set<String>,
         completion: @escaping (Bool) -> Void
     ) {
-        guard canManage else {
+        let authorized = existingId?.isEmpty == false ? canUpdateRole : canCreateRole
+        guard authorized else {
             completion(false)
             return
         }
 
-        let db = Firestore.firestore()
         let payload: [String: Any] = [
             "name": [
                 "ar": titleAr.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -828,52 +841,38 @@ public final class AdminRoleRankViewModel: ObservableObject {
             "securityLevel": tier.rawValue,
             "iconName": iconName,
             "accentHex": accentHex,
-            "permissions": Array(permissions),
-            "updatedAt": FieldValue.serverTimestamp()
+            "permissions": Array(permissions)
         ]
 
+        let functions = Functions.functions(region: "us-central1")
         if let existingId, !existingId.isEmpty {
-            db.collection("staff_roles").document(existingId).setData(payload, merge: true) { [weak self] error in
+            var command = payload
+            command["roleId"] = existingId
+            command["expectedRevision"] = max(0, expectedRevision)
+            command["idempotencyKey"] = UUID().uuidString
+            command["reason"] = "admin_role_rank_custom_role_update"
+            functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
                 if let error {
                     self.errorMessage = error.localizedDescription
                     completion(false)
                     return
                 }
-
-                self.writeAuditTrail(
-                    action: "update_staff_role",
-                    targetId: existingId,
-                    metadata: [
-                        "rank": rank,
-                        "tier": tier.rawValue,
-                        "permissionsCount": permissions.count
-                    ]
-                )
                 self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
                 completion(true)
             }
         } else {
-            var newPayload = payload
-            newPayload["createdAt"] = FieldValue.serverTimestamp()
-            var ref: DocumentReference? = nil
-            ref = db.collection("staff_roles").addDocument(data: newPayload) { [weak self] error in
+            var command = payload
+            command["expectedRevision"] = 0
+            command["idempotencyKey"] = UUID().uuidString
+            command["reason"] = "admin_role_rank_custom_role_create"
+            functions.httpsCallable("createStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
                 if let error {
                     self.errorMessage = error.localizedDescription
                     completion(false)
                     return
                 }
-                let newId = ref?.documentID ?? "unknown"
-                self.writeAuditTrail(
-                    action: "create_staff_role",
-                    targetId: newId,
-                    metadata: [
-                        "rank": rank,
-                        "tier": tier.rawValue,
-                        "permissionsCount": permissions.count
-                    ]
-                )
                 self.toastMessage = Language.get("RoleRank_Save_Success", alter: "تم حفظ وتطبيق الدور بنجاح")
                 completion(true)
             }
@@ -881,7 +880,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
     }
 
     public func deleteCustomRole(role: PlatformRoleModel, completion: @escaping (Bool) -> Void) {
-        guard canManage else {
+        guard canDeleteRole else {
             completion(false)
             return
         }
@@ -900,40 +899,24 @@ public final class AdminRoleRankViewModel: ObservableObject {
             return
         }
 
-        let db = Firestore.firestore()
-        db.collection("staff_roles").document(role.id).delete { [weak self] error in
+        let command: [String: Any] = [
+            "roleId": role.id,
+            "expectedRevision": max(0, role.revision),
+            "idempotencyKey": UUID().uuidString,
+            "reason": "admin_role_rank_custom_role_retire"
+        ]
+        Functions.functions(region: "us-central1").httpsCallable("deleteStaffRole").call(command) { [weak self] _, error in
             guard let self = self else { return }
             if let error {
                 self.errorMessage = error.localizedDescription
                 completion(false)
                 return
             }
-
-            self.writeAuditTrail(
-                action: "delete_staff_role",
-                targetId: role.id,
-                metadata: [
-                    "title": role.titleEn,
-                    "rank": role.rank
-                ]
-            )
             self.toastMessage = Language.get("RoleRank_Delete_Success", alter: "تم حذف الدور بنجاح")
             completion(true)
         }
     }
 
-    private func writeAuditTrail(action: String, targetId: String, metadata: [String: Any]) {
-        let adminUid = Auth.auth().currentUser?.uid ?? "unknown_admin"
-        let auditPayload: [String: Any] = [
-            "action": action,
-            "targetCollection": "staff_roles",
-            "targetId": targetId,
-            "adminUid": adminUid,
-            "metadata": metadata,
-            "timestamp": FieldValue.serverTimestamp()
-        ]
-        Firestore.firestore().collection("AdminAuditLogs").addDocument(data: auditPayload)
-    }
 }
 
 // MARK: - 5. Color Hex Helper
@@ -1018,6 +1001,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
                     onSave: { roleData in
                         viewModel.saveCustomRole(
                             existingId: viewModel.editingRole?.id,
+                            expectedRevision: viewModel.editingRole?.revision ?? 0,
                             titleAr: roleData.titleAr,
                             titleEn: roleData.titleEn,
                             descAr: roleData.descAr,
@@ -1124,7 +1108,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
             }
         ) {
             HStack(spacing: 8) {
-                if viewModel.canManage {
+                if viewModel.canCreateRole {
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         viewModel.editingRole = nil
@@ -1385,7 +1369,8 @@ public struct AdminRoleRankSecurityLevelsView: View {
                     SovereignRoleRankCard(
                         role: role,
                         staffMembers: viewModel.staffMembers,
-                        canManage: viewModel.canManage,
+                        canEdit: viewModel.canUpdateRole,
+                        canDelete: viewModel.canDeleteRole,
                         onInspectMatrix: {
                             viewModel.inspectingMatrixRole = role
                         },
@@ -1415,7 +1400,8 @@ public struct AdminRoleRankSecurityLevelsView: View {
 private struct SovereignRoleRankCard: View {
     let role: PlatformRoleModel
     let staffMembers: [PPStaffDoc]
-    let canManage: Bool
+    let canEdit: Bool
+    let canDelete: Bool
     let onInspectMatrix: () -> Void
     let onInspectStaff: () -> Void
     let onClone: () -> Void
@@ -1595,8 +1581,8 @@ private struct SovereignRoleRankCard: View {
 
                 Spacer()
 
-                if canManage {
-                    if !role.isBuiltIn {
+                if !role.isBuiltIn {
+                    if canEdit {
                         Button(action: onEdit) {
                             Image(systemName: "pencil")
                                 .font(.system(size: 12, weight: .semibold))
@@ -1606,7 +1592,8 @@ private struct SovereignRoleRankCard: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Language.get("RoleRank_Edit_Btn", alter: "تعديل الدور"))
-
+                    }
+                    if canDelete {
                         Button(action: onDelete) {
                             Image(systemName: "trash")
                                 .font(.system(size: 12, weight: .semibold))
@@ -1616,12 +1603,12 @@ private struct SovereignRoleRankCard: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Language.get("RoleRank_Delete_Btn", alter: "حذف الدور"))
-                    } else {
-                        Image(systemName: "lock.shield.fill")
-                            .font(.system(size: 14))
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                            .frame(width: 32, height: 32)
                     }
+                } else if canEdit || canDelete {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                        .frame(width: 32, height: 32)
                 }
             }
         }

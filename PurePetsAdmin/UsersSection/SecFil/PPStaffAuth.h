@@ -37,6 +37,7 @@ extern PPStaffStatus const PPStaffStatusDisabled;
 @property (nonatomic, copy, nullable) NSString *photoURL;
 @property (nonatomic, assign, getter=isVerified) BOOL verified;
 @property (nonatomic, assign) NSInteger claimsVersion;
+@property (nonatomic, assign) NSInteger revision;
 @property (nonatomic, copy, nullable) NSString *updatedBy;
 
 @property (nonatomic, copy, readonly) NSArray<NSString *> *assignedBranchIDs;
@@ -92,7 +93,7 @@ typedef void (^PPStaffListCompletion)(NSArray<PPStaffDoc *> * _Nullable docs, NS
 #pragma mark - Role Mapping (legacy → new)
 
 /// Map legacy UserRole integer to new staff role string.
-+ (PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole;
++ (nullable PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole;
 
 /// Map new staff role string to legacy UserRole integer (for backward compat).
 + (NSInteger)legacyRoleFromStaffRole:(PPStaffRole)staffRole;
@@ -109,7 +110,8 @@ typedef void (^PPStaffListCompletion)(NSArray<PPStaffDoc *> * _Nullable docs, NS
 @end
 
 /// Resolves a requested permission key against granted catalog permissions,
-/// taking into account canonical hierarchy and fine-grained sub-actions across the 18 modules (45 permissions).
+/// using exact catalog membership only. Role labels and broader actions never
+/// manufacture a more specific permission.
 FOUNDATION_EXPORT BOOL PPStaffMatchesPermission(NSArray<NSString *> * _Nullable granted, NSString * _Nullable perm);
 
 NS_ASSUME_NONNULL_END

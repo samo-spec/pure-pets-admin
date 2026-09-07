@@ -77,27 +77,6 @@ static NSDictionary *PPAddUserSafeDict(id value) {
     return [value isKindOfClass:NSDictionary.class] ? (NSDictionary *)value : @{};
 }
 
-static PermissionAction *PPAddUserPermissionAction(NSString *key, NSString *localizedKey) {
-    PermissionAction *action = [PermissionAction new];
-    action.key = key ?: @"";
-    // Keep the localization key until render time so a live language change
-    // does not leave this long-lived editor with stale labels.
-    action.labelEn = localizedKey ?: @"";
-    action.labelAr = localizedKey ?: @"";
-    return action;
-}
-
-static PermissionModule *PPAddUserPermissionModule(NSString *key,
-                                                    NSString *localizedKey,
-                                                    NSArray<PermissionAction *> *actions) {
-    PermissionModule *module = [PermissionModule new];
-    module.key = key ?: @"";
-    module.labelEn = localizedKey ?: @"";
-    module.labelAr = localizedKey ?: @"";
-    module.actions = actions ?: @[];
-    return module;
-}
-
 @interface PPAddUserTagLabel : UILabel
 - (void)applyWithText:(NSString *)text tintColor:(UIColor *)tintColor fillAlpha:(CGFloat)fillAlpha;
 @end
@@ -720,7 +699,7 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
 - (void)pp_updateSaveActionPresentation {
     NSString *title = [self pp_saveActionTitle];
-    BOOL enabled = !self.isSaving;
+    BOOL enabled = !self.isSaving && [self pp_canSubmitStaffMutation];
 
     self.headerOutcomeLabel.text = title;
 
@@ -1410,10 +1389,7 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
 - (NSArray<NSDictionary *> *)pp_roleOptions {
     NSMutableArray<NSDictionary *> *options = [NSMutableArray array];
-    NSArray *systemRoles = @[
-        PPStaffRoleSuperAdmin, PPStaffRoleOwner, PPStaffRoleOperationsManager,
-        PPStaffRoleInventoryManager, PPStaffRolePaymentsManager, PPStaffRoleSupportAgent, PPStaffRoleViewer
-    ];
+    NSArray<PPStaffRole> *systemRoles = PPStaffAllRoleKeys();
 
     for (PPStaffRole role in systemRoles) {
         [options addObject:@{@"value": role ?: @"", @"title": [PPStaffAuth localizedRoleName:role] ?: @""}];
@@ -1421,7 +1397,9 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
     for (StaffRoleTemplate *role in self.customRoles) {
         NSString *name = [Language isRTL] ? PPAddUserSafeString(role.name[@"ar"]) : PPAddUserSafeString(role.name[@"en"]);
-        [options addObject:@{@"value": [NSString stringWithFormat:@"custom_%@", role.id ?: @""], @"title": name ?: @""}];
+        NSString *roleID = role.id ?: @"";
+        NSString *roleValue = [roleID hasPrefix:@"custom_"] ? roleID : [NSString stringWithFormat:@"custom_%@", roleID];
+        [options addObject:@{@"value": roleValue, @"title": name ?: @""}];
     }
     return options.copy;
 }
@@ -1446,9 +1424,10 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
     NSArray *defaults = [PPStaffAuth defaultPermissionsForStaffRole:role];
 
     if ([role hasPrefix:@"custom_"]) {
-        NSString *roleID = [role substringFromIndex:7];
         for (StaffRoleTemplate *t in self.customRoles) {
-            if ([t.id isEqualToString:roleID]) {
+            NSString *templateID = t.id ?: @"";
+            NSString *templateRole = [templateID hasPrefix:@"custom_"] ? templateID : [NSString stringWithFormat:@"custom_%@", templateID];
+            if ([templateRole isEqualToString:role]) {
                 defaults = t.permissions;
                 break;
             }
@@ -1541,8 +1520,37 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
 #pragma mark - Save
 
+- (BOOL)pp_hasCurrentStaffPermission:(NSString *)permission {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasPermission:permission];
+}
+
+- (BOOL)pp_canCreateStaff {
+    return [self pp_hasCurrentStaffPermission:kStaffPermIamStaffCreate];
+}
+
+- (BOOL)pp_canUpdateStaff {
+    return [self pp_hasCurrentStaffPermission:kStaffPermIamStaffUpdate];
+}
+
+- (BOOL)pp_canDisableStaff {
+    return [self pp_hasCurrentStaffPermission:kStaffPermIamStaffDisable];
+}
+
+- (BOOL)pp_canSubmitStaffMutation {
+    if (self.editExistingStaff || [self pp_userLooksLikeStaff:self.selectedUser]) {
+        return [self pp_canUpdateStaff];
+    }
+    return [self pp_canCreateStaff];
+}
+
 - (void)onSave {
     if (self.isSaving) return;
+
+    if (![self pp_canSubmitStaffMutation]) {
+        [PPHUD showError:kLang(@"StatusNoAccess")];
+        return;
+    }
 
     AddUserMode mode = [self pp_currentMode];
     PPStaffRole role = self.selectedRoleValue.length > 0 ? (PPStaffRole)self.selectedRoleValue : PPStaffRoleViewer;
@@ -1600,6 +1608,12 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 
     BOOL active = [[self.roleStatusFormView valueForIdentifier:@"status"] boolValue];
     if ([self pp_userLooksLikeStaff:user]) {
+        if ([self pp_staffUserIsActive:user] && !active && ![self pp_canDisableStaff]) {
+            [PPHUD dismiss];
+            [self pp_setSaving:NO];
+            [PPHUD showError:kLang(@"StatusNoAccess")];
+            return;
+        }
         NSDictionary *updates = @{
             @"role": role ?: PPStaffRoleViewer,
             @"permissions": permissions ?: @[],
@@ -1660,102 +1674,29 @@ static PermissionModule *PPAddUserPermissionModule(NSString *key,
 #pragma mark - Data Helpers
 
 - (NSArray<PermissionModule *> *)pp_allPermissionModules {
-    return @[
-        PPAddUserPermissionModule(@"dashboard", @"Staff_Module_Dashboard", @[
-            PPAddUserPermissionAction(kStaffPermDashboardView, @"StaffPerm_dashboard_view"),
-        ]),
-        PPAddUserPermissionModule(@"staff", @"Staff_Module_Staff", @[
-            PPAddUserPermissionAction(kStaffPermStaffView, @"StaffPerm_staff_view"),
-            PPAddUserPermissionAction(kStaffPermStaffManage, @"StaffPerm_staff_manage"),
-        ]),
-        PPAddUserPermissionModule(@"users", @"Staff_Module_Users", @[
-            PPAddUserPermissionAction(kStaffPermUsersView, @"StaffPerm_users_view"),
-            PPAddUserPermissionAction(kStaffPermUsersManage, @"StaffPerm_users_manage"),
-            PPAddUserPermissionAction(kStaffPermUsersBlock, @"StaffPerm_users_block"),
-            PPAddUserPermissionAction(kStaffPermUsersFeaturesView, @"StaffPerm_users_features_view"),
-            PPAddUserPermissionAction(kStaffPermUsersFeaturesManage, @"StaffPerm_users_features_manage"),
-            PPAddUserPermissionAction(kStaffPermUsersSubscriptionsView, @"StaffPerm_users_subscriptions_view"),
-            PPAddUserPermissionAction(kStaffPermUsersSubscriptionsManage, @"StaffPerm_users_subscriptions_manage"),
-            PPAddUserPermissionAction(kStaffPermUsersRestrictionsView, @"StaffPerm_users_restrictions_view"),
-            PPAddUserPermissionAction(kStaffPermUsersRestrictionsManage, @"StaffPerm_users_restrictions_manage"),
-        ]),
-        PPAddUserPermissionModule(@"stock", @"Staff_Module_Stock", @[
-            PPAddUserPermissionAction(kStaffPermStockView, @"StaffPerm_stock_view"),
-            PPAddUserPermissionAction(kStaffPermStockManage, @"StaffPerm_stock_manage"),
-            PPAddUserPermissionAction(kStaffPermStockCreate, @"StaffPerm_stock_create"),
-            PPAddUserPermissionAction(kStaffPermStockDelete, @"StaffPerm_stock_delete"),
-        ]),
-        PPAddUserPermissionModule(@"listings", @"Staff_Module_Listings", @[
-            PPAddUserPermissionAction(kStaffPermListingsView, @"StaffPerm_listings_view"),
-            PPAddUserPermissionAction(kStaffPermListingsManage, @"StaffPerm_listings_manage"),
-            PPAddUserPermissionAction(kStaffPermListingsModerate, @"StaffPerm_listings_moderate"),
-        ]),
-        PPAddUserPermissionModule(@"payments", @"Staff_Module_Payments", @[
-            PPAddUserPermissionAction(kStaffPermPaymentsView, @"StaffPerm_payments_view"),
-            PPAddUserPermissionAction(kStaffPermPaymentsManage, @"StaffPerm_payments_manage"),
-            PPAddUserPermissionAction(kStaffPermPaymentsRefund, @"StaffPerm_payments_refund"),
-        ]),
-        PPAddUserPermissionModule(@"pos", @"Staff_Module_POS", @[
-            PPAddUserPermissionAction(kStaffPermPosView, @"StaffPerm_pos_view"),
-            PPAddUserPermissionAction(kStaffPermPosSell, @"StaffPerm_pos_sell"),
-            PPAddUserPermissionAction(kStaffPermPosHistory, @"StaffPerm_pos_history"),
-        ]),
-        PPAddUserPermissionModule(@"branches", @"Staff_Module_Branches", @[
-            PPAddUserPermissionAction(kStaffPermBranchesView, @"StaffPerm_branches_view"),
-            PPAddUserPermissionAction(kStaffPermBranchesManage, @"StaffPerm_branches_manage"),
-        ]),
-        PPAddUserPermissionModule(@"agents", @"Staff_Module_Agents", @[
-            PPAddUserPermissionAction(kStaffPermAgentsView, @"StaffPerm_agents_view"),
-            PPAddUserPermissionAction(kStaffPermAgentsManage, @"StaffPerm_agents_manage"),
-        ]),
-        PPAddUserPermissionModule(@"support", @"Staff_Module_Support", @[
-            PPAddUserPermissionAction(kStaffPermSupportView, @"StaffPerm_support_view"),
-            PPAddUserPermissionAction(kStaffPermSupportManage, @"StaffPerm_support_manage"),
-        ]),
-        PPAddUserPermissionModule(@"services", @"Staff_Module_Services", @[
-            PPAddUserPermissionAction(kStaffPermServicesView, @"StaffPerm_services_view"),
-            PPAddUserPermissionAction(kStaffPermServicesManage, @"StaffPerm_services_manage"),
-        ]),
-        PPAddUserPermissionModule(@"providers", @"Staff_Module_Providers", @[
-            PPAddUserPermissionAction(kStaffPermProvidersView, @"StaffPerm_providers_view"),
-            PPAddUserPermissionAction(kStaffPermProvidersManage, @"StaffPerm_providers_manage"),
-        ]),
-        PPAddUserPermissionModule(@"settings", @"Staff_Module_Settings", @[
-            PPAddUserPermissionAction(kStaffPermSettingsView, @"StaffPerm_settings_view"),
-            PPAddUserPermissionAction(kStaffPermSettingsManage, @"StaffPerm_settings_manage"),
-        ]),
-        PPAddUserPermissionModule(@"notifications", @"Staff_Module_Notifications", @[
-            PPAddUserPermissionAction(kStaffPermNotificationsView, @"StaffPerm_notifications_view"),
-            PPAddUserPermissionAction(kStaffPermNotificationsSend, @"StaffPerm_notifications_send"),
-        ]),
-        PPAddUserPermissionModule(@"accounting", @"Staff_Module_Accounting", @[
-            PPAddUserPermissionAction(kStaffPermAccountingView, @"StaffPerm_accounting_view"),
-            PPAddUserPermissionAction(kStaffPermAccountingManage, @"StaffPerm_accounting_manage"),
-        ]),
-        PPAddUserPermissionModule(@"reports", @"Staff_Module_Reports", @[
-            PPAddUserPermissionAction(kStaffPermReportsView, @"StaffPerm_reports_view"),
-            PPAddUserPermissionAction(kStaffPermReportsExport, @"StaffPerm_reports_export"),
-        ]),
-        PPAddUserPermissionModule(@"audit", @"Staff_Module_Audit", @[
-            PPAddUserPermissionAction(kStaffPermAuditView, @"StaffPerm_audit_view"),
-        ]),
-        PPAddUserPermissionModule(@"moderation", @"Staff_Module_Moderation", @[
-            PPAddUserPermissionAction(kStaffPermModerationView, @"StaffPerm_moderation_view"),
-            PPAddUserPermissionAction(kStaffPermModerationManage, @"StaffPerm_moderation_manage"),
-        ]),
-        PPAddUserPermissionModule(@"banners", @"Staff_Module_Banners", @[
-            PPAddUserPermissionAction(kStaffPermBannersView, @"StaffPerm_banners_view"),
-            PPAddUserPermissionAction(kStaffPermBannersManage, @"StaffPerm_banners_manage"),
-        ]),
-        PPAddUserPermissionModule(@"categories", @"Staff_Module_Categories", @[
-            PPAddUserPermissionAction(kStaffPermCategoriesView, @"StaffPerm_categories_view"),
-            PPAddUserPermissionAction(kStaffPermCategoriesManage, @"StaffPerm_categories_manage"),
-        ]),
-        PPAddUserPermissionModule(@"veterinarians", @"Staff_Module_Veterinarians", @[
-            PPAddUserPermissionAction(kStaffPermVeterinariansView, @"StaffPerm_veterinarians_view"),
-            PPAddUserPermissionAction(kStaffPermVeterinariansManage, @"StaffPerm_veterinarians_manage"),
-        ]),
-    ];
+    NSMutableArray<PermissionModule *> *modules = [NSMutableArray array];
+    for (NSDictionary<NSString *, id> *moduleValue in PPStaffPermissionModules()) {
+        if (![moduleValue isKindOfClass:NSDictionary.class]) continue;
+
+        PermissionModule *module = [PermissionModule new];
+        module.key = [moduleValue[@"key"] isKindOfClass:NSString.class] ? moduleValue[@"key"] : @"";
+        module.labelEn = [moduleValue[@"labelEn"] isKindOfClass:NSString.class] ? moduleValue[@"labelEn"] : module.key;
+        module.labelAr = [moduleValue[@"labelAr"] isKindOfClass:NSString.class] ? moduleValue[@"labelAr"] : module.labelEn;
+
+        NSMutableArray<PermissionAction *> *actions = [NSMutableArray array];
+        NSArray *actionValues = [moduleValue[@"actions"] isKindOfClass:NSArray.class] ? moduleValue[@"actions"] : @[];
+        for (NSDictionary<NSString *, id> *actionValue in actionValues) {
+            if (![actionValue isKindOfClass:NSDictionary.class]) continue;
+            PermissionAction *action = [PermissionAction new];
+            action.key = [actionValue[@"key"] isKindOfClass:NSString.class] ? actionValue[@"key"] : @"";
+            action.labelEn = [actionValue[@"labelEn"] isKindOfClass:NSString.class] ? actionValue[@"labelEn"] : action.key;
+            action.labelAr = [actionValue[@"labelAr"] isKindOfClass:NSString.class] ? actionValue[@"labelAr"] : action.labelEn;
+            if (action.key.length > 0) [actions addObject:action];
+        }
+        module.actions = actions.copy;
+        if (module.key.length > 0 && module.actions.count > 0) [modules addObject:module];
+    }
+    return modules.copy;
 }
 
 #pragma mark - Avatar
