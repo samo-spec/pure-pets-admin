@@ -3750,7 +3750,7 @@
 "AdminQuickActions_POS_History_Short" = "السجل";
 "AdminQuickActions_Listings" = "إعلانات المنصة";
 "AdminQuickActions_Listings_Subtitle" = "مراجعة واعتماد";
-"AdminQuickActions_POS_Capability" = "مدى • باركود • كاش";
+"AdminQuickActions_POS_Capability" = "فيزا • باركود • كاش";
 "AdminQuickActions_SignalsCount_Format" = "%d إشارات نشطة";
 
 "POS_CatalogLoadFailed" = "تعذر تحميل المنتجات. حاول مرة أخرى.";
