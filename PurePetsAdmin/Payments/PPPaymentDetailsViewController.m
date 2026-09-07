@@ -1222,7 +1222,7 @@ typedef void (^PPPaymentDetailsUpdateBlock)(PPPaymentAdminRecord *record);
             self.actionInFlight = NO;
             [PPHUD dismiss];
             if (error) {
-                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"PaymentMgmt_Error_UpdateOrder")];
+                [PPAlertHelper showErrorIn:self title:kLang(@"Error") subtitle:kLang(@"PaymentMgmt_Error_UpdateOrder")];
                 [self pp_reloadRecordShowHUD:NO];
                 return;
             }
