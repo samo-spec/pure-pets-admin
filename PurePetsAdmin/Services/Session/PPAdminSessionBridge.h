@@ -20,6 +20,8 @@ NS_SWIFT_SENDABLE
 @property (nonatomic, copy, readonly) NSString *localizedRoleName;
 @property (nonatomic, copy, readonly) NSArray<NSString *> *permissions;
 @property (nonatomic, copy, readonly) NSDictionary<NSString *, id> *scope;
+/// Compatibility ABI surface. Canonical v2 sessions always return `NO`;
+/// authority comes from explicit permissions and scope.
 @property (nonatomic, assign, readonly) BOOL grantsAllPermissions;
 
 - (BOOL)hasPermission:(NSString *)permission;

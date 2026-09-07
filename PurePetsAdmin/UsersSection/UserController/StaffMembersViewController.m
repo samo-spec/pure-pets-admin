@@ -159,12 +159,11 @@ static BOOL PPStaffMembersIsBuiltInRole(NSString *role) {
     static NSSet<NSString *> *roles;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        roles = [NSSet setWithArray:@[
-            PPStaffRoleSuperAdmin, PPStaffRoleOwner, PPStaffRoleOperationsManager,
-            PPStaffRoleInventoryManager, PPStaffRolePaymentsManager,
-            PPStaffRoleSupportAgent, PPStaffRoleViewer,
+        NSMutableSet<NSString *> *knownRoles = [NSMutableSet setWithArray:PPStaffAllRoleKeys()];
+        [knownRoles addObjectsFromArray:@[
             @"SuperAdmin", @"Owner", @"Accountant", @"InventoryManager", @"Staff", @"Viewer"
         ]];
+        roles = knownRoles.copy;
     });
     return [roles containsObject:role];
 }
@@ -651,10 +650,10 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 
 - (void)pp_configureNavigationBar {
     UIButton *addButton = [self pp_ButtonWithSystemName:@"plus" action:@selector(didTapAddStaff)];
-    BOOL canMutateStaff = [self pp_canMutateStaffMembers];
-    addButton.enabled = canMutateStaff;
-    addButton.hidden = !canMutateStaff;
-    if (!canMutateStaff) {
+    BOOL canCreateStaff = [self pp_canCreateStaffMembers];
+    addButton.enabled = canCreateStaff;
+    addButton.hidden = !canCreateStaff;
+    if (!canCreateStaff) {
         addButton.accessibilityTraits |= UIAccessibilityTraitNotEnabled;
     }
     [self pp_navBarApplyBase:PPNavBarBaseLayoutAuto button:addButton title:kLang(@"StaffMembers_Title") showBack:YES];
@@ -943,7 +942,7 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 }
 
 - (void)didTapAddStaff {
-    if (![self pp_canMutateStaffMembers]) {
+    if (![self pp_canCreateStaffMembers]) {
         [PPToast toast:kLang(@"StatusNoAccess")];
         return;
     }
@@ -1094,19 +1093,19 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
     PPStaffMemberCardCell *cell = [tableView dequeueReusableCellWithIdentifier:PPStaffMemberCardCellID forIndexPath:indexPath];
     UserModel *user = self.filteredStaff[indexPath.row];
     BOOL isCurrentStaff = [[FIRAuth auth].currentUser.uid isEqualToString:user.uid];
-    [cell configureWithUser:user actionable:[self pp_canMutateStaffMembers] && !isCurrentStaff];
+    [cell configureWithUser:user actionable:[self pp_canUpdateStaffMembers] && !isCurrentStaff];
     return cell;
 }
 
 - (NSIndexPath *)tableView:(UITableView *)tableView willSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     UserModel *user = self.filteredStaff[indexPath.row];
     BOOL isCurrentStaff = [[FIRAuth auth].currentUser.uid isEqualToString:user.uid];
-    return [self pp_canMutateStaffMembers] && !isCurrentStaff ? indexPath : nil;
+    return [self pp_canUpdateStaffMembers] && !isCurrentStaff ? indexPath : nil;
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    if (![self pp_canMutateStaffMembers]) {
+    if (![self pp_canUpdateStaffMembers]) {
         [PPToast toast:kLang(@"StatusNoAccess")];
         return;
     }
@@ -1143,7 +1142,7 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 #pragma mark - Swipe Actions
 
 - (UISwipeActionsConfiguration *)tableView:(UITableView *)tableView trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if (![self pp_canMutateStaffMembers] || indexPath.row >= self.filteredStaff.count) return nil;
+    if (![self pp_canDisableStaffMembers] || indexPath.row >= self.filteredStaff.count) return nil;
     UserModel *user = self.filteredStaff[indexPath.row];
     if ([[FIRAuth auth].currentUser.uid isEqualToString:user.uid] ||
         [PPStaffMembersResolvedStatus(user) isEqualToString:PPStaffStatusDisabled]) return nil;
@@ -1160,7 +1159,7 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 }
 
 - (void)pp_confirmDisableStaff:(UserModel *)user completion:(void(^)(BOOL handled))completion {
-    if (![self pp_canMutateStaffMembers]) {
+    if (![self pp_canDisableStaffMembers]) {
         [PPToast toast:kLang(@"StatusNoAccess")];
         if (completion) completion(NO);
         return;
@@ -1192,9 +1191,19 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 
 #pragma mark - Access
 
-- (BOOL)pp_canMutateStaffMembers {
+- (BOOL)pp_canCreateStaffMembers {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
-    return [staff hasPermission:kStaffPermStaffManage];
+    return [staff hasPermission:kStaffPermIamStaffCreate];
+}
+
+- (BOOL)pp_canUpdateStaffMembers {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasPermission:kStaffPermIamStaffUpdate];
+}
+
+- (BOOL)pp_canDisableStaffMembers {
+    PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    return [staff hasPermission:kStaffPermIamStaffDisable];
 }
 
 @end

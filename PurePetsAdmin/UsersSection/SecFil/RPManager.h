@@ -53,6 +53,9 @@ typedef void (^RPRoleError)(UserRole role, NSString * _Nullable roleName,
 @property (nonatomic, copy) NSDictionary *name; // @{"en":..., "ar":...}
 @property (nonatomic, copy) NSDictionary *roleDescription;
 @property (nonatomic, copy) NSArray<NSString *> *permissions;
+@property (nonatomic, assign) NSInteger revision;
+@property (nonatomic, assign) NSInteger roleVersion;
+@property (nonatomic, copy) NSString *status;
 @end
 
 @interface RPManager : NSObject

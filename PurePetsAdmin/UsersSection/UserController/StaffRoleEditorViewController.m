@@ -41,23 +41,6 @@ static UIColor *PPRoleEditorBorderColor(void) {
     return [PPRoleEditorPrimaryColor() colorWithAlphaComponent:0.08];
 }
 
-static PermissionAction *PPRoleEditorAction(NSString *key, NSString *labelKey) {
-    PermissionAction *action = [PermissionAction new];
-    action.key = key ?: @"";
-    action.labelEn = labelKey ?: @"";
-    action.labelAr = labelKey ?: @"";
-    return action;
-}
-
-static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, NSArray<PermissionAction *> *actions) {
-    PermissionModule *module = [PermissionModule new];
-    module.key = key ?: @"";
-    module.labelEn = labelKey ?: @"";
-    module.labelAr = labelKey ?: @"";
-    module.actions = actions ?: @[];
-    return module;
-}
-
 @interface StaffRoleEditorViewController ()
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIView *contentView;
@@ -78,7 +61,7 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
     if (self) {
         _roleTemplate = role;
         _permissionFormViews = [NSMutableArray array];
-        _permissionModules = [self pp_allPermissionModules];
+        _permissionModules = [self pp_generatedPermissionModules];
     }
     return self;
 }
@@ -306,7 +289,8 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
 }
 
 - (UIView *)pp_buildPermissionSectionForModule:(PermissionModule *)module {
-    UIView *section = [self pp_makePlainSectionWithTitle:kLang(module.labelEn)
+    NSString *moduleLabel = [Language isRTL] ? module.labelAr : module.labelEn;
+    UIView *section = [self pp_makePlainSectionWithTitle:moduleLabel
                                                 subtitle:[NSString stringWithFormat:@"%lu %@", (unsigned long)module.actions.count, kLang(@"Permissions_Title")]];
     UIStackView *stack = (UIStackView *)section.subviews.firstObject;
 
@@ -317,7 +301,7 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
 
     for (PermissionAction *action in module.actions) {
         PPFormFieldConfig *field = [PPFormFieldConfig fieldWithIdentifier:action.key
-                                                                    title:kLang(action.labelEn)
+                                                                    title:([Language isRTL] ? action.labelAr : action.labelEn)
                                                               placeholder:@""
                                                                 inputType:PPFormInputTypeToggle];
         field.value = [activePerms containsObject:action.key] ? @"1" : @"0";
@@ -445,14 +429,15 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
         }
     }
 
-    NSDictionary *payload = @{
+    NSMutableDictionary *payload = [@{
         @"name": @{@"en": nameEn, @"ar": nameAr},
         @"description": @{
             @"en": [self pp_trimmedValue:values[@"descEn"]] ?: @"",
             @"ar": [self pp_trimmedValue:values[@"descAr"]] ?: @""
         },
         @"permissions": perms.copy
-    };
+    } mutableCopy];
+    if (self.roleTemplate) payload[@"expectedRevision"] = @(MAX(0, self.roleTemplate.revision));
 
     [PPHUD showRingIn:self.view title:kLang(@"Saving") subtitle:@""];
 
@@ -548,103 +533,31 @@ static PermissionModule *PPRoleEditorModule(NSString *key, NSString *labelKey, N
                                         (unsigned long)[self pp_totalPermissionCount]];
 }
 
-- (NSArray<PermissionModule *> *)pp_allPermissionModules {
-    return @[
-        PPRoleEditorModule(@"dashboard", @"Staff_Module_Dashboard", @[
-            PPRoleEditorAction(kStaffPermDashboardView, @"StaffPerm_dashboard_view"),
-        ]),
-        PPRoleEditorModule(@"staff", @"Staff_Module_Staff", @[
-            PPRoleEditorAction(kStaffPermStaffView, @"StaffPerm_staff_view"),
-            PPRoleEditorAction(kStaffPermStaffManage, @"StaffPerm_staff_manage"),
-        ]),
-        PPRoleEditorModule(@"users", @"Staff_Module_Users", @[
-            PPRoleEditorAction(kStaffPermUsersView, @"StaffPerm_users_view"),
-            PPRoleEditorAction(kStaffPermUsersManage, @"StaffPerm_users_manage"),
-            PPRoleEditorAction(kStaffPermUsersBlock, @"StaffPerm_users_block"),
-            PPRoleEditorAction(kStaffPermUsersFeaturesView, @"StaffPerm_users_features_view"),
-            PPRoleEditorAction(kStaffPermUsersFeaturesManage, @"StaffPerm_users_features_manage"),
-            PPRoleEditorAction(kStaffPermUsersSubscriptionsView, @"StaffPerm_users_subscriptions_view"),
-            PPRoleEditorAction(kStaffPermUsersSubscriptionsManage, @"StaffPerm_users_subscriptions_manage"),
-            PPRoleEditorAction(kStaffPermUsersRestrictionsView, @"StaffPerm_users_restrictions_view"),
-            PPRoleEditorAction(kStaffPermUsersRestrictionsManage, @"StaffPerm_users_restrictions_manage"),
-        ]),
-        PPRoleEditorModule(@"stock", @"Staff_Module_Stock", @[
-            PPRoleEditorAction(kStaffPermStockView, @"StaffPerm_stock_view"),
-            PPRoleEditorAction(kStaffPermStockManage, @"StaffPerm_stock_manage"),
-            PPRoleEditorAction(kStaffPermStockCreate, @"StaffPerm_stock_create"),
-            PPRoleEditorAction(kStaffPermStockDelete, @"StaffPerm_stock_delete"),
-        ]),
-        PPRoleEditorModule(@"listings", @"Staff_Module_Listings", @[
-            PPRoleEditorAction(kStaffPermListingsView, @"StaffPerm_listings_view"),
-            PPRoleEditorAction(kStaffPermListingsManage, @"StaffPerm_listings_manage"),
-            PPRoleEditorAction(kStaffPermListingsModerate, @"StaffPerm_listings_moderate"),
-        ]),
-        PPRoleEditorModule(@"payments", @"Staff_Module_Payments", @[
-            PPRoleEditorAction(kStaffPermPaymentsView, @"StaffPerm_payments_view"),
-            PPRoleEditorAction(kStaffPermPaymentsManage, @"StaffPerm_payments_manage"),
-            PPRoleEditorAction(kStaffPermPaymentsRefund, @"StaffPerm_payments_refund"),
-        ]),
-        PPRoleEditorModule(@"pos", @"Staff_Module_POS", @[
-            PPRoleEditorAction(kStaffPermPosView, @"StaffPerm_pos_view"),
-            PPRoleEditorAction(kStaffPermPosSell, @"StaffPerm_pos_sell"),
-            PPRoleEditorAction(kStaffPermPosHistory, @"StaffPerm_pos_history"),
-        ]),
-        PPRoleEditorModule(@"branches", @"Staff_Module_Branches", @[
-            PPRoleEditorAction(kStaffPermBranchesView, @"StaffPerm_branches_view"),
-            PPRoleEditorAction(kStaffPermBranchesManage, @"StaffPerm_branches_manage"),
-        ]),
-        PPRoleEditorModule(@"agents", @"Staff_Module_Agents", @[
-            PPRoleEditorAction(kStaffPermAgentsView, @"StaffPerm_agents_view"),
-            PPRoleEditorAction(kStaffPermAgentsManage, @"StaffPerm_agents_manage"),
-        ]),
-        PPRoleEditorModule(@"support", @"Staff_Module_Support", @[
-            PPRoleEditorAction(kStaffPermSupportView, @"StaffPerm_support_view"),
-            PPRoleEditorAction(kStaffPermSupportManage, @"StaffPerm_support_manage"),
-        ]),
-        PPRoleEditorModule(@"services", @"Staff_Module_Services", @[
-            PPRoleEditorAction(kStaffPermServicesView, @"StaffPerm_services_view"),
-            PPRoleEditorAction(kStaffPermServicesManage, @"StaffPerm_services_manage"),
-        ]),
-        PPRoleEditorModule(@"providers", @"Staff_Module_Providers", @[
-            PPRoleEditorAction(kStaffPermProvidersView, @"StaffPerm_providers_view"),
-            PPRoleEditorAction(kStaffPermProvidersManage, @"StaffPerm_providers_manage"),
-        ]),
-        PPRoleEditorModule(@"settings", @"Staff_Module_Settings", @[
-            PPRoleEditorAction(kStaffPermSettingsView, @"StaffPerm_settings_view"),
-            PPRoleEditorAction(kStaffPermSettingsManage, @"StaffPerm_settings_manage"),
-        ]),
-        PPRoleEditorModule(@"notifications", @"Staff_Module_Notifications", @[
-            PPRoleEditorAction(kStaffPermNotificationsView, @"StaffPerm_notifications_view"),
-            PPRoleEditorAction(kStaffPermNotificationsSend, @"StaffPerm_notifications_send"),
-        ]),
-        PPRoleEditorModule(@"accounting", @"Staff_Module_Accounting", @[
-            PPRoleEditorAction(kStaffPermAccountingView, @"StaffPerm_accounting_view"),
-            PPRoleEditorAction(kStaffPermAccountingManage, @"StaffPerm_accounting_manage"),
-        ]),
-        PPRoleEditorModule(@"reports", @"Staff_Module_Reports", @[
-            PPRoleEditorAction(kStaffPermReportsView, @"StaffPerm_reports_view"),
-            PPRoleEditorAction(kStaffPermReportsExport, @"StaffPerm_reports_export"),
-        ]),
-        PPRoleEditorModule(@"audit", @"Staff_Module_Audit", @[
-            PPRoleEditorAction(kStaffPermAuditView, @"StaffPerm_audit_view"),
-        ]),
-        PPRoleEditorModule(@"moderation", @"Staff_Module_Moderation", @[
-            PPRoleEditorAction(kStaffPermModerationView, @"StaffPerm_moderation_view"),
-            PPRoleEditorAction(kStaffPermModerationManage, @"StaffPerm_moderation_manage"),
-        ]),
-        PPRoleEditorModule(@"banners", @"Staff_Module_Banners", @[
-            PPRoleEditorAction(kStaffPermBannersView, @"StaffPerm_banners_view"),
-            PPRoleEditorAction(kStaffPermBannersManage, @"StaffPerm_banners_manage"),
-        ]),
-        PPRoleEditorModule(@"categories", @"Staff_Module_Categories", @[
-            PPRoleEditorAction(kStaffPermCategoriesView, @"StaffPerm_categories_view"),
-            PPRoleEditorAction(kStaffPermCategoriesManage, @"StaffPerm_categories_manage"),
-        ]),
-        PPRoleEditorModule(@"veterinarians", @"Staff_Module_Veterinarians", @[
-            PPRoleEditorAction(kStaffPermVeterinariansView, @"StaffPerm_veterinarians_view"),
-            PPRoleEditorAction(kStaffPermVeterinariansManage, @"StaffPerm_veterinarians_manage"),
-        ]),
-    ];
+- (NSArray<PermissionModule *> *)pp_generatedPermissionModules {
+    NSMutableArray<PermissionModule *> *modules = [NSMutableArray array];
+    for (NSDictionary<NSString *, id> *moduleValue in PPStaffPermissionModules()) {
+        if (![moduleValue isKindOfClass:NSDictionary.class]) continue;
+
+        PermissionModule *module = [PermissionModule new];
+        module.key = [moduleValue[@"key"] isKindOfClass:NSString.class] ? moduleValue[@"key"] : @"";
+        module.labelEn = [moduleValue[@"labelEn"] isKindOfClass:NSString.class] ? moduleValue[@"labelEn"] : module.key;
+        module.labelAr = [moduleValue[@"labelAr"] isKindOfClass:NSString.class] ? moduleValue[@"labelAr"] : module.labelEn;
+
+        NSMutableArray<PermissionAction *> *actions = [NSMutableArray array];
+        NSArray *actionValues = [moduleValue[@"actions"] isKindOfClass:NSArray.class] ? moduleValue[@"actions"] : @[];
+        for (NSDictionary<NSString *, id> *actionValue in actionValues) {
+            if (![actionValue isKindOfClass:NSDictionary.class]) continue;
+            PermissionAction *action = [PermissionAction new];
+            action.key = [actionValue[@"key"] isKindOfClass:NSString.class] ? actionValue[@"key"] : @"";
+            action.labelEn = [actionValue[@"labelEn"] isKindOfClass:NSString.class] ? actionValue[@"labelEn"] : action.key;
+            action.labelAr = [actionValue[@"labelAr"] isKindOfClass:NSString.class] ? actionValue[@"labelAr"] : action.labelEn;
+            if (action.key.length > 0) [actions addObject:action];
+        }
+        module.actions = actions.copy;
+        if (module.key.length > 0 && module.actions.count > 0) [modules addObject:module];
+    }
+    return modules.copy;
 }
+
 
 @end

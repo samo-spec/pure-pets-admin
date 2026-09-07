@@ -39,6 +39,13 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
 + (void)disableStaffMember:(NSString *)uid
                 completion:(AdminServiceCompletion)completion;
 
+/// Revision-aware form used by current IAM surfaces. The legacy selector above
+/// remains for Objective-C compatibility and resolves the canonical revision
+/// before issuing the same command.
++ (void)disableStaffMember:(NSString *)uid
+          expectedRevision:(NSInteger)expectedRevision
+                completion:(AdminServiceCompletion)completion;
+
 #pragma mark - User Access Management (new)
 
 + (void)createCustomerAccountWithName:(NSString *)name
@@ -119,4 +126,3 @@ typedef void (^AdminServiceCompletion)(NSDictionary * _Nullable result, NSError 
 @end
 
 NS_ASSUME_NONNULL_END
-

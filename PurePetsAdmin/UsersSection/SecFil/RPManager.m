@@ -240,11 +240,16 @@ static NSArray<NSString *> *PPLegacyPermissionNames(NSString *canonicalName) {
         }
         NSMutableArray *roles = [NSMutableArray array];
         for (FIRDocumentSnapshot *doc in snapshot.documents) {
+            NSString *status = [doc.data[@"status"] isKindOfClass:NSString.class] ? doc.data[@"status"] : @"active";
+            if ([status isEqualToString:@"retired"]) continue;
             StaffRoleTemplate *t = [StaffRoleTemplate new];
             t.id = doc.documentID;
             t.name = doc.data[@"name"] ?: @{};
             t.roleDescription = doc.data[@"description"] ?: @{};
             t.permissions = doc.data[@"permissions"] ?: @[];
+            t.revision = [doc.data[@"revision"] respondsToSelector:@selector(integerValue)] ? [doc.data[@"revision"] integerValue] : 0;
+            t.roleVersion = [doc.data[@"roleVersion"] respondsToSelector:@selector(integerValue)] ? [doc.data[@"roleVersion"] integerValue] : 0;
+            t.status = status;
             [roles addObject:t];
         }
         if (completion) completion(roles, nil);
@@ -252,17 +257,59 @@ static NSArray<NSString *> *PPLegacyPermissionNames(NSString *canonicalName) {
 }
 
 - (void)createStaffRole:(NSDictionary *)data completion:(void(^)(NSString * _Nullable roleID, NSError * _Nullable error))completion {
-    __block FIRDocumentReference *ref = [[self.db collectionWithPath:@"staff_roles"] addDocumentWithData:data completion:^(NSError * _Nullable error) {
-        if (completion) completion(ref.documentID, error);
+    NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:data ?: @{}];
+    payload[@"expectedRevision"] = @0;
+    payload[@"idempotencyKey"] = NSUUID.UUID.UUIDString;
+    payload[@"reason"] = @"admin_custom_role_create";
+    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"createStaffRole"];
+    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+        NSString *roleID = [response[@"roleId"] isKindOfClass:NSString.class] ? response[@"roleId"] : response[@"id"];
+        if (completion) completion(roleID, error);
     }];
 }
 
 - (void)updateStaffRole:(NSString *)roleID data:(NSDictionary *)data completion:(void(^)(NSError * _Nullable error))completion {
-    [[[self.db collectionWithPath:@"staff_roles"] documentWithPath:roleID] setData:data merge:YES completion:completion];
+    FIRDocumentReference *roleRef = [[self.db collectionWithPath:@"staff_roles"] documentWithPath:roleID];
+    [roleRef getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable readError) {
+        if (readError || !snapshot.exists) {
+            if (completion) completion(readError ?: RPError(@"Custom role not found", 404));
+            return;
+        }
+        NSInteger revision = [data[@"expectedRevision"] respondsToSelector:@selector(integerValue)]
+            ? [data[@"expectedRevision"] integerValue]
+            : ([snapshot.data[@"revision"] respondsToSelector:@selector(integerValue)] ? [snapshot.data[@"revision"] integerValue] : 0);
+        NSMutableDictionary *payload = [NSMutableDictionary dictionaryWithDictionary:data ?: @{}];
+        payload[@"roleId"] = roleID;
+        payload[@"expectedRevision"] = @(MAX(0, revision));
+        payload[@"idempotencyKey"] = NSUUID.UUID.UUIDString;
+        payload[@"reason"] = @"admin_custom_role_update";
+        FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"updateStaffRole"];
+        [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+            if (completion) completion(error);
+        }];
+    }];
 }
 
 - (void)deleteStaffRole:(NSString *)roleID completion:(void(^)(NSError * _Nullable error))completion {
-    [[[self.db collectionWithPath:@"staff_roles"] documentWithPath:roleID] deleteDocumentWithCompletion:completion];
+    FIRDocumentReference *roleRef = [[self.db collectionWithPath:@"staff_roles"] documentWithPath:roleID];
+    [roleRef getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable readError) {
+        if (readError || !snapshot.exists) {
+            if (completion) completion(readError ?: RPError(@"Custom role not found", 404));
+            return;
+        }
+        NSInteger revision = [snapshot.data[@"revision"] respondsToSelector:@selector(integerValue)] ? [snapshot.data[@"revision"] integerValue] : 0;
+        NSDictionary *payload = @{
+            @"roleId": roleID,
+            @"expectedRevision": @(MAX(0, revision)),
+            @"idempotencyKey": NSUUID.UUID.UUIDString,
+            @"reason": @"admin_custom_role_retire",
+        };
+        FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"deleteStaffRole"];
+        [callable callWithObject:payload completion:^(__unused FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+            if (completion) completion(error);
+        }];
+    }];
 }
 
 - (NSArray<NSString *> *)defaultPermissionsForRole:(UserRole)role {

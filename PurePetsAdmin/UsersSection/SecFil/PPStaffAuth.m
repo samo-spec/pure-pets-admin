@@ -42,6 +42,7 @@ static BOOL PPStaffStrictBooleanTrue(id value) {
 
 static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
     NSMutableOrderedSet<NSString *> *ordered = [NSMutableOrderedSet orderedSet];
+    NSSet<NSString *> *knownPermissions = [NSSet setWithArray:PPStaffAllPermissionKeys()];
 
     if (![value isKindOfClass:NSArray.class]) {
         return @[];
@@ -49,7 +50,7 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
 
     for (id entry in (NSArray *)value) {
         NSString *normalized = PPStaffSafeString(entry);
-        if (normalized.length > 0 && [normalized containsString:@"."]) {
+        if (normalized.length > 0 && [knownPermissions containsObject:normalized]) {
             [ordered addObject:normalized];
         }
     }
@@ -77,19 +78,19 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
         // Collection membership is the staff authority. Keep the normalized
         // value for legacy consumers that still render UserModel.accountType.
         _accountType = kPPStaffAuthAccountTypeStaff;
-        _roleIdentifier = resolvedRoleValue.length > 0 ? resolvedRoleValue : PPStaffRoleViewer;
+        _roleIdentifier = resolvedRoleValue;
         NSString *storedRoleName = PPStaffSafeString(root[@"roleName"]);
         _roleName = storedRoleName.length > 0 ? storedRoleName : nil;
-        _role = PPStaffNormalizedRole(resolvedRoleValue);
+        PPStaffRole normalizedRole = PPStaffNormalizedRole(resolvedRoleValue);
+        _role = normalizedRole ?: PPStaffRoleViewer;
         _status = [statusValue isEqualToString:PPStaffStatusActive] ? PPStaffStatusActive : PPStaffStatusDisabled;
-        // Infra resolves role defaults when the stored permissions array is
-        // absent or empty. Mirror that rule here so the client does not deny
-        // an otherwise valid canonical staff record before the backend does.
-        NSArray<NSString *> *explicitPermissions = PPStaffCanonicalPermissionKeys(root[@"permissions"]);
-        _permissions = explicitPermissions.count > 0
-            ? explicitPermissions
-            : [PPStaffAuth defaultPermissionsForStaffRole:_role];
+        // Canonical staff authority is the explicit server projection. Missing,
+        // empty, or unknown permissions fail closed; role labels never create
+        // client-only access.
+        _permissions = normalizedRole ? PPStaffCanonicalPermissionKeys(root[@"permissions"]) : @[];
         _scope = PPStaffSafeDictionary(root[@"scope"]);
+        NSNumber *revision = [root[@"revision"] isKindOfClass:NSNumber.class] ? root[@"revision"] : @0;
+        _revision = MAX(0, revision.integerValue);
         NSString *displayName = PPStaffSafeString(root[@"displayName"]);
         if (displayName.length == 0) displayName = PPStaffSafeString(root[@"name"]);
         if (displayName.length == 0) displayName = PPStaffSafeString(root[@"UserName"]);
@@ -134,58 +135,16 @@ static NSArray<NSString *> *PPStaffCanonicalPermissionKeys(id value) {
 
 BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
     if (!perm.length || !granted.count) return NO;
-    if ([granted containsObject:perm]) return YES;
-
-    // Canonical hierarchical resolution matching the 18 modules (45 permissions)
-    if ([perm isEqualToString:@"stock.cost.view"]) {
-        return [granted containsObject:kStaffPermStockManage] || [granted containsObject:kStaffPermStockView];
-    }
-    if ([perm isEqualToString:@"stock.quarantine.release"]) {
-        return [granted containsObject:kStaffPermStockManage];
-    }
-    if ([perm isEqualToString:@"hotel.checkout"]) {
-        return [granted containsObject:kStaffPermHotelCheckIn];
-    }
-    if ([perm hasPrefix:@"hotel."] && [granted containsObject:@"hotel.manage"]) {
-        return YES;
-    }
-    if ([perm hasPrefix:@"delivery."] && [granted containsObject:@"delivery.override"]) {
-        return YES;
-    }
-    if (([perm isEqualToString:@"delivery.driver.view"] ||
-         [perm isEqualToString:@"delivery.driver.manage"] ||
-         [perm isEqualToString:@"delivery.assign"] ||
-         [perm isEqualToString:@"delivery.route.view"] ||
-         [perm isEqualToString:@"delivery.route.manage"] ||
-         [perm isEqualToString:@"delivery.pod.review"]) &&
-        [granted containsObject:@"delivery.dispatch"]) {
-        return YES;
-    }
-    if ([perm isEqualToString:@"delivery.cod.view"] && [granted containsObject:@"delivery.cod.reconcile"]) {
-        return YES;
-    }
-    if ([perm hasPrefix:@"users.features."] && [granted containsObject:@"users.features.manage"]) {
-        return YES;
-    }
-    if ([perm hasPrefix:@"users.restrictions."] && [granted containsObject:@"users.restrictions.manage"]) {
-        return YES;
-    }
-    if ([perm hasPrefix:@"users.subscriptions."] &&
-        ([granted containsObject:@"users.manage"] || [granted containsObject:@"users.features.manage"])) {
-        return YES;
-    }
-    return NO;
+    return [granted containsObject:perm];
 }
 
 - (BOOL)hasPermission:(NSString *)perm {
     if (!perm.length || !self.isActive) return NO;
-    if (self.isAdmin) return YES;
     return PPStaffMatchesPermission(self.permissions, perm);
 }
 
 - (BOOL)hasAnyPermission:(NSArray<NSString *> *)perms {
     if (!self.isActive) return NO;
-    if (self.isAdmin) return YES;
     for (NSString *permission in perms) {
         if ([self hasPermission:permission]) {
             return YES;
@@ -218,13 +177,12 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
 
 - (BOOL)hasAccessToBranch:(NSString *)branchID {
     if (!branchID.length || !self.isActive) return NO;
-    if (self.hasGlobalScope || self.isAdmin) return YES;
+    if (self.hasGlobalScope) return YES;
     return [self.assignedBranchIDs containsObject:branchID];
 }
 
 - (BOOL)hasPermission:(NSString *)perm inBranch:(NSString * _Nullable)branchID {
     if (!perm.length || !self.isActive) return NO;
-    if (self.isAdmin) return YES;
     if (branchID.length && ![self hasAccessToBranch:branchID]) return NO;
     if (branchID.length && self.branchPermissions[branchID]) {
         NSArray<NSString *> *branchPerms = self.branchPermissions[branchID];
@@ -420,16 +378,17 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
 
 #pragma mark - Legacy Role Mapping
 
-+ (PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole {
++ (nullable PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole {
     switch (legacyRole) {
         case 8: return PPStaffRoleSuperAdmin;
-        case 5: return PPStaffRoleSuperAdmin;
+        case 5: return PPStaffRolePaymentsManager;
         case 2: return PPStaffRoleOwner;
         case 6:
         case 7: return PPStaffRoleInventoryManager;
         case 4: return PPStaffRoleOperationsManager;
         case 3: return PPStaffRoleSupportAgent;
-        default: return PPStaffRoleViewer;
+        case 1: return PPStaffRoleViewer;
+        default: return nil;
     }
 }
 
