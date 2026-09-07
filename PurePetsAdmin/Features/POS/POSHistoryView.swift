@@ -424,7 +424,7 @@ final class POSHistoryViewModel: ObservableObject {
             }
             return ok
         case .failure(let error):
-            reversalError = error.localizedDescription
+            reversalError = Self.localizedReversalError(error)
             return false
         }
     }
@@ -463,9 +463,67 @@ final class POSHistoryViewModel: ObservableObject {
             }
             return ok
         case .failure(let error):
-            reversalError = error.localizedDescription
+            reversalError = Self.localizedReversalError(error)
             return false
         }
+    }
+
+    // MARK: - Reversal Error Localization
+
+    static func localizedReversalError(_ error: Error) -> String {
+        let nsError = error as NSError
+
+        let detailsDict = (nsError.userInfo["details"] as? [String: Any])
+            ?? (nsError.userInfo["FIRFunctionsErrorDetailsKey"] as? [String: Any])
+            ?? [:]
+
+        let domainCode = (detailsDict["domainCode"] as? String) ?? ""
+        switch domainCode {
+        case "POS_TRANSACTION_STATUS_CHANGED":
+            return Language.get("POS_Error_StatusChanged", alter: "تغيرت حالة المعاملة، يرجى تحديث القائمة قبل المحاولة مجدداً.")
+        case "POS_INSUFFICIENT_STOCK":
+            return Language.get("POS_Error_InsufficientStock", alter: "الكمية المتاحة في المخزون لا تسمح بإتمام هذه العملية.")
+        default:
+            break
+        }
+
+        if let msg = detailsDict["message"] as? String, !msg.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return msg
+        }
+
+        let trimmedDesc = nsError.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isFunctionsDomain = nsError.domain == "com.firebase.functions" || nsError.domain.contains("FIRFunctions")
+
+        if isFunctionsDomain || trimmedDesc.uppercased() == "INTERNAL" {
+            switch nsError.code {
+            case 7: // Permission Denied
+                return Language.get("POS_Error_PermissionDenied", alter: "ليس لديك صلاحية لإجراء استرداد أو إبطال المعاملات المالية (payments.refund).")
+            case 16: // Unauthenticated
+                return Language.get("POS_Error_Unauthenticated", alter: "انتهت صلاحية الجلسة، يرجى تسجيل الدخول مرة أخرى.")
+            case 9: // Failed Precondition
+                if trimmedDesc.contains("Non-cash") {
+                    return Language.get("POS_Error_NonCash", alter: "لا يمكن استرداد العمليات غير النقدية تلقائياً؛ تتطلب تسوية عبر بوابة الدفع.")
+                }
+                if trimmedDesc.contains("already finalized") {
+                    return Language.get("POS_Error_Finalized", alter: "تم إغلاق أو استرداد هذه المعاملة مسبقاً.")
+                }
+                if trimmedDesc.contains("Only completed") {
+                    return Language.get("POS_Error_OnlyCompleted", alter: "يمكن استرداد المعاملات المكتملة فقط.")
+                }
+                return trimmedDesc
+            case 13: // Internal
+                return Language.get("POS_Error_InstanceUnavailable", alter: "الخادم قيد الاستجابة أو قيد بدء التشغيل السحابي. يرجى المحاولة مرة أخرى الآن.")
+            case 14: // Unavailable
+                return Language.get("POS_Error_Unavailable", alter: "تعذر الاتصال بالخادم، يرجى التحقق من الاتصال بالإنترنت والمحاولة مجدداً.")
+            default:
+                if trimmedDesc.uppercased() == "INTERNAL" {
+                    return Language.get("POS_Error_InstanceUnavailable", alter: "الخادم قيد الاستجابة أو قيد بدء التشغيل السحابي. يرجى المحاولة مرة أخرى الآن.")
+                }
+                return trimmedDesc
+            }
+        }
+
+        return trimmedDesc.isEmpty ? Language.get("Error_Unknown", alter: "حدث خطأ غير متوقع. يرجى المحاولة لاحقاً.") : trimmedDesc
     }
 }
 

@@ -6168,6 +6168,17 @@
 "POS_Cancel_Success_Title" = "Transaction Cancelled";
 "POS_Cancel_Success_Msg" = "The transaction was cancelled and products returned to branch stock.";
 
+"POS_Error_StatusChanged" = "Transaction status changed. Please refresh the list before retrying.";
+"POS_Error_InsufficientStock" = "Available inventory is insufficient to complete this operation.";
+"POS_Error_PermissionDenied" = "You lack permission to perform financial refunds or voids (payments.refund).";
+"POS_Error_Unauthenticated" = "Session expired. Please log in again.";
+"POS_Error_NonCash" = "Non-cash transactions cannot be refunded automatically; payment gateway settlement is required.";
+"POS_Error_Finalized" = "This transaction has already been finalized or refunded.";
+"POS_Error_OnlyCompleted" = "Only completed transactions can be refunded.";
+"POS_Error_InstanceUnavailable" = "The server instance is starting up. Please try again now.";
+"POS_Error_Unavailable" = "Cannot connect to server. Please check your internet connection and retry.";
+
+
 "POS_Vault_LiveStatus" = "Vault Connected";
 "POS_Shift_Active" = "Shift Active & Stable";
 "POS_Shift_StartSale" = "New Fast Sale";
