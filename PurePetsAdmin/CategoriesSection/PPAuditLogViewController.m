@@ -988,7 +988,8 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     _fieldCountLabel.clipsToBounds = YES;
     _fieldCountLabel.textAlignment = NSTextAlignmentCenter;
     NSArray *diffItems = [self.entry computedDiff];
-    _fieldCountLabel.text = [NSString stringWithFormat:@"  %ld حقول  ", (long)diffItems.count];
+    NSString *fieldCountStr = [NSString stringWithFormat:kLang(@"Audit_Inspector_FieldCountFormat"), (long)diffItems.count];
+    _fieldCountLabel.text = [NSString stringWithFormat:@"  %@  ", fieldCountStr];
     [headerRow addSubview:_fieldCountLabel];
 
     // Fluid Capsule Segmented Bar (Zero Text Clipping!)
@@ -2106,9 +2107,12 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
     }
 
     // Delta DNA & Smart Mutation Strip
-    BOOL isZeroSync = [entry isZeroMutationSync];
+    BOOL hasDiff = [entry hasDiff];
+    BOOL isZeroSync = hasDiff && [entry isZeroMutationSync];
     NSString *transition = [entry stateTransitionSummary];
-    if (isZeroSync) {
+    if (!hasDiff) {
+        _diffBoxView.hidden = YES;
+    } else if (isZeroSync) {
         _diffBoxView.hidden = NO;
         _diffBoxView.backgroundColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.07];
         _diffBoxView.layer.borderColor = [[UIColor ppSuccess] colorWithAlphaComponent:0.25].CGColor;
@@ -2124,7 +2128,7 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         _diffBadgeLabel.textColor = [UIColor ppPremiumAccent];
         _diffTransitionLabel.text = transition;
         _diffTransitionLabel.textColor = [UIColor ppTextPrimary];
-    } else if ([entry hasDiff]) {
+    } else {
         _diffBoxView.hidden = NO;
         _diffBoxView.backgroundColor = [accent colorWithAlphaComponent:0.06];
         _diffBoxView.layer.borderColor = [accent colorWithAlphaComponent:0.25].CGColor;
@@ -2132,8 +2136,6 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         _diffBadgeLabel.textColor = accent;
         _diffTransitionLabel.text = [entry smartMutationSummary];
         _diffTransitionLabel.textColor = [UIColor ppTextPrimary];
-    } else {
-        _diffBoxView.hidden = YES;
     }
 
     // Operational Reason Box
@@ -2228,6 +2230,7 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
 @property (nonatomic, strong) UIScrollView *scrollView;
 @property (nonatomic, strong) UIStackView *stackView;
 @property (nonatomic, copy) void (^onLensSelected)(NSInteger index);
+@property (nonatomic, assign) BOOL hasAppliedInitialRTLScroll;
 - (void)updateWithCounts:(NSArray<NSNumber *> *)counts selectedIndex:(NSInteger)selIdx;
 @end
 
@@ -2343,7 +2346,8 @@ static BOOL PPAuditStaffSessionCanRead(PPStaffDoc *staff) {
         [self.stackView addArrangedSubview:btn];
     }
 
-    if (selIdx == 0 && [Language isRTL]) {
+    if (!self.hasAppliedInitialRTLScroll && selIdx == 0 && [Language isRTL]) {
+        self.hasAppliedInitialRTLScroll = YES;
         dispatch_async(dispatch_get_main_queue(), ^{
             CGFloat maxOffsetX = MAX(0, self.scrollView.contentSize.width - self.scrollView.bounds.size.width + self.scrollView.contentInset.right);
             [self.scrollView setContentOffset:CGPointMake(maxOffsetX, 0) animated:NO];

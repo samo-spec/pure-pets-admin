@@ -5532,6 +5532,8 @@
 "Staff_Branch_Default_Badge" = "الافتراضي";
 "Staff_Branch_Set_Default" = "تعيين افتراضي";
 "Staff_Error_BranchRequired" = "يرجى تحديد فرع عمل واحد على الأقل، أو تفعيل الوصول الشامل لكافة الفروع.";
+"Staff_Error_SelfMutationProhibited" = "لا يمكن تعديل رتبة أو حالة حسابك الحالي بنفسك لحماية الأمان.";
+"Staff_Self_Role_Locked" = "حسابك الحالي • محمي من التعديل الذاتي للحفاظ على الأمان";
 
 /* ===================== Pets Hotel & Boarding Hub ===================== */
 "Hotel_Title" = "فندق ورعاية الحيوانات";
@@ -6008,6 +6010,14 @@
 "SupportContext_OrderRecent" = "آخر طلب للعميل";
 "SupportContext_OrderActive" = "طلب شراء";
 "SupportContext_DetailTitle" = "تفاصيل السياق";
+"SupportContext_TapToCopy" = "اضغط للنسخ";
+"SupportContext_CopiedToClipboard" = "تم نسخ المرجع بنجاح ✓";
+"SupportContext_OpenDossier" = "عرض ملف العميل الكامل";
+"SupportContext_ReferenceToken" = "الرمز المرجعي";
+"SupportContext_VerifiedAccount" = "حساب موثق";
+"SupportContext_StandardAccount" = "حساب نشط";
+"SupportContext_QuickActions" = "إجراءات سريعة";
+"SupportContext_ContextData" = "بيانات السياق التشغيلي";
 
 /* Role Rank & Security Levels Matrix */
 "RoleRank_Title" = "رتب الأدوار ومستويات الأمان";
@@ -6373,5 +6383,104 @@
 "Food_Badge" = "أغذية ومكملات";
 "LivePets_Badge" = "سجلات حية";
 
+/* People & Human Capital Command Horizon */
+"People_Hero_Title" = "منظومة وسجلات العملاء";
+"People_Hero_Action_Header" = "فحص الحسابات والملفات الشخصية";
+"People_Hero_Subtitle" = "سجلات العملاء، ملفات الحيوانات، توثيق الحسابات، وضبط قيود الوصول الفورية.";
+"People_Browse_Customers" = "استعراض دليل العملاء";
+"People_Registered_Accounts" = "حساب مسجل";
+"People_Verified_Directory" = "دليل العملاء المركزي المعتمد";
+"People_Directory_Active" = "الدليل متصل";
+"People_Live_Sync" = "مزامنة فورية";
+"People_Staff_Subtitle" = "الرتب والمستويات والصلاحيات";
+"People_Chats_Subtitle" = "خدمة العملاء والدعم الفوري";
+"People_Chats_Live_Desk" = "مكتب مباشر";
+"People_Security_Policy_Eyebrow" = "سياسات الأمان والحوكمة";
+"People_Security_Policy_Title" = "هيكلية الرتب والامتيازات ومستويات الوصول";
+"People_Security_Policy_Detail" = "عزل الصلاحيات الحساسة، حماية بيانات العملاء، وسجلات التدقيق المعتمدة.";
+"People_iPad_Manage_Team" = "إدارة طاقم العمل والصلاحيات";
+"People_iPad_Open_Chats" = "دخول مركز محادثات الدعم";
+"People_Active_Staff_Pill" = "فريق العمل النشط";
+"People_Support_Desk_Ready" = "جاهز للمحادثات المباشرة";
+"People_Verified_Accounts_Pill" = "حسابات موثقة";
+"People_Pet_Dossiers_Pill" = "ملفات الحيوانات";
+"People_Identity_Security_Pill" = "حماية الهوية";
+"People_Console_Eyebrow" = "وحدة استخبارات وحوكمة الأشخاص";
+"People_Console_Title" = "منصة العملاء والفريق";
+"People_Role_Tier_1" = "السيادة وإدارة النظام";
+"People_Role_Tier_2" = "مدراء العمليات والتحصيل";
+"People_Role_Tier_3" = "الدعم الفني والخدمة الميدانية";
+"People_Security_Pulse_Stable" = "مستويات الأمان والحوكمة منضبطة";
+"People_Security_Health_Check" = "فحص سلامة الصلاحيات";
 
+/* NextGen V6 Sovereign More & Management Hub */
+"More_Horizon_Title" = "المزيد";
+"More_Horizon_Subtitle" = "لوحة التحكم السيادية، الاتصالات، والحوكمة المركزية";
+"More_Broadcast_Studio_Title" = "مركز البث والتواصل الإداري";
+"More_Broadcast_Studio_Subtitle" = "بث فوري وتنبيهات push لكافة العملاء وأعضاء الفريق";
+"More_Broadcast_Send_Instant" = "إرسال إشعار فوري للجماهير";
+"More_Broadcast_Send_Desc" = "صياغة وبث إشعار Push فوري عبر السحابة";
+"More_Broadcast_Inbox" = "صندوق الإشعارات";
+"More_Broadcast_Inbox_Desc" = "سجل التنبيهات المرسلة والمستلمة";
+"More_Broadcast_Settings" = "إعدادات وقنوات التنبيه";
+"More_Broadcast_Settings_Desc" = "تخصيص القنوات الصوتية والإشعارات الحرجة";
+"More_Governance_Title" = "المالية والرقابة السيادية";
+"More_Governance_Subtitle" = "التسويات، الدفتر المالي، وسجل تدقيق الأمان";
+"More_Accounting_Desc" = "الدفتر المالي، بوابات الدفع، والتسويات";
+"More_Audit_Desc" = "فحص العمليات الإدارية وسجلات الحوكمة الموثقة";
+"More_Commerce_Title" = "إدارة الكتالوج والمحتوى التجاري";
+"More_Commerce_Subtitle" = "التصنيفات، البانرات التسويقية، ومراجعة الإعلانات";
+"More_Categories_Desc" = "هيكلة الأقسام، فصائل الحيوانات، والأنواع";
+"More_Banners_Desc" = "إدارة سلايدر الشاشة الرئيسية وحملات التسويق";
+"More_Listings_Desc" = "مراجعة إعلانات المستخدمين والاعتماد الفوري";
+"More_Session_Title" = "بيئة النظام والجلسة";
+"More_Profile_Button" = "الملف الشخصي";
+"More_Settings_Launch" = "فتح لوحة التحكم السيادية";
+"More_Tag_AppCheck" = "حماية App Check نشطة";
+"More_Tag_Cluster" = "pure-pets-49199";
+"More_Tag_Version" = "الإصدار v6.2.0";
+"More_Switch_Branch" = "تبديل الفرع";
 
+/* NextGen V6 Operations Command Deck */
+"Operations_Horizon_Title" = "العمليات";
+"Operations_Horizon_Subtitle" = "منظومة اللوجستيات، شبكة المزودين، الرعاية البيطرية، وحوكمة المنصة";
+"Operations_Delivery_Hero_Title" = "إدارة أسطول التوصيل واللوجستيات";
+"Operations_Delivery_Hero_Subtitle" = "مراقبة مسارات الشحن، إدارة المناديب، ومتابعة تسليم الطلبات";
+"Operations_Delivery_Hero_Action" = "دخول مركز التوصيل الميداني";
+"Operations_Delivery_Tag_Live" = "المسارات نشطة";
+"Operations_Delivery_Tag_Couriers" = "مزامنة المناديب";
+"Operations_Providers_Station_Title" = "منظومة الشركاء والمزودين";
+"Operations_Providers_Station_Subtitle" = "طلبات الانضمام، باقات الاشتراكات، مصفوفة الميزات، والعمولات";
+"Operations_Provider_Apps_Desc" = "مراجعة واعتماد طلبات المتاجر والعيادات الجديدة";
+"Operations_Provider_Plans_Desc" = "هيكلة باقات الاشتراكات السنوية والشهرية";
+"Operations_Provider_Features_Desc" = "تخصيص مصفوفة الصلاحيات والميزات لكل شريك";
+"Operations_Provider_Accounting_Desc" = "التسويات المالية، حساب العمولات، ومستحقات المزودين";
+"Operations_Care_Station_Title" = "الخدمات البيطرية والفندقة والعناية";
+"Operations_Care_Station_Subtitle" = "العيادات الطبية، فندقة الحيوانات، وباقات العناية المتخصصة";
+"Operations_Vets_Desc" = "إدارة شبكة الأطباء والعيادات وسجلات الكشوفات";
+"Operations_Hotel_Desc" = "حجوزات الإقامة، متابعة النزلاء، وإشغال الغرف";
+"Operations_Services_Desc" = "خدمات الغرومينغ، التدريب، وباقات العناية الميدانية";
+"Operations_Field_Station_Title" = "الفروع والتمثيل الميداني";
+"Operations_Field_Station_Subtitle" = "مراكز التوزيع، الفروع الجغرافية، وشبكة الوكلاء المعتمدين";
+"Operations_Branches_Desc" = "إدارة مراكز الفروع، النطاقات الجغرافية، وساعات العمل";
+"Operations_Agents_Desc" = "شبكة الوكلاء المعتمدين والممثلين الإقليميين";
+"Operations_Platform_Station_Title" = "تجربة المنصة وحوكمة المحتوى";
+"Operations_Platform_Station_Subtitle" = "التحكم في الواجهة الرئيسية ومكافحة الانتهاكات والرقابة";
+"Operations_HomeControl_Desc" = "تخصيص أرفف الشاشة الرئيسية وسلايدر الاستكشاف";
+"Operations_Moderation_Desc" = "مراجعة المحتوى المبلغ عنه ومكافحة الانتهاكات";
+
+/* NextGen V6 Provider Ecosystem Sovereign Hub */
+"Providers_Management_Title" = "إدارة منظومة المزودين";
+"Providers_Horizon_Subtitle" = "مراجعة طلبات الانضمام، باقات الشركاء، مصفوفة الصلاحيات، والعمولات";
+"Providers_Radar_Active" = "رصد مباشر • طلبات الانضمام";
+"Providers_Triage_Decide" = "اتخاذ القرار";
+"Providers_Triage_ViewDossier" = "استعراض الملف الشامل";
+"Providers_Filter_AllTypes" = "كافة الأنشطة";
+"Providers_Type_Store" = "متاجر تجارية";
+"Providers_Type_Clinic" = "عيادات بيطرية";
+"Providers_Type_Delivery" = "شركات التوصيل";
+"Providers_Type_Services" = "خدمات ورعاية";
+"Providers_iPad_Triage_Title" = "مركز فرز وقرارات المزودين";
+"Providers_iPad_Queue_Title" = "سجل وفحص ملفات الانضمام";
+"Providers_Telemetry_LiveStatus" = "المنظومة نشطة";
+"Providers_TotalCount_Format" = "%@ طلب مسجل";

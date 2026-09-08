@@ -197,6 +197,12 @@ static NSDictionary *PPAddUserSafeDict(id value) {
             }
         }
     }];
+
+    [[PPStaffAuth shared] refreshCurrentStaff:^(PPStaffDoc * _Nullable staff, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [weakSelf pp_updateSaveActionPresentation];
+        });
+    }];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -1457,9 +1463,7 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 }
 
 - (BOOL)pp_canManageUserFeatures {
-    PPStaffDoc *staffDoc = [PPStaffAuth shared].cachedCurrentStaff;
-    if (!staffDoc) return YES;
-    return [staffDoc hasPermission:kStaffPermUsersFeaturesManage];
+    return [self pp_hasCurrentStaffPermission:kStaffPermUsersFeaturesManage];
 }
 
 - (NSDictionary<NSString *, NSNumber *> *)pp_defaultUserFeatures {
@@ -1522,6 +1526,8 @@ static NSDictionary *PPAddUserSafeDict(id value) {
 
 - (BOOL)pp_hasCurrentStaffPermission:(NSString *)permission {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (staff.isAdmin || [PPStaffAuth isAdminRole:staff.role]) return YES;
+    if ([staff hasPermission:kStaffPermStaffManage] || [staff hasPermission:kStaffPermUsersManage]) return YES;
     return [staff hasPermission:permission];
 }
 

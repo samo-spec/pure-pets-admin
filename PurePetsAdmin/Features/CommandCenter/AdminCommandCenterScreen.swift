@@ -448,8 +448,9 @@ struct AdminCommandCenterScreenView: View {
         GeometryReader { geometry in
             let safeTop = max(geometry.safeAreaInsets.top, PPStatusBarHelper.statusBarHeight, 44)
             let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+            let ipadMaxWidth: CGFloat = 1160
             let heroInset = AdminCommandMetric.pageMargin
-            let contentAvailableWidth = max(min(geometry.size.width, isRegular ? 980 : geometry.size.width) - 2 * heroInset, 320)
+            let contentAvailableWidth = max(min(geometry.size.width - 2 * heroInset, isRegular ? ipadMaxWidth : geometry.size.width - 2 * heroInset), 320)
 
             // Large text and compact-height windows need the header to scroll
             // with the existing content, rather than consume its whole viewport.
@@ -472,7 +473,7 @@ struct AdminCommandCenterScreenView: View {
                         .padding(.horizontal, AdminCommandMetric.pageMargin)
                         .padding(.top, 18)
                         .padding(.bottom, max(geometry.safeAreaInsets.bottom + 88, AdminCommandMetric.tabBarBottomInset))
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
+                        .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
                         .frame(maxWidth: .infinity)
                     }
                 }
@@ -519,7 +520,8 @@ struct AdminCommandCenterScreenView: View {
     }
 
     private func fixedNavBar(safeTop: CGFloat, isRegular: Bool) -> some View {
-        CommandCenterChrome(
+        let ipadMaxWidth: CGFloat = 1160
+        return CommandCenterChrome(
             displayName: store.snapshot.displayName,
             avatarURL: store.snapshot.avatarURL,
             roleName: roleDisplayName,
@@ -534,12 +536,13 @@ struct AdminCommandCenterScreenView: View {
             onRefresh: { refresh() },
             onLanguage: { store.onToggleLanguage?() },
             onLogout: { store.onRequestLogout?() },
-            onSelectBranch: { isShowingBranchSelection = true }
+            onSelectBranch: { isShowingBranchSelection = true },
+            isRegular: isRegular
         )
         .padding(.horizontal, AdminCommandMetric.pageMargin)
         .padding(.top, safeTop + 4)
         .padding(.bottom, 10)
-        .frame(maxWidth: isRegular ? 980 : .infinity)
+        .frame(maxWidth: isRegular ? ipadMaxWidth : .infinity)
         .frame(maxWidth: .infinity)
         .zIndex(100)
     }
@@ -588,7 +591,7 @@ struct AdminCommandCenterScreenView: View {
 
     private func readyContent(isRegular: Bool, containerWidth: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: AdminCommandMetric.sectionSpacing) {
-            // Index 1: Quick Actions Launchpad
+            // Deck 1: Quick Actions Launchpad / Cockpit Deck
             CommandQuickActionsDeck(
                 signals: store.snapshot.signals,
                 isRegular: isRegular,
@@ -596,41 +599,93 @@ struct AdminCommandCenterScreenView: View {
                 onRoute: { route($0) }
             )
 
-            // Index 2: Accounting Sovereign Card
-            CommandAccountingSovereignCard(
-                onRoute: { route("accounting") }
-            )
+            if isRegular {
+                // MARK: - iPad Multi-Horizon Flight Deck
+                // Deck 2: Twin Telemetry Horizons (Accounting & Hotel side-by-side)
+                if store.canAccessHotel {
+                    HStack(alignment: .top, spacing: 14) {
+                        CommandAccountingSovereignCard(
+                            onRoute: { route("accounting") }
+                        )
+                        .frame(maxWidth: .infinity)
 
-            // Index 3: Pets Hotel Sovereign Card
-            if store.canAccessHotel {
-                CommandHotelSovereignCard(
-                    onRoute: { route("hotel") }
+                        CommandHotelSovereignCard(
+                            onRoute: { route("hotel") }
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                } else {
+                    CommandAccountingSovereignCard(
+                        onRoute: { route("accounting") }
+                    )
+                }
+
+                // Deck 3: Panoramic Tactical Operational Beacon
+                CommandEscalationHero(
+                    model: heroModel,
+                    isRegular: true,
+                    onPrimary: { signal in route(signal.id) }
+                )
+                .transition(reduceMotion ? .identity : .opacity)
+
+                // Deck 4: Dual-Wing Base Deck (Priority Runway + Source Ledger)
+                HStack(alignment: .top, spacing: 14) {
+                    CommandPriorityRunway(
+                        title: runwayTitle,
+                        detail: runwayDetail,
+                        signals: store.snapshot.signals,
+                        locale: locale,
+                        action: { route($0.id) }
+                    )
+                    .frame(maxWidth: .infinity)
+
+                    CommandSourceLedger(
+                        title: L10n("AdminCommandCenter_SourceLedger"),
+                        detail: L10n("AdminCommandCenter_SourceLedger_Detail"),
+                        loadingSources: localizedAreaNames(store.readiness.loadingAreas),
+                        failedSources: localizedAreaNames(store.readiness.failedAreas),
+                        updatedText: updatedText
+                    )
+                    .frame(maxWidth: .infinity)
+                }
+            } else {
+                // MARK: - iPhone Single-Column High-Velocity Stack (Preserved 100%)
+                // Index 2: Accounting Sovereign Card
+                CommandAccountingSovereignCard(
+                    onRoute: { route("accounting") }
+                )
+
+                // Index 3: Pets Hotel Sovereign Card
+                if store.canAccessHotel {
+                    CommandHotelSovereignCard(
+                        onRoute: { route("hotel") }
+                    )
+                }
+
+                // Index 4: Operational Health & Escalation Hero (Tactical Operational Beacon)
+                CommandEscalationHero(
+                    model: heroModel,
+                    isRegular: false,
+                    onPrimary: { signal in route(signal.id) }
+                )
+                .transition(reduceMotion ? .identity : .opacity)
+
+                CommandPriorityRunway(
+                    title: runwayTitle,
+                    detail: runwayDetail,
+                    signals: store.snapshot.signals,
+                    locale: locale,
+                    action: { route($0.id) }
+                )
+
+                CommandSourceLedger(
+                    title: L10n("AdminCommandCenter_SourceLedger"),
+                    detail: L10n("AdminCommandCenter_SourceLedger_Detail"),
+                    loadingSources: localizedAreaNames(store.readiness.loadingAreas),
+                    failedSources: localizedAreaNames(store.readiness.failedAreas),
+                    updatedText: updatedText
                 )
             }
-
-            // Index 4: Operational Health & Escalation Hero (Tactical Operational Beacon)
-            CommandEscalationHero(
-                model: heroModel,
-                isRegular: isRegular,
-                onPrimary: { signal in route(signal.id) }
-            )
-            .transition(reduceMotion ? .identity : .opacity)
-
-            CommandPriorityRunway(
-                title: runwayTitle,
-                detail: runwayDetail,
-                signals: store.snapshot.signals,
-                locale: locale,
-                action: { route($0.id) }
-            )
-
-            CommandSourceLedger(
-                title: L10n("AdminCommandCenter_SourceLedger"),
-                detail: L10n("AdminCommandCenter_SourceLedger_Detail"),
-                loadingSources: localizedAreaNames(store.readiness.loadingAreas),
-                failedSources: localizedAreaNames(store.readiness.failedAreas),
-                updatedText: updatedText
-            )
         }
     }
 
@@ -940,6 +995,7 @@ private struct CommandCenterChrome: View {
     let onLanguage: () -> Void
     let onLogout: () -> Void
     let onSelectBranch: () -> Void
+    var isRegular: Bool = false
 
     @ObservedObject private var branchContextStore = BranchContextStore.shared
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -977,14 +1033,172 @@ private struct CommandCenterChrome: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
-            topCard
-                .zIndex(isShowingMoreMenu ? 10 : 1)
-            bottomCard
-                .zIndex(0)
+        Group {
+            if isRegular {
+                ipadCommandBar
+            } else {
+                VStack(spacing: 6) {
+                    topCard
+                        .zIndex(isShowingMoreMenu ? 10 : 1)
+                    bottomCard
+                        .zIndex(0)
+                }
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("admin.command.header")
+    }
+
+    // MARK: - iPad Aerospace Command Bar
+    private var ipadCommandBar: some View {
+        HStack(alignment: .center, spacing: 14) {
+            // Wing 1: Working Branch Control Station
+            workingBranchIPadStation
+
+            Spacer(minLength: 8)
+
+            // Center: Real-Time Telemetry & Readiness Capsule
+            readinessControl
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(AdminSurface.control)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(readinessTone.accent.opacity(0.20), lineWidth: 0.75)
+                )
+
+            Spacer(minLength: 8)
+
+            // Wing 2: Utility Flight Tools + Operator Identity Capsule
+            HStack(spacing: 8) {
+                utilityActions
+
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(width: 1, height: 22)
+                    .padding(.horizontal, 2)
+                    .accessibilityHidden(true)
+
+                accountSignatureIPad
+                moreActionsMenu
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            AdminSurface.surface,
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(
+                    AdminSurface.hairline,
+                    lineWidth: contrast == .increased ? 1 : AdminStroke.hairline
+                )
+                .allowsHitTesting(false)
+        }
+        .shadow(
+            color: AdminShadow.card.color,
+            radius: AdminShadow.card.radius,
+            y: AdminShadow.card.y
+        )
+    }
+
+    private var workingBranchIPadStation: some View {
+        Button(action: triggerBranchSwitch) {
+            HStack(alignment: .center, spacing: 10) {
+                // Branch Storefront Glyphed Squircle
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(canSwitchBranch ? AdminSurface.primarySoft : AdminSurface.control)
+
+                    Image(systemName: "storefront.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(canSwitchBranch ? actionInk : secondaryInk)
+                }
+                .frame(width: 34, height: 34)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("AdminCommandCenter_Header_WorkingBranch", alter: nil))
+                        .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                        .foregroundStyle(secondaryInk)
+
+                    Text(currentBranchDisplayName)
+                        .font(PPBrandFont.bold(size: 16, relativeTo: .subheadline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+
+                if canSwitchBranch {
+                    HStack(spacing: 3) {
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                        Text(Language.get("AdminCommandCenter_Header_Switch", alter: nil))
+                            .font(PPBrandFont.bold(size: 10.5, relativeTo: .caption2))
+                    }
+                    .foregroundStyle(actionInk)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        AdminSurface.primarySoft,
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    )
+                } else if !branchContextStore.availableBranches.isEmpty {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(secondaryInk)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CommandHeaderPressStyle())
+        .disabled(!canSwitchBranch)
+        .accessibilityLabel(Language.get(
+            canSwitchBranch ? "BranchContext_Switcher_Title" : "AdminCommandCenter_Header_WorkingBranch",
+            alter: nil
+        ))
+        .accessibilityValue(currentBranchDisplayName)
+        .accessibilityIdentifier("admin.command.header.branch.ipad")
+    }
+
+    private var accountSignatureIPad: some View {
+        Button(action: onAccount) {
+            HStack(spacing: 8) {
+                AdminRemoteImage(
+                    url: resolvedAvatarURL,
+                    contentMode: .fill,
+                    targetSize: CGSize(width: 30, height: 30)
+                ) {
+                    Text(monogram)
+                        .font(PPBrandFont.bold(size: 13, relativeTo: .caption))
+                        .foregroundStyle(actionInk)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(AdminSurface.primarySoft)
+                }
+                .frame(width: 30, height: 30)
+                .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(resolvedDisplayName)
+                        .font(PPBrandFont.bold(size: 13, relativeTo: .footnote))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(roleName)
+                        .font(PPBrandFont.medium(size: 10.5, relativeTo: .caption2))
+                        .foregroundStyle(secondaryInk)
+                        .lineLimit(1)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(CommandHeaderPressStyle())
+        .accessibilityLabel(resolvedDisplayName)
+        .accessibilityValue("\(roleName), \(capabilityText)")
+        .accessibilityIdentifier("admin.command.header.account.ipad")
     }
 
     private var topCard: some View {

@@ -93,7 +93,7 @@ typedef void (^PPStaffListCompletion)(NSArray<PPStaffDoc *> * _Nullable docs, NS
 #pragma mark - Role Mapping (legacy → new)
 
 /// Map legacy UserRole integer to new staff role string.
-+ (nullable PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole;
++ (nonnull PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole;
 
 /// Map new staff role string to legacy UserRole integer (for backward compat).
 + (NSInteger)legacyRoleFromStaffRole:(PPStaffRole)staffRole;

@@ -432,6 +432,7 @@ static NSString * _Nonnull PPAuditStringFromObject(id _Nullable obj) {
 }
 
 - (BOOL)isZeroMutationSync {
+    if (![self hasDiff]) return NO;
     return [self addedKeysCount] == 0 && [self modifiedKeysCount] == 0 && [self removedKeysCount] == 0;
 }
 

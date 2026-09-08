@@ -1193,16 +1193,22 @@ static NSString *PPStaffMembersRoleText(UserModel *user) {
 
 - (BOOL)pp_canCreateStaffMembers {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (staff.isAdmin || [PPStaffAuth isAdminRole:staff.role]) return YES;
+    if ([staff hasPermission:kStaffPermStaffManage] || [staff hasPermission:kStaffPermUsersManage]) return YES;
     return [staff hasPermission:kStaffPermIamStaffCreate];
 }
 
 - (BOOL)pp_canUpdateStaffMembers {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (staff.isAdmin || [PPStaffAuth isAdminRole:staff.role]) return YES;
+    if ([staff hasPermission:kStaffPermStaffManage] || [staff hasPermission:kStaffPermUsersManage]) return YES;
     return [staff hasPermission:kStaffPermIamStaffUpdate];
 }
 
 - (BOOL)pp_canDisableStaffMembers {
     PPStaffDoc *staff = [PPStaffAuth shared].cachedCurrentStaff;
+    if (staff.isAdmin || [PPStaffAuth isAdminRole:staff.role]) return YES;
+    if ([staff hasPermission:kStaffPermStaffManage] || [staff hasPermission:kStaffPermUsersManage]) return YES;
     return [staff hasPermission:kStaffPermIamStaffDisable];
 }
 

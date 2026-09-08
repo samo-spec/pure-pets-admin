@@ -757,7 +757,7 @@ static NSArray<NSString *> *PPLegacyPermissionNames(NSString *canonicalName) {
         }
 
         // UsersCol login source for Admin / Console staff access.
-        PPStaffRole staffRole = [PPStaffAuth staffRoleFromLegacyRole:role];
+        PPStaffRole staffRole = [PPStaffAuth staffRoleFromLegacyRole:role] ?: PPStaffRoleViewer;
         NSArray *staffPerms = [PPStaffAuth defaultPermissionsForStaffRole:staffRole];
         NSDictionary *staffProfile = @{
             @"role": staffRole,
@@ -845,7 +845,7 @@ applyDefaultPermissions:(BOOL)applyDefaults
        forDocument:[self userDoc:uid]
              merge:YES];
 
-    PPStaffRole staffRole = [PPStaffAuth staffRoleFromLegacyRole:role];
+    PPStaffRole staffRole = [PPStaffAuth staffRoleFromLegacyRole:role] ?: PPStaffRoleViewer;
     NSDictionary *staffProfileUpdates = applyDefaults
         ? @{
             @"accountType": @"staff",

@@ -44,6 +44,10 @@ public enum SecurityClearanceTier: String, CaseIterable, Identifiable, Sendable 
         }
     }
 
+    public var shortTitle: String {
+        shortName
+    }
+
     public var localizedDescription: String {
         switch self {
         case .tier1:
@@ -399,6 +403,311 @@ public struct PlatformRoleModel: Identifiable, Hashable, Sendable {
         lhs.permissions == rhs.permissions &&
         lhs.assignedStaffUids == rhs.assignedStaffUids
     }
+
+    // MARK: - Canonical Built-in Foundation Roles (15 Roles)
+    public static func builtInFoundationRoles(staffRoleMap: [String: Set<String>] = [:]) -> [PlatformRoleModel] {
+        return [
+            // 1. super_admin (100)
+            PlatformRoleModel(
+                id: PPStaffRole.superAdmin.rawValue,
+                key: PPStaffRole.superAdmin.rawValue,
+                titleAr: "مدير النظام السيادي",
+                titleEn: "Super Administrator",
+                descAr: "تحكّم كامل في جميع وحدات المنصة وإدارة الموظفين والسياسات الأمنية الحاكمة",
+                descEn: "Supreme platform control, cryptographic authority, IAM and policy governance",
+                rank: 100,
+                clearanceTier: .tier1,
+                isBuiltIn: true,
+                iconName: "crown.fill",
+                accentHex: "#B81430",
+                permissions: Set(SecurityPermissionCatalog.shared.allPermissions.map { $0.key }),
+                assignedStaffUids: staffRoleMap[PPStaffRole.superAdmin.rawValue] ?? []
+            ),
+            // 2. owner (95)
+            PlatformRoleModel(
+                id: PPStaffRole.owner.rawValue,
+                key: PPStaffRole.owner.rawValue,
+                titleAr: "المالك السيادي",
+                titleEn: "Platform Owner",
+                descAr: "صلاحيات سيادية مطلقة تشمل الهيكلة المالية وإدارة النظام وتراخيص الكيانات",
+                descEn: "Absolute enterprise authority, banking settlement, entity ownership",
+                rank: 95,
+                clearanceTier: .tier1,
+                isBuiltIn: true,
+                iconName: "star.fill",
+                accentHex: "#D4AF37",
+                permissions: Set(SecurityPermissionCatalog.shared.allPermissions.map { $0.key }),
+                assignedStaffUids: staffRoleMap[PPStaffRole.owner.rawValue] ?? []
+            ),
+            // 3. operations_manager (85)
+            PlatformRoleModel(
+                id: PPStaffRole.operationsManager.rawValue,
+                key: PPStaffRole.operationsManager.rawValue,
+                titleAr: "مدير العمليات التنفيذية",
+                titleEn: "Operations Director",
+                descAr: "إشراف شامل على تدفق الطلبات، مراقبة المخزون، التوصيل، والتدخل السيادي",
+                descEn: "Executive director of fulfillment, branch workflows, dispatch and inventory",
+                rank: 85,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "gearshape.2.fill",
+                accentHex: "#1472B8",
+                permissions: Set([
+                    "dashboard.view", "staff.view", "users.view", "users.manage", "stock.view", "stock.manage", "stock.create",
+                    "listings.view", "listings.manage", "listings.moderate", "payments.view", "delivery.view", "delivery.dispatch",
+                    "delivery.override", "delivery.cod.reconcile", "pos.view", "pos.sell", "pos.history", "branches.view",
+                    "support.view", "support.manage", "services.view", "services.manage", "hotel.view", "hotel.manage",
+                    "categories.view", "categories.manage", "moderation.view", "moderation.manage", "notifications.view", "notifications.send"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.operationsManager.rawValue] ?? []
+            ),
+            // 4. security_admin (82)
+            PlatformRoleModel(
+                id: PPStaffRole.securityAdmin.rawValue,
+                key: PPStaffRole.securityAdmin.rawValue,
+                titleAr: "مسؤول الأمان وحوكمة الصلاحيات",
+                titleEn: "Security & IAM Director",
+                descAr: "إدارة الأمن والهوية والاعتمادات وحماية الصلاحيات وتدقيق الوصول المشبوه",
+                descEn: "Security, IAM policies, access control governance, and threat mitigation",
+                rank: 82,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "lock.shield.fill",
+                accentHex: "#0284C7",
+                permissions: Set([
+                    "dashboard.view", "staff.view", "audit.view", "users.view", "users.restrictions.view", "settings.view",
+                    "notifications.view", "notifications.inbox.view", "iam.staff.read", "iam.staff.create", "iam.staff.update",
+                    "iam.staff.disable", "iam.role.read", "iam.role.create", "iam.role.update", "iam.role.delete",
+                    "iam.binding.read", "iam.binding.grant", "iam.binding.revoke", "iam.elevation.request",
+                    "iam.elevation.approve", "iam.elevation.revoke", "iam.projection.reconcile", "iam.policy.read"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.securityAdmin.rawValue] ?? []
+            ),
+            // 5. branch_manager (78)
+            PlatformRoleModel(
+                id: PPStaffRole.branchManager.rawValue,
+                key: PPStaffRole.branchManager.rawValue,
+                titleAr: "مدير الفرع الميداني",
+                titleEn: "Branch General Manager",
+                descAr: "حوكمة وإدارة الفرع ومخزون المستودع وصندوق المبيعات وفريق الصالة",
+                descEn: "Full management of local branch hub, stock transfers, registers and local staff",
+                rank: 78,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "building.2.fill",
+                accentHex: "#2563EB",
+                permissions: Set([
+                    "dashboard.view", "staff.view", "users.view", "stock.view", "stock.manage", "payments.view",
+                    "pos.view", "pos.sell", "pos.history", "branches.view", "hotel.view", "hotel.manage",
+                    "hotel.checkin", "services.view", "support.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.branchManager.rawValue] ?? []
+            ),
+            // 6. inventory_manager (72)
+            PlatformRoleModel(
+                id: PPStaffRole.inventoryManager.rawValue,
+                key: PPStaffRole.inventoryManager.rawValue,
+                titleAr: "مدير سلاسل الإمداد والمخزون",
+                titleEn: "Inventory & Supply Director",
+                descAr: "إدارة كتالوج المنتجات والمستلزمات، توليد الباركود، التسعير، والتوريدات",
+                descEn: "Catalog management, wholesale pricing, barcode generation, inventory transfers",
+                rank: 72,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "cube.box.fill",
+                accentHex: "#EA580C",
+                permissions: Set([
+                    "dashboard.view", "stock.view", "stock.manage", "stock.create", "stock.delete",
+                    "categories.view", "categories.manage", "branches.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.inventoryManager.rawValue] ?? []
+            ),
+            // 7. payments_manager (70)
+            PlatformRoleModel(
+                id: PPStaffRole.paymentsManager.rawValue,
+                key: PPStaffRole.paymentsManager.rawValue,
+                titleAr: "مدير الخزينة والمدفوعات",
+                titleEn: "Treasury & Payments Director",
+                descAr: "إدارة نقاط البيع، تسوية الحسابات، تفويض استرداد المبالغ، والتدقيق المالي",
+                descEn: "Payment gateways, POS settlements, transaction disputes, refund authorization",
+                rank: 70,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "creditcard.fill",
+                accentHex: "#0D9488",
+                permissions: Set([
+                    "dashboard.view", "payments.view", "payments.manage", "payments.refund",
+                    "accounting.view", "pos.view", "pos.history", "delivery.cod.reconcile"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.paymentsManager.rawValue] ?? []
+            ),
+            // 8. accountant (65)
+            PlatformRoleModel(
+                id: PPStaffRole.accountant.rawValue,
+                key: PPStaffRole.accountant.rawValue,
+                titleAr: "المحاسب المالي القانوني",
+                titleEn: "Certified Accountant",
+                descAr: "مراجعة الدفاتر، القيود اليومية، ميزان المراجعة، والإقرارات الضريبية",
+                descEn: "Ledger posting, journal auditing, tax filing, balance reconciliation",
+                rank: 65,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "chart.line.uptrend.xyaxis",
+                accentHex: "#4F46E5",
+                permissions: Set([
+                    "dashboard.view", "accounting.view", "accounting.manage", "payments.view",
+                    "reports.view", "reports.export"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.accountant.rawValue] ?? []
+            ),
+            // 9. compliance_auditor (60)
+            PlatformRoleModel(
+                id: PPStaffRole.complianceAuditor.rawValue,
+                key: PPStaffRole.complianceAuditor.rawValue,
+                titleAr: "مدقق الامتثال والرقابة القانونية",
+                titleEn: "Compliance & Audit Officer",
+                descAr: "تدقيق ومراجعة الامتثال عبر العمليات والدفاتر المالية وسجلات النظام الرقابية",
+                descEn: "Read-only compliance audit across operational workflows and ledgers",
+                rank: 60,
+                clearanceTier: .tier2,
+                isBuiltIn: true,
+                iconName: "doc.text.magnifyingglass",
+                accentHex: "#6366F1",
+                permissions: Set([
+                    "dashboard.view", "audit.view", "payments.view", "accounting.view", "reports.view", "reports.export", "staff.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.complianceAuditor.rawValue] ?? []
+            ),
+            // 10. support_agent (45)
+            PlatformRoleModel(
+                id: PPStaffRole.supportAgent.rawValue,
+                key: PPStaffRole.supportAgent.rawValue,
+                titleAr: "أخصائي الدعم وخدمة العملاء",
+                titleEn: "Customer Care Specialist",
+                descAr: "الرد على محادثات العملاء، متابعة الشكاوى، وتقديم حلول الخدمة المباشرة",
+                descEn: "Live customer chat handling, dispute mediation, ticket escalations",
+                rank: 45,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "headphones",
+                accentHex: "#7C3AED",
+                permissions: Set([
+                    "support.view", "support.manage", "users.view", "listings.view", "hotel.view", "services.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.supportAgent.rawValue] ?? []
+            ),
+            // 11. content_publisher (40)
+            PlatformRoleModel(
+                id: PPStaffRole.contentPublisher.rawValue,
+                key: PPStaffRole.contentPublisher.rawValue,
+                titleAr: "ناشر المحتوى والإعلانات المعتمدة",
+                titleEn: "Content & Ad Publisher",
+                descAr: "اعتماد ونشر إعلانات الحيوانات والخدمات وإرسال الإشعارات الترويجية",
+                descEn: "Publishing and moderating animal ads, broadcasts, and featured promotions",
+                rank: 40,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "megaphone.fill",
+                accentHex: "#EC4899",
+                permissions: Set([
+                    "listings.view", "listings.manage", "listings.moderate", "notifications.view", "notifications.send"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.contentPublisher.rawValue] ?? []
+            ),
+            // 12. content_editor (38)
+            PlatformRoleModel(
+                id: PPStaffRole.contentEditor.rawValue,
+                key: PPStaffRole.contentEditor.rawValue,
+                titleAr: "محرر ومراجع المحتوى والوسائط",
+                titleEn: "Media & Content Editor",
+                descAr: "تعديل وتنسيق أوصاف المنتجات وتصنيف الفئات ومراجعة وسائط العرض",
+                descEn: "Product catalog descriptions, media updates, category classifications",
+                rank: 38,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "pencil.and.outline",
+                accentHex: "#F43F5E",
+                permissions: Set([
+                    "listings.view", "listings.manage", "categories.view", "support.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.contentEditor.rawValue] ?? []
+            ),
+            // 13. warehouse (35)
+            PlatformRoleModel(
+                id: PPStaffRole.warehouse.rawValue,
+                key: PPStaffRole.warehouse.rawValue,
+                titleAr: "أخصائي مناولة المستودع والتجهيز",
+                titleEn: "Warehouse Fulfillment Officer",
+                descAr: "تجهيز الشحنات، الفرز والتعبئة، مسح الباركود، وتسليم مناديب التوصيل",
+                descEn: "Order pick-pack, barcode scan verification, courier dispatch handover",
+                rank: 35,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "shippingbox.fill",
+                accentHex: "#059669",
+                permissions: Set([
+                    "stock.view", "stock.manage", "delivery.view", "delivery.dispatch"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.warehouse.rawValue] ?? []
+            ),
+            // 14. sales (30)
+            PlatformRoleModel(
+                id: PPStaffRole.sales.rawValue,
+                key: PPStaffRole.sales.rawValue,
+                titleAr: "أمين صندوق ومبيعات الصالة",
+                titleEn: "POS Cashier & Retail Floor",
+                descAr: "إتمام عمليات البيع السريع وإصدار الفواتير وتسجيل بيانات الحيوانات المباعة",
+                descEn: "POS cashier checkout, receipt printing, customer order intake",
+                rank: 30,
+                clearanceTier: .tier3,
+                isBuiltIn: true,
+                iconName: "cart.fill",
+                accentHex: "#10B981",
+                permissions: Set([
+                    "pos.view", "pos.sell", "pos.history", "stock.view", "users.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.sales.rawValue] ?? []
+            ),
+            // 15. viewer (10)
+            PlatformRoleModel(
+                id: PPStaffRole.viewer.rawValue,
+                key: PPStaffRole.viewer.rawValue,
+                titleAr: "مراقب قياسات الأداء والتقارير",
+                titleEn: "Telemetry & Performance Observer",
+                descAr: "اطلاع ورصد فقط على المؤشرات التشغيلية والتقارير دون إمكانية التعديل",
+                descEn: "Restricted read-only operational telemetry and business dashboard observer",
+                rank: 10,
+                clearanceTier: .tier4,
+                isBuiltIn: true,
+                iconName: "eye.fill",
+                accentHex: "#64748B",
+                permissions: Set([
+                    "dashboard.view", "reports.view"
+                ]),
+                assignedStaffUids: staffRoleMap[PPStaffRole.viewer.rawValue] ?? []
+            )
+        ]
+    }
+
+    public static let builtInRoles: [PlatformRoleModel] = builtInFoundationRoles()
+
+    public static func role(for key: String, customRoles: [PlatformRoleModel] = []) -> PlatformRoleModel? {
+        let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return builtInRoles.last }
+        if let custom = customRoles.first(where: { $0.id == trimmed || $0.key == trimmed }) {
+            return custom
+        }
+        if let builtIn = builtInRoles.first(where: { $0.id == trimmed || $0.key == trimmed }) {
+            return builtIn
+        }
+        if trimmed.hasPrefix("custom_") {
+            let stripped = String(trimmed.dropFirst(7))
+            if let custom = customRoles.first(where: { $0.id == stripped || $0.key == stripped }) {
+                return custom
+            }
+        }
+        return nil
+    }
 }
 
 // MARK: - 4. ViewModel (Reactive Firestore IAM Stream & Mutations)
@@ -411,7 +720,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
     @Published public var selectedTierFilter: String = "all"
     @Published public var searchText: String = ""
     @Published public private(set) var isLoading: Bool = true
-    @Published public private(set) var errorMessage: String? = nil
+    @Published public var errorMessage: String? = nil
     @Published public private(set) var canManage: Bool = false
     @Published public private(set) var canCreateRole: Bool = false
     @Published public private(set) var canUpdateRole: Bool = false
@@ -431,6 +740,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
 
     public init() {
         evaluatePermissions()
+        recomputeRoles()
     }
 
     deinit {
@@ -492,12 +802,10 @@ public final class AdminRoleRankViewModel: ObservableObject {
     }
 
     private func recomputeRoles() {
-        var roles: [PlatformRoleModel] = []
-
         // Map assigned staff by role identifier
         var staffRoleMap: [String: Set<String>] = [:]
         for member in staffMembers {
-            let roleId = (member.roleIdentifier ?? member.role.rawValue).trimmingCharacters(in: .whitespacesAndNewlines)
+            let roleId = (member.roleIdentifier.isEmpty ? member.role.rawValue : member.roleIdentifier).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !roleId.isEmpty else { continue }
             staffRoleMap[roleId, default: []].insert(member.uid)
             if roleId.hasPrefix("custom_") {
@@ -506,231 +814,8 @@ public final class AdminRoleRankViewModel: ObservableObject {
             }
         }
 
-        // 1. Built-in System Foundation Roles
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.superAdmin.rawValue,
-                key: PPStaffRole.superAdmin.rawValue,
-                titleAr: "مدير النظام السيادي",
-                titleEn: "Super Administrator",
-                descAr: "تحكّم كامل في جميع وحدات المنصة وإدارة الموظفين والسياسات الأمنية الحاكمة",
-                descEn: "Supreme platform control, cryptographic authority, IAM and policy governance",
-                rank: 100,
-                clearanceTier: .tier1,
-                isBuiltIn: true,
-                iconName: "crown.fill",
-                accentHex: "#B81430",
-                permissions: Set(SecurityPermissionCatalog.shared.allPermissions.map { $0.key }),
-                assignedStaffUids: staffRoleMap[PPStaffRole.superAdmin.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.owner.rawValue,
-                key: PPStaffRole.owner.rawValue,
-                titleAr: "المالك السيادي",
-                titleEn: "Platform Owner",
-                descAr: "صلاحيات سيادية مطلقة تشمل الهيكلة المالية وإدارة النظام وتراخيص الكيانات",
-                descEn: "Absolute enterprise authority, banking settlement, entity ownership",
-                rank: 95,
-                clearanceTier: .tier1,
-                isBuiltIn: true,
-                iconName: "star.fill",
-                accentHex: "#D4AF37",
-                permissions: Set(SecurityPermissionCatalog.shared.allPermissions.map { $0.key }),
-                assignedStaffUids: staffRoleMap[PPStaffRole.owner.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.operationsManager.rawValue,
-                key: PPStaffRole.operationsManager.rawValue,
-                titleAr: "مدير العمليات التنفيذية",
-                titleEn: "Operations Director",
-                descAr: "إشراف شامل على تدفق الطلبات، مراقبة المخزون، التوصيل، والتدخل السيادي",
-                descEn: "Executive director of fulfillment, branch workflows, dispatch and inventory",
-                rank: 85,
-                clearanceTier: .tier2,
-                isBuiltIn: true,
-                iconName: "gearshape.2.fill",
-                accentHex: "#1472B8",
-                permissions: Set([
-                    "dashboard.view", "staff.view", "users.view", "users.manage", "stock.view", "stock.manage", "stock.create",
-                    "listings.view", "listings.manage", "listings.moderate", "payments.view", "delivery.view", "delivery.dispatch",
-                    "delivery.override", "delivery.cod.reconcile", "pos.view", "pos.sell", "pos.history", "branches.view",
-                    "support.view", "support.manage", "services.view", "services.manage", "hotel.view", "hotel.manage",
-                    "categories.view", "categories.manage", "moderation.view", "moderation.manage", "notifications.view", "notifications.send"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.operationsManager.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.branchManager.rawValue,
-                key: PPStaffRole.branchManager.rawValue,
-                titleAr: "مدير الفرع الميداني",
-                titleEn: "Branch General Manager",
-                descAr: "حوكمة وإدارة الفرع ومخزون المستودع وصندوق المبيعات وفريق الصالة",
-                descEn: "Full management of local branch hub, stock transfers, registers and local staff",
-                rank: 78,
-                clearanceTier: .tier2,
-                isBuiltIn: true,
-                iconName: "building.2.fill",
-                accentHex: "#2563EB",
-                permissions: Set([
-                    "dashboard.view", "staff.view", "users.view", "stock.view", "stock.manage", "payments.view",
-                    "pos.view", "pos.sell", "pos.history", "branches.view", "hotel.view", "hotel.manage",
-                    "hotel.checkin", "services.view", "support.view"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.branchManager.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.inventoryManager.rawValue,
-                key: PPStaffRole.inventoryManager.rawValue,
-                titleAr: "مدير سلاسل الإمداد والمخزون",
-                titleEn: "Inventory & Supply Director",
-                descAr: "إدارة كتالوج المنتجات والمستلزمات، توليد الباركود، التسعير، والتوريدات",
-                descEn: "Catalog management, wholesale pricing, barcode generation, inventory transfers",
-                rank: 72,
-                clearanceTier: .tier2,
-                isBuiltIn: true,
-                iconName: "cube.box.fill",
-                accentHex: "#EA580C",
-                permissions: Set([
-                    "dashboard.view", "stock.view", "stock.manage", "stock.create", "stock.delete",
-                    "categories.view", "categories.manage", "branches.view"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.inventoryManager.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.paymentsManager.rawValue,
-                key: PPStaffRole.paymentsManager.rawValue,
-                titleAr: "مدير الخزينة والمدفوعات",
-                titleEn: "Treasury & Payments Director",
-                descAr: "إدارة نقاط البيع، تسوية الحسابات، تفويض استرداد المبالغ، والتدقيق المالي",
-                descEn: "Payment gateways, POS settlements, transaction disputes, refund authorization",
-                rank: 70,
-                clearanceTier: .tier2,
-                isBuiltIn: true,
-                iconName: "creditcard.fill",
-                accentHex: "#0D9488",
-                permissions: Set([
-                    "dashboard.view", "payments.view", "payments.manage", "payments.refund",
-                    "accounting.view", "pos.view", "pos.history", "delivery.cod.reconcile"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.paymentsManager.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.accountant.rawValue,
-                key: PPStaffRole.accountant.rawValue,
-                titleAr: "المحاسب المالي القانوني",
-                titleEn: "Certified Accountant",
-                descAr: "مراجعة الدفاتر، القيود اليومية، ميزان المراجعة، والإقرارات الضريبية",
-                descEn: "Ledger posting, journal auditing, tax filing, balance reconciliation",
-                rank: 65,
-                clearanceTier: .tier2,
-                isBuiltIn: true,
-                iconName: "chart.line.uptrend.xyaxis",
-                accentHex: "#4F46E5",
-                permissions: Set([
-                    "dashboard.view", "accounting.view", "accounting.manage", "payments.view",
-                    "reports.view", "reports.export"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.accountant.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.supportAgent.rawValue,
-                key: PPStaffRole.supportAgent.rawValue,
-                titleAr: "أخصائي الدعم وخدمة العملاء",
-                titleEn: "Customer Care Specialist",
-                descAr: "الرد على محادثات العملاء، متابعة الشكاوى، وتقديم حلول الخدمة المباشرة",
-                descEn: "Live customer chat handling, dispute mediation, ticket escalations",
-                rank: 45,
-                clearanceTier: .tier3,
-                isBuiltIn: true,
-                iconName: "headphones",
-                accentHex: "#7C3AED",
-                permissions: Set([
-                    "support.view", "support.manage", "users.view", "listings.view", "hotel.view", "services.view"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.supportAgent.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.warehouse.rawValue,
-                key: PPStaffRole.warehouse.rawValue,
-                titleAr: "أخصائي مناولة المستودع والتجهيز",
-                titleEn: "Warehouse Fulfillment Officer",
-                descAr: "تجهيز الشحنات، الفرز والتعبئة، مسح الباركود، وتسليم مناديب التوصيل",
-                descEn: "Order pick-pack, barcode scan verification, courier dispatch handover",
-                rank: 35,
-                clearanceTier: .tier3,
-                isBuiltIn: true,
-                iconName: "shippingbox.fill",
-                accentHex: "#059669",
-                permissions: Set([
-                    "stock.view", "stock.manage", "delivery.view", "delivery.dispatch"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.warehouse.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.sales.rawValue,
-                key: PPStaffRole.sales.rawValue,
-                titleAr: "أمين صندوق ومبيعات الصالة",
-                titleEn: "POS Cashier & Retail Floor",
-                descAr: "إتمام عمليات البيع السريع وإصدار الفواتير وتسجيل بيانات الحيوانات المباعة",
-                descEn: "POS cashier checkout, receipt printing, customer order intake",
-                rank: 30,
-                clearanceTier: .tier3,
-                isBuiltIn: true,
-                iconName: "cart.fill",
-                accentHex: "#10B981",
-                permissions: Set([
-                    "pos.view", "pos.sell", "pos.history", "stock.view", "users.view"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.sales.rawValue] ?? []
-            )
-        )
-
-        roles.append(
-            PlatformRoleModel(
-                id: PPStaffRole.viewer.rawValue,
-                key: PPStaffRole.viewer.rawValue,
-                titleAr: "مراقب قياسات الأداء والتقارير",
-                titleEn: "Telemetry & Performance Observer",
-                descAr: "اطلاع ورصد فقط على المؤشرات التشغيلية والتقارير دون إمكانية التعديل",
-                descEn: "Restricted read-only operational telemetry and business dashboard observer",
-                rank: 10,
-                clearanceTier: .tier4,
-                isBuiltIn: true,
-                iconName: "eye.fill",
-                accentHex: "#64748B",
-                permissions: Set([
-                    "dashboard.view", "reports.view"
-                ]),
-                assignedStaffUids: staffRoleMap[PPStaffRole.viewer.rawValue] ?? []
-            )
-        )
+        // 1. Built-in Canonical System Foundation Roles (15 Roles)
+        var roles = PlatformRoleModel.builtInFoundationRoles(staffRoleMap: staffRoleMap)
 
         // 2. Custom Roles Parsed from Firestore
         for doc in rawCustomRoleDocs {
@@ -820,6 +905,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
         iconName: String,
         accentHex: String,
         permissions: Set<String>,
+        idempotencyKey: String? = nil,
         completion: @escaping (Bool) -> Void
     ) {
         let authorized = existingId?.isEmpty == false ? canUpdateRole : canCreateRole
@@ -844,12 +930,16 @@ public final class AdminRoleRankViewModel: ObservableObject {
             "permissions": Array(permissions)
         ]
 
+        let opKey = (idempotencyKey?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? idempotencyKey!
+            : UUID().uuidString
+
         let functions = Functions.functions(region: "us-central1")
         if let existingId, !existingId.isEmpty {
             var command = payload
             command["roleId"] = existingId
             command["expectedRevision"] = max(0, expectedRevision)
-            command["idempotencyKey"] = UUID().uuidString
+            command["idempotencyKey"] = opKey
             command["reason"] = "admin_role_rank_custom_role_update"
             functions.httpsCallable("updateStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
@@ -864,7 +954,7 @@ public final class AdminRoleRankViewModel: ObservableObject {
         } else {
             var command = payload
             command["expectedRevision"] = 0
-            command["idempotencyKey"] = UUID().uuidString
+            command["idempotencyKey"] = opKey
             command["reason"] = "admin_role_rank_custom_role_create"
             functions.httpsCallable("createStaffRole").call(command) { [weak self] _, error in
                 guard let self = self else { return }
@@ -998,7 +1088,7 @@ public struct AdminRoleRankSecurityLevelsView: View {
             NavigationLink(
                 destination: RoleRankEditorSheet(
                     existingRole: viewModel.editingRole,
-                    onSave: { roleData in
+                    onSave: { roleData, onComplete in
                         viewModel.saveCustomRole(
                             existingId: viewModel.editingRole?.id,
                             expectedRevision: viewModel.editingRole?.revision ?? 0,
@@ -1010,8 +1100,10 @@ public struct AdminRoleRankSecurityLevelsView: View {
                             tier: roleData.tier,
                             iconName: roleData.iconName,
                             accentHex: roleData.accentHex,
-                            permissions: roleData.permissions
+                            permissions: roleData.permissions,
+                            idempotencyKey: roleData.idempotencyKey
                         ) { success in
+                            onComplete(success)
                             if success {
                                 viewModel.isShowingEditor = false
                                 viewModel.editingRole = nil
@@ -1074,6 +1166,21 @@ public struct AdminRoleRankSecurityLevelsView: View {
             }
         } message: {
             if let err = viewModel.deletionErrorMessage {
+                Text(err)
+            }
+        }
+        .alert(
+            Language.get("Error", alter: "خطأ في العملية"),
+            isPresented: Binding(
+                get: { viewModel.errorMessage != nil },
+                set: { if !$0 { viewModel.errorMessage = nil } }
+            )
+        ) {
+            Button(Language.get("OK", alter: "حسناً"), role: .cancel) {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            if let err = viewModel.errorMessage {
                 Text(err)
             }
         }
@@ -1936,13 +2043,15 @@ public struct RoleRankEditorData: Sendable {
     public var iconName: String
     public var accentHex: String
     public var permissions: Set<String>
+    public var idempotencyKey: String
 }
 
 public struct RoleRankEditorSheet: View {
     let existingRole: PlatformRoleModel?
-    let onSave: (RoleRankEditorData) -> Void
+    let onSave: (RoleRankEditorData, @escaping (Bool) -> Void) -> Void
     let onDismiss: () -> Void
 
+    @State private var sessionKey: String = UUID().uuidString
     @State private var titleAr: String = ""
     @State private var titleEn: String = ""
     @State private var descAr: String = ""
@@ -1965,7 +2074,7 @@ public struct RoleRankEditorSheet: View {
         "#0D9488", "#10B981", "#7C3AED", "#EA580C", "#64748B"
     ]
 
-    public init(existingRole: PlatformRoleModel?, onSave: @escaping (RoleRankEditorData) -> Void, onDismiss: @escaping () -> Void) {
+    public init(existingRole: PlatformRoleModel?, onSave: @escaping (RoleRankEditorData, @escaping (Bool) -> Void) -> Void, onDismiss: @escaping () -> Void) {
         self.existingRole = existingRole
         self.onSave = onSave
         self.onDismiss = onDismiss
@@ -2047,9 +2156,14 @@ public struct RoleRankEditorSheet: View {
             tier: tier,
             iconName: iconName,
             accentHex: accentHex,
-            permissions: selectedPermissions
+            permissions: selectedPermissions,
+            idempotencyKey: sessionKey
         )
-        onSave(data)
+        onSave(data) { success in
+            if !success {
+                isSaving = false
+            }
+        }
     }
 
     // MARK: Identity Card

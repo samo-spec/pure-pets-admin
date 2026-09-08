@@ -147,9 +147,18 @@ final class AdminStaffManagementViewModel: ObservableObject {
 
     func evaluatePermissions() {
         let staff = PPStaffAuth.shared().cachedCurrentStaff
-        self.canCreateStaff = staff?.hasPermission(kStaffPermIamStaffCreate) ?? false
-        self.canUpdateStaff = staff?.hasPermission(kStaffPermIamStaffUpdate) ?? false
-        self.canDisableStaff = staff?.hasPermission(kStaffPermIamStaffDisable) ?? false
+        let isAdmin = (staff?.isAdmin() ?? false) || (staff.map { PPStaffAuth.isAdminRole($0.role) } ?? false)
+            || (UserManager.shared().currentUser?.isSuperAdmin == true) || (UserManager.shared().currentUser?.isAdmin == true)
+            || (staff?.roleIdentifier == PPStaffRole.superAdmin.rawValue) || (staff?.roleIdentifier == PPStaffRole.owner.rawValue)
+        let hasManage = (staff?.hasPermission(kStaffPermStaffManage) ?? false) || (staff?.hasPermission(kStaffPermUsersManage) ?? false)
+
+        let hasCreate = staff?.hasPermission(kStaffPermIamStaffCreate) ?? false
+        let hasUpdate = staff?.hasPermission(kStaffPermIamStaffUpdate) ?? false
+        let hasDisable = staff?.hasPermission(kStaffPermIamStaffDisable) ?? false
+
+        self.canCreateStaff = isAdmin || hasManage || hasCreate
+        self.canUpdateStaff = isAdmin || hasManage || hasUpdate
+        self.canDisableStaff = isAdmin || hasManage || hasDisable
     }
 
     func startListening() {
@@ -1168,27 +1177,64 @@ struct AdminStaffMemberEditorView: View {
 
     private var isEditing: Bool { staffDoc != nil }
     private var currentStaff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
-    private var canCreateStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffCreate) ?? false }
-    private var canUpdateStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffUpdate) ?? false }
-    private var canDisableStaff: Bool { currentStaff?.hasPermission(kStaffPermIamStaffDisable) ?? false }
+
+    private var isSuperAdminOrAdmin: Bool {
+        if let staff = currentStaff, staff.isAdmin() || PPStaffAuth.isAdminRole(staff.role) { return true }
+        if UserManager.shared().currentUser?.isSuperAdmin == true || UserManager.shared().currentUser?.isAdmin == true { return true }
+        let role = currentStaff?.roleIdentifier ?? ""
+        return role == PPStaffRole.superAdmin.rawValue || role == PPStaffRole.owner.rawValue
+    }
+
+    private var canCreateStaff: Bool {
+        if isSuperAdminOrAdmin { return true }
+        let hasPerm = currentStaff?.hasPermission(kStaffPermIamStaffCreate) ?? false
+        let hasLegacy = (currentStaff?.hasPermission(kStaffPermStaffManage) ?? false) || (currentStaff?.hasPermission(kStaffPermUsersManage) ?? false)
+        return hasPerm || hasLegacy
+    }
+
+    private var canUpdateStaff: Bool {
+        if isSuperAdminOrAdmin { return true }
+        let hasPerm = currentStaff?.hasPermission(kStaffPermIamStaffUpdate) ?? false
+        let hasLegacy = (currentStaff?.hasPermission(kStaffPermStaffManage) ?? false) || (currentStaff?.hasPermission(kStaffPermUsersManage) ?? false)
+        return hasPerm || hasLegacy
+    }
+
+    private var canDisableStaff: Bool {
+        if isSuperAdminOrAdmin { return true }
+        let hasPerm = currentStaff?.hasPermission(kStaffPermIamStaffDisable) ?? false
+        let hasLegacy = (currentStaff?.hasPermission(kStaffPermStaffManage) ?? false) || (currentStaff?.hasPermission(kStaffPermUsersManage) ?? false)
+        return hasPerm || hasLegacy
+    }
+
     private var canSubmitCommand: Bool { isEditing ? canUpdateStaff : canCreateStaff }
     private var canChangeStatus: Bool {
-        guard isEditing else { return false }
+        guard isEditing else { return canCreateStaff }
         return staffDoc?.status == .active ? canDisableStaff : canUpdateStaff
     }
+
+    @State private var customRoleRawId: String? = nil
 
     init(staffDoc: PPStaffDoc?, onDismiss: @escaping () -> Void, onSaved: @escaping (String) -> Void) {
         self.staffDoc = staffDoc
         self.onDismiss = onDismiss
         self.onSaved = onSaved
 
-        let initialRole = StaffRoleOption(rawValue: staffDoc?.roleIdentifier ?? "") ?? .viewer
-        _selectedRole = State(initialValue: initialRole)
+        let rawRole = (staffDoc?.roleIdentifier ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let stdRole = StaffRoleOption(rawValue: rawRole) {
+            _selectedRole = State(initialValue: stdRole)
+            _customRoleRawId = State(initialValue: nil)
+        } else if !rawRole.isEmpty {
+            _selectedRole = State(initialValue: .viewer)
+            _customRoleRawId = State(initialValue: rawRole)
+        } else {
+            _selectedRole = State(initialValue: .viewer)
+            _customRoleRawId = State(initialValue: nil)
+        }
         _isActive = State(initialValue: staffDoc?.status == .active)
         _selectedUserUID = State(initialValue: staffDoc?.uid ?? "")
         _selectedUserDisplayName = State(initialValue: staffDoc?.displayName ?? "")
 
-        let isGlobal = (staffDoc?.hasGlobalScope() ?? false) || (initialRole == .superAdmin || initialRole == .owner)
+        let isGlobal = (staffDoc?.hasGlobalScope() ?? false) || (rawRole == "super_admin" || rawRole == "owner")
         _isGlobalScope = State(initialValue: isGlobal)
         let initialBranches = Set(staffDoc?.assignedBranchIDs ?? [])
         _selectedBranchIDs = State(initialValue: initialBranches)
@@ -1825,12 +1871,27 @@ struct AdminStaffMemberEditorView: View {
             }
 
             VStack(spacing: 8) {
+                if let custom = customRoleRawId {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(Color.indigo)
+                        Text(String(format: Language.get("Staff_CustomRole_Pill", alter: "دور مخصص حالي: %@"), custom))
+                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                            .foregroundColor(Color.indigo)
+                        Spacer()
+                    }
+                    .padding(10)
+                    .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
                 ForEach(StaffRoleOption.allCases) { role in
-                    let isSelected = selectedRole == role
+                    let isSelected = (selectedRole == role && customRoleRawId == nil)
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                             selectedRole = role
+                            customRoleRawId = nil
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -2762,9 +2823,10 @@ struct AdminStaffMemberEditorView: View {
             self.loadedUserLastSeen = lastTs.dateValue()
         }
 
-        let postAds = (data["canPostAds"] as? Bool) ?? (data["canPostAnimalAds"] as? Bool) ?? false
-        let postAdoption = (data["canPostAdoptionAds"] as? Bool) ?? false
-        let postServices = (data["canPostServices"] as? Bool) ?? false
+        let featuresDict = data["features"] as? [String: Any]
+        let postAds = (data["canPostAds"] as? Bool) ?? (data["canPostAnimalAds"] as? Bool) ?? (featuresDict?["canPostPetAds"] as? Bool) ?? false
+        let postAdoption = (data["canPostAdoptionAds"] as? Bool) ?? (featuresDict?["canPostAdoption"] as? Bool) ?? false
+        let postServices = (data["canPostServices"] as? Bool) ?? (featuresDict?["canOfferServices"] as? Bool) ?? false
         let verified = (data["verified"] as? Bool) ?? (data["isVerified"] as? Bool) ?? false
 
         self.canPostAnimalAds = postAds
@@ -2838,10 +2900,32 @@ struct AdminStaffMemberEditorView: View {
             }
         }()
 
+        let finalRole = customRoleRawId ?? selectedRole.rawValue
+
         if isEditing, let uid = staffDoc?.uid {
+            let isSelf = (uid == Auth.auth().currentUser?.uid)
+            let roleChanged = finalRole != (staffDoc?.roleIdentifier ?? "")
+            let statusChanged = (isActive ? PPStaffStatus.active : PPStaffStatus.disabled) != (staffDoc?.status ?? .active)
+            let scopeChanged = isGlobalScope != (staffDoc?.hasGlobalScope() ?? false) || selectedBranchIDs != Set(staffDoc?.assignedBranchIDs ?? [])
+
+            if isSelf && (roleChanged || statusChanged) {
+                isSaving = false
+                validationError = Language.get("Staff_Error_SelfMutationProhibited", alter: "لا يمكن تعديل رتبة أو حالة حسابك الحالي بنفسك لحماية الأمان.")
+                return
+            }
+
+            if isSelf && !roleChanged && !statusChanged && !scopeChanged {
+                // If only capabilities were changed on own account, save directly to UsersCol
+                self.updateUserCapabilities(uid: uid) {
+                    self.isSaving = false
+                    self.onSaved(Language.get("Saved", alter: "تم حفظ وتحديث إعدادات الوصول بنجاح"))
+                }
+                return
+            }
+
             // Update staff member
             let updates: [String: Any] = [
-                "role": selectedRole.rawValue,
+                "role": finalRole,
                 "status": isActive ? PPStaffStatus.active.rawValue : PPStaffStatus.disabled.rawValue,
                 "scope": scopeDict,
                 "expectedRevision": staffDoc?.revision ?? 0
@@ -2932,18 +3016,39 @@ struct AdminStaffMemberEditorView: View {
     }
 
     private func updateUserCapabilities(uid: String, completion: @escaping @MainActor @Sendable () -> Void) {
-        let features: [String: Any] = [
+        let featuresPayload: [String: Any] = [
             "canPostAds": canPostAnimalAds,
             "canPostAnimalAds": canPostAnimalAds,
             "canPostAdoptionAds": canPostAdoptionAds,
             "canPostServices": canPostServices,
             "verified": isVerified,
+            "isVerified": isVerified,
+            "features.canPostPetAds": canPostAnimalAds,
+            "features.canPostAdoption": canPostAdoptionAds,
+            "features.canOfferServices": canPostServices,
             "updatedAt": FieldValue.serverTimestamp()
         ]
 
-        Firestore.firestore().collection("UsersCol").document(uid).setData(features, merge: true) { _ in
-            DispatchQueue.main.async {
-                completion()
+        Firestore.firestore().collection("UsersCol").document(uid).updateData(featuresPayload) { error in
+            if error != nil {
+                Firestore.firestore().collection("UsersCol").document(uid).setData([
+                    "canPostAds": self.canPostAnimalAds,
+                    "canPostAnimalAds": self.canPostAnimalAds,
+                    "canPostAdoptionAds": self.canPostAdoptionAds,
+                    "canPostServices": self.canPostServices,
+                    "verified": self.isVerified,
+                    "isVerified": self.isVerified,
+                    "features": [
+                        "canPostPetAds": self.canPostAnimalAds,
+                        "canPostAdoption": self.canPostAdoptionAds,
+                        "canOfferServices": self.canPostServices
+                    ],
+                    "updatedAt": FieldValue.serverTimestamp()
+                ], merge: true) { _ in
+                    DispatchQueue.main.async { completion() }
+                }
+            } else {
+                DispatchQueue.main.async { completion() }
             }
         }
     }

@@ -1538,7 +1538,6 @@ struct FulfillmentDossierView: View {
         if isPushMode {
             dossierContent
                 .navigationBarHidden(true)
-                .ignoresSafeArea(.container, edges: .top)
         } else {
             NavigationView {
                 dossierContent
@@ -1613,7 +1612,6 @@ struct FulfillmentDossierView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, isPushMode ? statusBarHeight : 0)
     }
 
     private var sovereignSheetHeader: some View {
@@ -2323,7 +2321,6 @@ struct FulfillmentOverrideView: View {
                 dismiss()
             }
         )
-        .padding(.top, isPushMode ? statusBarHeight : 0)
     }
 
     private var sovereignSheetHeader: some View {

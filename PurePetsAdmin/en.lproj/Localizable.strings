@@ -5471,6 +5471,8 @@
 "Staff_Branch_Default_Badge" = "Default";
 "Staff_Branch_Set_Default" = "Set Default";
 "Staff_Error_BranchRequired" = "Please select at least one branch or enable Global Scope.";
+"Staff_Error_SelfMutationProhibited" = "You cannot modify your own role or status for security protection.";
+"Staff_Self_Role_Locked" = "Your current account • Role is locked from self-mutation for security";
 
 /* ===================== Pets Hotel & Boarding Hub ===================== */
 "Hotel_Title" = "Pets Hotel & Resort";
@@ -5947,6 +5949,14 @@
 "SupportContext_OrderRecent" = "Customer Latest Order";
 "SupportContext_OrderActive" = "Store Order";
 "SupportContext_DetailTitle" = "Context Details";
+"SupportContext_TapToCopy" = "Tap to copy";
+"SupportContext_CopiedToClipboard" = "Reference copied successfully ✓";
+"SupportContext_OpenDossier" = "View Full Customer Profile";
+"SupportContext_ReferenceToken" = "Reference Token";
+"SupportContext_VerifiedAccount" = "Verified Account";
+"SupportContext_StandardAccount" = "Active Account";
+"SupportContext_QuickActions" = "Quick Actions";
+"SupportContext_ContextData" = "Operational Context Data";
 
 /* Role Rank & Security Levels Matrix */
 "RoleRank_Title" = "Role Rank & Security Clearance Matrix";
@@ -6312,5 +6322,104 @@
 "Food_Badge" = "Food & Diet";
 "LivePets_Badge" = "Live Records";
 
+/* People & Human Capital Command Horizon */
+"People_Hero_Title" = "Customer Ecosystem & Records";
+"People_Hero_Action_Header" = "Inspect Accounts & Dossiers";
+"People_Hero_Subtitle" = "Customer records, pet profiles, account verification, and instant access restrictions.";
+"People_Browse_Customers" = "Open Customer Directory";
+"People_Registered_Accounts" = "registered accounts";
+"People_Verified_Directory" = "Verified Central Member Directory";
+"People_Directory_Active" = "Directory Online";
+"People_Live_Sync" = "Real-Time Sync";
+"People_Staff_Subtitle" = "Role Ranks, Clearances & RBAC";
+"People_Chats_Subtitle" = "Live Inquiries & Pet Care Desk";
+"People_Chats_Live_Desk" = "Live Desk";
+"People_Security_Policy_Eyebrow" = "Security & Access Governance";
+"People_Security_Policy_Title" = "Role Hierarchy, Clearances & Privileges";
+"People_Security_Policy_Detail" = "Strict audit regime, branch binding, and sensitive permission isolation.";
+"People_iPad_Manage_Team" = "Manage Team & Roles";
+"People_iPad_Open_Chats" = "Open Support Live Desk";
+"People_Active_Staff_Pill" = "Active Team";
+"People_Support_Desk_Ready" = "Ready for live support";
+"People_Verified_Accounts_Pill" = "Verified Accounts";
+"People_Pet_Dossiers_Pill" = "Pet Dossiers";
+"People_Identity_Security_Pill" = "Identity Security";
+"People_Console_Eyebrow" = "Human Capital & People Intelligence";
+"People_Console_Title" = "Customers & Staff Command Deck";
+"People_Role_Tier_1" = "Sovereign & System Admin";
+"People_Role_Tier_2" = "Operations & Inventory Leads";
+"People_Role_Tier_3" = "Customer Care & Field Support";
+"People_Security_Pulse_Stable" = "Security & Access Levels Stable";
+"People_Security_Health_Check" = "Role Permissions Verified";
 
+/* NextGen V6 Sovereign More & Management Hub */
+"More_Horizon_Title" = "More";
+"More_Horizon_Subtitle" = "Sovereign control, communications, and centralized governance";
+"More_Broadcast_Studio_Title" = "Communications & Broadcast Studio";
+"More_Broadcast_Studio_Subtitle" = "Instant push broadcasts to customers and team members";
+"More_Broadcast_Send_Instant" = "Send Broadcast Notification";
+"More_Broadcast_Send_Desc" = "Compose and transmit instant push notification via cloud";
+"More_Broadcast_Inbox" = "Notification Inbox";
+"More_Broadcast_Inbox_Desc" = "Sent and received notification history";
+"More_Broadcast_Settings" = "Notification Channels & Settings";
+"More_Broadcast_Settings_Desc" = "Configure audio channels and critical alerts";
+"More_Governance_Title" = "Financial Governance & Audit";
+"More_Governance_Subtitle" = "Settlements, financial ledger, and security audit trail";
+"More_Accounting_Desc" = "Financial ledger, payment gateways, and settlements";
+"More_Audit_Desc" = "Inspect administrative operations and audit logs";
+"More_Commerce_Title" = "Catalog & Content Governance";
+"More_Commerce_Subtitle" = "Categories, marketing banners, and pet listings";
+"More_Categories_Desc" = "Taxonomy, species hierarchy, and breeds";
+"More_Banners_Desc" = "Manage homepage sliders and promotional campaigns";
+"More_Listings_Desc" = "Review customer listings and instant moderation";
+"More_Session_Title" = "System Environment & Session";
+"More_Profile_Button" = "View Profile";
+"More_Settings_Launch" = "Launch Sovereign Control Center";
+"More_Tag_AppCheck" = "App Check Active";
+"More_Tag_Cluster" = "pure-pets-49199";
+"More_Tag_Version" = "Version v6.2.0";
+"More_Switch_Branch" = "Switch Branch";
 
+/* NextGen V6 Operations Command Deck */
+"Operations_Horizon_Title" = "Operations";
+"Operations_Horizon_Subtitle" = "Logistics fleet, provider network, veterinary care, and platform governance";
+"Operations_Delivery_Hero_Title" = "Delivery Fleet & Logistics Command";
+"Operations_Delivery_Hero_Subtitle" = "Monitor dispatch routes, courier management, and order fulfillment";
+"Operations_Delivery_Hero_Action" = "Open Logistics Dispatch Center";
+"Operations_Delivery_Tag_Live" = "Live Transit Routes";
+"Operations_Delivery_Tag_Couriers" = "Courier Fleet Sync";
+"Operations_Providers_Station_Title" = "Provider & Merchant Ecosystem";
+"Operations_Providers_Station_Subtitle" = "Applications, subscription tiers, feature clearances, and payouts";
+"Operations_Provider_Apps_Desc" = "Review and verify new merchant and clinic applications";
+"Operations_Provider_Plans_Desc" = "Configure monthly and annual subscription tiers";
+"Operations_Provider_Features_Desc" = "Manage partner feature permissions and clearances";
+"Operations_Provider_Accounting_Desc" = "Financial settlements, commissions, and merchant balances";
+"Operations_Care_Station_Title" = "Veterinary, Boarding & Care Desk";
+"Operations_Care_Station_Subtitle" = "Clinical network, pet resort boarding, and care services";
+"Operations_Vets_Desc" = "Manage veterinary network, clinics, and health records";
+"Operations_Hotel_Desc" = "Suite reservations, boarding guests, and occupancy rates";
+"Operations_Services_Desc" = "Grooming services, training packages, and field pet care";
+"Operations_Field_Station_Title" = "Branches & Field Infrastructure";
+"Operations_Field_Station_Subtitle" = "Distribution hubs, physical branches, and authorized agents";
+"Operations_Branches_Desc" = "Manage branch locations, geo-fencing, and operating hours";
+"Operations_Agents_Desc" = "Authorized franchise agents and regional representatives";
+"Operations_Platform_Station_Title" = "Platform Experience & Discovery Governance";
+"Operations_Platform_Station_Subtitle" = "Home discovery feed, curated shelves, and trust & safety";
+"Operations_HomeControl_Desc" = "Curate homepage shelves and discovery carousels";
+"Operations_Moderation_Desc" = "Review flagged content, moderation queues, and safety";
+
+/* NextGen V6 Provider Ecosystem Sovereign Hub */
+"Providers_Management_Title" = "Provider Ecosystem Management";
+"Providers_Horizon_Subtitle" = "Merchant application queue, partner tiers, capability matrix & payouts";
+"Providers_Radar_Active" = "Live Radar • Onboarding Requests";
+"Providers_Triage_Decide" = "Review Decision";
+"Providers_Triage_ViewDossier" = "View Full Dossier";
+"Providers_Filter_AllTypes" = "All Categories";
+"Providers_Type_Store" = "Commercial Stores";
+"Providers_Type_Clinic" = "Veterinary Clinics";
+"Providers_Type_Delivery" = "Delivery Fleets";
+"Providers_Type_Services" = "Care & Services";
+"Providers_iPad_Triage_Title" = "Provider Triage & Decision Console";
+"Providers_iPad_Queue_Title" = "Merchant Onboarding Registry";
+"Providers_Telemetry_LiveStatus" = "Ecosystem Active";
+"Providers_TotalCount_Format" = "%@ Registered Requests";

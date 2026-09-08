@@ -484,18 +484,17 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
         self.trailingContent = trailingContent()
     }
 
-    private var statusBarHeight: CGFloat {
+    private var topSpacing: CGFloat {
         if let customTopSpacing { return customTopSpacing }
-        if isModal { return 0 }
-        return PPStatusBarHelper.statusBarHeight
+        return 0
     }
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Top empty space above navigation bar items equal to status bar height
-            if statusBarHeight > 0 {
+            // Optional custom top spacing if explicitly requested by caller
+            if topSpacing > 0 {
                 Color.clear
-                    .frame(height: statusBarHeight)
+                    .frame(height: topSpacing)
             }
 
             HStack(spacing: 12) {

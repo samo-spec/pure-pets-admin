@@ -139,7 +139,7 @@ public struct PPListingModerationModel: Identifiable, Equatable, Sendable {
             if corpus.contains(token) { return .dogs }
         }
 
-        let falconTokens = ["صقر", "صقور", "شواهين", "شاهين", "حر", "جير", "falcon", "hawk", "raptor"]
+        let falconTokens = ["صقر", "صقور", "شواهين", "شاهين", "طير حر", "صقر جير", "falcon", "hawk", "raptor"]
         for token in falconTokens {
             if corpus.contains(token) { return .falcons }
         }
@@ -474,9 +474,11 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
     // MARK: - Publisher Filter Actions
 
     public func filterByPublisher(uid: String, name: String) {
+        let trimmedUID = uid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUID.isEmpty else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        activePublisherUIDFilter = uid
-        activePublisherName = name.isEmpty ? uid : name
+        activePublisherUIDFilter = trimmedUID
+        activePublisherName = name.isEmpty ? trimmedUID : name
         selectedFilter = .all
         searchQuery = ""
     }

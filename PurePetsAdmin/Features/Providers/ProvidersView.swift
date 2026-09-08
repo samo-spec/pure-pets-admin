@@ -64,7 +64,9 @@ private enum ProviderTheme {
 public struct AdminProvidersView: View {
     public var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var selectedTab: ProviderTab = .applications
+    @StateObject private var sharedViewModel = ProviderApplicationsViewModel()
 
     public init(onDismiss: (() -> Void)? = nil) {
         self.onDismiss = onDismiss
@@ -72,37 +74,206 @@ public struct AdminProvidersView: View {
 
     public var body: some View {
         NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+            GeometryReader { geometry in
+                let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+                let containerMaxWidth: CGFloat = isRegular ? 1200 : .infinity
 
-                VStack(spacing: 0) {
-                    dossierHeaderView
-                    providerTabPicker
-                    providerTabContent
+                ZStack(alignment: .top) {
+                    AdminSurface.background.ignoresSafeArea()
+
+                    VStack(spacing: 0) {
+                        // Sovereign Navigation Bar (Hugs status bar with zero excess gap)
+                        if isRegular {
+                            ipadHeaderBar
+                        } else {
+                            iphoneHeaderBar
+                            providerTabPicker
+                                .padding(.top, 4)
+                                .padding(.bottom, 6)
+                        }
+
+                        // Tab Content
+                        providerTabContent(isRegular: isRegular)
+                            .frame(maxWidth: containerMaxWidth)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
             }
             .navigationBarHidden(true)
+            .navigationBarBackButtonHidden(true)
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
-    // MARK: - Sovereign Header
-
-    private var dossierHeaderView: some View {
-        AdminSovereignNavigationBar(
-            title: Language.get("Providers_Management_Title", alter: "إدارة منظومة المزودين"),
-            subtitle: Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"),
-            onBack: {
-                if let onDismiss {
-                    onDismiss()
-                } else {
-                    dismiss()
-                }
+    // MARK: - iPhone Header Bar (Zero Excess Gap)
+    private var iphoneHeaderBar: some View {
+        HStack(spacing: 12) {
+            AdminSquircleBackButton {
+                handleDismiss()
             }
-        )
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(Language.get("Providers_Management_Title", alter: "إدارة منظومة المزودين"))
+                        .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 7, height: 7)
+                }
+
+                Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات"))
+                    .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            // Live Applications Count Badge
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(ProviderTheme.approved)
+                    .frame(width: 6, height: 6)
+                Text(Language.get("Live", alter: "مباشر"))
+                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                    .foregroundStyle(ProviderTheme.approved)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(ProviderTheme.approved.opacity(0.12), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(ProviderTheme.approved.opacity(0.25), lineWidth: 0.5)
+            )
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 6)
+        .padding(.bottom, 6)
+        .background(AdminSurface.background)
     }
 
+    // MARK: - iPad Aerospace Command Bar
+    private var ipadHeaderBar: some View {
+        HStack(alignment: .center, spacing: 14) {
+            // Wing 1: Back + Brand Title
+            HStack(spacing: 10) {
+                AdminSquircleBackButton {
+                    handleDismiss()
+                }
+
+                ZStack {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "storefront.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Providers_Management_Title", alter: "إدارة منظومة المزودين"))
+                        .font(PPBrandFont.bold(size: 18, relativeTo: .headline))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 6, height: 6)
+                        Text(Language.get("CommandCenter_Operations_Workspace", alter: "مساحة العمليات • تفعيل وإشراف المزودين"))
+                            .font(PPBrandFont.medium(size: 11, relativeTo: .caption2))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            // Center: Integrated Workspace Tabs inside Header Bar
+            HStack(spacing: 4) {
+                ForEach(ProviderTab.allCases, id: \.self) { tab in
+                    let isSelected = selectedTab == tab
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                            Text(tab.localizedTitle)
+                                .font(PPBrandFont.bold(size: 12.5, relativeTo: .caption))
+                        }
+                        .foregroundStyle(isSelected ? Color.white : AdminSurface.primaryText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            isSelected ? AdminSurface.primary : AdminSurface.control,
+                            in: Capsule(style: .continuous)
+                        )
+                    }
+                    .buttonStyle(ProviderPressStyle())
+                }
+            }
+            .padding(4)
+            .background(AdminSurface.control, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.4), lineWidth: 0.75)
+            )
+
+            Spacer(minLength: 8)
+
+            // Wing 2: Telemetry Capsule + Refresh Action
+            HStack(spacing: 8) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(ProviderTheme.approved)
+                        .frame(width: 6, height: 6)
+                    Text("\(sharedViewModel.applications.count) " + Language.get("Providers_TotalApps_Short", alter: "طلب مزود"))
+                        .font(PPBrandFont.bold(size: 12, relativeTo: .caption))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.control, in: Capsule(style: .continuous))
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    sharedViewModel.fetch()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.control)
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+                    }
+                }
+                .buttonStyle(ProviderPressStyle())
+            }
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(AdminSurface.background)
+    }
+
+    private func handleDismiss() {
+        if let onDismiss {
+            onDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
+    // MARK: - iPhone Tab Picker
     private var providerTabPicker: some View {
         HStack(spacing: 6) {
             ForEach(ProviderTab.allCases, id: \.self) { tab in
@@ -115,12 +286,26 @@ public struct AdminProvidersView: View {
                 } label: {
                     HStack(spacing: 5) {
                         Image(systemName: tab.icon)
-                            .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+                            .font(.system(size: 11.5, weight: isSelected ? .bold : .medium))
                         Text(tab.localizedTitle)
                             .font(isSelected ? AdminType.captionBold : AdminType.caption1)
+
+                        if tab == .applications && sharedViewModel.pendingCount > 0 {
+                            Text("\(sharedViewModel.pendingCount)")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(
+                                    isSelected
+                                        ? Color.white.opacity(0.28)
+                                        : ProviderTheme.pending,
+                                    in: Capsule(style: .continuous)
+                                )
+                                .foregroundStyle(.white)
+                        }
                     }
                     .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
-                    .frame(maxWidth: .infinity, minHeight: 40)
+                    .frame(maxWidth: .infinity, minHeight: 38)
                     .background(
                         isSelected
                             ? AnyView(
@@ -146,14 +331,13 @@ public struct AdminProvidersView: View {
             }
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
-        .padding(.vertical, 6)
     }
 
     @ViewBuilder
-    private var providerTabContent: some View {
+    private func providerTabContent(isRegular: Bool) -> some View {
         switch selectedTab {
         case .applications:
-            AdminProviderApplicationsView()
+            AdminProviderApplicationsView(viewModel: sharedViewModel, isRegular: isRegular)
         case .plans:
             AdminLegacyViewControllerWrapper { PPProviderPlansViewController() }
         case .features:
@@ -236,15 +420,38 @@ final class ProviderApplicationsViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Robust Merchant Display Name Resolver (Never Blank)
+    static func resolveDisplayName(for application: PPProviderApplication) -> String {
+        let form = application.form
+        let candidates: [Any?] = [
+            form["businessName"],
+            form["fullName"],
+            form["companyName"],
+            form["legalName"],
+            form["storeName"],
+            form["name"],
+            application.userSummary["displayName"],
+            application.userSummary["name"],
+            form["phone"],
+            application.userId,
+            application.applicationID
+        ]
+
+        for candidate in candidates {
+            if let str = candidate as? String {
+                let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    return trimmed
+                }
+            }
+        }
+        return Language.get("Providers_Applications_UnknownApplicant", alter: "طلب مزود خدمة")
+    }
+
     var filteredApps: [PPProviderApplication] {
         let searched = searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? applications : applications.filter { app in
             let q = searchText.lowercased()
-            let name = (app.form["businessName"] as? String)
-                ?? (app.form["fullName"] as? String)
-                ?? (app.form["companyName"] as? String)
-                ?? (app.form["legalName"] as? String)
-                ?? (app.userSummary["displayName"] as? String)
-                ?? app.userId
+            let name = Self.resolveDisplayName(for: app)
             let email = (app.form["email"] as? String) ?? (app.userSummary["email"] as? String) ?? ""
             let phone = (app.form["phone"] as? String) ?? (app.userSummary["phone"] as? String) ?? ""
             let city = (app.form["city"] as? String) ?? ""
@@ -323,11 +530,19 @@ final class ProviderApplicationsViewModel: ObservableObject {
 
 // MARK: - Reimagined Provider Applications Queue Screen
 
-public struct AdminProviderApplicationsView: View {
-    @StateObject private var viewModel = ProviderApplicationsViewModel()
+struct AdminProviderApplicationsView: View {
+    @ObservedObject var viewModel: ProviderApplicationsViewModel
+    var isRegular: Bool = false
     @State private var spinAngle: Double = 0
     
-    public init() {}
+    init(viewModel: ProviderApplicationsViewModel? = nil, isRegular: Bool = false) {
+        if let vm = viewModel {
+            self.viewModel = vm
+        } else {
+            self.viewModel = ProviderApplicationsViewModel()
+        }
+        self.isRegular = isRegular
+    }
     
     public var body: some View {
         ZStack {
@@ -340,7 +555,7 @@ public struct AdminProviderApplicationsView: View {
                     applicationsListSection
                 }
                 .padding(.horizontal, AdminSpacing.screenMargin)
-                .padding(.top, 10)
+                .padding(.top, 8)
                 .padding(.bottom, 48)
             }
             .refreshable {
@@ -383,7 +598,9 @@ public struct AdminProviderApplicationsView: View {
             ProviderReviewDecisionSheet(application: app, viewModel: viewModel)
         }
         .onAppear {
-            viewModel.fetch()
+            if viewModel.applications.isEmpty {
+                viewModel.fetch()
+            }
         }
     }
     
@@ -404,13 +621,13 @@ public struct AdminProviderApplicationsView: View {
                     }
                     
                     Text(Language.get("Providers_Applications_HeroTitle", alter: "طلبات انضمام المزودين"))
-                        .font(AdminType.title2)
+                        .font(PPBrandFont.bold(size: isRegular ? 24 : 20, relativeTo: .title2))
                         .foregroundColor(AdminSurface.primaryText)
                     
                     Text(Language.get("Providers_Applications_HeroSubtitle", alter: "فحص الأهلية التجارية، تدقيق التراخيص والمستندات، واعتماد تفعيل المتاجر والعيادات."))
                         .font(AdminType.caption1)
                         .foregroundColor(AdminCommandInk.secondary)
-                        .lineLimit(2)
+                        .lineLimit(isRegular ? 1 : 2)
                 }
                 
                 Spacer(minLength: 8)
@@ -436,25 +653,31 @@ public struct AdminProviderApplicationsView: View {
                 .accessibilityLabel(Language.get("Refresh", alter: "تحديث"))
             }
             
-            // 3-Metric Horizontal Deck
+            // 3-Metric Horizontal Deck (Interactive Triage Stations)
             HStack(spacing: 10) {
-                metricTile(
+                interactiveMetricTile(
                     title: Language.get("Providers_Pending", alter: "بانتظار القرار"),
+                    subtitle: Language.get("Providers_Pending_Sub", alter: "تحتاج مراجعة"),
                     count: viewModel.pendingCount,
                     color: ProviderTheme.pending,
-                    icon: "hourglass"
+                    icon: "hourglass",
+                    targetFilter: .pending
                 )
-                metricTile(
+                interactiveMetricTile(
                     title: Language.get("Providers_Approved", alter: "مقبول ومفعّل"),
+                    subtitle: Language.get("Providers_Approved_Sub", alter: "متاجر نشطة"),
                     count: viewModel.approvedCount,
                     color: ProviderTheme.approved,
-                    icon: "checkmark.seal.fill"
+                    icon: "checkmark.seal.fill",
+                    targetFilter: .approved
                 )
-                metricTile(
+                interactiveMetricTile(
                     title: Language.get("Providers_Rejected", alter: "مرفوض"),
+                    subtitle: Language.get("Providers_Rejected_Sub", alter: "غير مستوفٍ"),
                     count: viewModel.rejectedCount,
                     color: ProviderTheme.rejected,
-                    icon: "xmark.octagon.fill"
+                    icon: "xmark.octagon.fill",
+                    targetFilter: .rejected
                 )
             }
             
@@ -475,32 +698,45 @@ public struct AdminProviderApplicationsView: View {
         )
     }
     
-    private func metricTile(title: String, count: Int, color: Color, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(color)
-                Spacer()
-                Text("\(count)")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .foregroundStyle(color)
+    private func interactiveMetricTile(title: String, subtitle: String, count: Int, color: Color, icon: String, targetFilter: ProviderApplicationsViewModel.AppFilter) -> some View {
+        let isFilterActive = viewModel.selectedFilter == targetFilter
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                viewModel.selectedFilter = isFilterActive ? .all : targetFilter
             }
-            Text(title)
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(1)
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(color)
+                    Spacer()
+                    Text("\(count)")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(color)
+                }
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .font(PPBrandFont.regular(size: 10, relativeTo: .caption2))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(color.opacity(isFilterActive ? 0.16 : 0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(color.opacity(isFilterActive ? 0.70 : 0.25), lineWidth: isFilterActive ? 1.5 : 0.75)
+            )
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(color.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(color.opacity(0.25), lineWidth: 0.75)
-        )
+        .buttonStyle(ProviderPressStyle())
     }
     
     private var distributionSpectrum: some View {
@@ -642,7 +878,7 @@ public struct AdminProviderApplicationsView: View {
         }
     }
     
-    // MARK: - Applications List
+    // MARK: - Applications List Section (iPad 2-Column Bento vs iPhone Stack)
     
     @ViewBuilder
     private var applicationsListSection: some View {
@@ -696,14 +932,34 @@ public struct AdminProviderApplicationsView: View {
             .frame(maxWidth: .infinity, minHeight: 220)
             .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         } else {
-            LazyVStack(spacing: 12) {
-                ForEach(viewModel.filteredApps, id: \.applicationID) { app in
-                    PPProviderApplicationCard(application: app) {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        viewModel.selectedDetailApp = app
-                    } onReviewAction: {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        viewModel.reviewTargetApp = app
+            if isRegular {
+                // iPad 2-Column Responsive Bento Grid
+                let columns = [
+                    GridItem(.flexible(), spacing: 14),
+                    GridItem(.flexible(), spacing: 14)
+                ]
+                LazyVGrid(columns: columns, spacing: 14) {
+                    ForEach(viewModel.filteredApps, id: \.applicationID) { app in
+                        PPProviderApplicationCard(application: app, isRegular: true) {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.selectedDetailApp = app
+                        } onReviewAction: {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            viewModel.reviewTargetApp = app
+                        }
+                    }
+                }
+            } else {
+                // iPhone High-Velocity Stack
+                LazyVStack(spacing: 12) {
+                    ForEach(viewModel.filteredApps, id: \.applicationID) { app in
+                        PPProviderApplicationCard(application: app, isRegular: false) {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            viewModel.selectedDetailApp = app
+                        } onReviewAction: {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            viewModel.reviewTargetApp = app
+                        }
                     }
                 }
             }
@@ -715,6 +971,7 @@ public struct AdminProviderApplicationsView: View {
 
 private struct PPProviderApplicationCard: View {
     let application: PPProviderApplication
+    var isRegular: Bool = false
     let onTap: () -> Void
     let onReviewAction: () -> Void
     
@@ -727,7 +984,7 @@ private struct PPProviderApplicationCard: View {
         
         Button(action: onTap) {
             VStack(alignment: .leading, spacing: 12) {
-                // Top Header Row: Monogram + Name + Type + Status Pill
+                // Top Header Row: Emblem + Name + Type + Status Pill
                 HStack(alignment: .center, spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -740,7 +997,7 @@ private struct PPProviderApplicationCard: View {
                     
                     VStack(alignment: .leading, spacing: 3) {
                         Text(name)
-                            .font(AdminType.headline)
+                            .font(PPBrandFont.bold(size: 16, relativeTo: .headline))
                             .foregroundStyle(AdminSurface.primaryText)
                             .lineLimit(1)
                         
@@ -856,12 +1113,7 @@ private struct PPProviderApplicationCard: View {
     }
     
     private var resolvedName: String {
-        (application.form["businessName"] as? String)
-            ?? (application.form["fullName"] as? String)
-            ?? (application.form["companyName"] as? String)
-            ?? (application.form["legalName"] as? String)
-            ?? (application.userSummary["displayName"] as? String)
-            ?? application.userId
+        ProviderApplicationsViewModel.resolveDisplayName(for: application)
     }
     
     private var resolvedCity: String? {
@@ -889,7 +1141,7 @@ private struct PPProviderApplicationCard: View {
     }
 }
 
-// MARK: - Reimagined Provider Application Detail / Dossier View
+// MARK: - Reimagined Provider Application Detail / Dossier View (Zero Gap & Full iPad Support)
 
 public struct AdminProviderApplicationDetailView: View {
     let application: PPProviderApplication
@@ -897,6 +1149,7 @@ public struct AdminProviderApplicationDetailView: View {
     var isPushMode: Bool = true
     var onBack: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingReviewSheet = false
     @State private var copiedField: String? = nil
     
@@ -913,34 +1166,40 @@ public struct AdminProviderApplicationDetailView: View {
     }
     
     public var body: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                dossierHeaderNav
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-                    .background(AdminSurface.background)
+        GeometryReader { geometry in
+            let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+            let containerMaxWidth: CGFloat = isRegular ? 1200 : .infinity
 
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        heroDossierCard
-                        identifiersMatrix
-                        applicantAndBusinessSection
-                        commercialSection
-                        planSection
-                        reviewHistorySection
+            ZStack(alignment: .top) {
+                AdminSurface.background.ignoresSafeArea()
+                
+                VStack(spacing: 0) {
+                    // Header Nav with zero gap above status bar
+                    dossierHeaderNav
+                    
+                    ScrollView {
+                        if isRegular {
+                            // iPad 2-Column Asymmetric Flight Deck
+                            ipadDossierLayout
+                                .padding(.horizontal, AdminSpacing.screenMargin)
+                                .padding(.top, 10)
+                                .padding(.bottom, 60)
+                                .frame(maxWidth: containerMaxWidth)
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            // iPhone High-Velocity Executive Stack
+                            iphoneDossierLayout
+                                .padding(.horizontal, AdminSpacing.screenMargin)
+                                .padding(.top, 10)
+                                .padding(.bottom, isPending ? 90 : 40)
+                        }
                     }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-                    .padding(.top, 10)
-                    .padding(.bottom, 90)
                 }
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if isPending {
-                decisionDock
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if isPending && !isRegular {
+                    decisionDock
+                }
             }
         }
         .sheet(isPresented: $showingReviewSheet) {
@@ -951,20 +1210,140 @@ public struct AdminProviderApplicationDetailView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
     
-    // MARK: - Sovereign Dossier Navigation Header
+    // MARK: - Sovereign Dossier Navigation Header (Zero Top Gap)
     
     private var dossierHeaderNav: some View {
-        AdminSovereignNavigationBar(
-            title: resolvedName,
-            subtitle: Language.get("Providers_Dossier_Breadcrumb", alter: "ملف طلب المزود"),
-            isModal: !isPushMode,
-            onBack: {
+        let statusTone = ProviderTheme.tone(for: application.status)
+        return HStack(spacing: 12) {
+            AdminSquircleBackButton {
                 if let onBack = onBack {
                     onBack()
                 } else {
                     dismiss()
                 }
             }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(resolvedName)
+                    .font(PPBrandFont.bold(size: 17, relativeTo: .headline))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+                
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusTone.color)
+                        .frame(width: 6, height: 6)
+                    Text(Language.get("Providers_Dossier_Breadcrumb", alter: "ملف طلب المزود"))
+                        .font(PPBrandFont.medium(size: 11.5, relativeTo: .caption))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+            
+            Spacer(minLength: 4)
+            
+            // Status Tag in Navigation Header
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(statusTone.color)
+                    .frame(width: 6, height: 6)
+                Text(statusTone.text)
+                    .font(PPBrandFont.bold(size: 11, relativeTo: .caption2))
+                    .foregroundStyle(statusTone.color)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(statusTone.color.opacity(0.12), in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(statusTone.color.opacity(0.25), lineWidth: 0.5)
+            )
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 6)
+        .padding(.bottom, 8)
+        .background(AdminSurface.background)
+    }
+
+    // MARK: - iPhone Layout Stack
+    private var iphoneDossierLayout: some View {
+        LazyVStack(spacing: 16) {
+            heroDossierCard
+            identifiersMatrix
+            applicantAndBusinessSection
+            commercialSection
+            planSection
+            reviewHistorySection
+        }
+    }
+
+    // MARK: - iPad 2-Column Asymmetric Flight Deck
+    private var ipadDossierLayout: some View {
+        HStack(alignment: .top, spacing: 18) {
+            // Leading Wing (410pt): Identity, Quick Contact, Review History & Action Dock
+            VStack(spacing: 16) {
+                heroDossierCard
+                if isPending {
+                    decisionCardIPad
+                }
+                reviewHistorySection
+            }
+            .frame(width: 410)
+
+            // Trailing Wing (Flexible): Identifiers, Commercial Credentials, Plans & Contact Details
+            VStack(spacing: 16) {
+                identifiersMatrix
+                commercialSection
+                planSection
+                applicantAndBusinessSection
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var decisionCardIPad: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(ProviderTheme.pending)
+                Text(Language.get("Providers_Decision_Title", alter: "اتخاذ القرار الإداري"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+            }
+
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                showingReviewSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 16, weight: .bold))
+                    Text(Language.get("Providers_TakeDecision_CTA", alter: "إصدار القرار الإداري الآن"))
+                        .font(AdminType.headline)
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(
+                    LinearGradient(
+                        colors: [ProviderTheme.pending, ProviderTheme.pending.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .shadow(color: ProviderTheme.pending.opacity(0.30), radius: 8, x: 0, y: 3)
+            }
+            .buttonStyle(ProviderPressStyle())
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(ProviderTheme.pending.opacity(0.35), lineWidth: 0.75)
         )
     }
     
@@ -974,9 +1353,11 @@ public struct AdminProviderApplicationDetailView: View {
         let statusTone = ProviderTheme.tone(for: application.status)
         let typeInfo = ProviderTheme.localizedType(application.providerType)
         let name = resolvedName
+        let phone = (application.form["phone"] as? String) ?? (application.userSummary["phone"] as? String) ?? ""
+        let email = (application.form["email"] as? String) ?? (application.userSummary["email"] as? String) ?? ""
         
-        return VStack(spacing: 16) {
-            HStack(spacing: 16) {
+        return VStack(spacing: 14) {
+            HStack(spacing: 14) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .fill(statusTone.color.opacity(0.14))
@@ -986,7 +1367,7 @@ public struct AdminProviderApplicationDetailView: View {
                         .foregroundStyle(statusTone.color)
                 }
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text(Language.get("Providers_Applicant_Title", alter: "طلب انضمام مقدم خدمة"))
                             .font(AdminType.caption2Bold)
@@ -1000,7 +1381,7 @@ public struct AdminProviderApplicationDetailView: View {
                     }
                     
                     Text(name)
-                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .font(PPBrandFont.bold(size: 20, relativeTo: .title3))
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
                     
@@ -1022,7 +1403,7 @@ public struct AdminProviderApplicationDetailView: View {
                     .foregroundStyle(statusTone.color)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 10)
+            .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(statusTone.color.opacity(0.10))
@@ -1054,15 +1435,64 @@ public struct AdminProviderApplicationDetailView: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Direct Contact Launchpad (Call, WhatsApp, Email)
+            HStack(spacing: 8) {
+                if !phone.isEmpty && phone != "—" {
+                    let cleanPhone = phone.replacingOccurrences(of: " ", with: "")
+                    if let telURL = URL(string: "tel://\(cleanPhone)") {
+                        Link(destination: telURL) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "phone.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text(Language.get("Call", alter: "اتصال"))
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .foregroundStyle(ProviderTheme.approved)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(ProviderTheme.approved.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+
+                    let waClean = cleanPhone.replacingOccurrences(of: "+", with: "")
+                    if let waURL = URL(string: "https://wa.me/\(waClean)") {
+                        Link(destination: waURL) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "message.fill")
+                                    .font(.system(size: 11, weight: .bold))
+                                Text("WhatsApp")
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .foregroundStyle(Color(red: 0.15, green: 0.70, blue: 0.35))
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(Color(red: 0.15, green: 0.70, blue: 0.35).opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+                }
+
+                if !email.isEmpty && email != "—", let mailURL = URL(string: "mailto:\(email)") {
+                    Link(destination: mailURL) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "envelope.fill")
+                                .font(.system(size: 11, weight: .bold))
+                            Text(Language.get("Email", alter: "بريد"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundStyle(AdminSurface.primary)
+                        .frame(maxWidth: .infinity, minHeight: 34)
+                        .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                }
+            }
         }
-        .padding(20)
+        .padding(18)
         .background(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(AdminSurface.surface)
-                .shadow(color: Color.black.opacity(0.04), radius: 12, x: 0, y: 3)
+                .shadow(color: Color.black.opacity(0.04), radius: 10, x: 0, y: 3)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(statusTone.color.opacity(0.25), lineWidth: 0.75)
         )
     }
@@ -1500,12 +1930,7 @@ public struct AdminProviderApplicationDetailView: View {
     }
     
     private var resolvedName: String {
-        (application.form["businessName"] as? String)
-            ?? (application.form["fullName"] as? String)
-            ?? (application.form["companyName"] as? String)
-            ?? (application.form["legalName"] as? String)
-            ?? (application.userSummary["displayName"] as? String)
-            ?? application.userId
+        ProviderApplicationsViewModel.resolveDisplayName(for: application)
     }
     
     private var nextMoveIcon: String {

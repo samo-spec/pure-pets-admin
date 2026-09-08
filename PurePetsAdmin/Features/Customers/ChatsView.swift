@@ -2150,90 +2150,542 @@ private struct CustomerQuickDossierSheet: View {
     }
 }
 
-// MARK: - Support Context Detail Modal Sheet
+// MARK: - Support Context Detail Modal Sheet (NextGen V6 Flight Deck HUD)
 
 @available(iOS 16.0, *)
 private struct SupportContextDetailSheet: View {
     let context: SupportChatContextDescriptor
+    let viewModel: AdminSupportThreadViewModel?
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var copiedToken = false
+    @State private var copiedItemKey: String? = nil
+    @State private var toastMessage: String? = nil
+    @State private var showToast = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // Header card
-                    VStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(context.category.accentColor.opacity(0.15))
-                                .frame(width: 64, height: 64)
-                            Image(systemName: context.category.iconName)
-                                .font(.system(size: 28, weight: .semibold))
-                                .foregroundColor(context.category.accentColor)
-                        }
+            ZStack(alignment: .top) {
+                AdminSurface.background.ignoresSafeArea()
 
-                        Text(context.title)
-                            .font(AdminType.title3)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .multilineTextAlignment(.center)
-
-                        Text(context.category.localizedCategoryName)
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(context.category.accentColor)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(context.category.accentColor.opacity(0.12), in: Capsule())
-                    }
-                    .padding(.top, 16)
-
-                    // Metadata Matrix Table
-                    VStack(spacing: 1) {
-                        ForEach(context.metadataItems) { item in
-                            HStack {
-                                Text(item.label)
-                                    .font(AdminType.subheadline)
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                Spacer()
-                                Text(item.value)
-                                    .font(AdminType.subheadlineBold)
-                                    .foregroundColor(AdminSurface.primaryText)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
-                        }
-                    }
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 16))
-                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(AdminSurface.hairline))
-                    .padding(.horizontal, AdminSpacing.screenMargin)
-
-                    // Action Button
-                    VStack(spacing: 10) {
-                        Button {
-                            UIPasteboard.general.string = context.referenceId
-                            UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        } label: {
-                            Label(supportText("SupportContext_CopyRef", "نسخ المعرف المرجعي"), systemImage: "doc.on.doc")
-                                .font(AdminType.subheadlineBold)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 48)
-                                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 14))
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .padding(.horizontal, AdminSpacing.screenMargin)
+                // Atmospheric Ambient Aura matching category accent color
+                GeometryReader { geo in
+                    RadialGradient(
+                        gradient: Gradient(colors: [
+                            context.category.accentColor.opacity(0.18),
+                            context.category.accentColor.opacity(0.04),
+                            Color.clear
+                        ]),
+                        center: .top,
+                        startRadius: 10,
+                        endRadius: geo.size.width * 0.75
+                    )
+                    .frame(height: 280)
+                    .ignoresSafeArea()
                 }
-                .padding(.vertical, 16)
+
+                ScrollView {
+                    VStack(spacing: AdminSpacing.lg) {
+                        // 1. Hero Identity Chamber
+                        heroIdentityView
+
+                        // 2. Interactive Reference Token Command Bar ("The Crypto Pass")
+                        referenceTokenBar
+
+                        // 3. Operational Context Bento Matrix
+                        bentoMatrixView
+
+                        // 4. Omnichannel Operations Dock (Direct Contact & Profile Actions)
+                        omnichannelActionsDock
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.md)
+                    .padding(.bottom, AdminSpacing.xxl)
+                }
+
+                // In-Sheet Floating Toast Banner
+                if showToast, let msg = toastMessage {
+                    floatingToastView(message: msg)
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                        .zIndex(100)
+                }
             }
-            .background(AdminSurface.background.ignoresSafeArea())
             .navigationTitle(supportText("SupportContext_DetailTitle", "تفاصيل السياق"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(supportText("Close", "إغلاق")) { dismiss() }
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    .accessibilityLabel(supportText("Close", "إغلاق"))
                 }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+    }
+
+    // MARK: - 1. Hero Identity Chamber
+
+    private var heroIdentityView: some View {
+        VStack(spacing: AdminSpacing.md) {
+            ZStack {
+                // Outer subtle glow ring
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(context.category.accentColor.opacity(0.12))
+                    .frame(width: 84, height: 84)
+
+                // Main card surface
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                context.category.accentColor.opacity(0.22),
+                                context.category.accentColor.opacity(0.08)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 76, height: 76)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        context.category.accentColor.opacity(0.55),
+                                        context.category.accentColor.opacity(0.10)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.5
+                            )
+                    )
+                    .shadow(color: context.category.accentColor.opacity(0.16), radius: 12, y: 6)
+
+                // Icon / Avatar content
+                if context.category == .customerIntelligence,
+                   let avatarUrl = viewModel?.customerAvatarUrl,
+                   !avatarUrl.isEmpty,
+                   let url = URL(string: avatarUrl) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill().frame(width: 76, height: 76).clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        } else {
+                            Image(systemName: context.category.iconName)
+                                .font(.system(size: 34, weight: .bold))
+                                .foregroundColor(context.category.accentColor)
+                        }
+                    }
+                } else {
+                    Image(systemName: context.category.iconName)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundColor(context.category.accentColor)
+                }
+
+                // Verification micro-badge on corner (if verified customer)
+                if viewModel?.isCustomerVerified ?? false {
+                    ZStack {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 22, height: 22)
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 18))
+                            .foregroundColor(Color(uiColor: .ppInfo))
+                    }
+                    .offset(x: Language.isRTL() ? -28 : 28, y: 28)
+                }
+            }
+
+            // Title & Subtitle Hierarchy
+            VStack(spacing: 6) {
+                Text(context.title)
+                    .font(AdminType.title3)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                // Twin Pill Ribbon (Category Capsule + Live Status Capsule)
+                HStack(spacing: 8) {
+                    // Category Capsule
+                    HStack(spacing: 5) {
+                        Image(systemName: context.category.iconName)
+                            .font(.system(size: 10, weight: .bold))
+                        Text(context.category.localizedCategoryName)
+                            .font(AdminType.caption2Bold)
+                    }
+                    .foregroundColor(context.category.accentColor)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(context.category.accentColor.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(context.category.accentColor.opacity(0.25), lineWidth: 0.75))
+
+                    // Status Pill with Live Status Indicator
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(context.statusColor)
+                            .frame(width: 6, height: 6)
+                        Text(context.statusText)
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(context.statusColor)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(context.statusColor.opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(context.statusColor.opacity(0.25), lineWidth: 0.75))
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: - 2. Reference Token Command Bar ("The Crypto Pass")
+
+    private var referenceTokenBar: some View {
+        Button {
+            triggerCopy(text: context.referenceId, label: supportText("SupportContext_ReferenceToken", "الرمز المرجعي"))
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                copiedToken = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                withAnimation { copiedToken = false }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                // Token glyph badge
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(context.category.accentColor.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "number")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(context.category.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(supportText("SupportContext_ReferenceToken", "الرمز المرجعي"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Text(context.referenceId.isEmpty ? "-" : context.referenceId)
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Copy indicator button
+                HStack(spacing: 4) {
+                    Image(systemName: copiedToken ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(copiedToken ? supportText("Copied", "تم النسخ ✓") : supportText("SupportContext_TapToCopy", "اضغط للنسخ"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundColor(copiedToken ? Color(uiColor: .ppSuccess) : AdminSurface.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    (copiedToken ? Color(uiColor: .ppSuccess) : AdminSurface.primary).opacity(0.10),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().stroke(
+                        (copiedToken ? Color(uiColor: .ppSuccess) : AdminSurface.primary).opacity(0.3),
+                        lineWidth: 1
+                    )
+                )
+            }
+            .padding(AdminSpacing.md)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(
+                        copiedToken ? Color(uiColor: .ppSuccess).opacity(0.5) : AdminSurface.hairline,
+                        lineWidth: copiedToken ? 1.5 : 1
+                    )
+            )
+            .shadow(color: AdminShadow.card.color, radius: AdminShadow.card.radius, y: AdminShadow.card.y)
+        }
+        .buttonStyle(ScaleTouchButtonStyle())
+        .accessibilityLabel("\(supportText("SupportContext_ReferenceToken", "الرمز المرجعي")): \(context.referenceId)")
+        .accessibilityHint(supportText("SupportContext_TapToCopy", "اضغط للنسخ"))
+    }
+
+    // MARK: - 3. Operational Context Bento Matrix
+
+    private var bentoMatrixView: some View {
+        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+            Text(supportText("SupportContext_ContextData", "بيانات السياق التشغيلي"))
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(.horizontal, 4)
+
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                // Tile 1: Primary Metric Highlight Tile
+                bentoTile(
+                    icon: "sparkles",
+                    iconColor: context.category.accentColor,
+                    label: supportText("SupportContext_ActiveSession", "المؤشر الرئيسي"),
+                    value: context.primaryMetric.isEmpty ? context.category.localizedCategoryName : context.primaryMetric,
+                    canCopy: false
+                )
+
+                // Tile 2: Platform / Channel Environment
+                bentoTile(
+                    icon: platformIcon(for: context.platform),
+                    iconColor: Color(uiColor: .ppPrimary),
+                    label: supportText("SupportContext_Platform", "بيئة التشغيل"),
+                    value: context.platform.isEmpty ? "iOS App" : context.platform,
+                    canCopy: false
+                )
+
+                // Dynamic Metadata Tiles from Context
+                ForEach(context.metadataItems) { item in
+                    bentoTile(
+                        icon: metadataIcon(for: item.label),
+                        iconColor: metadataColor(for: item.label),
+                        label: item.label,
+                        value: item.value,
+                        canCopy: true
+                    )
+                }
+            }
+        }
+    }
+
+    private func bentoTile(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        value: String,
+        canCopy: Bool
+    ) -> some View {
+        Button {
+            guard canCopy, !value.isEmpty, value != "-" else { return }
+            triggerCopy(text: value, label: label)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                copiedItemKey = label
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                if copiedItemKey == label {
+                    withAnimation { copiedItemKey = nil }
+                }
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(iconColor.opacity(0.12))
+                            .frame(width: 22, height: 22)
+                        Image(systemName: icon)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(iconColor)
+                    }
+
+                    Text(label)
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    if canCopy {
+                        Image(systemName: copiedItemKey == label ? "checkmark.circle.fill" : "doc.on.doc")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(copiedItemKey == label ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText.opacity(0.5))
+                    }
+                }
+
+                Text(value.isEmpty ? "-" : value)
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(AdminSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .topLeading)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                    .stroke(copiedItemKey == label ? Color(uiColor: .ppSuccess).opacity(0.5) : AdminSurface.hairline, lineWidth: 1)
+            )
+            .shadow(color: AdminShadow.card.color, radius: AdminShadow.card.radius, y: AdminShadow.card.y)
+        }
+        .buttonStyle(ScaleTouchButtonStyle())
+        .disabled(!canCopy)
+        .accessibilityLabel("\(label): \(value)")
+        .accessibilityHint(canCopy ? supportText("SupportContext_TapToCopy", "اضغط للنسخ") : "")
+    }
+
+    // MARK: - 4. Omnichannel Operations Dock
+
+    private var omnichannelActionsDock: some View {
+        VStack(spacing: 10) {
+            let phone = viewModel?.customerPhone ?? ""
+            if !phone.isEmpty {
+                HStack(spacing: 10) {
+                    // Direct Call Button
+                    Button {
+                        if let url = URL(string: "tel:\(phone)"), UIApplication.shared.canOpenURL(url) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "phone.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(supportText("Call", "اتصال"))
+                                .font(AdminType.subheadlineBold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                        .foregroundColor(.white)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.28), radius: 8, y: 3)
+                    }
+                    .buttonStyle(ScaleTouchButtonStyle())
+
+                    // Direct WhatsApp Button
+                    Button {
+                        let clean = phone.replacingOccurrences(of: "+", with: "").replacingOccurrences(of: " ", with: "")
+                        if let url = URL(string: "https://wa.me/\(clean)"), UIApplication.shared.canOpenURL(url) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "message.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(supportText("WhatsApp", "واتساب"))
+                                .font(AdminType.subheadlineBold)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(Color(red: 0.15, green: 0.78, blue: 0.45), in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                        .foregroundColor(.white)
+                        .shadow(color: Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.28), radius: 8, y: 3)
+                    }
+                    .buttonStyle(ScaleTouchButtonStyle())
+                }
+            }
+
+            // Customer Dossier Full Access Button
+            if let vm = viewModel, !vm.customerID.isEmpty {
+                Button {
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        vm.isShowingCustomerDossier = true
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.text.rectangle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                        Text(supportText("SupportContext_OpenDossier", "عرض ملف العميل الكامل"))
+                            .font(AdminType.subheadlineBold)
+                        Spacer()
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 48)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 1)
+                    )
+                    .foregroundColor(AdminSurface.primaryText)
+                }
+                .buttonStyle(ScaleTouchButtonStyle())
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: - Toast & Helpers
+
+    private func floatingToastView(message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(Color(uiColor: .ppSuccess))
+                .font(.system(size: 14, weight: .bold))
+            Text(message)
+                .font(AdminType.caption1Bold)
+                .foregroundColor(AdminSurface.primaryText)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color(uiColor: .ppSuccess).opacity(0.4), lineWidth: 1))
+        .shadow(color: Color.black.opacity(0.12), radius: 10, y: 5)
+        .padding(.top, 12)
+    }
+
+    private func triggerCopy(text: String, label: String) {
+        UIPasteboard.general.string = text
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        toastMessage = "\(label): \(supportText("Copied", "تم النسخ ✓"))"
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            showToast = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation(.easeOut(duration: 0.25)) {
+                showToast = false
+            }
+        }
+    }
+
+    private func platformIcon(for platform: String) -> String {
+        let p = platform.lowercased()
+        if p.contains("ios") || p.contains("apple") || p.contains("iphone") {
+            return "apple.logo"
+        } else if p.contains("android") {
+            return "phone.badge.waveform"
+        } else if p.contains("web") || p.contains("console") {
+            return "globe"
+        }
+        return "laptopcomputer.and.iphone"
+    }
+
+    private func metadataIcon(for label: String) -> String {
+        let l = label.lowercased()
+        if l.contains("عميل") || l.contains("customer") { return "person.fill" }
+        if l.contains("منصة") || l.contains("platform") { return "laptopcomputer.and.iphone" }
+        if l.contains("عضو") || l.contains("member") || l.contains("joined") || l.contains("تاريخ") || l.contains("date") { return "calendar" }
+        if l.contains("جوال") || l.contains("phone") { return "phone.fill" }
+        if l.contains("بريد") || l.contains("email") { return "envelope.fill" }
+        if l.contains("طلب") || l.contains("order") { return "bag.fill" }
+        if l.contains("سعر") || l.contains("price") || l.contains("مقابل") || l.contains("fee") { return "banknote.fill" }
+        if l.contains("سلالة") || l.contains("breed") || l.contains("نوع") { return "pawprint.fill" }
+        if l.contains("حالة") || l.contains("status") { return "shield.checkerboard" }
+        return "info.circle.fill"
+    }
+
+    private func metadataColor(for label: String) -> Color {
+        let l = label.lowercased()
+        if l.contains("عميل") || l.contains("customer") { return Color(uiColor: .ppPrimary) }
+        if l.contains("جوال") || l.contains("phone") { return Color(uiColor: .ppSuccess) }
+        if l.contains("عضو") || l.contains("تاريخ") || l.contains("date") { return Color.purple }
+        if l.contains("طلب") || l.contains("order") { return Color(red: 0.94, green: 0.44, blue: 0.28) }
+        if l.contains("سعر") || l.contains("price") { return Color(red: 0.15, green: 0.78, blue: 0.45) }
+        return AdminSurface.primary
+    }
+}
+
+// MARK: - Scale Touch Button Style
+
+private struct ScaleTouchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
@@ -2283,7 +2735,7 @@ struct SupportThreadView: View {
         }
         .sheet(isPresented: $viewModel.isShowingContextDetail) {
             if let context = viewModel.chatContext {
-                SupportContextDetailSheet(context: context)
+                SupportContextDetailSheet(context: context, viewModel: viewModel)
             }
         }
         .onAppear { viewModel.start() }

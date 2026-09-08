@@ -58,9 +58,7 @@ struct AdminAppShell: View {
                     .ignoresSafeArea()
 
                 case .operations:
-                    AdminModuleListView(
-                        tab: .operations,
-                        routes: available([.delivery, .providerApplications, .providerPlans, .providerFeatures, .providerAccounting, .branches, .agents, .homeControl, .services, .veterinarians, .moderation, .hotel]),
+                    AdminOperationsDeckView(
                         session: session,
                         router: router,
                         commandState: commandState,
@@ -69,9 +67,7 @@ struct AdminAppShell: View {
                     .ignoresSafeArea()
 
                 case .customers:
-                    AdminModuleListView(
-                        tab: .customers,
-                        routes: available([.users, .staff, .chats]),
+                    AdminPeopleDeckView(
                         session: session,
                         router: router,
                         commandState: commandState,
@@ -168,10 +164,14 @@ struct AdminAppShell: View {
     private var routeDestination: some View {
         if let route = router.presentedRoute {
             AdminRouteDestinationView(route: route, session: session, router: router)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationBarBackButtonHidden(true)
+                .navigationBarHidden(true)
+                .toolbar(.hidden, for: .navigationBar)
                 // UIKit continues to own both safe-area edges for legacy route
                 // containers; the push only replaces the former modal handoff.
                 .ignoresSafeArea()
-                .navigationBarHidden(true)
         } else {
             EmptyView()
         }
@@ -765,13 +765,17 @@ private struct AdminWorkDeckView: View {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .fill(Color(red: 0.09, green: 0.10, blue: 0.13))
                     .overlay(
-                        RadialGradient(
-                            colors: [AdminSurface.primary.opacity(0.35), Color.clear],
-                            center: Language.isRTL() ? .topLeading : .topTrailing,
-                            startRadius: 0,
-                            endRadius: 180
-                        )
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(
+                                RadialGradient(
+                                    colors: [AdminSurface.primary.opacity(0.35), Color.clear],
+                                    center: Language.isRTL() ? .topLeading : .topTrailing,
+                                    startRadius: 0,
+                                    endRadius: 180
+                                )
+                            )
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 22, style: .continuous)
                             .stroke(
@@ -1272,21 +1276,28 @@ private struct AdminWorkDeckView: View {
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .fill(Color(red: 0.08, green: 0.09, blue: 0.12))
                 .overlay(
-                    RadialGradient(
-                        colors: [AdminSurface.primary.opacity(0.32), Color.clear],
-                        center: Language.isRTL() ? .topLeading : .topTrailing,
-                        startRadius: 0,
-                        endRadius: 260
-                    )
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [AdminSurface.primary.opacity(0.32), Color.clear],
+                                center: Language.isRTL() ? .topLeading : .topTrailing,
+                                startRadius: 0,
+                                endRadius: 260
+                            )
+                        )
                 )
                 .overlay(
-                    RadialGradient(
-                        colors: [Color.blue.opacity(0.12), Color.clear],
-                        center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
-                        startRadius: 0,
-                        endRadius: 200
-                    )
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.blue.opacity(0.12), Color.clear],
+                                center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
+                                startRadius: 0,
+                                endRadius: 200
+                            )
+                        )
                 )
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
                         .stroke(
@@ -1698,10 +1709,10 @@ private struct AdminWorkDeckView: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color(uiColor: .ppSuccess).opacity(0.12))
-                    Image(systemName: "checkmark.shield.fill")
+                        .fill(pulseColor.opacity(0.12))
+                    Image(systemName: pulseSymbol)
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(Color(uiColor: .ppSuccess))
+                        .foregroundColor(pulseColor)
                 }
                 .frame(width: 40, height: 40)
 
@@ -1710,7 +1721,7 @@ private struct AdminWorkDeckView: View {
                         .font(AdminType.captionBold)
                         .foregroundColor(AdminSurface.secondaryText)
 
-                    Text(Language.get("CommandCenter_Health_Stable", alter: "كافة المؤشرات التشغيلية منتظمة"))
+                    Text(pulseTitle)
                         .font(AdminType.calloutBold)
                         .foregroundColor(AdminSurface.primaryText)
                 }
@@ -1729,6 +1740,38 @@ private struct AdminWorkDeckView: View {
             )
         }
         .buttonStyle(V6CardButtonStyle())
+    }
+
+    private var pulseTitle: String {
+        guard let snapshot = commandState.currentSnapshot else {
+            return Language.get("CommandCenter_Loading", alter: "جارٍ تحديث النبض...")
+        }
+        switch snapshot.health {
+        case .stable:
+            return Language.get("CommandCenter_Health_Stable", alter: "كافة المؤشرات التشغيلية منتظمة")
+        case let .attention(count):
+            return String(format: Language.get("CommandCenter_Health_Attention_Format", alter: "%d إجراءات تتطلب المتابعة"), count)
+        case let .partial(count):
+            return String(format: Language.get("CommandCenter_Health_Partial_Format", alter: "%d عمليات تحت الملاحظة"), count)
+        }
+    }
+
+    private var pulseSymbol: String {
+        guard let snapshot = commandState.currentSnapshot else { return "arrow.triangle.2.circlepath" }
+        switch snapshot.health {
+        case .stable: return "checkmark.shield.fill"
+        case .attention: return "exclamationmark.triangle.fill"
+        case .partial: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private var pulseColor: Color {
+        guard let snapshot = commandState.currentSnapshot else { return AdminSurface.primary }
+        switch snapshot.health {
+        case .stable: return Color(uiColor: .ppSuccess)
+        case .attention: return Color(uiColor: .ppWarning)
+        case .partial: return AdminSurface.primary
+        }
     }
 
     // MARK: - Tri-Vault Inventory Command Bay (Full Width, Zero Truncation)
@@ -1869,57 +1912,2090 @@ private struct AdminWorkDeckView: View {
     }
 }
 
+// MARK: - People & Human Capital Command Horizon (NextGen V6 Studio Architecture)
+
 @MainActor
-private struct AdminModuleListView: View {
-    let tab: AdminTab
-    let routes: [AdminRoute]
+private struct AdminPeopleDeckView: View {
     let session: AdminSession
     @ObservedObject var router: AdminRouter
     @ObservedObject var commandState: CommandCenterState
     let onOpenCommand: () -> Void
 
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var showingBranchSwitcher = false
+
+    private var isPadWide: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
             style: .contextDeck,
-            title: Language.get(tab.titleKey, alter: nil),
-            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
-            subtitle: detailText,
+            title: Language.get(AdminTab.customers.titleKey, alter: "الأشخاص"),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: "عمليات PURE PETS"),
+            subtitle: Language.get("CommandCenter_People_Detail", alter: "سجلات العملاء ووصول الفريق والمحادثات المتاحة لصلاحياتك."),
             showsContextFilament: false
         )
     }
 
-    private var detailText: String? {
-        let key: String?
-        switch tab {
-        case .work: key = "CommandCenter_Work_Detail"
-        case .operations: key = "CommandCenter_Operations_Detail"
-        case .customers: key = "CommandCenter_People_Detail"
-        default: key = nil
-        }
-        return key.map { Language.get($0, alter: nil) }
+    private var canUsers: Bool { AdminRoute.users.isAuthorized(for: session) }
+    private var canStaff: Bool { AdminRoute.staff.isAuthorized(for: session) }
+    private var canChats: Bool { AdminRoute.chats.isAuthorized(for: session) }
+
+    private var hasAnyAuthorizedRoute: Bool {
+        canUsers || canStaff || canChats
     }
 
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                PPAdminBranchSwitcherBar()
-
-                if AdminTab.command.isAuthorized(for: session) {
-                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
-                }
-
-                if routes.isEmpty {
+            Group {
+                if !hasAnyAuthorizedRoute {
                     AdminEmptyRoutesView()
+                        .padding(.horizontal, AdminShellMetric.pageMargin)
+                } else if isPadWide {
+                    iPadPeopleDeckLayout
                 } else {
-                    AdminRouteGroup(
-                        routes: routes,
-                        action: { router.present($0, session: session) }
-                    )
+                    iPhonePeopleDeckLayout
                 }
             }
-            .padding(.horizontal, AdminShellMetric.pageMargin)
             .padding(.bottom, 104)
         }
+        .sheet(isPresented: $showingBranchSwitcher) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    // MARK: - iPhone Tactile Layout
+
+    private var iPhonePeopleDeckLayout: some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            // 1. Branch Horizon Capsule
+            branchHorizonPill
+
+            // 2. Command Health Pulse Strip
+            if AdminTab.command.isAuthorized(for: session) {
+                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+            }
+
+            // 3. Hero Customer Intelligence Tile (Flagship Frontline)
+            if canUsers {
+                heroCustomerIntelligenceTile
+            }
+
+            // 4. Twin Human Capital Pillars (Staff Access + Support Chats)
+            if canStaff || canChats {
+                twinHumanCapitalRadar
+            }
+
+            // 5. Security Governance & Role Sentinel Card
+            if canStaff || canUsers {
+                securityGovernanceSentinelCard
+            }
+        }
+        .padding(.horizontal, AdminShellMetric.pageMargin)
+    }
+
+    // MARK: - iPad Countertop Command Deck Layout
+
+    private var iPadPeopleDeckLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Panoramic People Command Horizon Bar (Spans full width)
+            iPadPeopleHorizonBar
+
+            // 2. Dual Tactical Command Wings
+            HStack(alignment: .top, spacing: 20) {
+                // Wing A: Customer Intelligence Console + Live Support Dispatch
+                VStack(spacing: 18) {
+                    if canUsers {
+                        iPadCustomerIntelligenceConsole
+                    }
+
+                    if canChats {
+                        iPadSupportDispatchCard
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                // Wing B: Staff Governance Console + Identity Security Sentinel
+                VStack(spacing: 18) {
+                    if canStaff {
+                        iPadStaffAccessConsole
+                    }
+
+                    if canStaff || canUsers {
+                        iPadSecuritySentinelCard
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Shared / iPhone Components
+
+    private var branchHorizonPill: some View {
+        Button {
+            triggerHaptic(.light)
+            showingBranchSwitcher = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(branchStore.currentBranchDisplayName.isEmpty
+                             ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                             : branchStore.currentBranchDisplayName)
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                            Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 10))
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع النشط"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(Language.get("BranchContext_Switch_Action", alter: "تبديل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPhone Flagship Customer Intelligence Hero Tile
+
+    private var heroCustomerIntelligenceTile: some View {
+        Button {
+            triggerHaptic(.medium)
+            router.present(.users, session: session)
+        } label: {
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color(red: 0.09, green: 0.10, blue: 0.14))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .fill(
+                                RadialGradient(
+                                    colors: [AdminSurface.primary.opacity(0.35), Color.clear],
+                                    center: Language.isRTL() ? .topLeading : .topTrailing,
+                                    startRadius: 0,
+                                    endRadius: 190
+                                )
+                            )
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), Color.white.opacity(0.04)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.20), radius: 14, x: 0, y: 6)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .center) {
+                        HStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(AdminSurface.primary.opacity(0.20))
+                                    .frame(width: 36, height: 36)
+                                Image(systemName: "person.2.fill")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Language.get("People_Hero_Title", alter: "منظومة وسجلات العملاء"))
+                                    .font(AdminType.headline)
+                                    .foregroundColor(.white)
+
+                                if let count = commandState.snapshot?.business.users, count > 0 {
+                                    Text(verbatim: "#PP • \(count.formatted()) " + Language.get("People_Registered_Accounts", alter: "حساب مسجل"))
+                                        .font(PPBrandFont.bold(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.65))
+                                } else {
+                                    Text(Language.get("People_Verified_Directory", alter: "دليل العملاء المركزي المعتمد"))
+                                        .font(PPBrandFont.bold(size: 11))
+                                        .foregroundColor(Color.white.opacity(0.65))
+                                }
+                            }
+                        }
+
+                        Spacer()
+
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(Color(uiColor: .ppSuccess))
+                                .frame(width: 7, height: 7)
+                            Text(Language.get("People_Directory_Active", alter: "الدليل متصل"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(Language.get("People_Hero_Action_Header", alter: "فحص الحسابات والملفات الشخصية"))
+                            .font(AdminType.title3)
+                            .foregroundColor(.white)
+
+                        Text(Language.get("People_Hero_Subtitle", alter: "سجلات العملاء، ملفات الحيوانات، توثيق الحسابات، وضبط قيود الوصول الفورية."))
+                            .font(AdminType.footnote)
+                            .foregroundColor(Color.white.opacity(0.78))
+                            .lineLimit(2)
+                    }
+
+                    // Micro-Telemetry Feature Strip
+                    HStack(spacing: 12) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                            Text(Language.get("People_Verified_Accounts_Pill", alter: "حسابات موثقة"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.white.opacity(0.85))
+                        }
+
+                        Circle()
+                            .fill(Color.white.opacity(0.20))
+                            .frame(width: 3, height: 3)
+
+                        HStack(spacing: 5) {
+                            Image(systemName: "pawprint.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(AdminSurface.primary)
+                            Text(Language.get("People_Pet_Dossiers_Pill", alter: "ملفات الحيوانات"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.white.opacity(0.85))
+                        }
+
+                        Circle()
+                            .fill(Color.white.opacity(0.20))
+                            .frame(width: 3, height: 3)
+
+                        HStack(spacing: 5) {
+                            Image(systemName: "lock.shield.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppWarning))
+                            Text(Language.get("People_Identity_Security_Pill", alter: "حماية الهوية"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.white.opacity(0.85))
+                        }
+                    }
+                    .padding(.vertical, 4)
+
+                    HStack {
+                        HStack(spacing: 7) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(Language.get("People_Browse_Customers", alter: "استعراض دليل العملاء"))
+                                .font(AdminType.calloutBold)
+                            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(Color.white, in: Capsule())
+                        .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+
+                        Spacer()
+                    }
+                }
+                .padding(16)
+            }
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPhone Twin Human Capital Radar (Staff Access + Live Chats)
+
+    private var twinHumanCapitalRadar: some View {
+        HStack(spacing: 12) {
+            if canStaff {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.staff, session: session)
+                } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.14))
+                                Image(systemName: "person.badge.shield.checkmark.fill")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                            }
+                            .frame(width: 38, height: 38)
+
+                            Spacer()
+
+                            Text(verbatim: "Tier 1-3")
+                                .font(.system(size: 10, weight: .bold, design: .rounded))
+                                .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 2)
+                                .background(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.12), in: Capsule())
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Staff_Management", alter: "إدارة وصول الفريق"))
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(Language.get("People_Staff_Subtitle", alter: "الرتب والمستويات والصلاحيات"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(red: 0.38, green: 0.38, blue: 0.95))
+                                .frame(width: 5, height: 5)
+                            Text(Language.get("People_Active_Staff_Pill", alter: "فريق العمل النشط"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+
+            if canChats {
+                Button {
+                    triggerHaptic(.light)
+                    router.present(.chats, session: session)
+                } label: {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(red: 0.15, green: 0.68, blue: 0.75).opacity(0.14))
+                                Image(systemName: "bubble.left.and.bubble.right.fill")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.75))
+                            }
+                            .frame(width: 38, height: 38)
+
+                            Spacer()
+
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(Color(uiColor: .ppSuccess))
+                                    .frame(width: 6, height: 6)
+                                Text(Language.get("People_Chats_Live_Desk", alter: "مباشر"))
+                                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                                    .foregroundColor(Color(uiColor: .ppSuccess))
+                            }
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Chats", alter: "المحادثات"))
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+                                .lineLimit(1)
+
+                            Text(Language.get("People_Chats_Subtitle", alter: "خدمة العملاء والدعم الفوري"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color(red: 0.15, green: 0.68, blue: 0.75))
+                                .frame(width: 5, height: 5)
+                            Text(Language.get("People_Support_Desk_Ready", alter: "جاهز للمحادثات المباشرة"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.75))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+        }
+    }
+
+    // MARK: - iPhone Security Governance Sentinel Card
+
+    private var securityGovernanceSentinelCard: some View {
+        Button {
+            triggerHaptic(.light)
+            if canStaff {
+                router.present(.staff, session: session)
+            } else if canUsers {
+                router.present(.users, session: session)
+            }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color(red: 0.95, green: 0.62, blue: 0.18).opacity(0.12))
+                    Image(systemName: "shield.checkered")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(Color(red: 0.95, green: 0.62, blue: 0.18))
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("People_Security_Policy_Eyebrow", alter: "سياسات الأمان والحوكمة"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(red: 0.95, green: 0.62, blue: 0.18))
+
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 5, height: 5)
+                    }
+
+                    Text(Language.get("People_Security_Policy_Title", alter: "هيكلية الرتب والامتيازات ومستويات الوصول"))
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(Language.get("People_Security_Policy_Detail", alter: "عزل الصلاحيات الحساسة، حماية بيانات العملاء، وسجلات التدقيق المعتمدة."))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+            .padding(14)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPad Panoramic People Horizon Bar
+
+    private var iPadPeopleHorizonBar: some View {
+        HStack(spacing: 16) {
+            // Leading: Interactive Field Branch Context Button
+            Button {
+                triggerHaptic(.light)
+                showingBranchSwitcher = true
+            } label: {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 40, height: 40)
+                        Image(systemName: "building.2.crop.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 6) {
+                            Text(branchStore.currentBranchDisplayName.isEmpty
+                                 ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع الميداني")
+                                 : branchStore.currentBranchDisplayName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                    .font(PPBrandFont.bold(size: 11))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع الميداني النشط"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(8)
+                        .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Center: Live Registered Users Metric Counter
+            if let count = commandState.snapshot?.business.users, count > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "person.2.circle.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+
+                    Text(verbatim: "\(count.formatted())")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(AdminSurface.primaryText)
+
+                    Text(Language.get("People_Registered_Accounts", alter: "حساب مسجل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+
+            // Trailing: Officer Profile & Live Shift Indicator
+            HStack(spacing: 14) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Text(session.displayName.prefix(1))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(session.displayName)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(session.localizedRoleName)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Divider()
+                    .frame(height: 24)
+                    .background(AdminSurface.hairline)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.5), radius: 4)
+
+                    Text(Language.get("People_Directory_Active", alter: "الدليل متصل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - iPad Customer Intelligence Console (Wing A Flagship)
+
+    private var iPadCustomerIntelligenceConsole: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(Color(red: 0.08, green: 0.09, blue: 0.13))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [AdminSurface.primary.opacity(0.32), Color.clear],
+                                center: Language.isRTL() ? .topLeading : .topTrailing,
+                                startRadius: 0,
+                                endRadius: 260
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.14), Color.clear],
+                                center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
+                                startRadius: 0,
+                                endRadius: 220
+                            )
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.24), Color.white.opacity(0.05)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 18, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 18) {
+                // Header
+                HStack(alignment: .center) {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(AdminSurface.primary.opacity(0.22))
+                                .frame(width: 44, height: 44)
+                            Image(systemName: "person.2.fill")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text(Language.get("People_Console_Title", alter: "منصة العملاء والفريق"))
+                                    .font(AdminType.title3)
+                                    .foregroundColor(.white)
+
+                                Text(Language.get("People_Live_Sync", alter: "مزامنة فورية"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.18), in: Capsule())
+                            }
+
+                            Text(Language.get("People_Console_Eyebrow", alter: "وحدة استخبارات وحوكمة الأشخاص"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.white.opacity(0.65))
+                        }
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 8, height: 8)
+                            .shadow(color: Color(uiColor: .ppSuccess).opacity(0.6), radius: 5)
+                        Text(Language.get("People_Directory_Active", alter: "الدليل متصل"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 5)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.14), in: Capsule())
+                }
+
+                // Main Action Callout
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Language.get("People_Hero_Action_Header", alter: "فحص الحسابات والملفات الشخصية"))
+                        .font(AdminType.title2)
+                        .foregroundColor(.white)
+
+                    Text(Language.get("People_Hero_Subtitle", alter: "سجلات العملاء، ملفات الحيوانات، توثيق الحسابات، وضبط قيود الوصول الفورية."))
+                        .font(AdminType.callout)
+                        .foregroundColor(Color.white.opacity(0.78))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // 3 Capability Badges
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                        Text(Language.get("People_Verified_Accounts_Pill", alter: "حسابات موثقة"))
+                            .font(AdminType.footnote)
+                            .foregroundColor(Color.white.opacity(0.90))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "pawprint.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                        Text(Language.get("People_Pet_Dossiers_Pill", alter: "ملفات الحيوانات"))
+                            .font(AdminType.footnote)
+                            .foregroundColor(Color.white.opacity(0.90))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppWarning))
+                        Text(Language.get("People_Identity_Security_Pill", alter: "حماية الهوية"))
+                            .font(AdminType.footnote)
+                            .foregroundColor(Color.white.opacity(0.90))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+                }
+
+                // Primary Launch Bar
+                Button {
+                    triggerHaptic(.medium)
+                    router.present(.users, session: session)
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "person.crop.rectangle.stack.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(Language.get("People_Browse_Customers", alter: "استعراض دليل العملاء"))
+                            .font(AdminType.headline)
+                        Spacer()
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: Color.black.opacity(0.20), radius: 8, x: 0, y: 4)
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+            .padding(22)
+        }
+    }
+
+    // MARK: - iPad Support Dispatch Card (Wing A Secondary)
+
+    private var iPadSupportDispatchCard: some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(.chats, session: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(red: 0.15, green: 0.68, blue: 0.75).opacity(0.14))
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.75))
+                    }
+                    .frame(width: 44, height: 44)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Chats", alter: "المحادثات"))
+                            .font(AdminType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.get("People_Chats_Subtitle", alter: "خدمة العملاء والدعم الفوري"))
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 7, height: 7)
+                        Text(Language.get("People_Support_Desk_Ready", alter: "جاهز للمحادثات المباشرة"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                }
+
+                Text(Language.get("People_Hero_Subtitle", alter: "قنوات التواصل الفوري، دعم الطلبات والاستفسارات، وإدارة شكاوى ورعاية العملاء."))
+                    .font(AdminType.callout)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(2)
+
+                HStack {
+                    Text(Language.get("People_iPad_Open_Chats", alter: "دخول مركز محادثات الدعم"))
+                        .font(AdminType.headline)
+                        .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.75))
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.15, green: 0.68, blue: 0.75))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(red: 0.15, green: 0.68, blue: 0.75).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(18)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPad Staff Access Console (Wing B Primary)
+
+    private var iPadStaffAccessConsole: some View {
+        Button {
+            triggerHaptic(.light)
+            router.present(.staff, session: session)
+        } label: {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.14))
+                        Image(systemName: "person.badge.shield.checkmark.fill")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                    }
+                    .frame(width: 44, height: 44)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Staff_Management", alter: "إدارة وصول الفريق"))
+                            .font(AdminType.title3)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.get("People_Staff_Subtitle", alter: "الرتب والمستويات والصلاحيات"))
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Text(verbatim: "RBAC Matrix")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.12), in: Capsule())
+                }
+
+                // 3 Tier Hierarchy Summary Cards
+                VStack(spacing: 8) {
+                    HStack {
+                        Text(verbatim: "Tier 1")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+
+                        Text(Language.get("People_Role_Tier_1", alter: "السيادة وإدارة النظام (مالك، مدير نظام)"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    HStack {
+                        Text(verbatim: "Tier 2")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.12), in: Capsule())
+
+                        Text(Language.get("People_Role_Tier_2", alter: "مدراء العمليات والتحصيل والمخزون"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                    HStack {
+                        Text(verbatim: "Tier 3")
+                            .font(.system(size: 10, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+
+                        Text(Language.get("People_Role_Tier_3", alter: "الدعم الفني والخدمة الميدانية"))
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Spacer()
+                    }
+                    .padding(8)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+
+                HStack {
+                    Text(Language.get("People_iPad_Manage_Team", alter: "إدارة طاقم العمل والصلاحيات"))
+                        .font(AdminType.headline)
+                        .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.38, green: 0.38, blue: 0.95))
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(red: 0.38, green: 0.38, blue: 0.95).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(18)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - iPad Security Sentinel Card (Wing B Secondary)
+
+    private var iPadSecuritySentinelCard: some View {
+        Button {
+            triggerHaptic(.light)
+            onOpenCommand()
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(pulseColor.opacity(0.14))
+                    Image(systemName: pulseSymbol)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(pulseColor)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Language.get("People_Security_Policy_Eyebrow", alter: "سياسات الأمان والحوكمة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(pulseColor)
+
+                    Text(pulseTitle)
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(Language.get("People_Security_Health_Check", alter: "فحص سلامة الصلاحيات والتسويات الأمنية"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(Language.get("CommandCenter_Open_Detail", alter: "عرض"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(16)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - Pulse State Helpers
+
+    private var pulseTitle: String {
+        guard let snapshot = commandState.currentSnapshot else {
+            return Language.get("CommandCenter_Loading", alter: "جارٍ تحديث النبض...")
+        }
+        switch snapshot.health {
+        case .stable:
+            return Language.get("People_Security_Pulse_Stable", alter: "مستويات الأمان والحوكمة منضبطة")
+        case let .attention(count):
+            return String(format: Language.get("CommandCenter_Health_Attention_Format", alter: "%d إجراءات تتطلب المتابعة"), count)
+        case let .partial(count):
+            return String(format: Language.get("CommandCenter_Health_Partial_Format", alter: "%d عمليات تحت الملاحظة"), count)
+        }
+    }
+
+    private var pulseSymbol: String {
+        guard let snapshot = commandState.currentSnapshot else { return "arrow.triangle.2.circlepath" }
+        switch snapshot.health {
+        case .stable: return "checkmark.shield.fill"
+        case .attention: return "exclamationmark.triangle.fill"
+        case .partial: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private var pulseColor: Color {
+        guard let snapshot = commandState.currentSnapshot else { return AdminSurface.primary }
+        switch snapshot.health {
+        case .stable: return Color(uiColor: .ppSuccess)
+        case .attention: return Color(uiColor: .ppWarning)
+        case .partial: return AdminSurface.primary
+        }
+    }
+
+    // MARK: - Tactile Haptic Trigger
+
+    private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
+    }
+}
+
+@MainActor
+private struct AdminOperationsDeckView: View {
+    let session: AdminSession
+    @ObservedObject var router: AdminRouter
+    @ObservedObject var commandState: CommandCenterState
+    let onOpenCommand: () -> Void
+
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.locale) private var locale
+    @State private var showingBranchSwitcher = false
+
+    private var isPadWide: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
+    private var navigationConfiguration: PPGlobalNavigationConfiguration {
+        PPGlobalNavigationConfiguration(
+            style: .contextDeck,
+            title: Language.get(AdminTab.operations.titleKey, alter: "العمليات"),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: "عمليات PURE PETS"),
+            subtitle: Language.get("Operations_Horizon_Subtitle", alter: "منظومة اللوجستيات، شبكة المزودين، الرعاية البيطرية، وحوكمة المنصة"),
+            showsContextFilament: false
+        )
+    }
+
+    // Authorizations
+    private var canDelivery: Bool { AdminRoute.delivery.isAuthorized(for: session) }
+    private var canProviderApplications: Bool { AdminRoute.providerApplications.isAuthorized(for: session) }
+    private var canProviderPlans: Bool { AdminRoute.providerPlans.isAuthorized(for: session) }
+    private var canProviderFeatures: Bool { AdminRoute.providerFeatures.isAuthorized(for: session) }
+    private var canProviderAccounting: Bool { AdminRoute.providerAccounting.isAuthorized(for: session) }
+    private var canBranches: Bool { AdminRoute.branches.isAuthorized(for: session) }
+    private var canAgents: Bool { AdminRoute.agents.isAuthorized(for: session) }
+    private var canHomeControl: Bool { AdminRoute.homeControl.isAuthorized(for: session) }
+    private var canServices: Bool { AdminRoute.services.isAuthorized(for: session) }
+    private var canVeterinarians: Bool { AdminRoute.veterinarians.isAuthorized(for: session) }
+    private var canModeration: Bool { AdminRoute.moderation.isAuthorized(for: session) }
+    private var canHotel: Bool { AdminRoute.hotel.isAuthorized(for: session) }
+
+    private var hasAnyAuthorizedRoute: Bool {
+        canDelivery || canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting || canBranches || canAgents || canHomeControl || canServices || canVeterinarians || canModeration || canHotel
+    }
+
+    private var hasProvidersSection: Bool {
+        canProviderApplications || canProviderPlans || canProviderFeatures || canProviderAccounting
+    }
+
+    private var hasCareSection: Bool {
+        canVeterinarians || canHotel || canServices
+    }
+
+    private var hasTerritorialSection: Bool {
+        canBranches || canAgents
+    }
+
+    private var hasPlatformSection: Bool {
+        canHomeControl || canModeration
+    }
+
+    var body: some View {
+        PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
+            Group {
+                if !hasAnyAuthorizedRoute {
+                    AdminEmptyRoutesView()
+                        .padding(.horizontal, AdminShellMetric.pageMargin)
+                } else if isPadWide {
+                    iPadOperationsDeckLayout
+                } else {
+                    iPhoneOperationsDeckLayout
+                }
+            }
+            .padding(.bottom, 104)
+        }
+        .sheet(isPresented: $showingBranchSwitcher) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    // MARK: - iPhone Tactile Layout
+
+    private var iPhoneOperationsDeckLayout: some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            // 1. Branch Horizon Capsule
+            branchHorizonPill
+
+            // 2. Command Health Pulse Strip
+            if AdminTab.command.isAuthorized(for: session) {
+                AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+            }
+
+            // 3. Hero Delivery Fleet Logistics Command Console
+            if canDelivery {
+                heroDeliveryFleetConsole(isPad: false)
+            }
+
+            // 4. Merchant & Provider Ecosystem Station
+            if hasProvidersSection {
+                providerEcosystemDeck(isPad: false)
+            }
+
+            // 5. Specialized Care, Veterinary & Hospitality Desk
+            if hasCareSection {
+                careAndHospitalityDesk(isPad: false)
+            }
+
+            // 6. Territorial Infrastructure & Field Force Desk
+            if hasTerritorialSection {
+                territorialInfrastructureDesk(isPad: false)
+            }
+
+            // 7. Platform Experience & Discovery Control Bay
+            if hasPlatformSection {
+                platformExperienceDeck(isPad: false)
+            }
+        }
+        .padding(.horizontal, AdminShellMetric.pageMargin)
+    }
+
+    // MARK: - iPad Widescreen Operations Deck Layout
+
+    private var iPadOperationsDeckLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Panoramic Horizon Operations Ribbon
+            iPadOperationsHorizonRibbon
+
+            // 2. Dual Tactical Command Wings
+            HStack(alignment: .top, spacing: 20) {
+                // Wing A: Fleet Logistics Command + Provider Ecosystem Hub
+                VStack(spacing: 18) {
+                    if canDelivery {
+                        heroDeliveryFleetConsole(isPad: true)
+                    }
+
+                    if hasProvidersSection {
+                        providerEcosystemDeck(isPad: true)
+                    }
+
+                    if hasPlatformSection {
+                        platformExperienceDeck(isPad: true)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+
+                // Wing B: Specialized Care Network & Territorial Infrastructure
+                VStack(spacing: 18) {
+                    if hasCareSection {
+                        careAndHospitalityDesk(isPad: true)
+                    }
+
+                    if hasTerritorialSection {
+                        territorialInfrastructureDesk(isPad: true)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - iPad Panoramic Horizon Bar
+
+    private var iPadOperationsHorizonRibbon: some View {
+        HStack(spacing: 16) {
+            // Leading: Store Branch Switcher
+            Button {
+                triggerHaptic(.light)
+                showingBranchSwitcher = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                        Image(systemName: "building.2.crop.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .frame(width: 38, height: 38)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(branchStore.currentBranchDisplayName.isEmpty
+                                 ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                                 : branchStore.currentBranchDisplayName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                    .font(PPBrandFont.bold(size: 11))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع الميداني النشط"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(8)
+                        .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Center: Command Center Telemetry Health Beacon
+            if AdminTab.command.isAuthorized(for: session) {
+                Button {
+                    triggerHaptic(.light)
+                    onOpenCommand()
+                } label: {
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(pulseHealthColor.opacity(0.15))
+                                .frame(width: 34, height: 34)
+                            Image(systemName: pulseHealthSymbol)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(pulseHealthColor)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("CommandCenter_Title", alter: "مركز العمليات"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(pulseHealthTitle)
+                                .font(AdminType.subheadlineBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+
+                        Circle()
+                            .fill(pulseHealthColor)
+                            .frame(width: 8, height: 8)
+                            .shadow(color: pulseHealthColor.opacity(0.6), radius: 4)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+
+            Spacer()
+
+            // Trailing: Operations Duty Desk Presence
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(Language.get("Operations_Horizon_Title", alter: "العمليات المركزية"))
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(session.localizedRoleName)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+
+                Divider()
+                    .frame(height: 24)
+                    .background(AdminSurface.hairline)
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.5), radius: 4)
+
+                    Text(Language.get("Shift_Active_Label", alter: "الوردية نشطة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - iPhone Branch Horizon Capsule
+
+    private var branchHorizonPill: some View {
+        Button {
+            triggerHaptic(.light)
+            showingBranchSwitcher = true
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(branchStore.currentBranchDisplayName.isEmpty
+                             ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                             : branchStore.currentBranchDisplayName)
+                            .font(AdminType.headline)
+                            .foregroundColor(AdminSurface.primaryText)
+
+                        if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                            Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 10))
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
+                    }
+
+                    Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع النشط"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(Language.get("More_Switch_Branch", alter: "تبديل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - Flagship Obsidian Fleet Logistics Console
+
+    private func heroDeliveryFleetConsole(isPad: Bool) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                .fill(Color(red: 0.08, green: 0.09, blue: 0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.cyan.opacity(0.30), Color.clear],
+                                center: Language.isRTL() ? .topLeading : .topTrailing,
+                                startRadius: 0,
+                                endRadius: isPad ? 280 : 200
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [AdminSurface.primary.opacity(0.20), Color.clear],
+                                center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
+                                startRadius: 0,
+                                endRadius: isPad ? 240 : 160
+                            )
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.24), Color.white.opacity(0.05)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 16) {
+                // Header: Fleet Badge + Live Status Beacon
+                HStack(alignment: .center) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.cyan, Color.blue],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: isPad ? 48 : 44, height: isPad ? 48 : 44)
+                                .shadow(color: Color.cyan.opacity(0.4), radius: 8, x: 0, y: 3)
+
+                            Image(systemName: "truck.box.fill")
+                                .font(.system(size: isPad ? 20 : 18, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Language.get("Operations_Delivery_Hero_Title", alter: "إدارة أسطول التوصيل واللوجستيات"))
+                                .font(AdminType.headline)
+                                .foregroundColor(.white)
+
+                            Text(Language.get("Operations_Delivery_Tag_Live", alter: "المسارات نشطة"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(Color.cyan.opacity(0.90))
+                        }
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 7, height: 7)
+                            .shadow(color: Color(uiColor: .ppSuccess).opacity(0.8), radius: 3)
+                        Text(Language.get("Operations_Delivery_Tag_Live", alter: "نشط ميدانياً"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                }
+
+                // Subtitle
+                Text(Language.get("Operations_Delivery_Hero_Subtitle", alter: "مراقبة مسارات الشحن، إدارة المناديب، ومتابعة تسليم الطلبات"))
+                    .font(AdminType.footnote)
+                    .foregroundColor(Color.white.opacity(0.78))
+                    .lineLimit(2)
+
+                // Dispatch Telemetry Tags
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "point.filled.topleft.down.curvedto.point.bottomright.up")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.cyan)
+                        Text(Language.get("Operations_Delivery_Tag_Couriers", alter: "مزامنة المناديب"))
+                            .font(.system(size: 10.5, weight: .bold))
+                            .foregroundColor(Color.cyan)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.cyan.opacity(0.12), in: Capsule())
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "location.north.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color.white.opacity(0.7))
+                        Text("Live GPS")
+                            .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.85))
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+
+                    Spacer()
+                }
+
+                // Primary Trigger Button
+                Button {
+                    triggerHaptic(.medium)
+                    router.present(.delivery, session: session)
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "truck.box")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(Language.get("Operations_Delivery_Hero_Action", alter: "دخول مركز التوصيل الميداني"))
+                            .font(AdminType.calloutBold)
+                        Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundColor(Color(red: 0.08, green: 0.09, blue: 0.12))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.white, in: Capsule())
+                    .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+            .padding(isPad ? 20 : 16)
+        }
+    }
+
+    // MARK: - Merchant & Provider Ecosystem Desk
+
+    private func providerEcosystemDeck(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.purple.opacity(0.12))
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.purple)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Operations_Providers_Station_Title", alter: "منظومة الشركاء والمزودين"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("Operations_Providers_Station_Subtitle", alter: "طلبات الانضمام، باقات الاشتراكات، مصفوفة الميزات، والعمولات"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canProviderApplications {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.providerApplications, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Providers_Applications_Title", alter: "طلبات انضمام المزودين"),
+                            subtitle: Language.get("Operations_Provider_Apps_Desc", alter: "مراجعة واعتماد طلبات المتاجر والعيادات الجديدة"),
+                            symbol: "person.badge.plus.fill",
+                            symbolColor: .purple,
+                            showsDivider: canProviderPlans || canProviderFeatures || canProviderAccounting
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canProviderPlans {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.providerPlans, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Providers_Plans_Title", alter: "باقات واشتراكات الشركاء"),
+                            subtitle: Language.get("Operations_Provider_Plans_Desc", alter: "هيكلة باقات الاشتراكات السنوية والشهرية"),
+                            symbol: "list.clipboard.fill",
+                            symbolColor: .blue,
+                            showsDivider: canProviderFeatures || canProviderAccounting
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canProviderFeatures {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.providerFeatures, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Providers_Features_Title", alter: "مصفوفة الصلاحيات والميزات"),
+                            subtitle: Language.get("Operations_Provider_Features_Desc", alter: "تخصيص مصفوفة الصلاحيات والميزات لكل شريك"),
+                            symbol: "gearshape.2.fill",
+                            symbolColor: .indigo,
+                            showsDivider: canProviderAccounting
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canProviderAccounting {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.providerAccounting, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Providers_Accounting_Title", alter: "محاسبة وعمولات المزودين"),
+                            subtitle: Language.get("Operations_Provider_Accounting_Desc", alter: "التسويات المالية، حساب العمولات، ومستحقات المزودين"),
+                            symbol: "chart.pie.fill",
+                            symbolColor: Color(uiColor: .ppSuccess),
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Care, Veterinary & Pet Hospitality Desk
+
+    private func careAndHospitalityDesk(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.pink.opacity(0.12))
+                    Image(systemName: "stethoscope")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.pink)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Operations_Care_Station_Title", alter: "الخدمات البيطرية والفندقة والعناية"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("Operations_Care_Station_Subtitle", alter: "العيادات الطبية، فندقة الحيوانات، وباقات العناية المتخصصة"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canVeterinarians {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.veterinarians, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Vet_Section_Title", alter: "شبكة الأطباء والعيادات البيطرية"),
+                            subtitle: Language.get("Operations_Vets_Desc", alter: "إدارة شبكة الأطباء والعيادات وسجلات الكشوفات"),
+                            symbol: "stethoscope",
+                            symbolColor: .pink,
+                            showsDivider: canHotel || canServices
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canHotel {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.hotel, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Hotel_Title", alter: "فندق ورعاية الحيوانات الأليفة"),
+                            subtitle: Language.get("Operations_Hotel_Desc", alter: "حجوزات الإقامة، متابعة النزلاء، وإشغال الغرف"),
+                            symbol: "bed.double.fill",
+                            symbolColor: .orange,
+                            showsDivider: canServices
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canServices {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.services, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Service_Manage_Title", alter: "باقات الخدمات والعناية الميدانية"),
+                            subtitle: Language.get("Operations_Services_Desc", alter: "خدمات الغرومينغ، التدريب، وباقات العناية الميدانية"),
+                            symbol: "cross.case.fill",
+                            symbolColor: .teal,
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Territorial Infrastructure & Field Force Desk
+
+    private func territorialInfrastructureDesk(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "building.2.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Operations_Field_Station_Title", alter: "الفروع والتمثيل الميداني"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("Operations_Field_Station_Subtitle", alter: "مراكز التوزيع، الفروع الجغرافية، وشبكة الوكلاء المعتمدين"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canBranches {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.branches, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Branches_Title", alter: "الفروع ومراكز التوزيع الميدانية"),
+                            subtitle: Language.get("Operations_Branches_Desc", alter: "إدارة مراكز الفروع، النطاقات الجغرافية، وساعات العمل"),
+                            symbol: "building.2.fill",
+                            symbolColor: AdminSurface.primary,
+                            showsDivider: canAgents
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canAgents {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.agents, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Agents_Title", alter: "شبكة الوكلاء والممثلين الميدانيين"),
+                            subtitle: Language.get("Operations_Agents_Desc", alter: "شبكة الوكلاء المعتمدين والممثلين الإقليميين"),
+                            symbol: "person.text.rectangle.fill",
+                            symbolColor: .cyan,
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Platform Discovery & Trust Bay
+
+    private func platformExperienceDeck(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.indigo.opacity(0.12))
+                    Image(systemName: "switch.2")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.indigo)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("Operations_Platform_Station_Title", alter: "تجربة المنصة وحوكمة المحتوى"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("Operations_Platform_Station_Subtitle", alter: "التحكم في الواجهة الرئيسية ومكافحة الانتهاكات والرقابة"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canHomeControl {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.homeControl, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("HomeControl_Title", alter: "التحكم في الصفحة الرئيسية"),
+                            subtitle: Language.get("Operations_HomeControl_Desc", alter: "تخصيص أرفف الشاشة الرئيسية وسلايدر الاستكشاف"),
+                            symbol: "switch.2",
+                            symbolColor: .indigo,
+                            showsDivider: canModeration
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canModeration {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.moderation, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Moderation_Title", alter: "مركز الرقابة ومكافحة الانتهاكات"),
+                            subtitle: Language.get("Operations_Moderation_Desc", alter: "مراجعة المحتوى المبلغ عنه ومكافحة الانتهاكات"),
+                            symbol: "shield.lefthalf.filled",
+                            symbolColor: .purple,
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Reusable High-Fidelity Desk Row
+
+    private func deskActionRow(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        symbolColor: Color,
+        showsDivider: Bool
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(symbolColor.opacity(0.12))
+                    Image(systemName: symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(symbolColor)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
+
+            if showsDivider {
+                Divider()
+                    .padding(.leading, 64)
+                    .background(AdminSurface.hairline)
+            }
+        }
+    }
+
+    // MARK: - Telemetry & Status Helpers
+
+    private var pulseHealthTitle: String {
+        guard let snapshot = commandState.currentSnapshot else {
+            return Language.get("CommandCenter_Loading", alter: "جاري الفحص...")
+        }
+        switch snapshot.health {
+        case .stable:
+            return Language.get("CommandCenter_Health_Stable", alter: "العمليات واضحة")
+        case let .attention(count):
+            return String(format: Language.get("CommandCenter_Health_Attention_Format", alter: "%@ إجراء بحاجة انتباه"), formattedCount(count))
+        case let .partial(count):
+            return String(format: Language.get("CommandCenter_Health_Partial_Format", alter: "%@ تدقيق مطلوب"), formattedCount(count))
+        }
+    }
+
+    private var pulseHealthColor: Color {
+        guard let snapshot = commandState.currentSnapshot else { return AdminSurface.primary }
+        switch snapshot.health {
+        case .stable: return Color(uiColor: .ppSuccess)
+        case .attention: return Color(uiColor: .ppWarning)
+        case .partial: return AdminSurface.primary
+        }
+    }
+
+    private var pulseHealthSymbol: String {
+        guard let snapshot = commandState.currentSnapshot else { return "shield" }
+        switch snapshot.health {
+        case .stable: return "checkmark.shield.fill"
+        case .attention: return "exclamationmark.triangle.fill"
+        case .partial: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private func formattedCount(_ value: Int) -> String {
+        value.formatted(.number.locale(locale))
+    }
+
+    private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
     }
 }
 
@@ -1933,247 +4009,1110 @@ private struct AdminMoreView: View {
     let onLogout: () -> Void
     let onOpenCommand: () -> Void
 
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.locale) private var locale
+    @State private var showingBranchSwitcher = false
+
+    private var isPadWide: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
     private var navigationConfiguration: PPGlobalNavigationConfiguration {
         PPGlobalNavigationConfiguration(
             style: .contextDeck,
-            title: Language.get(AdminTab.more.titleKey, alter: nil),
-            eyebrow: Language.get("CommandCenter_Eyebrow", alter: nil),
-            subtitle: Language.get("CommandCenter_Contextual_Actions_Detail", alter: nil),
+            title: Language.get(AdminTab.more.titleKey, alter: "المزيد"),
+            eyebrow: Language.get("CommandCenter_Eyebrow", alter: "عمليات PURE PETS"),
+            subtitle: Language.get("More_Horizon_Subtitle", alter: "لوحة التحكم السيادية، الاتصالات، والحوكمة المركزية"),
             showsContextFilament: false
         )
     }
 
+    private var canAccount: Bool { AdminRoute.account.isAuthorized(for: session) }
+    private var canSettings: Bool { AdminRoute.settings.isAuthorized(for: session) }
+    private var canNotifications: Bool { AdminRoute.notifications.isAuthorized(for: session) }
+    private var canNotificationComposer: Bool { AdminRoute.notificationComposer.isAuthorized(for: session) }
+    private var canNotificationSettings: Bool { AdminRoute.notificationSettings.isAuthorized(for: session) }
+    private var canAccounting: Bool { AdminRoute.accounting.isAuthorized(for: session) }
+    private var canAudit: Bool { AdminRoute.audit.isAuthorized(for: session) }
+    private var canCategories: Bool { AdminRoute.categories.isAuthorized(for: session) }
+    private var canBanners: Bool { AdminRoute.banners.isAuthorized(for: session) }
+    private var canListings: Bool { AdminRoute.listings.isAuthorized(for: session) }
+
+    private var hasAnyAuthorizedRoute: Bool {
+        canAccount || canSettings || canNotifications || canNotificationComposer || canNotificationSettings || canAccounting || canAudit || canCategories || canBanners || canListings
+    }
+
+    private var hasBroadcastSection: Bool {
+        canNotificationComposer || canNotifications || canNotificationSettings
+    }
+
+    private var hasGovernanceSection: Bool {
+        canAccounting || canAudit
+    }
+
+    private var hasCommercialSection: Bool {
+        canCategories || canBanners || canListings
+    }
+
     var body: some View {
         PPGlobalNavigationScrollShell(configuration: navigationConfiguration, onAction: { _ in }) {
-            LazyVStack(alignment: .leading, spacing: 16) {
-                PPAdminBranchSwitcherBar()
-
-                if AdminTab.command.isAuthorized(for: session) {
-                    AdminCommandPulseStrip(state: commandState, onOpenCommand: onOpenCommand)
+            Group {
+                if !hasAnyAuthorizedRoute {
+                    AdminEmptyRoutesView()
+                        .padding(.horizontal, AdminShellMetric.pageMargin)
+                } else if isPadWide {
+                    iPadMoreDeckLayout
+                } else {
+                    iPhoneMoreDeckLayout
                 }
+            }
+            .padding(.bottom, 104)
+        }
+        .sheet(isPresented: $showingBranchSwitcher) {
+            PPBranchSelectionGateView()
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
 
+    // MARK: - iPhone Tactile Layout
+
+    private var iPhoneMoreDeckLayout: some View {
+        LazyVStack(alignment: .leading, spacing: 16) {
+            // 1. Branch Horizon Capsule
+            branchHorizonPill
+
+            // 2. Flagship Sovereign Executive Master Console
+            sovereignConsoleCard(isPad: false)
+
+            // 3. Communications & Broadcast Studio
+            if hasBroadcastSection {
+                broadcastStudioDesk(isPad: false)
+            }
+
+            // 4. Financial Governance & Security Desk
+            if hasGovernanceSection {
+                financialAndSecurityDesk(isPad: false)
+            }
+
+            // 5. Commercial Catalog & Content Bay
+            if hasCommercialSection {
+                commercialCatalogDesk(isPad: false)
+            }
+
+            // 6. Platform Environment & Session Dock
+            environmentAndSessionDock
+        }
+        .padding(.horizontal, AdminShellMetric.pageMargin)
+    }
+
+    // MARK: - iPad Widescreen Command Deck Layout
+
+    private var iPadMoreDeckLayout: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // 1. Panoramic Horizon Operations Ribbon
+            iPadMoreHorizonBar
+
+            // 2. Dual Tactical Command Wings
+            HStack(alignment: .top, spacing: 20) {
+                // Wing A: Sovereign Console & Governance Desk
+                VStack(spacing: 18) {
+                    sovereignConsoleCard(isPad: true)
+
+                    if hasGovernanceSection {
+                        financialAndSecurityDesk(isPad: true)
+                    }
+
+                    environmentAndSessionDock
+                }
+                .frame(maxWidth: .infinity)
+
+                // Wing B: Broadcast Studio & Commercial Governance Desk
+                VStack(spacing: 18) {
+                    if hasBroadcastSection {
+                        broadcastStudioDesk(isPad: true)
+                    }
+
+                    if hasCommercialSection {
+                        commercialCatalogDesk(isPad: true)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - iPad Panoramic Horizon Bar
+
+    private var iPadMoreHorizonBar: some View {
+        HStack(spacing: 16) {
+            // Leading: Store Branch Switcher
+            Button {
+                triggerHaptic(.light)
+                showingBranchSwitcher = true
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                        Image(systemName: "building.2.crop.circle.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .frame(width: 38, height: 38)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(branchStore.currentBranchDisplayName.isEmpty
+                                 ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                                 : branchStore.currentBranchDisplayName)
+                                .font(AdminType.headline)
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                                Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                    .font(PPBrandFont.bold(size: 11))
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 2)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                            }
+                        }
+
+                        Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع الميداني النشط"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(8)
+                        .background(AdminSurface.primary.opacity(0.10), in: Circle())
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            // Center: Command Center Telemetry Health Beacon
+            if AdminTab.command.isAuthorized(for: session) {
                 Button {
-                    router.present(.account, session: session)
+                    triggerHaptic(.light)
+                    onOpenCommand()
                 } label: {
-                    AdminProfileSummaryCard(session: session)
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(pulseHealthColor.opacity(0.15))
+                                .frame(width: 34, height: 34)
+                            Image(systemName: pulseHealthSymbol)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(pulseHealthColor)
+                        }
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(Language.get("CommandCenter_Title", alter: "مركز العمليات"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(pulseHealthTitle)
+                                .font(AdminType.subheadlineBold)
+                                .foregroundColor(AdminSurface.primaryText)
+                        }
+
+                        Circle()
+                            .fill(pulseHealthColor)
+                            .frame(width: 8, height: 8)
+                            .shadow(color: pulseHealthColor.opacity(0.6), radius: 4)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                    )
                 }
                 .buttonStyle(V6CardButtonStyle())
+            }
 
-                if AdminRoute.settings.isAuthorized(for: session) {
-                    AdminFeaturedSettingsCard(session: session) {
-                        router.present(.settings, session: session)
+            Spacer()
+
+            // Trailing: Cashier / Session Operator Status
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.primary.opacity(0.12))
+                            .frame(width: 36, height: 36)
+                        Text(monogram)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(session.displayName)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(session.localizedRoleName)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
                     }
                 }
 
-                if !routes.isEmpty {
-                    AdminRouteGroup(
-                        routes: routes,
-                        action: { router.present($0, session: session) }
-                    )
-                }
+                Divider()
+                    .frame(height: 24)
+                    .background(AdminSurface.hairline)
 
-                AdminUtilityActionGroup(
-                    isSigningOut: isSigningOut,
-                    onLanguage: {
-                        let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
-                        Language.userSelectedLanguage(next)
-                    },
-                    onLogout: onLogout
-                )
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(uiColor: .ppSuccess))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: Color(uiColor: .ppSuccess).opacity(0.5), radius: 4)
+
+                    Text(Language.get("Shift_Active_Label", alter: "الوردية نشطة"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
             }
-            .padding(.horizontal, AdminShellMetric.pageMargin)
-            .padding(.bottom, 104)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
         }
+        .padding(12)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
     }
-}
 
-private struct AdminFeaturedSettingsCard: View {
-    let session: AdminSession
-    let onOpenSettings: () -> Void
+    // MARK: - iPhone Branch Horizon Capsule
 
-    var body: some View {
-        Button(action: onOpenSettings) {
-            HStack(spacing: 14) {
+    private var branchHorizonPill: some View {
+        Button {
+            triggerHaptic(.light)
+            showingBranchSwitcher = true
+        } label: {
+            HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AdminSurface.primary,
-                                    AdminSurface.primary.opacity(0.85)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                    Image(systemName: "gearshape.2.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "building.2.crop.circle.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
                 }
-                .frame(width: 48, height: 48)
-                .shadow(color: AdminSurface.primary.opacity(0.28), radius: 8, x: 0, y: 4)
+                .frame(width: 38, height: 38)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Text(Language.get("Settings_CommandCenter_Title", alter: "إعدادات النظام والتطبيق"))
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(branchStore.currentBranchDisplayName.isEmpty
+                             ? Language.get("BranchContext_SelectBranch_Prompt", alter: "تحديد الفرع")
+                             : branchStore.currentBranchDisplayName)
                             .font(AdminType.headline)
                             .foregroundColor(AdminSurface.primaryText)
 
-                        Text("v6.2")
-                            .font(.system(size: 10.5, weight: .bold, design: .rounded))
-                            .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        if let code = branchStore.activeBranch?.code, !code.isEmpty {
+                            Text(verbatim: "#" + code.normalizedEnglishDigits)
+                                .font(PPBrandFont.bold(size: 10))
+                                .foregroundColor(AdminSurface.primary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                        }
                     }
 
-                    Text(Language.get("Settings_CommandCenter_Subtitle", alter: "التحكم السيادي، التفضيلات، الذاكرة، والتراخيص"))
-                        .font(AdminType.footnote)
+                    Text(Language.get("BranchContext_TapToSwitch", alter: "المس لتبديل الفرع النشط"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Text(Language.get("More_Switch_Branch", alter: "تبديل"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primary)
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+            }
+            .padding(12)
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(V6CardButtonStyle())
+    }
+
+    // MARK: - Flagship Obsidian Sovereign Console
+
+    private func sovereignConsoleCard(isPad: Bool) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                .fill(Color(red: 0.08, green: 0.09, blue: 0.12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [AdminSurface.primary.opacity(0.32), Color.clear],
+                                center: Language.isRTL() ? .topLeading : .topTrailing,
+                                startRadius: 0,
+                                endRadius: isPad ? 280 : 200
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .fill(
+                            RadialGradient(
+                                colors: [Color.purple.opacity(0.15), Color.clear],
+                                center: Language.isRTL() ? .bottomTrailing : .bottomLeading,
+                                startRadius: 0,
+                                endRadius: isPad ? 240 : 160
+                            )
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: isPad ? 24 : 22, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.24), Color.white.opacity(0.05)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+                .shadow(color: Color.black.opacity(0.24), radius: 16, x: 0, y: 8)
+
+            VStack(alignment: .leading, spacing: 16) {
+                // Top Horizon: Operator Profile Card
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.70)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: isPad ? 52 : 48, height: isPad ? 52 : 48)
+                            .shadow(color: AdminSurface.primary.opacity(0.4), radius: 8, x: 0, y: 3)
+
+                        Text(monogram)
+                            .font(.system(size: isPad ? 20 : 18, weight: .black, design: .rounded))
+                            .foregroundColor(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(session.displayName)
+                                .font(AdminType.headline)
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(Color(uiColor: .ppSuccess))
+                        }
+
+                        HStack(spacing: 8) {
+                            Text(session.localizedRoleName)
+                                .font(AdminType.caption2Bold)
+                                .foregroundColor(Color.white.opacity(0.85))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 2)
+                                .background(Color.white.opacity(0.12), in: Capsule())
+
+                            if isPad {
+                                Text(session.email)
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(Color.white.opacity(0.60))
+                                    .environment(\.layoutDirection, .leftToRight)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    if canAccount {
+                        Button {
+                            triggerHaptic(.light)
+                            router.present(.account, session: session)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.crop.circle")
+                                    .font(.system(size: 13, weight: .semibold))
+                                Text(Language.get("More_Profile_Button", alter: "الملف الشخصي"))
+                                    .font(AdminType.captionBold)
+                                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(Color.white.opacity(0.12), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                // Middle: Telemetry Status Beacon (Shown on iPhone or compact)
+                if !isPad && AdminTab.command.isAuthorized(for: session) {
+                    Button {
+                        triggerHaptic(.light)
+                        onOpenCommand()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(pulseHealthColor)
+                                .frame(width: 8, height: 8)
+                                .shadow(color: pulseHealthColor.opacity(0.8), radius: 4)
+
+                            Text(Language.get("CommandCenter_Title", alter: "مركز العمليات") + ":")
+                                .font(AdminType.captionBold)
+                                .foregroundColor(Color.white.opacity(0.70))
+
+                            Text(pulseHealthTitle)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(.white)
+
+                            Spacer()
+
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(Color.white.opacity(0.50))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                // Bottom: Sovereign Settings v6.2 Master Launch Row
+                if canSettings {
+                    Button {
+                        triggerHaptic(.medium)
+                        router.present(.settings, session: session)
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.80)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                Image(systemName: "gearshape.2.fill")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(width: 44, height: 44)
+                            .shadow(color: AdminSurface.primary.opacity(0.4), radius: 8, x: 0, y: 3)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(Language.get("Settings_CommandCenter_Title", alter: "إعدادات النظام والتطبيق"))
+                                        .font(AdminType.calloutBold)
+                                        .foregroundColor(.white)
+
+                                    Text("v6.2")
+                                        .font(.system(size: 10, weight: .black, design: .rounded))
+                                        .foregroundColor(AdminSurface.primary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.white, in: Capsule())
+                                }
+
+                                Text(Language.get("Settings_CommandCenter_Subtitle", alter: "التحكم السيادي، التفضيلات، الذاكرة، والتراخيص"))
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(Color.white.opacity(0.75))
+                                    .lineLimit(1)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Image(systemName: Language.isRTL() ? "arrow.left.circle.fill" : "arrow.right.circle.fill")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(.white)
+                                .shadow(color: Color.black.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
+                        .padding(12)
+                        .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(V6CardButtonStyle())
+                }
+
+                // Security Tags Ribbon (Sovereign Infrastructure)
+                HStack(spacing: 8) {
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(Color(uiColor: .ppSuccess))
+                            .frame(width: 6, height: 6)
+                        Text(Language.get("More_Tag_AppCheck", alter: "حماية App Check نشطة"))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(Color.white.opacity(0.6))
+                        Text(Language.get("More_Tag_Cluster", alter: "pure-pets-49199"))
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundColor(Color.white.opacity(0.70))
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.08), in: Capsule())
+
+                    Spacer()
+
+                    Text(Language.get("More_Tag_Version", alter: "الإصدار v6.2.0"))
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(Color.white.opacity(0.50))
+                }
+            }
+            .padding(isPad ? 20 : 16)
+        }
+    }
+
+    // MARK: - Communications & Broadcast Studio
+
+    private func broadcastStudioDesk(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.blue.opacity(0.12))
+                    Image(systemName: "antenna.radiowaves.left.and.right")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.blue)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("More_Broadcast_Studio_Title", alter: "مركز البث والتواصل الإداري"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("More_Broadcast_Studio_Subtitle", alter: "بث فوري وتنبيهات push لكافة العملاء وأعضاء الفريق"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            // Featured Instant Broadcast Trigger
+            if canNotificationComposer {
+                Button {
+                    triggerHaptic(.medium)
+                    router.present(.notificationComposer, session: session)
+                } label: {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.blue, Color.cyan],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 42, height: 42)
+                                .shadow(color: Color.blue.opacity(0.35), radius: 6, x: 0, y: 3)
+
+                            Image(systemName: "paperplane.fill")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(spacing: 6) {
+                                Text(Language.get("More_Broadcast_Send_Instant", alter: "إرسال إشعار فوري للجماهير"))
+                                    .font(AdminType.calloutBold)
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Text(Language.get("LiveDesk_Online", alter: "مباشر"))
+                                    .font(.system(size: 9.5, weight: .black))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.blue, in: Capsule())
+                            }
+
+                            Text(Language.get("More_Broadcast_Send_Desc", alter: "صياغة وبث إشعار Push فوري عبر السحابة"))
+                                .font(AdminType.caption2)
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(8)
+                            .background(AdminSurface.primary.opacity(0.08), in: Circle())
+                    }
+                    .padding(14)
+                    .background(
+                        LinearGradient(
+                            colors: [Color.blue.opacity(0.08), Color.cyan.opacity(0.04)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.blue.opacity(0.20), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(V6CardButtonStyle())
+            }
+
+            // Subordinate Channels: Inbox & Settings
+            if canNotifications || canNotificationSettings {
+                VStack(spacing: 0) {
+                    if canNotifications {
+                        Button {
+                            triggerHaptic(.light)
+                            router.present(.notifications, session: session)
+                        } label: {
+                            deskActionRow(
+                                title: Language.get("More_Broadcast_Inbox", alter: "صندوق الإشعارات"),
+                                subtitle: Language.get("More_Broadcast_Inbox_Desc", alter: "سجل التنبيهات المرسلة والمستلمة"),
+                                symbol: "bell.fill",
+                                symbolColor: .indigo,
+                                showsDivider: canNotificationSettings
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if canNotificationSettings {
+                        Button {
+                            triggerHaptic(.light)
+                            router.present(.notificationSettings, session: session)
+                        } label: {
+                            deskActionRow(
+                                title: Language.get("More_Broadcast_Settings", alter: "إعدادات وقنوات التنبيه"),
+                                subtitle: Language.get("More_Broadcast_Settings_Desc", alter: "تخصيص القنوات الصوتية والإشعارات الحرجة"),
+                                symbol: "bell.badge.gearshape.fill",
+                                symbolColor: .purple,
+                                showsDivider: false
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(AdminSurface.hairline, lineWidth: 0.8)
+                )
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Financial & Security Governance Desk
+
+    private func financialAndSecurityDesk(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(uiColor: .ppSuccess).opacity(0.12))
+                    Image(systemName: "shield.lefthalf.filled")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("More_Governance_Title", alter: "المالية والرقابة السيادية"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("More_Governance_Subtitle", alter: "التسويات، الدفتر المالي، وسجل تدقيق الأمان"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canAccounting {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.accounting, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Accounting_Title", alter: "المحاسبة والتقارير المالية"),
+                            subtitle: Language.get("More_Accounting_Desc", alter: "الدفتر المالي، بوابات الدفع، والتسويات"),
+                            symbol: "dollarsign.circle.fill",
+                            symbolColor: Color(uiColor: .ppSuccess),
+                            showsDivider: canAudit
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canAudit {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.audit, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Audit_Title", alter: "سجل التدقيق والأمان"),
+                            subtitle: Language.get("More_Audit_Desc", alter: "فحص العمليات الإدارية وسجلات الحوكمة الموثقة"),
+                            symbol: "doc.text.magnifyingglass",
+                            symbolColor: .orange,
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Commercial Catalog & Content Bay
+
+    private func commercialCatalogDesk(isPad: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AdminSurface.primary.opacity(0.12))
+                    Image(systemName: "square.grid.2x2.fill")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AdminSurface.primary)
+                }
+                .frame(width: 28, height: 28)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(Language.get("More_Commerce_Title", alter: "إدارة الكتالوج والمحتوى التجاري"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Text(Language.get("More_Commerce_Subtitle", alter: "التصنيفات، البانرات التسويقية، ومراجعة الإعلانات"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+                Spacer()
+            }
+
+            VStack(spacing: 0) {
+                if canCategories {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.categories, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Categories_Title", alter: "التصنيفات والأنواع"),
+                            subtitle: Language.get("More_Categories_Desc", alter: "هيكلة الأقسام، فصائل الحيوانات، والأنواع"),
+                            symbol: "square.grid.2x2.fill",
+                            symbolColor: .teal,
+                            showsDivider: canBanners || canListings
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canBanners {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.banners, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Staff_Module_Banners", alter: "البانرات والعروض الترويجية"),
+                            subtitle: Language.get("More_Banners_Desc", alter: "إدارة سلايدر الشاشة الرئيسية وحملات التسويق"),
+                            symbol: "square.3.layers.3d.middle.filled",
+                            symbolColor: .pink,
+                            showsDivider: canListings
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if canListings {
+                    Button {
+                        triggerHaptic(.light)
+                        router.present(.listings, session: session)
+                    } label: {
+                        deskActionRow(
+                            title: Language.get("Staff_Module_Listings", alter: "إعلانات الحيوانات والوساطة"),
+                            subtitle: Language.get("More_Listings_Desc", alter: "مراجعة إعلانات المستخدمين والاعتماد الفوري"),
+                            symbol: "list.bullet.clipboard.fill",
+                            symbolColor: .mint,
+                            showsDivider: false
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(AdminSurface.hairline, lineWidth: 0.8)
+            )
+        }
+        .padding(16)
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Environment & Session Dock
+
+    private var environmentAndSessionDock: some View {
+        VStack(spacing: 0) {
+            Button {
+                triggerHaptic(.light)
+                let next = Language.currentLanguageCode() == "ar" ? "en" : "ar"
+                Language.userSelectedLanguage(next)
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(AdminSurface.primary.opacity(0.12))
+                        Image(systemName: "globe")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .frame(width: 40, height: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Confirm_LanguageChange_Title", alter: "لغة لوحة التحكم"))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(Language.currentLanguageCode() == "ar" ? "العربية (RTL)" : "English (LTR)")
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        Text(Language.currentLanguageCode() == "ar" ? "English" : "العربية")
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primary)
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 58)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 68)
+                .background(AdminSurface.hairline)
+
+            Button(role: .destructive) {
+                triggerHaptic(.medium)
+                onLogout()
+            } label: {
+                HStack(spacing: 12) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(uiColor: .ppError).opacity(0.10))
+                        if isSigningOut {
+                            ProgressView()
+                                .tint(Color(uiColor: .ppError))
+                        } else {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Color(uiColor: .ppError))
+                        }
+                    }
+                    .frame(width: 40, height: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: "تسجيل الخروج"))
+                            .font(AdminType.calloutBold)
+                            .foregroundColor(Color(uiColor: .ppError))
+                        Text(Language.get("Settings_Session_Logout_Confirm_Msg", alter: "إنهاء الجلسة الإدارية الحالية بأمان"))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppError).opacity(0.6))
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 58)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isSigningOut)
+        }
+        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Reusable High-Fidelity Desk Row
+
+    private func deskActionRow(
+        title: String,
+        subtitle: String,
+        symbol: String,
+        symbolColor: Color,
+        showsDivider: Bool
+    ) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(symbolColor.opacity(0.12))
+                    Image(systemName: symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(symbolColor)
+                }
+                .frame(width: 38, height: 38)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(AdminType.calloutBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(AdminType.caption2)
                         .foregroundColor(AdminSurface.secondaryText)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                    .padding(8)
-                    .background(AdminSurface.control.opacity(0.6), in: Circle())
             }
-            .padding(16)
-            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
-                    .stroke(AdminSurface.primary.opacity(0.22), lineWidth: 1)
-            )
-        }
-        .buttonStyle(V6CardButtonStyle())
-    }
-}
+            .padding(.horizontal, 14)
+            .frame(minHeight: 56)
+            .contentShape(Rectangle())
 
-private struct AdminProfileSummaryCard: View {
-    let session: AdminSession
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text(monogram)
-                .font(AdminType.headline)
-                .foregroundColor(AdminSurface.primary)
-                .frame(width: 48, height: 48)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.displayName)
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(session.localizedRoleName)
-                    .font(AdminType.callout)
-                    .foregroundColor(AdminSurface.secondaryText)
-                Text(session.email)
-                    .font(AdminType.footnote)
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .environment(\.layoutDirection, .leftToRight)
-                    .textSelection(.enabled)
+            if showsDivider {
+                Divider()
+                    .padding(.leading, 64)
+                    .background(AdminSurface.hairline)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
         }
-        .padding(16)
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
-                .stroke(AdminSurface.hairline)
-        )
-        .accessibilityElement(children: .combine)
     }
+
+    // MARK: - Telemetry & Status Helpers
 
     private var monogram: String {
         let parts = session.displayName.split(separator: " ").prefix(2)
         let letters = parts.compactMap(\.first).map(String.init).joined()
         return letters.isEmpty ? "PP" : letters.uppercased()
     }
-}
 
-private struct AdminUtilityActionGroup: View {
-    let isSigningOut: Bool
-    let onLanguage: () -> Void
-    let onLogout: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Button(action: onLanguage) {
-                AdminUtilityRow(
-                    title: Language.get("Confirm_LanguageChange_Title", alter: nil),
-                    symbol: "globe",
-                    tint: AdminSurface.primary,
-                    showsProgress: false
-                )
-            }
-            .buttonStyle(.plain)
-
-            Divider().padding(.leading, 58)
-
-            Button(role: .destructive, action: onLogout) {
-                AdminUtilityRow(
-                    title: Language.get(isSigningOut ? "CommandCenter_Signing_Out" : "Logout", alter: nil),
-                    symbol: "rectangle.portrait.and.arrow.right",
-                    tint: Color(uiColor: .ppError),
-                    showsProgress: isSigningOut
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(isSigningOut)
+    private var pulseHealthTitle: String {
+        guard let snapshot = commandState.currentSnapshot else {
+            return Language.get("CommandCenter_Loading", alter: "جاري الفحص...")
         }
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AdminShellMetric.groupRadius, style: .continuous)
-                .stroke(AdminSurface.hairline)
-        )
+        switch snapshot.health {
+        case .stable:
+            return Language.get("CommandCenter_Health_Stable", alter: "العمليات واضحة")
+        case let .attention(count):
+            return String(format: Language.get("CommandCenter_Health_Attention_Format", alter: "%@ إجراء بحاجة انتباه"), formattedCount(count))
+        case let .partial(count):
+            return String(format: Language.get("CommandCenter_Health_Partial_Format", alter: "%@ تدقيق مطلوب"), formattedCount(count))
+        }
     }
-}
 
-
-private struct AdminUtilityRow: View {
-    let title: String
-    let symbol: String
-    let tint: Color
-    let showsProgress: Bool
-
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(tint.opacity(0.10))
-                if showsProgress {
-                    ProgressView().tint(tint)
-                } else {
-                    Image(systemName: symbol)
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(tint)
-                }
-            }
-            .frame(width: 40, height: 40)
-            .accessibilityHidden(true)
-
-            Text(title)
-                .font(AdminType.calloutBold)
-                .foregroundColor(tint == AdminSurface.primary ? AdminSurface.primaryText : tint)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(AdminSurface.secondaryText)
-                .accessibilityHidden(true)
+    private var pulseHealthColor: Color {
+        guard let snapshot = commandState.currentSnapshot else { return AdminSurface.primary }
+        switch snapshot.health {
+        case .stable: return Color(uiColor: .ppSuccess)
+        case .attention: return Color(uiColor: .ppWarning)
+        case .partial: return AdminSurface.primary
         }
-        .padding(.horizontal, 16)
-        .frame(minHeight: AdminShellMetric.rowMinimumHeight)
-        .contentShape(Rectangle())
+    }
+
+    private var pulseHealthSymbol: String {
+        guard let snapshot = commandState.currentSnapshot else { return "shield" }
+        switch snapshot.health {
+        case .stable: return "checkmark.shield.fill"
+        case .attention: return "exclamationmark.triangle.fill"
+        case .partial: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    private func formattedCount(_ value: Int) -> String {
+        value.formatted(.number.locale(locale))
+    }
+
+    private func triggerHaptic(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.prepare()
+        generator.impactOccurred()
     }
 }
 

@@ -370,15 +370,18 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
         return;
     }
 
-    [self fetchStaffDoc:uid completion:^(PPStaffDoc * _Nullable doc, NSError * _Nullable error) {
-        self.cachedCurrentStaff = doc.canAccessStaffWorkspace ? doc : nil;
-        if (completion) completion(doc, error);
+    [[FIRAuth auth].currentUser getIDTokenForcingRefresh:YES completion:^(NSString * _Nullable token, NSError * _Nullable tokenError) {
+        (void)token;
+        [self fetchStaffDoc:uid completion:^(PPStaffDoc * _Nullable doc, NSError * _Nullable error) {
+            self.cachedCurrentStaff = doc.canAccessStaffWorkspace ? doc : nil;
+            if (completion) completion(doc, error ?: tokenError);
+        }];
     }];
 }
 
 #pragma mark - Legacy Role Mapping
 
-+ (nullable PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole {
++ (nonnull PPStaffRole)staffRoleFromLegacyRole:(NSInteger)legacyRole {
     switch (legacyRole) {
         case 8: return PPStaffRoleSuperAdmin;
         case 5: return PPStaffRolePaymentsManager;
@@ -387,8 +390,8 @@ BOOL PPStaffMatchesPermission(NSArray<NSString *> *granted, NSString *perm) {
         case 7: return PPStaffRoleInventoryManager;
         case 4: return PPStaffRoleOperationsManager;
         case 3: return PPStaffRoleSupportAgent;
-        case 1: return PPStaffRoleViewer;
-        default: return nil;
+        case 1:
+        default: return PPStaffRoleViewer;
     }
 }
 
