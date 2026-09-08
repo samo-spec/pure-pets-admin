@@ -684,112 +684,108 @@ struct AdminModerationView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                // Ambient Living Radar Aura Mesh
-                AdminModerationAuraView(
-                    urgencyActive: viewModel.urgentFlaggedContentCount > 0 || viewModel.urgentChatReportsCount > 0,
-                    pendingActive: viewModel.pendingContentCount > 0,
-                    angle: auraAngle
-                )
-                .ignoresSafeArea()
+        ZStack {
+            // Ambient Living Radar Aura Mesh
+            AdminModerationAuraView(
+                urgencyActive: viewModel.urgentFlaggedContentCount > 0 || viewModel.urgentChatReportsCount > 0,
+                pendingActive: viewModel.pendingContentCount > 0,
+                angle: auraAngle
+            )
+            .ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Sovereign Glass Navigation Deck
-                    sovereignHeaderView
+            VStack(spacing: 0) {
+                // Sovereign Glass Navigation Deck
+                sovereignHeaderView
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 16) {
-                            // 3D Executive Telemetry Matrix
-                            kpiMatrixView
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 16) {
+                        // 3D Executive Telemetry Matrix
+                        kpiMatrixView
 
-                            // Fluid Stream Selector
-                            streamSwitcher
+                        // Fluid Stream Selector
+                        streamSwitcher
 
-                            // Multi-Dimensional Search & Filter Bar
-                            filterAndSearchBar
+                        // Multi-Dimensional Search & Filter Bar
+                        filterAndSearchBar
 
-                            // Active Queue Cards or Category-Defining Zero State
-                            activeStreamContentView
+                        // Active Queue Cards or Category-Defining Zero State
+                        activeStreamContentView
 
-                            Spacer(minLength: 48)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
+                        Spacer(minLength: 48)
                     }
-                    .refreshable {
-                        viewModel.startListening()
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 10)
                 }
-
-                // Toast Feedback Banner
-                if let toast = viewModel.toastMessage {
-                    VStack {
-                        Spacer()
-                        toastBanner(message: toast, isError: viewModel.isErrorToast)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 24)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+                .refreshable {
+                    viewModel.startListening()
                 }
-
-                // Native Push Navigation Links
-                NavigationLink(
-                    destination: Group {
-                        if let item = viewModel.inspectingContentItem {
-                            AdminModerationDossierSheet(
-                                item: item,
-                                viewModel: viewModel,
-                                isPushMode: true,
-                                onBack: {
-                                    viewModel.inspectingContentItem = nil
-                                }
-                            )
-                            .navigationBarHidden(true)
-                        } else {
-                            EmptyView()
-                        }
-                    },
-                    isActive: Binding(
-                        get: { viewModel.inspectingContentItem != nil },
-                        set: { if !$0 { viewModel.inspectingContentItem = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-                .accessibilityHidden(true)
-
-                NavigationLink(
-                    destination: Group {
-                        if let report = viewModel.inspectingChatReport {
-                            AdminChatReportDossierSheet(
-                                report: report,
-                                viewModel: viewModel,
-                                isPushMode: true,
-                                onBack: {
-                                    viewModel.inspectingChatReport = nil
-                                }
-                            )
-                            .navigationBarHidden(true)
-                        } else {
-                            EmptyView()
-                        }
-                    },
-                    isActive: Binding(
-                        get: { viewModel.inspectingChatReport != nil },
-                        set: { if !$0 { viewModel.inspectingChatReport = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-                .accessibilityHidden(true)
             }
-            .navigationBarHidden(true)
+
+            // Toast Feedback Banner
+            if let toast = viewModel.toastMessage {
+                VStack {
+                    Spacer()
+                    toastBanner(message: toast, isError: viewModel.isErrorToast)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+            }
+
+            // Native Push Navigation Links
+            NavigationLink(
+                destination: Group {
+                    if let item = viewModel.inspectingContentItem {
+                        AdminModerationDossierSheet(
+                            item: item,
+                            viewModel: viewModel,
+                            isPushMode: true,
+                            onBack: {
+                                viewModel.inspectingContentItem = nil
+                            }
+                        )
+                        .navigationBarHidden(true)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: Binding(
+                    get: { viewModel.inspectingContentItem != nil },
+                    set: { if !$0 { viewModel.inspectingContentItem = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+            .accessibilityHidden(true)
+
+            NavigationLink(
+                destination: Group {
+                    if let report = viewModel.inspectingChatReport {
+                        AdminChatReportDossierSheet(
+                            report: report,
+                            viewModel: viewModel,
+                            isPushMode: true,
+                            onBack: {
+                                viewModel.inspectingChatReport = nil
+                            }
+                        )
+                        .navigationBarHidden(true)
+                    } else {
+                        EmptyView()
+                    }
+                },
+                isActive: Binding(
+                    get: { viewModel.inspectingChatReport != nil },
+                    set: { if !$0 { viewModel.inspectingChatReport = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+            .accessibilityHidden(true)
         }
-        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $viewModel.rejectingContentItem) { item in
             AdminRejectionReasonSheet(item: item, viewModel: viewModel)
@@ -819,7 +815,10 @@ struct AdminModerationView: View {
     // MARK: - Sovereign Navigation Bar
 
     private var sovereignHeaderView: some View {
-        HStack(spacing: 12) {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
+
+            HStack(spacing: 12) {
             // Tactile Frosted Back Button (100% Deterministic Dismissal)
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -927,11 +926,13 @@ struct AdminModerationView: View {
         .padding(.horizontal, 16)
         .padding(.top, 8)
         .padding(.bottom, 8)
-        .background(
-            AdminSurface.background.opacity(0.85)
-                .background(.ultraThinMaterial)
-        )
     }
+    .background(
+        AdminSurface.background.opacity(0.85)
+            .background(.ultraThinMaterial)
+            .ignoresSafeArea(edges: .top)
+    )
+}
 
     // MARK: - KPI Telemetry Matrix
 

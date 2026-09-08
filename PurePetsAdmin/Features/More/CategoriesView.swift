@@ -899,73 +899,67 @@ public struct AdminCategoriesView: View {
     }
 
     public var body: some View {
-        NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    // Top Sovereign Navigation Bar
-                    dossierHeaderView
+            VStack(spacing: 0) {
+                // Top Sovereign Navigation Bar
+                dossierHeaderView
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: AdminSpacing.sectionSpacing) {
-                            // Live Telemetry Pulse Section
-                            telemetryPulseSection
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.sectionSpacing) {
+                        // Live Telemetry Pulse Section
+                        telemetryPulseSection
 
-                            // Multi-Attribute Search & Discovery Field
-                            searchAndFilterSection
+                        // Multi-Attribute Search & Discovery Field
+                        searchAndFilterSection
 
-                            // Species Canvas
-                            categoryCanvasContent
-                        }
+                        // Species Canvas
+                        categoryCanvasContent
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.xs)
+                    .padding(.bottom, AdminSpacing.xxl)
+                }
+                .refreshable {
+                    viewModel.startListening()
+                }
+            }
+
+            // Toast Notification Overlay
+            if let message = viewModel.toastMessage {
+                VStack {
+                    Spacer()
+                    toastBanner(message: message, isError: viewModel.isErrorToast)
                         .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, AdminSpacing.xs)
-                        .padding(.bottom, AdminSpacing.xxl)
-                    }
-                    .refreshable {
-                        viewModel.startListening()
-                    }
+                        .padding(.bottom, AdminSpacing.lg)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+                .animation(AdminAnimation.standard, value: viewModel.toastMessage)
+            }
 
-                // Toast Notification Overlay
-                if let message = viewModel.toastMessage {
-                    VStack {
-                        Spacer()
-                        toastBanner(message: message, isError: viewModel.isErrorToast)
-                            .padding(.horizontal, AdminSpacing.screenMargin)
-                            .padding(.bottom, AdminSpacing.lg)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+            // Push Navigation Link to Category Studio
+            NavigationLink(
+                destination: Group {
+                    if let cat = selectedCategoryForStudio {
+                        AdminCategoryStudioView(
+                            category: cat,
+                            viewModel: viewModel,
+                            onDismiss: {
+                                selectedCategoryForStudio = nil
+                            }
+                        )
                     }
-                    .animation(AdminAnimation.standard, value: viewModel.toastMessage)
-                }
-
-                // Push Navigation Link to Category Studio
-                NavigationLink(
-                    destination: Group {
-                        if let cat = selectedCategoryForStudio {
-                            AdminCategoryStudioView(
-                                category: cat,
-                                viewModel: viewModel,
-                                onDismiss: {
-                                    selectedCategoryForStudio = nil
-                                }
-                            )
-                        }
-                    },
-                    isActive: Binding(
-                        get: { selectedCategoryForStudio != nil },
-                        set: { if !$0 { selectedCategoryForStudio = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-                .hidden()
+                },
+                isActive: Binding(
+                    get: { selectedCategoryForStudio != nil },
+                    set: { if !$0 { selectedCategoryForStudio = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
         }
-        .navigationBarHidden(true)
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        }
-        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $isCreatingCategory) {
             let nextID = (viewModel.categories.map { $0.numericID }.max() ?? 0) + 1

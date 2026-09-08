@@ -1490,11 +1490,7 @@ struct AdminPOSFastSellView: View {
     }
 
     var body: some View {
-        NavigationView {
-            posContent
-                .navigationBarHidden(true)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
+        posContent
     }
 
     private var posContent: some View {

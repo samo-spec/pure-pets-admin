@@ -288,91 +288,87 @@ struct AdminStaffManagementView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    dossierHeaderView
+            VStack(spacing: 0) {
+                dossierHeaderView
 
-                    ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: AdminSpacing.sectionSpacing) {
-                            staffCommandCockpit
-                            staffListContent
-                        }
-                        .padding(.horizontal, AdminSpacing.screenMargin)
-                        .padding(.top, AdminSpacing.xs)
-                        .padding(.bottom, AdminSpacing.xxl)
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: AdminSpacing.sectionSpacing) {
+                        staffCommandCockpit
+                        staffListContent
                     }
-                    .refreshable {
-                        viewModel.startListening()
-                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.top, AdminSpacing.xs)
+                    .padding(.bottom, AdminSpacing.xxl)
                 }
-
-                // Push Navigation Link for Editing Member
-                NavigationLink(
-                    destination: Group {
-                        if let member = selectedMemberForEdit {
-                            AdminStaffMemberEditorView(
-                                staffDoc: member,
-                                onDismiss: { selectedMemberForEdit = nil },
-                                onSaved: { msg in
-                                    selectedMemberForEdit = nil
-                                    showToast(msg, isError: false)
-                                }
-                            )
-                        }
-                    },
-                    isActive: Binding(
-                        get: { selectedMemberForEdit != nil },
-                        set: { if !$0 { selectedMemberForEdit = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-
-                // Push Navigation Link for Creating New Member
-                NavigationLink(
-                    destination: AdminStaffMemberEditorView(
-                        staffDoc: nil,
-                        onDismiss: { isCreatingNew = false },
-                        onSaved: { msg in
-                            isCreatingNew = false
-                            showToast(msg, isError: false)
-                        }
-                    ),
-                    isActive: $isCreatingNew
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-
-                // Push Navigation Link for Sovereign Role Rank & Security Levels Matrix
-                NavigationLink(
-                    destination: AdminRoleRankSecurityLevelsView(
-                        onDismiss: { isShowingRoleRankMatrix = false }
-                    ),
-                    isActive: $isShowingRoleRankMatrix
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-
-                if let message = toastMessage {
-                    VStack {
-                        Spacer()
-                        toastBanner(message: message, isError: isErrorToast)
-                            .padding(.horizontal, AdminSpacing.screenMargin)
-                            .padding(.bottom, AdminSpacing.lg)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                    .animation(AdminAnimation.standard, value: toastMessage)
+                .refreshable {
+                    viewModel.startListening()
                 }
             }
-            .navigationBarHidden(true)
+
+            // Push Navigation Link for Editing Member
+            NavigationLink(
+                destination: Group {
+                    if let member = selectedMemberForEdit {
+                        AdminStaffMemberEditorView(
+                            staffDoc: member,
+                            onDismiss: { selectedMemberForEdit = nil },
+                            onSaved: { msg in
+                                selectedMemberForEdit = nil
+                                showToast(msg, isError: false)
+                            }
+                        )
+                    }
+                },
+                isActive: Binding(
+                    get: { selectedMemberForEdit != nil },
+                    set: { if !$0 { selectedMemberForEdit = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+
+            // Push Navigation Link for Creating New Member
+            NavigationLink(
+                destination: AdminStaffMemberEditorView(
+                    staffDoc: nil,
+                    onDismiss: { isCreatingNew = false },
+                    onSaved: { msg in
+                        isCreatingNew = false
+                        showToast(msg, isError: false)
+                    }
+                ),
+                isActive: $isCreatingNew
+            ) {
+                EmptyView()
+            }
+            .hidden()
+
+            // Push Navigation Link for Sovereign Role Rank & Security Levels Matrix
+            NavigationLink(
+                destination: AdminRoleRankSecurityLevelsView(
+                    onDismiss: { isShowingRoleRankMatrix = false }
+                ),
+                isActive: $isShowingRoleRankMatrix
+            ) {
+                EmptyView()
+            }
+            .hidden()
+
+            if let message = toastMessage {
+                VStack {
+                    Spacer()
+                    toastBanner(message: message, isError: isErrorToast)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.bottom, AdminSpacing.lg)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .animation(AdminAnimation.standard, value: toastMessage)
+            }
         }
-        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             viewModel.startListening()
@@ -784,7 +780,7 @@ struct AdminStaffManagementView: View {
 
     private func staffMemberCard(member: PPStaffDoc) -> some View {
         let isCurrent = Auth.auth().currentUser?.uid == member.uid
-        let isActionable = viewModel.canUpdateStaff && !isCurrent
+        let isActionable = viewModel.canUpdateStaff || isCurrent
 
         return StaffMemberSovereignCard(
             member: member,
@@ -844,24 +840,30 @@ private struct StaffMemberSovereignCard: View {
     private var isRTL: Bool { Language.isRTL() }
     private var isActive: Bool { member.isActive() }
 
+    private var roleModel: PlatformRoleModel? {
+        PlatformRoleModel.builtInFoundationRoles().first(where: { $0.key == member.roleIdentifier })
+    }
+
     private var roleOption: StaffRoleOption? {
         StaffRoleOption(rawValue: member.roleIdentifier)
     }
 
     private var roleTitle: String {
-        roleOption?.title ?? PPAdminSessionBridge.localizedRoleName(for: member.roleIdentifier)
+        roleModel?.localizedTitle ?? roleOption?.title ?? PPAdminSessionBridge.localizedRoleName(for: member.roleIdentifier)
     }
 
     private var roleAccentColor: Color {
-        roleOption?.accentColor ?? AdminSurface.primary
+        roleModel?.accentColor ?? roleOption?.accentColor ?? AdminSurface.primary
     }
 
     private var roleIcon: String {
-        roleOption?.icon ?? "shield.fill"
+        roleModel?.iconName ?? roleOption?.icon ?? "shield.fill"
     }
 
     private var permsCount: Int {
-        member.permissions.count > 0 ? member.permissions.count : (roleOption?.defaultPermissionsCount ?? 0)
+        if member.permissions.count > 0 { return member.permissions.count }
+        if let rm = roleModel { return rm.permissions.count }
+        return roleOption?.defaultPermissionsCount ?? 0
     }
 
     private var userInitials: String {
@@ -1037,12 +1039,20 @@ private struct StaffMemberSovereignCard: View {
 
             // Row 3: Role Insignia + Permissions Count + Scope
             HStack(spacing: 6) {
-                // Role Capsule
+                // Role Capsule + Rank Shield
                 HStack(spacing: 4) {
                     Image(systemName: roleIcon)
                         .font(.system(size: 9.5, weight: .bold))
                     Text(roleTitle)
                         .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                    if let rm = roleModel {
+                        Text("#\(rm.rank)")
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundColor(roleAccentColor)
+                            .padding(.horizontal, 3.5)
+                            .padding(.vertical, 0.5)
+                            .background(roleAccentColor.opacity(0.14), in: Capsule())
+                    }
                 }
                 .foregroundColor(roleAccentColor)
                 .padding(.horizontal, 8)
@@ -1134,7 +1144,10 @@ struct AdminStaffMemberEditorView: View {
     let onSaved: (String) -> Void
 
     @State private var isCreatingAccount = false
-    @State private var selectedRole: StaffRoleOption = .viewer
+    @StateObject private var roleRankVM = AdminRoleRankViewModel()
+    @State private var selectedRoleKey: String = "viewer"
+    @State private var selectedTierFilter: String = "all"
+    @State private var inspectingRoleForMatrix: PlatformRoleModel? = nil
     @State private var isActive: Bool = true
     @State private var canPostAnimalAds: Bool = false
     @State private var canPostAdoptionAds: Bool = false
@@ -1156,7 +1169,6 @@ struct AdminStaffMemberEditorView: View {
 
     @State private var isSaving: Bool = false
     @State private var validationError: String? = nil
-    @State private var showPermissionsInspector: Bool = false
     @State private var toastMessage: String? = nil
 
     // Working branch permissions & scope
@@ -1177,6 +1189,42 @@ struct AdminStaffMemberEditorView: View {
 
     private var isEditing: Bool { staffDoc != nil }
     private var currentStaff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
+
+    private var allAvailableRoles: [PlatformRoleModel] {
+        if !roleRankVM.allRoles.isEmpty {
+            return roleRankVM.allRoles
+        }
+        return PlatformRoleModel.builtInFoundationRoles()
+    }
+
+    private var currentSelectedRoleModel: PlatformRoleModel {
+        if let found = allAvailableRoles.first(where: { $0.key == selectedRoleKey }) {
+            return found
+        }
+        let builtIns = PlatformRoleModel.builtInFoundationRoles()
+        return builtIns.first(where: { $0.key == selectedRoleKey })
+            ?? builtIns.first(where: { $0.key == "viewer" })
+            ?? builtIns[0]
+    }
+
+    private var displayedRoles: [PlatformRoleModel] {
+        if selectedTierFilter == "all" {
+            return allAvailableRoles
+        }
+        return allAvailableRoles.filter { $0.clearanceTier.rawValue == selectedTierFilter }
+    }
+
+    private var selectedRole: StaffRoleOption {
+        StaffRoleOption(rawValue: selectedRoleKey) ?? .viewer
+    }
+
+    private var canSelectRole: Bool {
+        if isEditing {
+            let isSelf = (staffDoc?.uid == Auth.auth().currentUser?.uid)
+            return (isSuperAdminOrAdmin || canUpdateStaff) && !isSelf
+        }
+        return isSuperAdminOrAdmin || canCreateStaff
+    }
 
     private var isSuperAdminOrAdmin: Bool {
         if let staff = currentStaff, staff.isAdmin() || PPStaffAuth.isAdminRole(staff.role) { return true }
@@ -1212,24 +1260,13 @@ struct AdminStaffMemberEditorView: View {
         return staffDoc?.status == .active ? canDisableStaff : canUpdateStaff
     }
 
-    @State private var customRoleRawId: String? = nil
-
     init(staffDoc: PPStaffDoc?, onDismiss: @escaping () -> Void, onSaved: @escaping (String) -> Void) {
         self.staffDoc = staffDoc
         self.onDismiss = onDismiss
         self.onSaved = onSaved
 
         let rawRole = (staffDoc?.roleIdentifier ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        if let stdRole = StaffRoleOption(rawValue: rawRole) {
-            _selectedRole = State(initialValue: stdRole)
-            _customRoleRawId = State(initialValue: nil)
-        } else if !rawRole.isEmpty {
-            _selectedRole = State(initialValue: .viewer)
-            _customRoleRawId = State(initialValue: rawRole)
-        } else {
-            _selectedRole = State(initialValue: .viewer)
-            _customRoleRawId = State(initialValue: nil)
-        }
+        _selectedRoleKey = State(initialValue: rawRole.isEmpty ? "viewer" : rawRole)
         _isActive = State(initialValue: staffDoc?.status == .active)
         _selectedUserUID = State(initialValue: staffDoc?.uid ?? "")
         _selectedUserDisplayName = State(initialValue: staffDoc?.displayName ?? "")
@@ -1301,27 +1338,19 @@ struct AdminStaffMemberEditorView: View {
                 }
             }
         }
-        .background(
-            NavigationLink(
-                destination: AdminStaffPermissionsInspectorSheet(
-                    role: selectedRole,
-                    staffDoc: staffDoc,
-                    onDismiss: { showPermissionsInspector = false }
-                ),
-                isActive: $showPermissionsInspector
-            ) {
-                EmptyView()
-            }
-            .hidden()
-        )
+        .sheet(item: $inspectingRoleForMatrix) { role in
+            RolePermissionsMatrixSheet(role: role)
+                .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
         .navigationBarHidden(true)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
+            roleRankVM.startListening()
             loadExistingUserCapabilities()
             fetchBranches()
         }
-        .onChange(of: selectedRole) { newRole in
-            if newRole == .superAdmin || newRole == .owner {
+        .onChange(of: selectedRoleKey) { newRoleKey in
+            if newRoleKey == "super_admin" || newRoleKey == "owner" {
                 withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
                     isGlobalScope = true
                 }
@@ -1457,18 +1486,24 @@ struct AdminStaffMemberEditorView: View {
 
                         Spacer()
 
-                        // Role Insignia Capsule
+                        // Role Insignia Capsule + Rank
                         HStack(spacing: 4) {
-                            Image(systemName: selectedRole.icon)
+                            Image(systemName: currentSelectedRoleModel.iconName)
                                 .font(.system(size: 10, weight: .bold))
-                            Text(selectedRole.title)
+                            Text(currentSelectedRoleModel.localizedTitle)
                                 .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                            Text("#\(currentSelectedRoleModel.rank)")
+                                .font(.system(size: 9.5, weight: .black, design: .monospaced))
+                                .foregroundColor(currentSelectedRoleModel.accentColor)
+                                .padding(.horizontal, 3.5)
+                                .padding(.vertical, 0.5)
+                                .background(currentSelectedRoleModel.accentColor.opacity(0.14), in: Capsule())
                         }
-                        .foregroundColor(selectedRole.accentColor)
+                        .foregroundColor(currentSelectedRoleModel.accentColor)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 3.5)
-                        .background(selectedRole.accentColor.opacity(0.12), in: Capsule())
-                        .overlay(Capsule().stroke(selectedRole.accentColor.opacity(0.25), lineWidth: 0.5))
+                        .background(currentSelectedRoleModel.accentColor.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(currentSelectedRoleModel.accentColor.opacity(0.25), lineWidth: 0.5))
                     }
 
                     // Contact: Email
@@ -1627,9 +1662,9 @@ struct AdminStaffMemberEditorView: View {
     private var monogramView: some View {
         ZStack {
             LinearGradient(
-                colors: selectedRole.accentColor == Color(uiColor: .ppTextSecondary)
+                colors: currentSelectedRoleModel.accentColor == Color(uiColor: .ppTextSecondary)
                     ? [Color(red: 0.35, green: 0.40, blue: 0.45), Color(red: 0.45, green: 0.50, blue: 0.55)]
-                    : [selectedRole.accentColor, selectedRole.accentColor.opacity(0.75)],
+                    : [currentSelectedRoleModel.accentColor, currentSelectedRoleModel.accentColor.opacity(0.75)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -1790,14 +1825,14 @@ struct AdminStaffMemberEditorView: View {
                 // Pod 2: Permissions Count & Inspector Trigger
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showPermissionsInspector = true
+                    inspectingRoleForMatrix = currentSelectedRoleModel
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Image(systemName: "key.viewfinder")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(AdminSurface.primary)
-                            Text(Language.get("Staff_Authorized_Ops", alter: "الصلاحيات"))
+                                .foregroundColor(currentSelectedRoleModel.accentColor)
+                            Text(Language.get("Staff_Authorized_Ops", alter: "الصلاحيات المعتمدة"))
                                 .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
                                 .foregroundColor(AdminSurface.secondaryText)
                             Spacer()
@@ -1807,19 +1842,23 @@ struct AdminStaffMemberEditorView: View {
                         }
 
                         HStack {
-                            Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%d صلاحية"), selectedRole.defaultPermissionsCount))
+                            Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%d صلاحية"), currentSelectedRoleModel.permissions.count))
                                 .font(Font.custom("Beiruti-Bold", size: 14, relativeTo: .callout))
                                 .foregroundColor(AdminSurface.primaryText)
                                 .monospacedDigit()
 
                             Spacer()
 
-                            Text(Language.get("Inspect", alter: "فحص"))
-                                .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                .foregroundColor(AdminSurface.primary)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                            HStack(spacing: 3) {
+                                Text("\(Int(currentSelectedRoleModel.coveragePercentage * 100))%")
+                                    .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 7, weight: .bold))
+                            }
+                            .foregroundColor(currentSelectedRoleModel.accentColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(currentSelectedRoleModel.accentColor.opacity(0.12), in: Capsule())
                         }
                     }
                     .padding(11)
@@ -1827,130 +1866,360 @@ struct AdminStaffMemberEditorView: View {
                     .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(AdminSurface.hairline, lineWidth: 1)
+                            .stroke(currentSelectedRoleModel.accentColor.opacity(0.25), lineWidth: 1)
                     )
                 }
                 .buttonStyle(PlainButtonStyle())
             }
 
             // Clearance Tier Sub-banner
-            HStack(spacing: 6) {
-                Image(systemName: "shield.righthalf.filled")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(selectedRole.accentColor)
-                Text(selectedRole.clearanceTier)
-                    .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
-                    .foregroundColor(AdminSurface.primaryText)
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(currentSelectedRoleModel.accentColor.opacity(0.15))
+                        .frame(width: 26, height: 26)
+                    Image(systemName: currentSelectedRoleModel.iconName)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(currentSelectedRoleModel.accentColor)
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(currentSelectedRoleModel.clearanceTier.title)
+                            .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                            .foregroundColor(currentSelectedRoleModel.clearanceTier.primaryColor)
+
+                        Text("#\(currentSelectedRoleModel.rank)")
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .foregroundColor(currentSelectedRoleModel.accentColor)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(currentSelectedRoleModel.accentColor.opacity(0.12), in: Capsule())
+                    }
+
+                    Text(currentSelectedRoleModel.localizedDesc)
+                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText)
+                        .lineLimit(1)
+                }
+
                 Spacer()
-                Text(selectedRole.subtitle)
-                    .font(Font.custom("Beiruti-Regular", size: 10.5, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText)
-                    .lineLimit(1)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    inspectingRoleForMatrix = currentSelectedRoleModel
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(Language.get("Inspect", alter: "فحص"))
+                            .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundColor(currentSelectedRoleModel.accentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(currentSelectedRoleModel.accentColor.opacity(0.10), in: Capsule())
+                }
+                .buttonStyle(PlainButtonStyle())
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(selectedRole.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.vertical, 8)
+            .background(currentSelectedRoleModel.accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(currentSelectedRoleModel.accentColor.opacity(0.20), lineWidth: 0.8)
+            )
         }
     }
 
     // MARK: - 3. Role & Security Clearance Matrix Chamber
 
     private var roleClearanceMatrixChamber: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "person.badge.shield.checkmark.fill")
-                    .font(.system(size: 13))
-                    .foregroundColor(AdminSurface.primary)
-                Text(Language.get("Staff_Role_Selection_Title", alter: "رتبة الدور والمستوى الأمني"))
-                    .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .caption))
-                    .foregroundColor(AdminSurface.secondaryText)
-                Spacer()
-                Text(Language.get("Tap_To_Switch", alter: "اختر الدور لتحديث الصلاحيات"))
-                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                    .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
-            }
-
-            VStack(spacing: 8) {
-                if let custom = customRoleRawId {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Color.indigo)
-                        Text(String(format: Language.get("Staff_CustomRole_Pill", alter: "دور مخصص حالي: %@"), custom))
-                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                            .foregroundColor(Color.indigo)
-                        Spacer()
-                    }
-                    .padding(10)
-                    .background(Color.indigo.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            // Chamber Header
+            HStack(spacing: 8) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(red: 0.82, green: 0.12, blue: 0.28),
+                                    Color(red: 0.12, green: 0.52, blue: 0.88)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "person.badge.shield.checkmark.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
                 }
 
-                ForEach(StaffRoleOption.allCases) { role in
-                    let isSelected = (selectedRole == role && customRoleRawId == nil)
-                    Button {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            selectedRole = role
-                            customRoleRawId = nil
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(isSelected ? role.accentColor : role.accentColor.opacity(0.12))
-                                    .frame(width: 40, height: 40)
-                                Image(systemName: role.icon)
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(isSelected ? .white : role.accentColor)
-                            }
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("Staff_Role_Selection_Title", alter: "رتبة الدور ومستوى الأمان السيادي"))
+                            .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .headline))
+                            .foregroundColor(AdminSurface.primaryText)
 
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 6) {
-                                    Text(role.title)
-                                        .font(Font.custom("Beiruti-Bold", size: 14.5, relativeTo: .body))
-                                        .foregroundColor(AdminSurface.primaryText)
-
-                                    Text(String.localizedStringWithFormat(Language.get("Staff_Access_Module_Permissions_Format", alter: "%ld صلاحية"), role.defaultPermissionsCount))
-                                        .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                                        .foregroundColor(role.accentColor)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 1)
-                                        .background(role.accentColor.opacity(0.10), in: Capsule())
-                                }
-
-                                Text(role.subtitle)
-                                    .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                                    .foregroundColor(AdminSurface.secondaryText)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            ZStack {
-                                Circle()
-                                    .stroke(isSelected ? role.accentColor : AdminSurface.hairline, lineWidth: isSelected ? 2 : 1)
-                                    .frame(width: 22, height: 22)
-                                if isSelected {
-                                    Circle()
-                                        .fill(role.accentColor)
-                                        .frame(width: 12, height: 12)
-                                }
-                            }
-                        }
-                        .padding(11)
-                        .background(
-                            isSelected ? role.accentColor.opacity(0.08) : AdminSurface.surface,
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .stroke(isSelected ? role.accentColor.opacity(0.4) : AdminSurface.hairline, lineWidth: 1)
-                        )
+                        Text("IAM v2")
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .foregroundColor(Color(red: 0.82, green: 0.12, blue: 0.28))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color(red: 0.82, green: 0.12, blue: 0.28).opacity(0.12), in: Capsule())
                     }
-                    .buttonStyle(PlainButtonStyle())
+
+                    Text(Language.get("Staff_Role_Matrix_Subtitle", alter: "حدد رتبة الصلاحية أو افحص مصفوفة الـ 45 صلاحية المعتمدة"))
+                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                Text("\(displayedRoles.count) / \(allAvailableRoles.count)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.control, in: Capsule())
+            }
+
+            // Clearance Tier Filter Segment Bar
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    tierFilterButton(id: "all", title: Language.get("All", alter: "الكل"), count: allAvailableRoles.count, color: AdminSurface.primary)
+                    tierFilterButton(id: SecurityClearanceTier.tier1.rawValue, title: "Tier 1 السيادية", count: countForTier(.tier1), color: SecurityClearanceTier.tier1.primaryColor)
+                    tierFilterButton(id: SecurityClearanceTier.tier2.rawValue, title: "Tier 2 العمليات", count: countForTier(.tier2), color: SecurityClearanceTier.tier2.primaryColor)
+                    tierFilterButton(id: SecurityClearanceTier.tier3.rawValue, title: "Tier 3 الخدمات", count: countForTier(.tier3), color: SecurityClearanceTier.tier3.primaryColor)
+                    tierFilterButton(id: SecurityClearanceTier.tier4.rawValue, title: "Tier 4 الرقابة", count: countForTier(.tier4), color: SecurityClearanceTier.tier4.primaryColor)
+                }
+                .padding(.vertical, 2)
+            }
+
+            // Self-edit Protection Banner (if editing self)
+            if isEditing, staffDoc?.uid == Auth.auth().currentUser?.uid {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(Color(red: 0.85, green: 0.55, blue: 0.10))
+                    Text(Language.get("Staff_SelfRole_Notice", alter: "تنبيه الحوكمة: لا يمكن تعديل رتبة حسابك الشخصي ذاتياً لحماية الصلاحيات السيادية."))
+                        .font(Font.custom("Beiruti-Medium", size: 11.5, relativeTo: .caption))
+                        .foregroundColor(AdminSurface.primaryText)
+                    Spacer()
+                }
+                .padding(10)
+                .background(Color(red: 0.85, green: 0.55, blue: 0.10).opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(Color(red: 0.85, green: 0.55, blue: 0.10).opacity(0.25), lineWidth: 0.8)
+                )
+            }
+
+            // Roles List
+            VStack(spacing: 10) {
+                ForEach(displayedRoles) { role in
+                    roleCardView(role: role)
                 }
             }
         }
+    }
+
+    private func roleCardView(role: PlatformRoleModel) -> some View {
+        let isSelected = (selectedRoleKey == role.key)
+
+        return VStack(spacing: 8) {
+            // Main Tap Row
+            Button {
+                if canSelectRole {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                        selectedRoleKey = role.key
+                    }
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    showToast(Language.get("Staff_SelfRole_Protected", alter: "رتبة حسابك الشخصي محصنة وغير قابلة للتعديل الذاتي"))
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    // Role Icon in Squircle
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(isSelected ? role.accentColor : role.accentColor.opacity(0.12))
+                            .frame(width: 44, height: 44)
+                        Image(systemName: role.iconName)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(isSelected ? .white : role.accentColor)
+                    }
+
+                    // Role Details Stack
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(role.localizedTitle)
+                                .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .body))
+                                .foregroundColor(AdminSurface.primaryText)
+
+                            // Rank Shield Pill
+                            Text("#\(role.rank)")
+                                .font(.system(size: 10.5, weight: .black, design: .monospaced))
+                                .foregroundColor(role.accentColor)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 1.5)
+                                .background(role.accentColor.opacity(0.12), in: Capsule())
+
+                            // Tier Pill
+                            Text(role.clearanceTier.shortTitle)
+                                .font(Font.custom("Beiruti-Bold", size: 9.5, relativeTo: .caption2))
+                                .foregroundColor(role.clearanceTier.primaryColor)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(role.clearanceTier.primaryColor.opacity(0.10), in: Capsule())
+                        }
+
+                        // Coverage & Permissions Telemetry
+                        HStack(spacing: 6) {
+                            Text(String(format: Language.get("Staff_Perms_Coverage_Format", alter: "%d / %d صلاحية"), role.permissions.count, SecurityPermissionCatalog.shared.totalPermissionsCount))
+                                .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .monospacedDigit()
+
+                            Text("•")
+                                .font(.system(size: 8))
+                                .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+
+                            Text("\(Int(role.coveragePercentage * 100))% " + Language.get("Staff_Coverage", alter: "تغطية"))
+                                .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                                .foregroundColor(role.accentColor)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Selection Radio Indicator
+                    ZStack {
+                        Circle()
+                            .stroke(isSelected ? role.accentColor : AdminSurface.hairline, lineWidth: isSelected ? 2.5 : 1)
+                            .frame(width: 22, height: 22)
+                        if isSelected {
+                            Circle()
+                                .fill(role.accentColor)
+                                .frame(width: 12, height: 12)
+                        }
+                    }
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            // Description Row
+            Text(role.localizedDesc)
+                .font(Font.custom("Beiruti-Regular", size: 11.5, relativeTo: .caption))
+                .foregroundColor(AdminSurface.secondaryText)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 2)
+
+            // Permissions Coverage Progress Bar
+            GeometryReader { geo in
+                ZStack(alignment: Language.isRTL() ? .trailing : .leading) {
+                    Capsule()
+                        .fill(AdminSurface.hairline)
+                        .frame(height: 4.5)
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [role.accentColor, role.accentColor.opacity(0.70)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: max(6, geo.size.width * CGFloat(role.coveragePercentage)), height: 4.5)
+                }
+            }
+            .frame(height: 4.5)
+            .padding(.top, 1)
+
+            // Divider & Deep Permissions Matrix Sheet Trigger
+            Divider().background(AdminSurface.hairline.opacity(0.6))
+
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    inspectingRoleForMatrix = role
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "key.viewfinder")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(Language.get("RoleRank_Inspect_Permissions_Matrix", alter: "فحص مصفوفة الـ 45 صلاحية المعتمدة لهذا الدور"))
+                            .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundColor(role.accentColor)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                Spacer()
+
+                if isSelected {
+                    HStack(spacing: 3) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 9, weight: .black))
+                        Text(Language.get("Staff_Role_Selected_Badge", alter: "الدور المختار"))
+                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    }
+                    .foregroundColor(role.accentColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(role.accentColor.opacity(0.12), in: Capsule())
+                }
+            }
+            .padding(.top, 1)
+        }
+        .padding(12)
+        .background(
+            isSelected ? role.accentColor.opacity(0.08) : AdminSurface.surface,
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(isSelected ? role.accentColor.opacity(0.50) : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 0.8)
+        )
+        .shadow(color: isSelected ? role.accentColor.opacity(0.08) : Color.black.opacity(0.02), radius: 8, y: 2)
+    }
+
+    private func countForTier(_ tier: SecurityClearanceTier) -> Int {
+        allAvailableRoles.filter { $0.clearanceTier == tier }.count
+    }
+
+    private func tierFilterButton(id: String, title: String, count: Int, color: Color) -> some View {
+        let isCurrent = (selectedTierFilter == id)
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                selectedTierFilter = id
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption))
+                Text("\(count)")
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(isCurrent ? Color.white.opacity(0.24) : color.opacity(0.12), in: Capsule())
+            }
+            .foregroundColor(isCurrent ? .white : AdminSurface.primaryText)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                isCurrent ? color : AdminSurface.control,
+                in: Capsule()
+            )
+            .overlay(
+                Capsule().strokeBorder(isCurrent ? Color.clear : AdminSurface.hairline, lineWidth: 0.7)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 
     // MARK: - 3.5 Working Branch Permissions & Scope Chamber
@@ -2657,9 +2926,14 @@ struct AdminStaffMemberEditorView: View {
                     .frame(width: 8, height: 8)
 
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(selectedRole.title)
-                        .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
-                        .foregroundColor(AdminSurface.primaryText)
+                    HStack(spacing: 4) {
+                        Text(currentSelectedRoleModel.localizedTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 12.5, relativeTo: .caption))
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text("#\(currentSelectedRoleModel.rank)")
+                            .font(.system(size: 9.5, weight: .black, design: .monospaced))
+                            .foregroundColor(currentSelectedRoleModel.accentColor)
+                    }
                     Text(isActive ? Language.get("Staff_Status_Active_Auth", alter: "نشط ومفوّض") : Language.get("Staff_Status_Disabled_Susp", alter: "معطّل"))
                         .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
                         .foregroundColor(AdminSurface.secondaryText)
@@ -2700,7 +2974,7 @@ struct AdminStaffMemberEditorView: View {
                 )
                 .shadow(color: AdminSurface.primary.opacity(0.28), radius: 8, y: 3)
             }
-            .disabled(isSaving)
+            .disabled(isSaving || !canSubmitCommand)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -2888,19 +3162,8 @@ struct AdminStaffMemberEditorView: View {
             "branchPermissions": [:]
         ]
 
-        let staffRole: PPStaffRole = {
-            switch selectedRole {
-            case .superAdmin: return .superAdmin
-            case .owner: return .owner
-            case .operationsManager: return .operationsManager
-            case .inventoryManager: return .inventoryManager
-            case .paymentsManager: return .paymentsManager
-            case .supportAgent: return .supportAgent
-            case .viewer: return .viewer
-            }
-        }()
-
-        let finalRole = customRoleRawId ?? selectedRole.rawValue
+        let finalRole = selectedRoleKey
+        let staffRole = PPStaffRole(rawValue: finalRole)
 
         if isEditing, let uid = staffDoc?.uid {
             let isSelf = (uid == Auth.auth().currentUser?.uid)

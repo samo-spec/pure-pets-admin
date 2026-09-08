@@ -486,7 +486,8 @@ public struct AdminSovereignNavigationBar<TrailingContent: View>: View {
 
     private var topSpacing: CGFloat {
         if let customTopSpacing { return customTopSpacing }
-        return 0
+        if isModal { return 0 }
+        return PPStatusBarHelper.statusBarHeight
     }
 
     public var body: some View {

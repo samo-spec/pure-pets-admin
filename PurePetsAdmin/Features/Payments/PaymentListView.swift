@@ -164,11 +164,7 @@ struct AdminPaymentListView: View {
     }
 
     var body: some View {
-        NavigationView {
-            paymentListContent
-                .navigationBarHidden(true)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
+        paymentListContent
     }
 
     private var paymentListContent: some View {

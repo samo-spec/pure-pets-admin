@@ -685,6 +685,8 @@ struct AdminPOSHistoryView: View {
 
     private var navigationHeaderView: some View {
         VStack(alignment: .leading, spacing: 0) {
+            Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
+
             HStack(spacing: 12) {
                 // Back Button (RTL Safe)
                 Button(action: {

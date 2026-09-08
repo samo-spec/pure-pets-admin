@@ -1724,11 +1724,11 @@ public final class AdminProviderAccountingHostingController: UIViewController {
             initialProviderID: initialProviderID,
             isEmbeddedInTab: false,
             onDismiss: { [weak self] in
-                if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                    nav.popViewController(animated: true)
-                } else {
-                    self?.dismiss(animated: true)
+                guard let self = self else {
+                    PPAdminNavigationFallback.popOrDismiss()
+                    return
                 }
+                PPAdminNavigationFallback.popOrDismiss(from: self)
             }
         )
 

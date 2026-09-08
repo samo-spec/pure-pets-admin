@@ -608,11 +608,7 @@ struct AdminChatsView: View {
     }
 
     var body: some View {
-        NavigationView {
-            chatsContent
-                .navigationBarHidden(true)
-        }
-        .navigationViewStyle(StackNavigationViewStyle())
+        chatsContent
     }
 
     private var chatsContent: some View {

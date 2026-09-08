@@ -6484,3 +6484,13 @@
 "Providers_iPad_Queue_Title" = "سجل وفحص ملفات الانضمام";
 "Providers_Telemetry_LiveStatus" = "المنظومة نشطة";
 "Providers_TotalCount_Format" = "%@ طلب مسجل";
+
+/* NextGen V6 Sovereign IAM v2 Keys */
+"Staff_Role_Selection_Title" = "رتبة الدور ومستوى الأمان السيادي";
+"Staff_Role_Matrix_Subtitle" = "حدد رتبة الصلاحية أو افحص مصفوفة الـ 45 صلاحية المعتمدة";
+"Staff_Perms_Coverage_Format" = "%d / %d صلاحية";
+"Staff_Coverage" = "تغطية";
+"RoleRank_Inspect_Permissions_Matrix" = "فحص مصفوفة الـ 45 صلاحية المعتمدة لهذا الدور";
+"Staff_Role_Selected_Badge" = "الدور المختار";
+"Staff_SelfRole_Notice" = "تنبيه الحوكمة: لا يمكن تعديل رتبة حسابك الشخصي ذاتياً لحماية الصلاحيات السيادية.";
+"Staff_SelfRole_Protected" = "رتبة حسابك الشخصي محصنة وغير قابلة للتعديل الذاتي";

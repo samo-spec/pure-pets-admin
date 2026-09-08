@@ -6423,3 +6423,13 @@
 "Providers_iPad_Queue_Title" = "Merchant Onboarding Registry";
 "Providers_Telemetry_LiveStatus" = "Ecosystem Active";
 "Providers_TotalCount_Format" = "%@ Registered Requests";
+
+/* NextGen V6 Sovereign IAM v2 Keys */
+"Staff_Role_Selection_Title" = "Role Rank & Sovereign Security Level";
+"Staff_Role_Matrix_Subtitle" = "Select an authority rank or inspect the approved 45-permission matrix";
+"Staff_Perms_Coverage_Format" = "%d / %d permissions";
+"Staff_Coverage" = "coverage";
+"RoleRank_Inspect_Permissions_Matrix" = "Inspect the 45-permission matrix for this role";
+"Staff_Role_Selected_Badge" = "Selected Role";
+"Staff_SelfRole_Notice" = "Governance notice: Your personal account role cannot be self-modified to safeguard sovereign authority.";
+"Staff_SelfRole_Protected" = "Your personal account role is protected and cannot be self-modified.";

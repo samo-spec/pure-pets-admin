@@ -567,86 +567,82 @@ struct AdminUsersListView: View {
     }
 
     var body: some View {
-        NavigationView {
-            ZStack {
-                AdminSurface.background.ignoresSafeArea()
+        ZStack {
+            AdminSurface.background.ignoresSafeArea()
 
-                VStack(spacing: 0) {
-                    liquidNavBar
-                    bentoTelemetryGrid
-                    searchAndFilterDeck
-                    customerListSection
-                }
-
-                // Floating Operational Toast
-                if let toast = viewModel.toastMessage {
-                    VStack {
-                        Spacer()
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.white)
-                            Text(toast)
-                                .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
-                                .foregroundColor(.white)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(
-                            LinearGradient(
-                                colors: [Color(red: 0.12, green: 0.14, blue: 0.18), Color(red: 0.18, green: 0.20, blue: 0.25)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: Capsule()
-                        )
-                        .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
-                        .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
-                        .padding(.bottom, 24)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
-                }
-
-                // Push Navigation Link for Customer Dossier View
-                NavigationLink(
-                    destination: Group {
-                        if let customer = viewModel.activeDossierCustomer {
-                            AdminCustomerDossierView(
-                                customer: customer,
-                                viewModel: viewModel,
-                                onDismiss: {
-                                    viewModel.activeDossierCustomer = nil
-                                }
-                            )
-                        }
-                    },
-                    isActive: Binding(
-                        get: { viewModel.activeDossierCustomer != nil },
-                        set: { if !$0 { viewModel.activeDossierCustomer = nil } }
-                    )
-                ) {
-                    EmptyView()
-                }
-                .hidden()
-
-                NavigationLink(
-                    destination: AdminAddCustomerSheet(
-                        viewModel: viewModel,
-                        isPushMode: true,
-                        onBack: {
-                            viewModel.isAddCustomerSheetPresented = false
-                        }
-                    ),
-                    isActive: $viewModel.isAddCustomerSheetPresented
-                ) {
-                    EmptyView()
-                }
-                .hidden()
+            VStack(spacing: 0) {
+                liquidNavBar
+                bentoTelemetryGrid
+                searchAndFilterDeck
+                customerListSection
             }
-            .navigationBarHidden(true)
+
+            // Floating Operational Toast
+            if let toast = viewModel.toastMessage {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                        Text(toast)
+                            .font(Font.custom("Beiruti-Bold", size: 13.5, relativeTo: .body))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(red: 0.12, green: 0.14, blue: 0.18), Color(red: 0.18, green: 0.20, blue: 0.25)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                    .shadow(color: Color.black.opacity(0.20), radius: 12, y: 6)
+                    .padding(.bottom, 24)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.toastMessage)
+            }
+
+            // Push Navigation Link for Customer Dossier View
+            NavigationLink(
+                destination: Group {
+                    if let customer = viewModel.activeDossierCustomer {
+                        AdminCustomerDossierView(
+                            customer: customer,
+                            viewModel: viewModel,
+                            onDismiss: {
+                                viewModel.activeDossierCustomer = nil
+                            }
+                        )
+                    }
+                },
+                isActive: Binding(
+                    get: { viewModel.activeDossierCustomer != nil },
+                    set: { if !$0 { viewModel.activeDossierCustomer = nil } }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+
+            NavigationLink(
+                destination: AdminAddCustomerSheet(
+                    viewModel: viewModel,
+                    isPushMode: true,
+                    onBack: {
+                        viewModel.isAddCustomerSheetPresented = false
+                    }
+                ),
+                isActive: $viewModel.isAddCustomerSheetPresented
+            ) {
+                EmptyView()
+            }
+            .hidden()
         }
-        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 

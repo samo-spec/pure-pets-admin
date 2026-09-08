@@ -59,50 +59,75 @@ private enum ProviderTheme {
     }
 }
 
+// MARK: - Provider Tab Identifier
+
+public enum ProviderTab: String, CaseIterable, Sendable {
+    case applications
+    case plans
+    case features
+    case accounting
+
+    var localizedTitle: String {
+        switch self {
+        case .applications: return Language.get("Providers_Applications_Tab", alter: "الطلبات")
+        case .plans: return Language.get("Providers_Plans_Tab", alter: "الباقات")
+        case .features: return Language.get("Providers_Features_Tab", alter: "الميزات")
+        case .accounting: return Language.get("Providers_Accounting_Tab", alter: "المحاسبة")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .applications: return "tray.full.fill"
+        case .plans: return "sparkles.rectangle.stack.fill"
+        case .features: return "slider.horizontal.3"
+        case .accounting: return "banknote.fill"
+        }
+    }
+}
+
 // MARK: - Main Providers Hub (Tabbed: Applications · Plans · Features · Accounting)
 
 public struct AdminProvidersView: View {
     public var onDismiss: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var selectedTab: ProviderTab = .applications
+    @State private var selectedTab: ProviderTab
     @StateObject private var sharedViewModel = ProviderApplicationsViewModel()
 
-    public init(onDismiss: (() -> Void)? = nil) {
+    public init(initialTab: ProviderTab = .applications, onDismiss: (() -> Void)? = nil) {
+        _selectedTab = State(initialValue: initialTab)
         self.onDismiss = onDismiss
     }
 
     public var body: some View {
-        NavigationView {
-            GeometryReader { geometry in
-                let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
-                let containerMaxWidth: CGFloat = isRegular ? 1200 : .infinity
+        GeometryReader { geometry in
+            let isRegular = geometry.size.width >= 760 && !dynamicTypeSize.isAccessibilitySize
+            let containerMaxWidth: CGFloat = isRegular ? 1200 : .infinity
 
-                ZStack(alignment: .top) {
-                    AdminSurface.background.ignoresSafeArea()
+            ZStack(alignment: .top) {
+                AdminSurface.background.ignoresSafeArea()
 
-                    VStack(spacing: 0) {
-                        // Sovereign Navigation Bar (Hugs status bar with zero excess gap)
-                        if isRegular {
-                            ipadHeaderBar
-                        } else {
-                            iphoneHeaderBar
-                            providerTabPicker
-                                .padding(.top, 4)
-                                .padding(.bottom, 6)
-                        }
+                VStack(spacing: 0) {
+                    // Sovereign Navigation Bar (Hugs status bar with zero excess gap)
+                    Color.clear.frame(height: PPStatusBarHelper.statusBarHeight)
 
-                        // Tab Content
-                        providerTabContent(isRegular: isRegular)
-                            .frame(maxWidth: containerMaxWidth)
-                            .frame(maxWidth: .infinity)
+                    if isRegular {
+                        ipadHeaderBar
+                    } else {
+                        iphoneHeaderBar
+                        providerTabPicker
+                            .padding(.top, 4)
+                            .padding(.bottom, 6)
                     }
+
+                    // Tab Content
+                    providerTabContent(isRegular: isRegular)
+                        .frame(maxWidth: containerMaxWidth)
+                        .frame(maxWidth: .infinity)
                 }
             }
-            .navigationBarHidden(true)
-            .navigationBarBackButtonHidden(true)
         }
-        .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -266,10 +291,12 @@ public struct AdminProvidersView: View {
     }
 
     private func handleDismiss() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         if let onDismiss {
             onDismiss()
         } else {
             dismiss()
+            PPAdminNavigationFallback.popOrDismiss()
         }
     }
 
@@ -344,31 +371,6 @@ public struct AdminProvidersView: View {
             AdminLegacyViewControllerWrapper { PPProviderFeatureAccessViewController() }
         case .accounting:
             AdminProviderAccountingView(isEmbeddedInTab: true)
-        }
-    }
-}
-
-private enum ProviderTab: String, CaseIterable {
-    case applications
-    case plans
-    case features
-    case accounting
-
-    var localizedTitle: String {
-        switch self {
-        case .applications: return Language.get("Providers_Applications_Tab", alter: "الطلبات")
-        case .plans: return Language.get("Providers_Plans_Tab", alter: "الباقات")
-        case .features: return Language.get("Providers_Features_Tab", alter: "الميزات")
-        case .accounting: return Language.get("Providers_Accounting_Tab", alter: "المحاسبة")
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .applications: return "tray.full.fill"
-        case .plans: return "sparkles.rectangle.stack.fill"
-        case .features: return "slider.horizontal.3"
-        case .accounting: return "banknote.fill"
         }
     }
 }
@@ -2182,11 +2184,11 @@ private struct ProviderPressStyle: ButtonStyle {
         view.backgroundColor = .ppBackground
         
         let host = UIHostingController(rootView: AdminProvidersView { [weak self] in
-            if let nav = self?.navigationController, nav.viewControllers.count > 1 {
-                nav.popViewController(animated: true)
-            } else {
-                self?.dismiss(animated: true)
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
             }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
         })
         
         addChild(host)
