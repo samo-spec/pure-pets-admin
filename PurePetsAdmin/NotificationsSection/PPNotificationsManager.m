@@ -401,11 +401,48 @@ static NSString *PPNotificationV2AdminEnvironment(void)
 
 + (void)pp_callConsoleNotificationWithPayload:(NSDictionary *)payload
                                     completion:(void (^)(NSDictionary * _Nullable, NSError * _Nullable))completion {
-    FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"sendConsoleNotification"];
-    callable.timeoutInterval = 30.0;
-    [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
-        [self pp_completeOnMain:completion response:response error:error];
+    FIRUser *currentUser = [FIRAuth auth].currentUser;
+    if (!currentUser) {
+        NSError *unauthError = [NSError errorWithDomain:@"PPNotificationsManager"
+                                                   code:FIRFunctionsErrorCodeUnauthenticated
+                                               userInfo:@{NSLocalizedDescriptionKey: @"Unauthenticated"}];
+        [self pp_completeOnMain:completion response:nil error:unauthError];
+        return;
+    }
+
+    void (^invokeBlock)(void) = ^{
+        FIRHTTPSCallable *callable = [[FIRFunctions functionsForRegion:@"us-central1"] HTTPSCallableWithName:@"sendConsoleNotification"];
+        callable.timeoutInterval = 30.0;
+        [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+            if (error && (error.code == FIRFunctionsErrorCodeUnauthenticated ||
+                          [error.localizedDescription.lowercaseString containsString:@"unauthenticated"])) {
+                FIRUser *userToRefresh = [FIRAuth auth].currentUser;
+                if (userToRefresh) {
+                    NSLog(@"[PPNotificationsManager] sendConsoleNotification failed with unauthenticated. Forcing token refresh and retrying...");
+                    [userToRefresh getIDTokenResultForcingRefresh:YES completion:^(FIRAuthTokenResult * _Nullable tokenResult, NSError * _Nullable refreshError) {
+                        if (!refreshError) {
+                            [callable callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable retryResult, NSError * _Nullable retryError) {
+                                NSDictionary *response = [retryResult.data isKindOfClass:NSDictionary.class] ? retryResult.data : @{};
+                                [self pp_completeOnMain:completion response:response error:retryError];
+                            }];
+                            return;
+                        }
+                        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+                        [self pp_completeOnMain:completion response:response error:error];
+                    }];
+                    return;
+                }
+            }
+            NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : @{};
+            [self pp_completeOnMain:completion response:response error:error];
+        }];
+    };
+
+    [currentUser getIDTokenResultWithCompletion:^(FIRAuthTokenResult * _Nullable tokenResult, NSError * _Nullable tokenError) {
+        if (tokenError) {
+            NSLog(@"[PPNotificationsManager] Warning: Pre-call token validation returned error: %@", tokenError.localizedDescription);
+        }
+        invokeBlock();
     }];
 }
 

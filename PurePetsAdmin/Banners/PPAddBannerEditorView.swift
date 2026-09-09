@@ -1314,7 +1314,7 @@ public struct PPAddBannerEditorScreen: View {
                     actionCard(
                         title: Language.get("ActionWhatsApp", alter: "محادثة فورية عبر واتساب"),
                         action: .whatsApp,
-                        icon: "message.fill",
+                        icon: "whatsapp",
                         placeholder: "+974 5512 3456"
                     )
                 }
@@ -1399,9 +1399,18 @@ public struct PPAddBannerEditorScreen: View {
                         Circle()
                             .fill(isSelected ? AdminSurface.primary : AdminSurface.control)
                             .frame(width: 36, height: 36)
-                        Image(systemName: icon)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                        if icon == "whatsapp" || UIImage(named: icon) != nil {
+                            Image(icon)
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 17, height: 17)
+                                .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                        } else {
+                            Image(systemName: icon)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+                        }
                     }
 
                     Text(title)

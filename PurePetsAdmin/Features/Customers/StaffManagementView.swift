@@ -883,10 +883,17 @@ private struct StaffMemberSovereignCard: View {
 
     var body: some View {
         Button(action: onTap) {
-            HStack(spacing: 12) {
-                avatarView
-                identityAndMetadataView
-                trailingActionView
+            VStack(spacing: 11) {
+                // Tier 1: Identity & Operational Status Horizon
+                identityHorizonView
+
+                // Refined Hairline Divider
+                Rectangle()
+                    .fill(Color(uiColor: .ppSurfaceBorder).opacity(0.45))
+                    .frame(height: 0.75)
+
+                // Tier 2: Governance & Authority Deck (Role Pill + Permissions + Scope)
+                governanceDeckView
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -896,7 +903,7 @@ private struct StaffMemberSovereignCard: View {
                     .overlay(
                         LinearGradient(
                             colors: [
-                                roleAccentColor.opacity(0.035),
+                                roleAccentColor.opacity(0.04),
                                 Color.clear
                             ],
                             startPoint: isRTL ? .trailing : .leading,
@@ -909,16 +916,90 @@ private struct StaffMemberSovereignCard: View {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(
                         isCurrent
-                            ? AdminSurface.primary.opacity(0.4)
-                            : (isActive ? AdminSurface.hairline : Color.orange.opacity(0.25)),
-                        lineWidth: isCurrent ? 1.2 : 0.75
+                            ? AdminSurface.primary.opacity(0.45)
+                            : (isActive ? AdminSurface.hairline : Color.orange.opacity(0.28)),
+                        lineWidth: isCurrent ? 1.4 : 0.8
                     )
             )
-            .shadow(color: Color.black.opacity(0.035), radius: 8, y: 3)
+            .shadow(color: isCurrent ? AdminSurface.primary.opacity(0.06) : Color.black.opacity(0.035), radius: 8, y: 3)
         }
         .buttonStyle(StaffCardPressStyle())
         .disabled(!isActionable)
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Tier 1: Identity Horizon
+
+    private var identityHorizonView: some View {
+        HStack(alignment: .center, spacing: 12) {
+            avatarView
+
+            VStack(alignment: .leading, spacing: 3) {
+                // Name + "You" Badge + Verified Seal
+                HStack(spacing: 6) {
+                    Text(member.displayName ?? Language.get("Staff_Edit_Existing", alter: "عضو فريق"))
+                        .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .headline))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    if isCurrent {
+                        HStack(spacing: 3) {
+                            Image(systemName: "person.crop.circle.fill")
+                                .font(.system(size: 8.5))
+                            Text(Language.get("You", alter: "أنت"))
+                                .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, Color(red: 1.0, green: 0.35, blue: 0.48)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            in: Capsule()
+                        )
+                        .shadow(color: AdminSurface.primary.opacity(0.25), radius: 3, y: 1)
+                    }
+
+                    if member.isVerified {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color(red: 0.15, green: 0.52, blue: 0.95))
+                    }
+                }
+
+                // Contact Detail (Email or Phone)
+                if let email = member.email, !email.isEmpty {
+                    HStack(spacing: 4.5) {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+
+                        Text(email)
+                            .font(.system(size: 12, weight: .medium, design: .rounded))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                } else if let phone = member.phone, !phone.isEmpty {
+                    HStack(spacing: 4.5) {
+                        Image(systemName: "phone.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+
+                        Text(phone)
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Trailing Status + Chevron Affordance
+            trailingStatusAndActionView
+        }
     }
 
     // MARK: - Avatar & Authority Emblem
@@ -927,30 +1008,30 @@ private struct StaffMemberSovereignCard: View {
         ZStack(alignment: .bottomTrailing) {
             ZStack {
                 if let photo = member.photoURL, let url = URL(string: photo), !photo.isEmpty {
-                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
                         monogramFallback
                     }
-                    .frame(width: 52, height: 52)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 } else {
                     monogramFallback
                 }
             }
-            .frame(width: 52, height: 52)
+            .frame(width: 48, height: 48)
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .strokeBorder(isCurrent ? AdminSurface.primary.opacity(0.4) : roleAccentColor.opacity(0.25), lineWidth: 1.2)
             )
 
             // Live presence beacon
             Circle()
                 .fill(isActive ? Color(red: 0.12, green: 0.78, blue: 0.45) : Color.orange)
-                .frame(width: 13, height: 13)
-                .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2.2))
-                .shadow(color: isActive ? Color.green.opacity(0.4) : Color.orange.opacity(0.3), radius: 3, y: 1)
+                .frame(width: 12, height: 12)
+                .overlay(Circle().stroke(AdminSurface.surface, lineWidth: 2))
+                .shadow(color: isActive ? Color.green.opacity(0.4) : Color.orange.opacity(0.3), radius: 2.5, y: 1)
                 .offset(x: 2, y: 2)
         }
-        .frame(width: 54, height: 54)
+        .frame(width: 50, height: 50)
     }
 
     private var monogramFallback: some View {
@@ -965,136 +1046,17 @@ private struct StaffMemberSovereignCard: View {
             )
 
             Text(userInitials)
-                .font(Font.custom("Beiruti-Bold", size: 18, relativeTo: .headline))
+                .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
                 .foregroundColor(.white)
                 .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
         }
-        .frame(width: 52, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    // MARK: - Identity & Operational Metadata
-
-    private var identityAndMetadataView: some View {
-        VStack(alignment: .leading, spacing: 3.5) {
-            // Row 1: Name + Current Pill + Verified Badge
-            HStack(spacing: 6) {
-                Text(member.displayName ?? Language.get("Staff_Edit_Existing", alter: "عضو فريق"))
-                    .font(Font.custom("Beiruti-Bold", size: 16.5, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                if isCurrent {
-                    HStack(spacing: 3) {
-                        Image(systemName: "person.crop.circle.fill")
-                            .font(.system(size: 8))
-                        Text(Language.get("You", alter: "أنت"))
-                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
-                    }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(
-                        LinearGradient(
-                            colors: [AdminSurface.primary, Color(red: 1.0, green: 0.35, blue: 0.48)],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: Capsule()
-                    )
-                    .shadow(color: AdminSurface.primary.opacity(0.25), radius: 3, y: 1)
-                }
-
-                if member.isVerified {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(Color(red: 0.15, green: 0.52, blue: 0.95))
-                }
-            }
-
-            // Row 2: Contact Info (Email or Phone)
-            if let email = member.email, !email.isEmpty {
-                HStack(spacing: 4.5) {
-                    Image(systemName: "envelope.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
-
-                    Text(email)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-            } else if let phone = member.phone, !phone.isEmpty {
-                HStack(spacing: 4.5) {
-                    Image(systemName: "phone.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.75))
-
-                    Text(phone)
-                        .font(.system(size: 12, weight: .medium, design: .monospaced))
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-
-            // Row 3: Role Insignia + Permissions Count + Scope
-            HStack(spacing: 6) {
-                // Role Capsule + Rank Shield
-                HStack(spacing: 4) {
-                    Image(systemName: roleIcon)
-                        .font(.system(size: 9.5, weight: .bold))
-                    Text(roleTitle)
-                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
-                    if let rm = roleModel {
-                        Text("#\(rm.rank)")
-                            .font(.system(size: 9, weight: .black, design: .monospaced))
-                            .foregroundColor(roleAccentColor)
-                            .padding(.horizontal, 3.5)
-                            .padding(.vertical, 0.5)
-                            .background(roleAccentColor.opacity(0.14), in: Capsule())
-                    }
-                }
-                .foregroundColor(roleAccentColor)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(roleAccentColor.opacity(0.12), in: Capsule())
-                .overlay(Capsule().stroke(roleAccentColor.opacity(0.25), lineWidth: 0.6))
-
-                // Permissions Count
-                HStack(spacing: 3) {
-                    Image(systemName: "key.fill")
-                        .font(.system(size: 8))
-                    Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%lu صلاحية"), permsCount))
-                        .font(Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2))
-                }
-                .foregroundColor(AdminSurface.secondaryText)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(AdminSurface.control, in: Capsule())
-                .overlay(Capsule().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5))
-
-                // Global Scope Badge
-                if member.hasGlobalScope() {
-                    HStack(spacing: 3) {
-                        Image(systemName: "globe.americas.fill")
-                            .font(.system(size: 8))
-                        Text(Language.get("Staff_Branch_Scope_Global", alter: "شامل"))
-                            .font(Font.custom("Beiruti-Bold", size: 10, relativeTo: .caption2))
-                    }
-                    .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.45))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color(red: 0.10, green: 0.65, blue: 0.45).opacity(0.10), in: Capsule())
-                }
-            }
-            .padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: 48, height: 48)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     // MARK: - Trailing Status & Navigation Affordance
 
-    private var trailingActionView: some View {
+    private var trailingStatusAndActionView: some View {
         HStack(spacing: 8) {
             // Status Capsule
             HStack(spacing: 4) {
@@ -1106,21 +1068,98 @@ private struct StaffMemberSovereignCard: View {
                     .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
                     .foregroundColor(isActive ? Color(red: 0.10, green: 0.65, blue: 0.35) : Color.orange)
             }
-            .padding(.horizontal, 7)
+            .padding(.horizontal, 7.5)
             .padding(.vertical, 3.5)
             .background((isActive ? Color.green : Color.orange).opacity(0.08), in: Capsule())
+            .overlay(Capsule().stroke((isActive ? Color.green : Color.orange).opacity(0.2), lineWidth: 0.6))
 
             // Chevron Action Disc
             if isActionable {
                 ZStack {
                     Circle()
                         .fill(AdminSurface.control)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 26, height: 26)
                         .overlay(Circle().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.6))
 
                     Image(systemName: isRTL ? "chevron.left" : "chevron.right")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 10.5, weight: .bold))
                         .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
+                }
+            }
+        }
+    }
+
+    // MARK: - Tier 2: Governance & Authority Deck
+
+    private var governanceDeckView: some View {
+        HStack(spacing: 8) {
+            // Leading: Role Insignia + Rank Badge (Given primary width, NO WRAP)
+            HStack(spacing: 5) {
+                Image(systemName: roleIcon)
+                    .font(.system(size: 10.5, weight: .bold))
+
+                Text(roleTitle)
+                    .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption2))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                if let rm = roleModel {
+                    Text("#\(rm.rank)")
+                        .font(.system(size: 9.5, weight: .black, design: .monospaced))
+                        .foregroundColor(roleAccentColor)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(roleAccentColor.opacity(0.14), in: Capsule())
+                }
+            }
+            .foregroundColor(roleAccentColor)
+            .padding(.horizontal, 8.5)
+            .padding(.vertical, 4)
+            .background(roleAccentColor.opacity(0.10), in: Capsule())
+            .overlay(Capsule().stroke(roleAccentColor.opacity(0.22), lineWidth: 0.6))
+
+            Spacer(minLength: 4)
+
+            // Trailing: Permissions Count + Scope
+            HStack(spacing: 6) {
+                // Permissions Count Chip
+                HStack(spacing: 3.5) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 8))
+                    Text(String(format: Language.get("Staff_Access_Module_Permissions_Format", alter: "%lu صلاحية"), permsCount))
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                }
+                .foregroundColor(AdminSurface.secondaryText)
+                .padding(.horizontal, 7.5)
+                .padding(.vertical, 4)
+                .background(AdminSurface.control, in: Capsule())
+                .overlay(Capsule().stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.5), lineWidth: 0.5))
+
+                // Global Scope Badge
+                if member.hasGlobalScope() {
+                    HStack(spacing: 3) {
+                        Image(systemName: "globe.americas.fill")
+                            .font(.system(size: 8.5))
+                        Text(Language.get("Staff_Branch_Scope_Global", alter: "شامل"))
+                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    }
+                    .foregroundColor(Color(red: 0.10, green: 0.65, blue: 0.45))
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.10, green: 0.65, blue: 0.45).opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(Color(red: 0.10, green: 0.65, blue: 0.45).opacity(0.25), lineWidth: 0.5))
+                } else if !member.assignedBranchIDs.isEmpty {
+                    HStack(spacing: 3) {
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 8.5))
+                        Text("\(member.assignedBranchIDs.count) " + Language.get("Branches_Count_Short", alter: "فرع"))
+                            .font(Font.custom("Beiruti-Bold", size: 10.5, relativeTo: .caption2))
+                    }
+                    .foregroundColor(Color(red: 0.20, green: 0.55, blue: 0.90))
+                    .padding(.horizontal, 6.5)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 0.20, green: 0.55, blue: 0.90).opacity(0.10), in: Capsule())
+                    .overlay(Capsule().stroke(Color(red: 0.20, green: 0.55, blue: 0.90).opacity(0.25), lineWidth: 0.5))
                 }
             }
         }
@@ -1618,7 +1657,7 @@ struct AdminStaffMemberEditorView: View {
                         // WhatsApp Button
                         quickContactButton(
                             title: Language.get("WhatsApp", alter: Language.isRTL() ? "واتساب" : "WhatsApp"),
-                            icon: "message.fill",
+                            icon: "whatsapp",
                             color: Color(red: 37/255, green: 211/255, blue: 102/255)
                         ) {
                             let digits = phone.filter { "0123456789".contains($0) }
@@ -1759,8 +1798,16 @@ struct AdminStaffMemberEditorView: View {
             action()
         }) {
             HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
+                if icon == "whatsapp" || UIImage(named: icon) != nil {
+                    Image(icon)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 13, height: 13)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                }
                 Text(title)
                     .font(Font.custom("Beiruti-Bold", size: 11.5, relativeTo: .caption))
             }

@@ -128,6 +128,7 @@ public struct AdminProvidersView: View {
                 }
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -1460,8 +1461,11 @@ public struct AdminProviderApplicationDetailView: View {
                     if let waURL = URL(string: "https://wa.me/\(waClean)") {
                         Link(destination: waURL) {
                             HStack(spacing: 5) {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 11, weight: .bold))
+                                Image("whatsapp")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 14, height: 14)
                                 Text("WhatsApp")
                                     .font(AdminType.caption2Bold)
                             }
@@ -2182,6 +2186,8 @@ private struct ProviderPressStyle: ButtonStyle {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
         
         let host = UIHostingController(rootView: AdminProvidersView { [weak self] in
             guard let self = self else {
@@ -2189,7 +2195,10 @@ private struct ProviderPressStyle: ButtonStyle {
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
-        })
+        }.ignoresSafeArea())
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         
         addChild(host)
         view.addSubview(host.view)

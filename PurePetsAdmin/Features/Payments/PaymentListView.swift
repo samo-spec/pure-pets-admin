@@ -165,6 +165,7 @@ struct AdminPaymentListView: View {
 
     var body: some View {
         paymentListContent
+            .ignoresSafeArea()
     }
 
     private var paymentListContent: some View {

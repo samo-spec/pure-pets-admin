@@ -474,8 +474,11 @@ public struct AdminPetsHotelStayDetailSheet: View {
                                 Circle()
                                     .fill(Color(red: 0.18, green: 0.80, blue: 0.44).opacity(0.15))
                                     .frame(width: 40, height: 40)
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 16, weight: .bold))
+                                Image("whatsapp")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
                                     .foregroundStyle(Color(red: 0.18, green: 0.80, blue: 0.44))
                             }
                         }

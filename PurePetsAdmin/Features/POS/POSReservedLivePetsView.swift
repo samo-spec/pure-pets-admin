@@ -1180,8 +1180,11 @@ private struct POSReservedPetCard: View {
             guard let url = URL(string: "https://wa.me/\(digits)") else { return }
             UIApplication.shared.open(url)
         } label: {
-            Image(systemName: "message.fill")
-                .font(.system(size: 9))
+            Image("whatsapp")
+                .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 12, height: 12)
                 .foregroundColor(Color(uiColor: .ppSuccess))
                 .padding(4)
                 .background(Color(uiColor: .ppSuccess).opacity(0.1), in: Circle())
@@ -1732,9 +1735,12 @@ struct POSReservedPetDossierSheet: View {
                             guard let url = URL(string: "https://wa.me/\(digits)") else { return }
                             UIApplication.shared.open(url)
                         } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 11, weight: .bold))
+                            HStack(spacing: 5) {
+                                Image("whatsapp")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 14, height: 14)
                                 Text(Language.get("POS_Dossier_WhatsApp", alter: "واتساب"))
                                     .font(Font.custom("Beiruti-Bold", size: 12))
                             }

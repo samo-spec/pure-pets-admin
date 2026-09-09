@@ -148,7 +148,7 @@
     ]];
 
     // Action buttons
-    NSArray *icons    = @[@"phone.fill", @"message.fill", @"square.and.pencil", @"creditcard.circle"];
+    NSArray *icons    = @[@"phone.fill", @"whatsapp", @"square.and.pencil", @"creditcard.circle"];
     NSArray *actions  = @[@"callTapped", @"whatsappTapped", @"editTapped", @"subscriptionTapped"];
     NSArray *colors   = @[[UIColor ppSuccess], [UIColor ppQuickActionServices], [UIColor ppInfo], [UIColor ppPrimary]];
 
@@ -164,11 +164,16 @@
     for (NSUInteger i = 0; i < icons.count; i++) {
         UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
         btn.translatesAutoresizingMaskIntoConstraints = NO;
-        [btn setImage:[UIImage systemImageNamed:icons[i]] forState:UIControlStateNormal];
+        UIImage *img = [UIImage imageNamed:icons[i]] ?: [UIImage systemImageNamed:icons[i]];
+        if ([icons[i] isEqualToString:@"whatsapp"]) {
+            img = [img imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+        }
+        [btn setImage:img forState:UIControlStateNormal];
         btn.tintColor = UIColor.whiteColor;
         btn.backgroundColor = colors[i];
         btn.layer.cornerRadius = btnSize / 2.0;
         btn.clipsToBounds = YES;
+        btn.imageView.contentMode = UIViewContentModeScaleAspectFit;
         [btn addTarget:self action:NSSelectorFromString(actions[i]) forControlEvents:UIControlEventTouchUpInside];
         [NSLayoutConstraint activateConstraints:@[
             [btn.widthAnchor constraintEqualToConstant:btnSize],

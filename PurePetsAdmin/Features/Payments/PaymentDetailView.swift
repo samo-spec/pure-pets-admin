@@ -63,6 +63,7 @@ struct AdminPaymentDetailView: View {
                 .zIndex(100)
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .navigationBarHidden(true)
         .onAppear {

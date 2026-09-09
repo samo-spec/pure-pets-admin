@@ -1693,7 +1693,7 @@ struct AdminPOSFastSellView: View {
             }
             .padding(.horizontal, AdminSpacing.base)
         }
-        .padding(.top, AdminSpacing.xs)
+        .padding(.top, 0)
         .padding(.bottom, AdminSpacing.md)
         .background(AdminSurface.background)
         .overlay(
@@ -1800,6 +1800,7 @@ struct AdminPOSFastSellView: View {
             subtitle: headerBranchSubtitle,
             statusDotColor: Color(uiColor: .ppSuccess),
             isModal: true,
+            customTopSpacing: PPStatusBarHelper.statusBarHeight,
             onBack: {
                 dismissKeyboard()
                 if let onDismiss {

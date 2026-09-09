@@ -733,6 +733,7 @@ struct AdminFulfillmentListView: View {
                 }
             }
         }
+        .ignoresSafeArea()
         .background(overridePushLink)
         .background(dossierPushLink)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)

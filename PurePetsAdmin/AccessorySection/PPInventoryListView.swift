@@ -1882,6 +1882,7 @@ public struct PPInventoryListView: View {
     @Environment(\.dismiss) private var dismiss
     private let onPushViewController: (UIViewController) -> Void
     private let onDismiss: (() -> Void)?
+    private let showsCatalogSwitcher: Bool
 
     @State private var spinAngle: Double = 0
     @FocusState private var isSearchFocused: Bool
@@ -1889,10 +1890,12 @@ public struct PPInventoryListView: View {
 
     public init(
         kind: AccessKindType = .typeAccessory,
+        showsCatalogSwitcher: Bool = true,
         onPushViewController: @escaping (UIViewController) -> Void = { _ in },
         onDismiss: (() -> Void)? = nil
     ) {
         _viewModel = StateObject(wrappedValue: PPInventoryListViewModel(kind: kind))
+        self.showsCatalogSwitcher = showsCatalogSwitcher
         self.onPushViewController = onPushViewController
         self.onDismiss = onDismiss
     }
@@ -1915,9 +1918,11 @@ public struct PPInventoryListView: View {
                         .frame(maxWidth: isRegular ? 980 : .infinity)
                         .frame(maxWidth: .infinity)
 
-                    catalogHorizonSwitcher
-                        .frame(maxWidth: isRegular ? 980 : .infinity)
-                        .frame(maxWidth: .infinity)
+                    if showsCatalogSwitcher {
+                        catalogHorizonSwitcher
+                            .frame(maxWidth: isRegular ? 980 : .infinity)
+                            .frame(maxWidth: .infinity)
+                    }
 
                     if viewModel.isLoading && viewModel.allItems.isEmpty {
                         ScrollView(.vertical, showsIndicators: false) {
@@ -1959,6 +1964,7 @@ public struct PPInventoryListView: View {
                 .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $showingBranchSwitcherSheet) {
             PPBranchSelectionGateView()
@@ -9171,52 +9177,83 @@ private struct CatalogPressStyle: ButtonStyle {
 @available(iOS 16.0, *)
 @objc public final class PPInventoryListHostingController: UIViewController {
     private let kind: AccessKindType
-    private var hostingController: UIHostingController<PPInventoryListView>?
+    private let showsCatalogSwitcher: Bool
+    private var hostingController: UIViewController?
     private let onDismissBlock: (() -> Void)?
 
-    @objc public init(kind: AccessKindType = .typeAccessory) {
+    @objc public init(kind: AccessKindType = .typeAccessory, showsCatalogSwitcher: Bool = true) {
         self.kind = kind
+        self.showsCatalogSwitcher = showsCatalogSwitcher
         self.onDismissBlock = nil
         super.init(nibName: nil, bundle: nil)
         self.hidesBottomBarWhenPushed = true
     }
 
-    @objc public init(kind: AccessKindType, onDismiss: (() -> Void)?) {
+    @objc public init(kind: AccessKindType, showsCatalogSwitcher: Bool, onDismiss: (() -> Void)?) {
         self.kind = kind
+        self.showsCatalogSwitcher = showsCatalogSwitcher
         self.onDismissBlock = onDismiss
         super.init(nibName: nil, bundle: nil)
         self.hidesBottomBarWhenPushed = true
     }
 
+    @objc public convenience init(kind: AccessKindType, onDismiss: (() -> Void)?) {
+        self.init(kind: kind, showsCatalogSwitcher: true, onDismiss: onDismiss)
+    }
+
     public required init?(coder: NSCoder) {
         self.kind = .typeAccessory
+        self.showsCatalogSwitcher = true
         self.onDismissBlock = nil
         super.init(coder: coder)
         self.hidesBottomBarWhenPushed = true
     }
 
     @objc public static func makeForAccessories() -> UIViewController {
-        return PPInventoryListHostingController(kind: .typeAccessory)
+        return PPInventoryListHostingController(kind: .typeAccessory, showsCatalogSwitcher: true)
     }
 
     @objc public static func makeForFood() -> UIViewController {
-        return PPInventoryListHostingController(kind: .typeFood)
+        return PPInventoryListHostingController(kind: .typeFood, showsCatalogSwitcher: true)
     }
 
     @objc public static func makeForLivePets() -> UIViewController {
-        return PPInventoryListHostingController(kind: .typeLivePets)
+        return PPInventoryListHostingController(kind: .typeLivePets, showsCatalogSwitcher: true)
     }
 
     @objc public static func make(kind: AccessKindType) -> UIViewController {
-        return PPInventoryListHostingController(kind: kind)
+        return PPInventoryListHostingController(kind: kind, showsCatalogSwitcher: true)
+    }
+
+    @objc(makeForAccessoriesWithShowsCatalogSwitcher:)
+    public static func makeForAccessories(showsCatalogSwitcher: Bool) -> UIViewController {
+        return PPInventoryListHostingController(kind: .typeAccessory, showsCatalogSwitcher: showsCatalogSwitcher)
+    }
+
+    @objc(makeForFoodWithShowsCatalogSwitcher:)
+    public static func makeForFood(showsCatalogSwitcher: Bool) -> UIViewController {
+        return PPInventoryListHostingController(kind: .typeFood, showsCatalogSwitcher: showsCatalogSwitcher)
+    }
+
+    @objc(makeForLivePetsWithShowsCatalogSwitcher:)
+    public static func makeForLivePets(showsCatalogSwitcher: Bool) -> UIViewController {
+        return PPInventoryListHostingController(kind: .typeLivePets, showsCatalogSwitcher: showsCatalogSwitcher)
+    }
+
+    @objc(makeWithKind:showsCatalogSwitcher:)
+    public static func make(kind: AccessKindType, showsCatalogSwitcher: Bool) -> UIViewController {
+        return PPInventoryListHostingController(kind: kind, showsCatalogSwitcher: showsCatalogSwitcher)
     }
 
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
 
         let swiftUIView = PPInventoryListView(
             kind: kind,
+            showsCatalogSwitcher: showsCatalogSwitcher,
             onPushViewController: { [weak self] targetVC in
                 self?.navigationController?.pushViewController(targetVC, animated: true)
             },
@@ -9233,8 +9270,10 @@ private struct CatalogPressStyle: ButtonStyle {
             }
         )
 
-        let host = UIHostingController(rootView: swiftUIView)
+        let host = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
         host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false

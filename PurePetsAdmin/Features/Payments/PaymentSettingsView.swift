@@ -138,6 +138,7 @@ struct AdminPaymentSettingsView: View {
                 AdminLoadingOverlay(message: Language.get("PaymentMgmt_Saving", alter: "جارٍ الحفظ..."))
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear { viewModel.load() }
         .alert(
@@ -314,11 +315,17 @@ private struct ToggleRow: View {
         .accessibilityElement(children: .combine)
     }
 @objc public final class PaymentSettingsHostingController: UIViewController {
-    private var host: UIHostingController<AdminPaymentSettingsView>?
+    private var host: UIViewController?
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
         let root = AdminPaymentSettingsView(session: AdminSession(source: PPAdminSessionSnapshot()))
-        let h = UIHostingController(rootView: root); h.view.backgroundColor = .clear
+        let h = UIHostingController(rootView: root.ignoresSafeArea())
+        h.view.backgroundColor = .clear
+        h.extendedLayoutIncludesOpaqueBars = true
+        h.edgesForExtendedLayout = .all
         addChild(h); view.addSubview(h.view); h.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([h.view.topAnchor.constraint(equalTo: view.topAnchor), h.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), h.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), h.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
         h.didMove(toParent: self); host = h

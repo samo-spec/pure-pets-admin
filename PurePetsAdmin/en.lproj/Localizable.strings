@@ -633,6 +633,7 @@
 "NotificationComposer_Validation_TitleRequired" = "Please enter a notification title";
 "NotificationComposer_Validation_BodyRequired" = "Please enter notification message body";
 "NotificationComposer_Failed_NoRecipients" = "No active devices found to receive the notification.";
+"NotificationComposer_Failed_TooLarge" = "Target audience is too large. Please narrow the target and try again.";
 "NotificationComposer_Receipt_SuccessTitle" = "Notification Broadcasted Successfully!";
 "NotificationComposer_Receipt_Key" = "Transaction Ref";
 "NotificationComposer_Receipt_Recipients" = "Target Devices";
@@ -3763,6 +3764,26 @@
 "AdminQuickActions_POS_Capability" = "QIB • SCAN • CASH";
 "AdminQuickActions_SignalsCount_Format" = "%d Active Signals";
 
+"AdminPOS_SectionTitle" = "Point of Sale & Register";
+"AdminPOS_SectionDetail" = "Instant checkout terminal & sales ledger";
+"AdminPOS_TerminalTitle" = "Fast Sell Terminal";
+"AdminPOS_TerminalSubtitle" = "Barcode scanner • Instant sell • Direct pay";
+"AdminPOS_HistoryTitle" = "Register Sales History";
+"AdminPOS_HistorySubtitle" = "Past receipts • Returns • Transaction logs";
+"AdminPOS_HistoryAction" = "View History";
+"AdminQuickActions_Staff" = "Staff Members";
+"AdminQuickActions_Staff_Subtitle" = "Roles & Permissions";
+"AdminQuickActions_Providers" = "Provider Requests";
+"AdminQuickActions_Providers_Subtitle" = "Onboarding Triage";
+"AdminQuickActions_Branches" = "Branch Network";
+"AdminQuickActions_Branches_Subtitle" = "Locations & Shifts";
+"AdminQuickActions_HomeControl" = "App Home Control";
+"AdminQuickActions_HomeControl_Subtitle" = "Store Banners & Sections";
+"AdminQuickActions_Audit" = "Audit Trail";
+"AdminQuickActions_Audit_Subtitle" = "Security & Compliance";
+"AdminQuickActions_ShowMore" = "More Operations";
+"AdminQuickActions_ShowLess" = "Show Less";
+
 /* ===================== Currency ===================== */
 "QAR" = "QAR";
 "Currency" = "QAR";
@@ -6433,3 +6454,34 @@
 "Staff_Role_Selected_Badge" = "Selected Role";
 "Staff_SelfRole_Notice" = "Governance notice: Your personal account role cannot be self-modified to safeguard sovereign authority.";
 "Staff_SelfRole_Protected" = "Your personal account role is protected and cannot be self-modified.";
+
+/* POS Sovereign Console & Stock Horizon Redesign */
+"AdminPOS_ActiveTerminal_Badge" = "Live POS Terminal";
+"AdminPOS_TerminalTitle_iPad" = "Instant Express POS Terminal";
+"AdminPOS_TerminalSubtitle_iPad" = "Instant Barcode Scan • Smart Cart • Immediate Tax Receipt";
+"AdminPOS_Launch_Session" = "Launch Express POS Session";
+"AdminPOS_HistorySection_Badge" = "Sales Ledger & Shift Log";
+"AdminPOS_HistoryTitle_iPad" = "Register Invoices & Shift Journal";
+"AdminPOS_HistorySubtitle_iPad" = "Today's Receipts Archive, Returns Management & Financial Audit";
+"AdminPOS_Feature_Archive" = "Digital Receipts Archive";
+"AdminPOS_Feature_Refunds" = "Returns & Exchanges";
+"AdminPOS_Feature_Audit" = "Shift Reconciliation";
+"AdminPOS_Open_History" = "Open Invoices & Receipts Ledger";
+"Stock_Section_Title" = "Stock & Products Horizon";
+"Stock_Section_Subtitle" = "Products catalog, nutrition & live pets with real-time stock sync";
+"Stock_Alerts_Count_Format" = "%d Stock Alerts";
+"Stock_Live_Sync_Active" = "Stock Sync Active";
+"Stock_Accessories_Title" = "Accessories & General Stock";
+"Stock_Accessories_Subtitle" = "Collars, toys, grooming supplies and pet gear";
+"Stock_Food_Title" = "Pet Food & Nutrition";
+"Stock_Food_Subtitle" = "Dry & wet food, supplements and premium treats";
+"Stock_LivePets_Title" = "Live Animals & Pets";
+"Stock_LivePets_Subtitle" = "Birds, cats, dogs, microchips and veterinary certificates";
+"Stock_Category_General" = "General Stock";
+"Stock_Category_Nutrition" = "Nutrition & Diet";
+"Stock_Category_LivePets" = "Live Pets";
+"Stock_Open_Catalog" = "Open Catalog";
+"Stock_Status_Active" = "In Sync";
+"Stock_Status_Alert_Singular" = "Stock Alert";
+"Stock_Status_Alert_Plural" = "%d Alerts";
+

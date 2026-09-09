@@ -77,11 +77,27 @@ enum AdminNotificationPreviewMode: String, CaseIterable {
 @MainActor
 final class AdminNotificationComposerViewModel: ObservableObject {
     // Inputs
-    @Published var title: String = ""
-    @Published var bodyText: String = ""
-    @Published var selectedType: PPNotificationType = .general
-    @Published var selectedAudience: PPNotificationAudience = .everyone
-    @Published var selectedUsers: [UserModel] = []
+    @Published var title: String = "" {
+        didSet { clearErrorOnInput() }
+    }
+    @Published var bodyText: String = "" {
+        didSet { clearErrorOnInput() }
+    }
+    @Published var selectedType: PPNotificationType = .general {
+        didSet { clearErrorOnInput() }
+    }
+    @Published var selectedAudience: PPNotificationAudience = .everyone {
+        didSet { clearErrorOnInput() }
+    }
+    @Published var selectedUsers: [UserModel] = [] {
+        didSet { clearErrorOnInput() }
+    }
+
+    private func clearErrorOnInput() {
+        if case .error = dispatchState {
+            dispatchState = .draft
+        }
+    }
 
     // Directory & Picker State
     @Published var allUsers: [UserModel] = []
@@ -224,6 +240,9 @@ final class AdminNotificationComposerViewModel: ObservableObject {
             return Language.get("NotificationComposer_Status_Sending", alter: "جارٍ إرسال الإشعار الفوري...")
         }
         if case .error(let msg) = dispatchState {
+            return localizedDispatchError(from: msg)
+        }
+        if case .warning(let msg) = dispatchState {
             return msg
         }
         if !isTitleValid {
@@ -236,6 +255,26 @@ final class AdminNotificationComposerViewModel: ObservableObject {
             return Language.get("NotificationComposer_Status_SelectRecipients", alter: "اختر مستلمًا واحدًا على الأقل")
         }
         return Language.get("NotificationComposer_Status_Ready", alter: "جاهز للبث — اضغط للإرسال الفوري")
+    }
+
+    func localizedDispatchError(from rawError: String) -> String {
+        let lower = rawError.lowercased()
+        if lower.contains("unauthenticated") || lower.contains("session") || lower.contains("token") {
+            return Language.get("PPAlert_Error_Session_Message", alter: "انتهت صلاحية جلستك. سجّل الدخول مرة أخرى، ثم أعد المحاولة.")
+        }
+        if lower.contains("permission") || lower.contains("denied") || lower.contains("not authorized") {
+            return Language.get("PPAlert_Error_Permission_Message", alter: "ليس لديك الصلاحية الكافية لإتمام هذا الإجراء.")
+        }
+        if lower.contains("network") || lower.contains("offline") || lower.contains("timed out") || lower.contains("timeout") {
+            return Language.get("PPAlert_Error_Network_Message", alter: "تعذر الاتصال بالشبكة. تحقق من اتصالك بالإنترنت.")
+        }
+        if lower.contains("not-found") || lower.contains("no eligible") {
+            return Language.get("NotificationComposer_Failed_NoRecipients", alter: "لم يتم العثور على أجهزة نشطة لاستقبال الإشعار.")
+        }
+        if lower.contains("too large") || lower.contains("failed-precondition") {
+            return Language.get("NotificationComposer_Failed_TooLarge", alter: "قائمة المستهدفين كبيرة جداً، يرجى تضييق نطاق الإرسال.")
+        }
+        return Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار، يرجى إعادة المحاولة.")
     }
 
     // MARK: - Actions
@@ -382,14 +421,14 @@ final class AdminNotificationComposerViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 if let errorDescription = errorDescription {
-                    let failMsg = errorDescription.isEmpty ? Language.get("NotificationComposer_Failed_Message", alter: "تعذرت جدولة هذا الإشعار") : errorDescription
-                    self.dispatchState = .error(failMsg)
+                    let localizedFailMsg = self.localizedDispatchError(from: errorDescription)
+                    self.dispatchState = .error(localizedFailMsg)
                     let generator = UINotificationFeedbackGenerator()
                     generator.notificationOccurred(.error)
                     PPAlertHelper.showError(
                         in: nil,
                         title: Language.get("NotificationComposer_Failed_Title", alter: "فشل الإرسال"),
-                        subtitle: failMsg
+                        subtitle: localizedFailMsg
                     )
                     return
                 }
@@ -583,8 +622,8 @@ struct AdminNotificationComposerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.statusMessage)
                         .font(AdminType.calloutBold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
+                        .foregroundStyle(statusTextColor)
+                        .lineLimit(2)
 
                     Text(viewModel.estimatedReachDescription)
                         .font(AdminType.caption)
@@ -620,10 +659,58 @@ struct AdminNotificationComposerView: View {
         if viewModel.isSending {
             return Color.blue
         }
+        if case .error = viewModel.dispatchState {
+            return Color(uiColor: .ppError)
+        }
+        if case .warning = viewModel.dispatchState {
+            return Color(uiColor: .ppWarning)
+        }
         if viewModel.canDispatch {
             return Color(uiColor: .ppSuccess)
         }
         return Color(uiColor: .ppWarning)
+    }
+
+    private var statusTextColor: Color {
+        if case .error = viewModel.dispatchState {
+            return Color(uiColor: .ppError)
+        }
+        if case .warning = viewModel.dispatchState {
+            return Color(uiColor: .ppWarning)
+        }
+        return viewModel.canDispatch ? AdminSurface.primaryText : AdminSurface.secondaryText
+    }
+
+    private var isErrorState: Bool {
+        if case .error = viewModel.dispatchState { return true }
+        return false
+    }
+
+    private var dispatchButtonLabel: String {
+        if viewModel.isSending {
+            return Language.get("NotificationComposer_Action_Sending", alter: "جارٍ الإرسال...")
+        }
+        if case .error = viewModel.dispatchState {
+            return Language.get("Retry", alter: "إعادة المحاولة")
+        }
+        return Language.get("NotificationComposer_Action_Send", alter: "بث الإشعار الآن")
+    }
+
+    private var dispatchButtonIcon: String {
+        if case .error = viewModel.dispatchState {
+            return "arrow.clockwise"
+        }
+        return "paperplane.fill"
+    }
+
+    private var dispatchButtonBackground: Color {
+        if !viewModel.canDispatch {
+            return AdminSurface.primary.opacity(0.35)
+        }
+        if case .error = viewModel.dispatchState {
+            return Color(uiColor: .ppError)
+        }
+        return AdminSurface.primary
     }
 
     private var reachIconName: String {
@@ -1246,7 +1333,7 @@ struct AdminNotificationComposerView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(viewModel.statusMessage)
                         .font(AdminType.calloutBold)
-                        .foregroundStyle(viewModel.canDispatch ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .foregroundStyle(statusTextColor)
                         .lineLimit(1)
 
                     Text(viewModel.estimatedReachCountString)
@@ -1266,21 +1353,21 @@ struct AdminNotificationComposerView: View {
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .scaleEffect(0.9)
                         } else {
-                            Image(systemName: "paperplane.fill")
+                            Image(systemName: dispatchButtonIcon)
                                 .font(.system(size: 15, weight: .bold))
                         }
 
-                        Text(viewModel.isSending ? Language.get("NotificationComposer_Action_Sending", alter: "جارٍ الإرسال...") : Language.get("NotificationComposer_Action_Send", alter: "بث الإشعار الآن"))
+                        Text(dispatchButtonLabel)
                             .font(AdminType.headline)
                     }
                     .padding(.horizontal, 20)
                     .frame(height: 48)
                     .background(
-                        viewModel.canDispatch ? AdminSurface.primary : AdminSurface.primary.opacity(0.35),
+                        dispatchButtonBackground,
                         in: RoundedRectangle(cornerRadius: AdminRadius.button, style: .continuous)
                     )
                     .foregroundStyle(Color.white)
-                    .shadow(color: viewModel.canDispatch ? AdminSurface.primary.opacity(0.32) : Color.clear, radius: 8, x: 0, y: 4)
+                    .shadow(color: viewModel.canDispatch ? (isErrorState ? Color(uiColor: .ppError).opacity(0.32) : AdminSurface.primary.opacity(0.32)) : Color.clear, radius: 8, x: 0, y: 4)
                 }
                 .disabled(!viewModel.canDispatch)
             }

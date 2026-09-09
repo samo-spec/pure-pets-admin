@@ -594,6 +594,7 @@ struct AdminDeliveryListView: View {
                     .accessibilityAddTraits(.isModal)
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear { viewModel.load() }
         .sheet(isPresented: Binding(

@@ -5,38 +5,57 @@
 
 import SwiftUI
 
+extension UIViewController {
+    @discardableResult
+    fileprivate func pp_embedSwiftUI<V: View>(_ swiftUIView: V) -> UIHostingController<some View> {
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
+        let host = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
+        addChild(host)
+        view.addSubview(host.view)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+        host.didMove(toParent: self)
+        return host
+    }
+}
+
 @objc public class AdminPaymentListHostingController: UIViewController {
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminPaymentListView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPaymentListView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }
 
 @objc public final class AdminPaymentSettingsHostingController: UIViewController {
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminPaymentSettingsView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPaymentSettingsView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }
@@ -46,35 +65,31 @@ import SwiftUI
     @objc public init(orderID: String) { self.orderID = orderID; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError() }
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminPaymentDetailView(orderID: orderID, session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPaymentDetailView(orderID: orderID, session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
-        host.didMove(toParent: self)
     }
 }
 
 @objc public final class AdminFulfillmentListHostingController: UIViewController {
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminFulfillmentListView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminFulfillmentListView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }
@@ -91,7 +106,7 @@ import SwiftUI
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
         let snap = FulfillmentRecordSnapshot(record: record)
-        let host = UIHostingController(rootView: FulfillmentOverrideView(
+        pp_embedSwiftUI(FulfillmentOverrideView(
             record: snap,
             isPushMode: true,
             onDismiss: { [weak self] in
@@ -122,14 +137,6 @@ import SwiftUI
                 }
             }
         ))
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     private var priorNavigationBarHidden: Bool?
@@ -150,17 +157,15 @@ import SwiftUI
 
 @objc public final class AdminDeliveryListHostingController: UIViewController {
     public override func viewDidLoad() {
-        super.viewDidLoad(); view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminDeliveryListView { [weak self] in
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        pp_embedSwiftUI(AdminDeliveryListView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host); view.addSubview(host.view); host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([host.view.topAnchor.constraint(equalTo: view.topAnchor), host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor), host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor), host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) { super.viewWillAppear(animated); navigationController?.setNavigationBarHidden(true, animated: animated) }
 }
@@ -222,23 +227,13 @@ import SwiftUI
         sessionActivityIndicator.stopAnimating()
         sessionActivityIndicator.removeFromSuperview()
 
-        let host = UIHostingController(rootView: AdminPOSFastSellView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPOSFastSellView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     private func presentSessionRestoreFailure(_ error: Error?) {
@@ -279,27 +274,15 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        extendedLayoutIncludesOpaqueBars = true
-        edgesForExtendedLayout = .all
 
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminPOSHistoryView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminPOSHistoryView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -312,23 +295,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminBranchesView { [weak self] in
+        pp_embedSwiftUI(AdminBranchesView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -340,23 +313,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminHomeControlView { [weak self] in
+        pp_embedSwiftUI(AdminHomeControlView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -368,23 +331,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminStaffManagementView { [weak self] in
+        pp_embedSwiftUI(AdminStaffManagementView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
@@ -397,23 +350,13 @@ import SwiftUI
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
         let session = AdminSession(source: PPAdminSessionSnapshot())
-        let host = UIHostingController(rootView: AdminAccountingView(session: session) { [weak self] in
+        pp_embedSwiftUI(AdminAccountingView(session: session) { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -426,23 +369,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminCategoriesView { [weak self] in
+        pp_embedSwiftUI(AdminCategoriesView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -455,23 +388,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminPetsHotelHubView { [weak self] in
+        pp_embedSwiftUI(AdminPetsHotelHubView { [weak self] in
             guard let self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -496,17 +419,7 @@ import SwiftUI
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
 
-        let host = UIHostingController(rootView: rootView)
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
+        pp_embedSwiftUI(rootView)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -528,8 +441,10 @@ import SwiftUI
         }
         .navigationViewStyle(.stack)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        let host = UIHostingController(rootView: rootView)
+        let host = UIHostingController(rootView: rootView.ignoresSafeArea())
         host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         return host
     }
 }
@@ -538,7 +453,7 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminModerationView { [weak self] in
+        pp_embedSwiftUI(AdminModerationView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
@@ -555,16 +470,6 @@ import SwiftUI
                 PPAdminNavigationFallback.popOrDismiss(from: self)
             }
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -587,8 +492,10 @@ import SwiftUI
             } else {
                 PPAdminNavigationFallback.popOrDismiss()
             }
-        })
+        }.ignoresSafeArea())
         host.view.backgroundColor = .ppBackground
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         return host
     }
 }
@@ -599,23 +506,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminNotificationComposerView { [weak self] in
+        pp_embedSwiftUI(AdminNotificationComposerView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -638,23 +535,13 @@ import SwiftUI
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
-        let host = UIHostingController(rootView: AdminNotificationSettingsView { [weak self] in
+        pp_embedSwiftUI(AdminNotificationSettingsView { [weak self] in
             guard let self = self else {
                 PPAdminNavigationFallback.popOrDismiss()
                 return
             }
             PPAdminNavigationFallback.popOrDismiss(from: self)
         })
-        addChild(host)
-        view.addSubview(host.view)
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            host.view.topAnchor.constraint(equalTo: view.topAnchor),
-            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-        host.didMove(toParent: self)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -670,6 +557,3 @@ import SwiftUI
         }
     }
 }
-
-
-

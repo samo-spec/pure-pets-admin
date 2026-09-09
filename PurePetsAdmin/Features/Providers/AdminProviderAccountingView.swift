@@ -463,6 +463,7 @@ public struct AdminProviderAccountingView: View {
                 }
             }
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -1719,6 +1720,8 @@ public final class AdminProviderAccountingHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
 
         let accountingView = AdminProviderAccountingView(
             initialProviderID: initialProviderID,
@@ -1732,7 +1735,10 @@ public final class AdminProviderAccountingHostingController: UIViewController {
             }
         )
 
-        let host = UIHostingController(rootView: accountingView)
+        let host = UIHostingController(rootView: accountingView.ignoresSafeArea())
+        host.view.backgroundColor = .clear
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         addChild(host)
         view.addSubview(host.view)
         host.view.translatesAutoresizingMaskIntoConstraints = false

@@ -130,6 +130,7 @@ struct PPVetsListView: View {
             }
             .refreshable { await viewModel.refresh() }
         }
+        .ignoresSafeArea()
         .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
@@ -636,10 +637,15 @@ private struct VetCardButtonStyle: ButtonStyle {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
         let swiftUIView = PPVetsListView { [weak self] viewController in
             self?.navigationController?.pushViewController(viewController, animated: true)
         }
-        let hostingController = UIHostingController(rootView: swiftUIView)
+        let hostingController = UIHostingController(rootView: swiftUIView.ignoresSafeArea())
+        hostingController.view.backgroundColor = .clear
+        hostingController.extendedLayoutIncludesOpaqueBars = true
+        hostingController.edgesForExtendedLayout = .all
         addChild(hostingController)
         view.addSubview(hostingController.view)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false

@@ -52,6 +52,15 @@
     if ([identifier isEqualToString:@"notificationComposer"]) return [AdminNotificationComposerHostingController new];
     if ([identifier isEqualToString:@"notificationSettings"]) return [AdminNotificationSettingsHostingController new];
     if ([identifier isEqualToString:@"settings"]) return [PPSettingsViewController new];
+    if ([identifier isEqualToString:@"stockSector:accessories"] || [identifier isEqualToString:@"stockDeck:accessories"]) {
+        return [PPInventoryListHostingController makeForAccessoriesWithShowsCatalogSwitcher:NO];
+    }
+    if ([identifier isEqualToString:@"stockSector:food"] || [identifier isEqualToString:@"stockDeck:food"]) {
+        return [PPInventoryListHostingController makeForFoodWithShowsCatalogSwitcher:NO];
+    }
+    if ([identifier isEqualToString:@"stockSector:livePets"] || [identifier isEqualToString:@"stockDeck:livePets"]) {
+        return [PPInventoryListHostingController makeForLivePetsWithShowsCatalogSwitcher:NO];
+    }
     if ([identifier isEqualToString:@"accessories"]) return [PPInventoryListHostingController makeForAccessories];
     if ([identifier isEqualToString:@"food"]) return [PPInventoryListHostingController makeForFood];
     if ([identifier isEqualToString:@"livePets"]) return [PPInventoryListHostingController makeForLivePets];

@@ -643,6 +643,7 @@ struct AdminUsersListView: View {
             }
             .hidden()
         }
+        .ignoresSafeArea()
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
@@ -1106,8 +1107,11 @@ private struct CustomerAccountCardView: View {
                                 Button {
                                     openWhatsApp(customer.phone)
                                 } label: {
-                                    Image(systemName: "message.fill")
-                                        .font(.system(size: 10, weight: .bold))
+                                    Image("whatsapp")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 12, height: 12)
                                         .foregroundColor(Color(uiColor: .ppSuccess))
                                         .frame(width: 26, height: 26)
                                         .background(Color(uiColor: .ppSuccess).opacity(0.10), in: Circle())
@@ -1171,7 +1175,15 @@ private struct CustomerAccountCardView: View {
                     Label(Language.get("Call", alter: "اتصال هاتفي"), systemImage: "phone.fill")
                 }
                 Button { openWhatsApp(customer.phone) } label: {
-                    Label(Language.get("WhatsApp", alter: "محادثة واتساب"), systemImage: "message.fill")
+                    Label {
+                        Text(Language.get("WhatsApp", alter: "محادثة واتساب"))
+                    } icon: {
+                        Image("whatsapp")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 16, height: 16)
+                    }
                 }
             }
 
@@ -1289,7 +1301,7 @@ private struct CustomerAccountCardView: View {
             subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.name),
             confirmButton: Language.get("WhatsApp", alter: "فتح واتساب"),
             cancelButton: Language.get("Cancel", alter: "إلغاء"),
-            icon: UIImage(systemName: "message.fill"),
+            icon: UIImage(named: "whatsapp") ?? UIImage(systemName: "message.fill"),
             confirmBlock: { _, didConfirm in
                 guard didConfirm else { return }
                 guard let url = URL(string: "https://wa.me/\(digits)") else { return }
@@ -1392,7 +1404,15 @@ struct AdminCustomerDossierView: View {
                     Button {
                         handleWhatsAppAction()
                     } label: {
-                        Label(Language.get("WhatsApp", alter: "واتساب"), systemImage: "message.fill")
+                        Label {
+                            Text(Language.get("WhatsApp", alter: "واتساب"))
+                        } icon: {
+                            Image("whatsapp")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 16, height: 16)
+                        }
                     }
                 }
 
@@ -1524,7 +1544,7 @@ struct AdminCustomerDossierView: View {
                 handleCallAction()
             }
 
-            contactButton(title: Language.get("WhatsApp", alter: "محادثة واتساب"), icon: "message.fill", color: Color(uiColor: .ppSuccess)) {
+            contactButton(title: Language.get("WhatsApp", alter: "محادثة واتساب"), icon: "whatsapp", color: Color(uiColor: .ppSuccess)) {
                 handleWhatsAppAction()
             }
 
@@ -1540,11 +1560,22 @@ struct AdminCustomerDossierView: View {
             action()
         }) {
             VStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(color)
-                    .frame(width: 36, height: 36)
-                    .background(color.opacity(0.10), in: Circle())
+                if icon == "whatsapp" || UIImage(named: icon) != nil {
+                    Image(icon)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 17, height: 17)
+                        .foregroundColor(color)
+                        .frame(width: 36, height: 36)
+                        .background(color.opacity(0.10), in: Circle())
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(color)
+                        .frame(width: 36, height: 36)
+                        .background(color.opacity(0.10), in: Circle())
+                }
 
                 Text(title)
                     .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
@@ -1603,7 +1634,7 @@ struct AdminCustomerDossierView: View {
             subtitle: String(format: Language.get("WhatsApp_Customer_Subtitle_Format", alter: "هل ترغب في فتح محادثة واتساب مع العميل (%@)؟"), customer.name),
             confirmButton: Language.get("WhatsApp", alter: "فتح واتساب"),
             cancelButton: Language.get("Cancel", alter: "إلغاء"),
-            icon: UIImage(systemName: "message.fill"),
+            icon: UIImage(named: "whatsapp") ?? UIImage(systemName: "message.fill"),
             confirmBlock: { _, didConfirm in
                 guard didConfirm else { return }
                 guard let url = URL(string: "https://wa.me/\(digits)") else { return }
@@ -2524,6 +2555,8 @@ public final class PPAdminUsersListHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
 
         let host = UIHostingController(
             rootView: AdminUsersListView(onDismiss: { [weak self] in
@@ -2532,8 +2565,10 @@ public final class PPAdminUsersListHostingController: UIViewController {
                     return
                 }
                 PPAdminNavigationFallback.popOrDismiss(from: self)
-            })
+            }).ignoresSafeArea()
         )
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         host.view.backgroundColor = .clear
@@ -2559,6 +2594,8 @@ public final class PPAdminChatsHostingController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .ppBackground
+        extendedLayoutIncludesOpaqueBars = true
+        edgesForExtendedLayout = .all
 
         let host = UIHostingController(
             rootView: AdminChatsView(onDismiss: { [weak self] in
@@ -2567,8 +2604,10 @@ public final class PPAdminChatsHostingController: UIViewController {
                     return
                 }
                 PPAdminNavigationFallback.popOrDismiss(from: self)
-            })
+            }).ignoresSafeArea()
         )
+        host.extendedLayoutIncludesOpaqueBars = true
+        host.edgesForExtendedLayout = .all
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
         host.view.backgroundColor = .clear

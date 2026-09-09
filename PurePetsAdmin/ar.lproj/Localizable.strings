@@ -636,6 +636,7 @@
 "NotificationComposer_Validation_TitleRequired" = "يرجى كتابة عنوان الإشعار";
 "NotificationComposer_Validation_BodyRequired" = "يرجى كتابة نص محتوى الإشعار";
 "NotificationComposer_Failed_NoRecipients" = "لم يتم العثور على أجهزة نشطة لاستقبال الإشعار.";
+"NotificationComposer_Failed_TooLarge" = "قائمة المستهدفين كبيرة جداً، يرجى تضييق نطاق الإرسال.";
 "NotificationComposer_Receipt_SuccessTitle" = "تم بث الإشعار بنجاح!";
 "NotificationComposer_Receipt_Key" = "معرف العملية";
 "NotificationComposer_Receipt_Recipients" = "الأجهزة المستهدفة";
@@ -3767,6 +3768,26 @@
 "AdminQuickActions_POS_Capability" = "فيزا • باركود • كاش";
 "AdminQuickActions_SignalsCount_Format" = "%d إشارات نشطة";
 
+"AdminPOS_SectionTitle" = "منظومة نقاط البيع والكاشير";
+"AdminPOS_SectionDetail" = "مساحة البيع الفوري السريع وإدارة سجل فواتير المبيعات";
+"AdminPOS_TerminalTitle" = "نقطة بيع سريعة";
+"AdminPOS_TerminalSubtitle" = "مسح باركود • بيع فوري • دفع مباشر";
+"AdminPOS_HistoryTitle" = "سجل مبيعات الكاشير";
+"AdminPOS_HistorySubtitle" = "الفواتير السابقة • المرتجعات • الإيصالات";
+"AdminPOS_HistoryAction" = "عرض السجل";
+"AdminQuickActions_Staff" = "فريق العمل";
+"AdminQuickActions_Staff_Subtitle" = "الأدوار والصلاحيات";
+"AdminQuickActions_Providers" = "طلبات المزودين";
+"AdminQuickActions_Providers_Subtitle" = "مراجعة الانضمام";
+"AdminQuickActions_Branches" = "شبكة الفروع";
+"AdminQuickActions_Branches_Subtitle" = "المواقع والعمليات";
+"AdminQuickActions_HomeControl" = "واجهة التطبيق";
+"AdminQuickActions_HomeControl_Subtitle" = "أقسام وبانرات المتجر";
+"AdminQuickActions_Audit" = "سجل التدقيق";
+"AdminQuickActions_Audit_Subtitle" = "الرقابة وتتبع الأمان";
+"AdminQuickActions_ShowMore" = "المزيد من الأدوات";
+"AdminQuickActions_ShowLess" = "عرض أقل";
+
 "POS_CatalogLoadFailed" = "تعذر تحميل المنتجات. حاول مرة أخرى.";
 
 "POS_OrderSubmitFailed" = "تعذر إتمام عملية البيع. حاول مرة أخرى.";
@@ -6494,3 +6515,34 @@
 "Staff_Role_Selected_Badge" = "الدور المختار";
 "Staff_SelfRole_Notice" = "تنبيه الحوكمة: لا يمكن تعديل رتبة حسابك الشخصي ذاتياً لحماية الصلاحيات السيادية.";
 "Staff_SelfRole_Protected" = "رتبة حسابك الشخصي محصنة وغير قابلة للتعديل الذاتي";
+
+/* POS Sovereign Console & Stock Horizon Redesign */
+"AdminPOS_ActiveTerminal_Badge" = "نظام نقطة البيع المباشر";
+"AdminPOS_TerminalTitle_iPad" = "نقطة البيع السريعة الفورية";
+"AdminPOS_TerminalSubtitle_iPad" = "مسح فوري للباركود • سلة مشتريات ذكية • إصدار فوري للفاتورة الضريبية";
+"AdminPOS_Launch_Session" = "بدء جلسة البيع الفوري السريع";
+"AdminPOS_HistorySection_Badge" = "سجل المبيعات والوردية";
+"AdminPOS_HistoryTitle_iPad" = "سجل فواتير الكاشير واليومية";
+"AdminPOS_HistorySubtitle_iPad" = "أرشيف فواتير اليوم، إدارة المرتجعات، وتدقيق العمليات المالية";
+"AdminPOS_Feature_Archive" = "أرشفة الفواتير";
+"AdminPOS_Feature_Refunds" = "إدارة المرتجعات";
+"AdminPOS_Feature_Audit" = "تدقيق الوردية";
+"AdminPOS_Open_History" = "فتح سجل الفواتير والإيصالات";
+"Stock_Section_Title" = "قطاع المخزون والمنتجات";
+"Stock_Section_Subtitle" = "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات";
+"Stock_Alerts_Count_Format" = "%d تنبيهات بالمخزون";
+"Stock_Live_Sync_Active" = "مزامنة المخزون نشطة";
+"Stock_Accessories_Title" = "المخزون والإكسسوارات";
+"Stock_Accessories_Subtitle" = "الأطواق، الألعاب، ومستلزمات العناية والرعاية";
+"Stock_Food_Title" = "الأغذية والتغذية";
+"Stock_Food_Subtitle" = "الأغذية الجافة، الرطبة، المكملات والمكافآت";
+"Stock_LivePets_Title" = "الحيوانات الحية";
+"Stock_LivePets_Subtitle" = "الطيور، القطط، الكلاب، السجلات والشرائح";
+"Stock_Category_General" = "مستلزمات عامة";
+"Stock_Category_Nutrition" = "تغذية ومكملات";
+"Stock_Category_LivePets" = "حيوانات حية";
+"Stock_Open_Catalog" = "فتح الكتالوج";
+"Stock_Status_Active" = "متزامن";
+"Stock_Status_Alert_Singular" = "تنبيه نقص";
+"Stock_Status_Alert_Plural" = "%d تنبيهات";
+

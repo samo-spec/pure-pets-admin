@@ -609,6 +609,7 @@ struct AdminChatsView: View {
 
     var body: some View {
         chatsContent
+            .ignoresSafeArea()
     }
 
     private var chatsContent: some View {
@@ -2072,7 +2073,15 @@ private struct CustomerQuickDossierSheet: View {
                                     UIApplication.shared.open(url)
                                 }
                             } label: {
-                                Label(supportText("WhatsApp", "واتساب"), systemImage: "message.fill")
+                                Label {
+                                    Text(supportText("WhatsApp", "واتساب"))
+                                } icon: {
+                                    Image("whatsapp")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 16, height: 16)
+                                }
                                     .font(AdminType.subheadlineBold)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 44)
@@ -2556,8 +2565,11 @@ private struct SupportContextDetailSheet: View {
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "message.fill")
-                                .font(.system(size: 13, weight: .bold))
+                            Image("whatsapp")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 15, height: 15)
                             Text(supportText("WhatsApp", "واتساب"))
                                 .font(AdminType.subheadlineBold)
                         }

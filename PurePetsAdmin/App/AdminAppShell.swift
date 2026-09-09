@@ -371,6 +371,8 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         navigationController.view.semanticContentAttribute = direction
         navigationController.view.backgroundColor = .ppBackground
         navigationController.setNavigationBarHidden(true, animated: false)
+        viewController.extendedLayoutIncludesOpaqueBars = true
+        viewController.edgesForExtendedLayout = .all
     }
 
     func navigationController(_ navigationController: UINavigationController,

@@ -1328,9 +1328,17 @@ private struct POSTransactionCard: View {
                             Button {
                                 POSReceiptWhatsAppSender.sendReceipt(for: receipt)
                             } label: {
-                                Image(systemName: "message.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(Color(uiColor: .systemTeal))
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(uiColor: .systemTeal))
+                                        .frame(width: 20, height: 20)
+                                    Image("whatsapp")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 12, height: 12)
+                                        .foregroundColor(.white)
+                                }
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
@@ -1714,9 +1722,17 @@ struct POSTransactionDossierSheet: View {
                         Button {
                             POSReceiptWhatsAppSender.sendReceipt(for: receipt)
                         } label: {
-                            Image(systemName: "message.circle.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(Color(uiColor: .systemTeal))
+                            ZStack {
+                                Circle()
+                                    .fill(Color(uiColor: .systemTeal))
+                                    .frame(width: 30, height: 30)
+                                Image("whatsapp")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 17, height: 17)
+                                    .foregroundColor(.white)
+                            }
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))

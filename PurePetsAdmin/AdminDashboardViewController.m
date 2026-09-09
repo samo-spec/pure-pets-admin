@@ -219,7 +219,8 @@ static UIColor *PPAdminDashboardTintForTag(NSString *tag) {
         [tag isEqualToString:@"usersList"] || [tag isEqualToString:@"usersRolePermissions"] || [tag isEqualToString:@"blockUser"]) {
         return AppPrimaryClr;
     }
-    if ([tag isEqualToString:@"accessories"] || [tag isEqualToString:@"food"] || [tag isEqualToString:@"livePets"]) {
+    if ([tag isEqualToString:@"accessories"] || [tag isEqualToString:@"food"] || [tag isEqualToString:@"livePets"] ||
+        [tag hasPrefix:@"stockSector:"] || [tag hasPrefix:@"stockDeck:"]) {
         return AppSecondaryClr;
     }
     if ([tag isEqualToString:@"services"]) {
@@ -3480,6 +3481,8 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
 
     UIViewController *controller = [self pp_viewControllerForDashboardTag:tag];
     if (controller) {
+        controller.extendedLayoutIncludesOpaqueBars = YES;
+        controller.edgesForExtendedLayout = UIRectEdgeAll;
         [self.navigationController pushViewController:controller animated:YES];
     }
 }
@@ -3493,6 +3496,15 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
     }
     if ([tag isEqualToString:@"blockUser"]) {
         return [BlockUserViewController new];
+    }
+    if ([tag isEqualToString:@"stockSector:accessories"] || [tag isEqualToString:@"stockDeck:accessories"]) {
+        return [PPInventoryListHostingController makeForAccessoriesWithShowsCatalogSwitcher:NO];
+    }
+    if ([tag isEqualToString:@"stockSector:food"] || [tag isEqualToString:@"stockDeck:food"]) {
+        return [PPInventoryListHostingController makeForFoodWithShowsCatalogSwitcher:NO];
+    }
+    if ([tag isEqualToString:@"stockSector:livePets"] || [tag isEqualToString:@"stockDeck:livePets"]) {
+        return [PPInventoryListHostingController makeForLivePetsWithShowsCatalogSwitcher:NO];
     }
     if ([tag isEqualToString:@"accessories"]) {
         return [PPInventoryListHostingController makeForAccessories];
