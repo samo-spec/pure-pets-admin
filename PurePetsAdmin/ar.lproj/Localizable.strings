@@ -6247,6 +6247,14 @@
 "POS_GrandTotal" = "الإجمالي النهائي";
 "POS_Action_PrintReceipt" = "عرض وطباعة الإيصال";
 "POS_Action_WhatsAppReceipt" = "إرسال الإيصال عبر واتساب";
+"POS_History_WhatsAppShareHint" = "اختر واتساب ثم العميل لمشاركة الرسالة وملف الإيصال.";
+"POS_History_ReceiptMessage" = "مرحباً،\nمرفق إيصال معاملتكم رقم %@ من بيور بتس 🐾\nشكراً لتعاملكم معنا.";
+"POS_History_NoCustomerPhone" = "لا يوجد رقم هاتف صالح لهذه المعاملة";
+"POS_History_CallNoPhone" = "اتصال · لا يوجد رقم";
+"POS_History_ContactFailed" = "تعذر إكمال الإجراء";
+"POS_History_CallFailed" = "تعذر بدء المكالمة من هذا الجهاز.";
+"POS_History_ShareFailed" = "تعذرت مشاركة الإيصال. حاول مرة أخرى.";
+"POS_History_WhatsAppUnavailable" = "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.";
 "POS_Action_Refund" = "استرداد مالي";
 "POS_Action_Cancel" = "إلغاء وإبطال البيع";
 
@@ -6822,3 +6830,20 @@
 "Delete_Specimen_Guarded" = "حذف الصنف نهائياً من المخزون";
 "Financial_Specs" = "البيانات المالية";
 "Operational_Studios" = "استوديوهات الجرد المتخصصة";
+
+/* ===================== Sovereign Session Restoration Gateway ===================== */
+"Restoring_Stage_Link_Title" = "تأمين بروتوكول الاتصال المشفر";
+"Restoring_Stage_Link_Sub" = "التحقق من سلامة العتاد وشهادات App Check";
+"Restoring_Stage_IAM_Title" = "توثيق الاعتمادات والصلاحيات السيادية";
+"Restoring_Stage_IAM_Sub" = "مطابقة رتبة المشرف مع مصفوفة الأذونات المركزية";
+"Restoring_Stage_Mesh_Title" = "مزامنة الفروع ومصفوفة العمليات";
+"Restoring_Stage_Mesh_Sub" = "تحميل بيانات المستودعات والصلاحيات المكانية";
+"Restoring_Stage_Cockpit_Title" = "تجهيز قمرة القيادة الإدارية";
+"Restoring_Stage_Cockpit_Sub" = "فتح القنوات وتفعيل بيئة العمل الآمنة";
+"CommandCenter_Security_Attestation" = "نظام التوثيق والرقابة السيادية";
+"AppCheck_Active" = "App Check مفعّل";
+"CommandCenter_Restore_Failed_Badge" = "تعذر استعادة الجلسة الآمنة";
+"SignOut_To_Login" = "تسجيل الخروج والتبديل لحساب آخر";
+"CommandCenter_Enterprise_Security" = "المنظومة الإدارية والرقابية الموحدة";
+"CommandCenter_Restoring_Gateway_Title" = "بوابة استعادة الجلسة السيادية";
+"CommandCenter_Restoring_Gateway_Sub" = "جاري ربط محطة العمل الآمنة بنواة النظام المركزي ومزامنة الأذونات التشغيلية.";

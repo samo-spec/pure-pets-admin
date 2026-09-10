@@ -387,31 +387,7 @@ struct AdminAppRoot: View {
     }
 
     private var restoringView: some View {
-        ZStack {
-            AdminSurface.background.ignoresSafeArea()
-            VStack(spacing: 18) {
-                Image(systemName: "shield.checkered")
-                    .font(.system(size: 40, weight: .semibold))
-                    .foregroundColor(AdminSurface.primary)
-                    .accessibilityHidden(true)
-                ProgressView()
-                    .tint(AdminSurface.primary)
-                Text(Language.get("CommandCenter_Restoring_Title", alter: nil))
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                if let restoreError = sessionStore.restoreError {
-                    Text(restoreError)
-                        .font(AdminType.callout)
-                        .foregroundColor(AdminSurface.secondaryText)
-                        .multilineTextAlignment(.center)
-                    Button(Language.get("Retry", alter: nil), action: sessionStore.restoreCurrentSession)
-                        .buttonStyle(.borderedProminent)
-                        .tint(AdminSurface.primary)
-                }
-            }
-            .padding(28)
-            .frame(maxWidth: 420)
-        }
+        PPSessionRestorationGatewayView(sessionStore: sessionStore)
     }
 }
 

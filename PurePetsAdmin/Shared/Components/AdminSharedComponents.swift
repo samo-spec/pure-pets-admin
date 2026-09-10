@@ -258,6 +258,84 @@ struct AdminLoadingOverlay: View {
     var body: some View { ZStack { Color.clear; VStack(spacing: 12) { ProgressView().tint(AdminSurface.primary).scaleEffect(1.2); if let m = message { Text(m).font(AdminType.callout).foregroundColor(AdminSurface.secondaryText) } }.padding(24).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous)) } }
 }
 
+/// Reusable SwiftUI wrapper for Lottie animations backed by `LOTAnimationView`.
+public struct PPLottieAnimationView: UIViewRepresentable {
+    public let name: String
+    public var loop: Bool
+    public var contentMode: UIView.ContentMode
+
+    public init(name: String, loop: Bool = true, contentMode: UIView.ContentMode = .scaleAspectFit) {
+        self.name = name
+        self.loop = loop
+        self.contentMode = contentMode
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    public func makeUIView(context: Context) -> UIView {
+        let container = UIView(frame: .zero)
+        container.backgroundColor = .clear
+        container.isOpaque = false
+
+        let cleanName = (name as NSString).deletingPathExtension
+        let animationView = LOTAnimationView(name: cleanName)
+        animationView.translatesAutoresizingMaskIntoConstraints = false
+        animationView.contentMode = contentMode
+        animationView.loopAnimation = loop
+        animationView.backgroundColor = .clear
+        animationView.isOpaque = false
+
+        container.addSubview(animationView)
+        NSLayoutConstraint.activate([
+            animationView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            animationView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            animationView.topAnchor.constraint(equalTo: container.topAnchor),
+            animationView.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+
+        context.coordinator.animationView = animationView
+        context.coordinator.startObserving()
+
+        animationView.play()
+        return container
+    }
+
+    public func updateUIView(_ uiView: UIView, context: Context) {
+        if let animationView = context.coordinator.animationView {
+            if !animationView.isAnimationPlaying {
+                animationView.play()
+            }
+        }
+    }
+
+    public final class Coordinator: NSObject {
+        weak var animationView: LOTAnimationView?
+        private var observer: NSObjectProtocol?
+
+        func startObserving() {
+            guard observer == nil else { return }
+            observer = NotificationCenter.default.addObserver(
+                forName: UIApplication.willEnterForegroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let anim = self?.animationView else { return }
+                if !anim.isAnimationPlaying {
+                    anim.play()
+                }
+            }
+        }
+
+        deinit {
+            if let observer = observer {
+                NotificationCenter.default.removeObserver(observer)
+            }
+        }
+    }
+}
+
 struct AdminErrorBanner: View {
     let message: String; var retry: (() -> Void)?
     var body: some View {

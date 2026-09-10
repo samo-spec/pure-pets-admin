@@ -6186,6 +6186,14 @@
 "POS_GrandTotal" = "Grand Total";
 "POS_Action_PrintReceipt" = "View & Print Receipt";
 "POS_Action_WhatsAppReceipt" = "Send Receipt via WhatsApp";
+"POS_History_WhatsAppShareHint" = "Choose WhatsApp, then the customer, to share the message and receipt file.";
+"POS_History_ReceiptMessage" = "Hello,\nYour Pure Pets transaction receipt %@ is attached. 🐾\nThank you for choosing us.";
+"POS_History_NoCustomerPhone" = "No valid phone number is saved for this transaction";
+"POS_History_CallNoPhone" = "Call · No number";
+"POS_History_ContactFailed" = "Unable to complete the action";
+"POS_History_CallFailed" = "Unable to start a call from this device.";
+"POS_History_ShareFailed" = "Unable to share the receipt. Please try again.";
+"POS_History_WhatsAppUnavailable" = "Install WhatsApp on this device to share the receipt.";
 "POS_Action_Refund" = "Issue Refund";
 "POS_Action_Cancel" = "Void / Cancel Sale";
 
@@ -6761,3 +6769,20 @@
 "Delete_Specimen_Guarded" = "Permanently Delete Specimen from Inventory";
 "Financial_Specs" = "Financial Specs";
 "Operational_Studios" = "Operational Inventory Studios";
+
+/* ===================== Sovereign Session Restoration Gateway ===================== */
+"Restoring_Stage_Link_Title" = "Securing Encrypted Cloud Link";
+"Restoring_Stage_Link_Sub" = "Verifying hardware attestation & App Check certificates";
+"Restoring_Stage_IAM_Title" = "Verifying Sovereign IAM Credentials";
+"Restoring_Stage_IAM_Sub" = "Validating staff role with central permission matrix";
+"Restoring_Stage_Mesh_Title" = "Syncing Branch Operations Mesh";
+"Restoring_Stage_Mesh_Sub" = "Loading warehouse data & spatial permissions";
+"Restoring_Stage_Cockpit_Title" = "Arming Enterprise Command Cockpit";
+"Restoring_Stage_Cockpit_Sub" = "Opening channels & arming secure workspace";
+"CommandCenter_Security_Attestation" = "Sovereign Attestation System";
+"AppCheck_Active" = "App Check Active";
+"CommandCenter_Restore_Failed_Badge" = "Session Restoration Failed";
+"SignOut_To_Login" = "Sign Out & Switch Account";
+"CommandCenter_Enterprise_Security" = "Unified Enterprise Security Platform";
+"CommandCenter_Restoring_Gateway_Title" = "Sovereign Session Restoration Gateway";
+"CommandCenter_Restoring_Gateway_Sub" = "Connecting secure workstation to central core and syncing operational permissions.";

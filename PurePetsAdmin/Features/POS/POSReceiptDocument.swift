@@ -760,7 +760,7 @@ struct POSCompletedReceiptSheet: View {
             POSReceiptWhatsAppSender.sendReceipt(for: receipt)
         } label: {
             ZStack {
-                Circle()
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(POSReceiptWhatsAppSender.brandColor)
                     .frame(width: 48, height: 48)
                     .shadow(color: POSReceiptWhatsAppSender.brandColor.opacity(0.32), radius: 6, x: 0, y: 3)

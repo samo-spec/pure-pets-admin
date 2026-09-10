@@ -1329,13 +1329,98 @@ struct AdminPOSHistoryView: View {
 
 // MARK: - Living Transaction Dossier Card
 
+/// Owns the local attachment until the share controller releases it, including cancellation.
+private final class POSHistoryReceiptShare: Identifiable {
+    let id = UUID()
+    let fileURL: URL
+    let message: String
+
+    @MainActor
+    init(receipt: POSCompletedReceipt) throws {
+        fileURL = try POSReceiptPDFExporter.temporaryPDF(for: receipt)
+        message = String(
+            format: Language.get("POS_History_ReceiptMessage", alter: "مرحباً،\nمرفق إيصال معاملتكم رقم %@ من بيور بتس 🐾\nشكراً لتعاملكم معنا."),
+            receipt.formattedReceiptID
+        )
+    }
+
+    deinit {
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
+private struct POSHistoryReceiptShareSheet: UIViewControllerRepresentable {
+    let share: POSHistoryReceiptShare
+    let onFailure: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        // WhatsApp's URL scheme accepts text, not local attachments. The native share
+        // extension receives both items and lets the operator choose the recipient.
+        let controller = UIActivityViewController(
+            activityItems: [share.fileURL, share.message],
+            applicationActivities: nil
+        )
+        controller.completionWithItemsHandler = { _, _, _, error in
+            Task { @MainActor in
+                dismiss()
+                if error != nil { onFailure() }
+            }
+        }
+        return controller
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
 private struct POSTransactionCard: View {
     let receipt: PPPOSReceipt
     let onTap: () -> Void
     let onPrint: () -> Void
     let onCopyID: (String) -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var receiptShare: POSHistoryReceiptShare?
+    @State private var feedbackMessage: String?
+    @State private var isPreparingReceipt = false
+    @State private var shareFailed = false
+
     var body: some View {
+        VStack(spacing: AdminSpacing.sm) {
+            receiptContent
+            contactActions
+        }
+        .padding(AdminSpacing.base)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+        )
+        .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
+        .sheet(item: $receiptShare, onDismiss: {
+            if shareFailed {
+                shareFailed = false
+                feedbackMessage = Language.get("POS_History_ShareFailed", alter: "تعذرت مشاركة الإيصال. حاول مرة أخرى.")
+            }
+        }) { share in
+            POSHistoryReceiptShareSheet(share: share) {
+                shareFailed = true
+            }
+        }
+        .alert(
+            Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
+            isPresented: Binding(
+                get: { feedbackMessage != nil },
+                set: { if !$0 { feedbackMessage = nil } }
+            )
+        ) {
+            Button(Language.get("OK", alter: "موافق"), role: .cancel) {}
+        } message: {
+            Text(feedbackMessage ?? "")
+        }
+    }
+
+    private var receiptContent: some View {
         Button(action: onTap) {
             VStack(spacing: AdminSpacing.sm) {
                 // 1. Top Header: Cryptopill Slug + Timestamp + Status Badge
@@ -1372,7 +1457,7 @@ private struct POSTransactionCard: View {
                     statusBadge
                 }
 
-                // 2. Customer Contact Conduit (Direct Call & WhatsApp)
+                // 2. Customer identity. Contact actions remain available below every receipt.
                 if !receipt.customerName.isEmpty || !receipt.customerPhone.isEmpty {
                     HStack(spacing: 8) {
                         Image(systemName: "person.crop.circle.fill")
@@ -1385,40 +1470,6 @@ private struct POSTransactionCard: View {
                             .lineLimit(1)
 
                         Spacer()
-
-                        if !receipt.customerPhone.isEmpty {
-                            // Call Action
-                            Button {
-                                let clean = receipt.customerPhone.filter { $0.isNumber || $0 == "+" }
-                                if let url = URL(string: "tel://\(clean)"), UIApplication.shared.canOpenURL(url) {
-                                    UIApplication.shared.open(url)
-                                }
-                            } label: {
-                                Image(systemName: "phone.circle.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(Color(uiColor: .systemGreen))
-                            }
-                            .buttonStyle(.plain)
-
-                            // WhatsApp Action
-                            Button {
-                                POSReceiptWhatsAppSender.sendReceipt(for: receipt)
-                            } label: {
-                                ZStack {
-                                    Circle()
-                                        .fill(POSReceiptWhatsAppSender.brandColor)
-                                        .frame(width: 20, height: 20)
-                                    Image("whatsapp")
-                                        .renderingMode(.template)
-                                        .resizable()
-                                        .scaledToFit()
-                                        .frame(width: 12, height: 12)
-                                        .foregroundColor(.white)
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
-                        }
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
@@ -1488,15 +1539,110 @@ private struct POSTransactionCard: View {
                     .accessibilityLabel(Language.get("POS_Action_PrintReceipt", alter: "طباعة"))
                 }
             }
-            .padding(AdminSpacing.base)
-            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
-            )
-            .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
         }
         .buttonStyle(.plain)
+    }
+
+    private var contactActions: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+
+        return layout {
+            Button(action: shareReceipt) {
+                HStack(spacing: 7) {
+                    if isPreparingReceipt {
+                        ProgressView().tint(AdminSurface.primaryText)
+                    } else {
+                        Image("whatsapp")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                            .accessibilityHidden(true)
+                    }
+                    Text(Language.get("WhatsApp", alter: "واتساب"))
+                        .font(AdminType.captionBold)
+                }
+                .foregroundStyle(AdminSurface.primaryText)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(POSReceiptWhatsAppSender.brandColor.opacity(0.14), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isPreparingReceipt || receiptShare != nil)
+            .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+            .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "اختر واتساب ثم العميل لمشاركة الرسالة وملف الإيصال."))
+
+            Button(action: callCustomer) {
+                Label(
+                    customerCallURL == nil
+                        ? Language.get("POS_History_CallNoPhone", alter: "اتصال · لا يوجد رقم")
+                        : Language.get("Call", alter: "اتصال"),
+                    systemImage: "phone.fill"
+                )
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(customerCallURL == nil ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color(uiColor: .ppBackgroundSecondary), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(customerCallURL == nil)
+            .accessibilityLabel(Language.get("POS_Customer_Call", alter: "اتصال هاتفي"))
+            .accessibilityValue(customerCallURL == nil
+                ? Language.get("POS_History_NoCustomerPhone", alter: "لا يوجد رقم هاتف صالح لهذه المعاملة")
+                : receipt.customerPhone)
+        }
+    }
+
+    private var customerCallURL: URL? {
+        let rawPhone = receipt.customerPhone.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Reject dial commands/extensions; normalize Arabic and Persian decimal digits.
+        let digits = "0123456789٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹"
+        guard rawPhone.allSatisfy({ digits.contains($0) || "+()- .".contains($0) }) else { return nil }
+        var number = rawPhone.compactMap { character -> String? in
+            guard digits.contains(character), let digit = character.wholeNumberValue else { return nil }
+            return String(digit)
+        }.joined()
+        guard rawPhone.filter({ $0 == "+" }).count <= 1,
+              !rawPhone.contains("+") || rawPhone.hasPrefix("+") else { return nil }
+        let hasInternationalPrefix = rawPhone.hasPrefix("+") || number.hasPrefix("00")
+        if number.hasPrefix("00") { number.removeFirst(2) }
+        if !hasInternationalPrefix && number.count == 8 { number = "974" + number }
+        guard (8...15).contains(number.count), number.first != "0" else { return nil }
+        return URL(string: "tel:+\(number)")
+    }
+
+    private func callCustomer() {
+        guard let url = customerCallURL else { return }
+        UIApplication.shared.open(url, options: [:]) { opened in
+            if !opened {
+                Task { @MainActor in
+                    feedbackMessage = Language.get("POS_History_CallFailed", alter: "تعذر بدء المكالمة من هذا الجهاز.")
+                }
+            }
+        }
+    }
+
+    private func shareReceipt() {
+        guard !isPreparingReceipt, receiptShare == nil else { return }
+        guard let whatsAppURL = URL(string: "whatsapp://send"),
+              UIApplication.shared.canOpenURL(whatsAppURL) else {
+            feedbackMessage = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
+            return
+        }
+        shareFailed = false
+        isPreparingReceipt = true
+        Task { @MainActor in
+            await Task.yield()
+            defer { isPreparingReceipt = false }
+            do {
+                receiptShare = try POSHistoryReceiptShare(receipt: POSCompletedReceipt(receipt: receipt))
+            } catch {
+                feedbackMessage = Language.get("POS_Receipt_ExportFailed", alter: "تعذر إنشاء ملف الإيصال. حاول مرة أخرى.")
+            }
+        }
     }
 
     private var receiptIsCancelled: Bool {
@@ -2555,7 +2701,8 @@ struct POSRefundStudioSheet: View {
                 receipt.refundedAmount += amount
                 receipt.refundReason = finalReason
                 receipt.refundedAt = Date()
-                if let cashier = receipt.cashierName ?? receipt.operatorID {
+                let cashier = receipt.cashierName ?? receipt.operatorID
+                if !cashier.isEmpty {
                     receipt.refundedBy = cashier
                 }
                 if receipt.refundedAmount >= (receipt.total - 0.001) {
@@ -3251,4 +3398,3 @@ struct POSCancelConfirmationSheet: View {
         }
     }
 }
-

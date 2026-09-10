@@ -1034,6 +1034,7 @@ enum AdminSurface {
     static let primaryText = Color(uiColor: .ppTextPrimary)
     static let secondaryText = Color(uiColor: .ppTextSecondary)
     static let hairline = Color(uiColor: .ppSurfaceBorder)
+    static let borderSubtle = Color(uiColor: .ppSurfaceBorder)
 }
 
 enum AdminType {
