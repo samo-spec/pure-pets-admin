@@ -330,6 +330,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var barcode: String = "" { didSet { updateUnsavedChanges() } }
     @Published var quantity: Int = 1 { didSet { updateUnsavedChanges() } }
     @Published var condition: AccessConditions = .new { didSet { updateUnsavedChanges() } }
+    @Published var size: String = "" { didSet { updateUnsavedChanges() } }
     @Published var weightText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var weightUnit: String = "kg" { didSet { updateUnsavedChanges() } }
     
@@ -485,6 +486,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
 
         hydrateWeight(from: acc)
+        size = acc.size ?? ""
 
         selectedStoreID = (acc.storeID ?? "").isEmpty == false ? acc.storeID! : "main_store"
         selectedStoreName = (acc.storeName ?? "").isEmpty == false ? acc.storeName! : Language.get("Main Store", alter: "المتجر الرئيسي")
@@ -2178,6 +2180,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.weightText = "\(canonicalWeight) \(weightUnit)"
         }
         
+        let trimmedSize = size.trimmingCharacters(in: .whitespacesAndNewlines)
+        accessory.size = trimmedSize.isEmpty ? nil : trimmedSize
+        
         accessory.expiryDate = (isFood && hasExpiryDate) ? expiryDate : nil
         accessory.active = !isDraft
         
@@ -2432,6 +2437,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.weightText = saved.weightText
         original.weight = saved.weight
         original.weightUnit = saved.weightUnit
+        original.size = saved.size
         original.imageURLsArray = saved.imageURLsArray
         original.imageMeta = saved.imageMeta
         original.petMainCategoryID = saved.petMainCategoryID
@@ -4956,6 +4962,12 @@ struct PPAccessoryEditorScreen: View {
                 condition: $viewModel.condition,
                 isFood: viewModel.isFood
             )
+
+            if !viewModel.isFood {
+                PPAccessorySizeSelector(
+                    size: $viewModel.size
+                )
+            }
 
             PPAccessoryUnifiedMeasureChamber(
                 weightText: $viewModel.weightText,
@@ -11417,6 +11429,214 @@ private struct PPAccessoryConditionSelector: View {
     }
 }
 
+// MARK: - Category-Defining Tactile Item Size Selector Chamber
+
+private struct PPAccessorySizeSelector: View {
+    @Binding var size: String
+
+    @FocusState private var isCustomFieldFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Standard high-demand apparel & accessory sizes
+    private let standardPresetSizes: [String] = [
+        "XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL"
+    ]
+
+    private var isSelectedUniversal: Bool {
+        let trimmed = size.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return trimmed == "free size" || trimmed == "موحد" || trimmed == "موحد (free size)"
+    }
+
+    private var activeSelectedBadgeText: String? {
+        let trimmed = size.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Header Row: Icon + Title + Live Badge + Clear
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: "ruler.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 20)
+
+                Text(Language.get("CatalogIntake_SizeLabel", alter: "المقاس المطلوب"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("CatalogIntake_Optional", alter: "(اختياري)"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer(minLength: 4)
+
+                // Live Active Size Tag
+                if let activeBadge = activeSelectedBadgeText {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Text(verbatim: activeBadge)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                                size = ""
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .padding(2)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                    }
+                    .padding(.leading, 8)
+                    .padding(.trailing, 6)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.30), lineWidth: 0.75))
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+
+            // Presets Runway: Standard Apparel Sizing Grid / Horizontal Scroll
+            VStack(alignment: .leading, spacing: 7) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        // Free Size Pill
+                        let isFreeSelected = isSelectedUniversal
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                                size = isFreeSelected ? "" : "Free Size"
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text(Language.get("Size_FreeSize", alter: "موحد (Free Size)"))
+                                    .font(PPBrandFont.bold(size: 11.5))
+                            }
+                            .foregroundStyle(
+                                isFreeSelected
+                                    ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
+                                    : AdminSurface.primaryText.opacity(0.85)
+                            )
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        isFreeSelected
+                                            ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.15)
+                                            : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                    )
+                            )
+                            .overlay(
+                                Capsule()
+                                    .strokeBorder(
+                                        isFreeSelected ? AdminSurface.primary.opacity(0.60) : Color.clear,
+                                        lineWidth: 0.9
+                                    )
+                            )
+                        }
+                        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+
+                        // Standard Pills (XXS -> 3XL)
+                        ForEach(standardPresetSizes, id: \.self) { preset in
+                            let isSelected = size.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(preset) == .orderedSame
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.22, dampingFraction: 0.75)) {
+                                    size = isSelected ? "" : preset
+                                }
+                            } label: {
+                                Text(verbatim: preset)
+                                    .font(PPBrandFont.bold(size: 12))
+                                    .foregroundStyle(
+                                        isSelected
+                                            ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
+                                            : AdminSurface.primaryText.opacity(0.85)
+                                    )
+                                    .padding(.horizontal, 11)
+                                    .padding(.vertical, 6)
+                                    .background(
+                                        Capsule()
+                                            .fill(
+                                                isSelected
+                                                    ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.15)
+                                                    : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                            )
+                                    )
+                                    .overlay(
+                                        Capsule()
+                                            .strokeBorder(
+                                                isSelected ? AdminSurface.primary.opacity(0.60) : Color.clear,
+                                                lineWidth: 0.9
+                                            )
+                                    )
+                            }
+                            .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                // Custom Size Input Chamber
+                HStack(spacing: 8) {
+                    Image(systemName: "pencil.and.ruler")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isCustomFieldFocused ? AdminSurface.primary : AdminSurface.secondaryText)
+                        .padding(.leading, 12)
+
+                    TextField(
+                        Language.get("CatalogIntake_CustomSizePlaceholder", alter: "أو اكتب مقاساً مخصصاً (مثال: 45 سم، 14 إنش...)"),
+                        text: $size
+                    )
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .focused($isCustomFieldFocused)
+
+                    if !size.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            size = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(AdminSurface.secondaryText.opacity(0.70))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 10)
+                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                    }
+                }
+                .frame(minHeight: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.control)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(
+                            isCustomFieldFocused ? AdminSurface.primary : AdminSurface.hairline.opacity(0.85),
+                            lineWidth: isCustomFieldFocused ? 1.4 : 0.75
+                        )
+                )
+            }
+        }
+    }
+}
+
 // MARK: - Category-Defining Unified Physical Measure Chamber
 
 private struct PPAccessoryUnifiedMeasureChamber: View {
@@ -12689,6 +12909,13 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     condition: $viewModel.condition,
                     isFood: viewModel.isFood
                 )
+
+                // Category-Defining Item Size Selector Chamber
+                if !viewModel.isFood {
+                    PPAccessorySizeSelector(
+                        size: $viewModel.size
+                    )
+                }
 
                 // Unified Physical Measurement Chamber
                 PPAccessoryUnifiedMeasureChamber(

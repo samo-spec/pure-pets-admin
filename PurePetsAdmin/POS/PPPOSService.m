@@ -780,6 +780,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         if (item[@"baseUnitQuantity"]) mapped[@"baseUnitQuantity"] = item[@"baseUnitQuantity"];
         if (item[@"assertedGroupPriceMinor"]) mapped[@"assertedGroupPriceMinor"] = item[@"assertedGroupPriceMinor"];
         if (item[@"lineTotalMinor"]) mapped[@"lineTotalMinor"] = item[@"lineTotalMinor"];
+        if (item[@"lotId"]) mapped[@"lotId"] = item[@"lotId"];
+        if (item[@"lotNumber"]) mapped[@"lotNumber"] = item[@"lotNumber"];
 
         if ([inventoryMode isEqualToString:PPPOSIndividualInventoryMode]) {
             mapped[@"inventoryMode"] = PPPOSIndividualInventoryMode;
@@ -1149,9 +1151,22 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     payload[@"currency"] = (currency.length > 0 ? currency.uppercaseString : @"QAR");
     payload[@"refundAmount"] = @(refundAmount);
     if (refundItems && refundItems.count > 0) {
-        payload[@"refundItems"] = refundItems;
+        NSMutableArray<NSDictionary *> *sanitizedItems = [NSMutableArray arrayWithCapacity:refundItems.count];
+        for (NSDictionary *rawItem in refundItems) {
+            if (![rawItem isKindOfClass:NSDictionary.class]) continue;
+            NSMutableDictionary *m = [rawItem mutableCopy];
+            NSString *prodId = m[@"productId"] ?: m[@"itemID"] ?: m[@"itemId"];
+            if (prodId.length > 0) {
+                m[@"productId"] = prodId;
+            }
+            if (!m[@"condition"]) {
+                m[@"condition"] = @"sellable";
+            }
+            [sanitizedItems addObject:m];
+        }
+        payload[@"refundItems"] = sanitizedItems;
     } else {
-        payload[@"refundItems"] = @[ @{ @"productId": @"__FULL_REFUND__", @"quantity": @(1) } ];
+        payload[@"refundItems"] = @[ @{ @"productId": @"__FULL_REFUND__", @"quantity": @(1), @"condition": @"sellable" } ];
     }
 
     [self pp_invokeCallable:@"processTransaction"

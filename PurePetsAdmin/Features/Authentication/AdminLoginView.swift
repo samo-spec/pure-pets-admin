@@ -1027,6 +1027,7 @@ enum AdminSurface {
     static let control = Color(uiColor: .ppElevatedSurface)
     static let surface = Color(uiColor: .ppSurface)
     static let card = Color(uiColor: .ppSurface)
+    static let cardElevated = Color(uiColor: .ppElevatedSurface)
     static let amber = Color(uiColor: .ppWarning)
     static let emerald = Color(uiColor: .ppSuccess)
     static let crimson = Color(uiColor: .ppError)
@@ -1040,7 +1041,9 @@ enum AdminType {
     static let title = Font.custom("Beiruti-Bold", size: 32, relativeTo: .largeTitle)
     static let title2 = Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2)
     static let title3 = Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3)
+    static let title3Bold = Font.custom("Beiruti-Bold", size: 20, relativeTo: .title3)
     static let headline = Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline)
+    static let headlineBold = Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline)
     static let subheadline = Font.custom("Beiruti-Regular", size: 15, relativeTo: .subheadline)
     static let subheadlineBold = Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline)
     static let body = Font.custom("Beiruti-Regular", size: 17, relativeTo: .body)
@@ -1050,9 +1053,12 @@ enum AdminType {
     static let footnote = Font.custom("Beiruti-Regular", size: 14, relativeTo: .footnote)
     static let footnoteBold = Font.custom("Beiruti-Bold", size: 14, relativeTo: .footnote)
     static let caption = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
+    static let captionRegular = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
     static let caption1 = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
     static let caption1Bold = Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
     static let caption2 = Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2)
     static let caption2Bold = Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2)
     static let captionBold = Font.custom("Beiruti-Medium", size: 13, relativeTo: .caption)
 }
+
+typealias AdminFont = AdminType

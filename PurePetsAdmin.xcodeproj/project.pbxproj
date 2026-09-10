@@ -115,6 +115,10 @@
 		F23DDE772F8BEC360020D4F4 /* PPBranchSelectionGateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE762F8BEC360020D4F4 /* PPBranchSelectionGateView.swift */; };
 		F23DDE792F8BEC360020D4F4 /* PPAdminBranchSwitcherBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE782F8BEC360020D4F4 /* PPAdminBranchSwitcherBar.swift */; };
 		F23DDE812F8BEC360020D4F4 /* PPBranchInventory.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE802F8BEC360020D4F4 /* PPBranchInventory.swift */; };
+		F23DDE832F8BEC360020D4F6 /* PPInventoryLot.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE822F8BEC360020D4F5 /* PPInventoryLot.swift */; };
+		F23DDE852F8BEC360020D4F8 /* InventoryLotsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE842F8BEC360020D4F7 /* InventoryLotsSheet.swift */; };
+		F23DDE872F8BEC360020D4FA /* QuarantineStudioSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE862F8BEC360020D4F9 /* QuarantineStudioSheet.swift */; };
+		F23DDE892F8BEC360020D4FC /* CycleCountStudioView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F23DDE882F8BEC360020D4FB /* CycleCountStudioView.swift */; };
 		F251FCD82E765E1D00DFA8DB /* PPNotificationsManager.m in Sources */ = {isa = PBXBuildFile; fileRef = F251FCD72E765E1D00DFA8DB /* PPNotificationsManager.m */; };
 		F25740DB2F96CA3C00F982C2 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = F25740DA2F96CA3C00F982C2 /* FirebaseAppCheck */; };
 		F25740DD2F96CA3C00F982C2 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = F25740DC2F96CA3C00F982C2 /* FirebaseAuth */; };
@@ -516,6 +520,10 @@
 		F23DDE762F8BEC360020D4F4 /* PPBranchSelectionGateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPBranchSelectionGateView.swift; sourceTree = "<group>"; };
 		F23DDE782F8BEC360020D4F4 /* PPAdminBranchSwitcherBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAdminBranchSwitcherBar.swift; sourceTree = "<group>"; };
 		F23DDE802F8BEC360020D4F4 /* PPBranchInventory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPBranchInventory.swift; sourceTree = "<group>"; };
+		F23DDE822F8BEC360020D4F5 /* PPInventoryLot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryLot.swift; sourceTree = "<group>"; };
+		F23DDE842F8BEC360020D4F7 /* InventoryLotsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Inventory/InventoryLotsSheet.swift; sourceTree = "<group>"; };
+		F23DDE862F8BEC360020D4F9 /* QuarantineStudioSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Inventory/QuarantineStudioSheet.swift; sourceTree = "<group>"; };
+		F23DDE882F8BEC360020D4FB /* CycleCountStudioView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Inventory/CycleCountStudioView.swift; sourceTree = "<group>"; };
 		F251FCD52E75C3F100DFA8DB /* MockFIRDocumentSnapshot.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MockFIRDocumentSnapshot.h; sourceTree = "<group>"; };
 		F251FCD62E765E1500DFA8DB /* PPNotificationsManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPNotificationsManager.h; sourceTree = "<group>"; };
 		F251FCD72E765E1D00DFA8DB /* PPNotificationsManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPNotificationsManager.m; sourceTree = "<group>"; };
@@ -1110,6 +1118,7 @@
 				F23DDE722F8BEC360020D4F4 /* PPBranchContextManager.m */,
 				F23DDE742F8BEC360020D4F4 /* PPBranchContextBridge.swift */,
 				F23DDE802F8BEC360020D4F4 /* PPBranchInventory.swift */,
+				F23DDE822F8BEC360020D4F5 /* PPInventoryLot.swift */,
 				F23DDE762F8BEC360020D4F4 /* PPBranchSelectionGateView.swift */,
 				F23DDE782F8BEC360020D4F4 /* PPAdminBranchSwitcherBar.swift */,
 				FD8B57D0-2463-4DA5-861F-5EA766F2A37F /* PPBranchesViewController.h */,
@@ -1282,6 +1291,9 @@
 				4FBD3394272B482F8C2B898E /* POSHistoryView.swift */,
 				F2C71BA02F97412900716298 /* PPScannerView.swift */,
 				A3305C321078444DA3DF3D16 /* InventoryView.swift */,
+				F23DDE842F8BEC360020D4F7 /* InventoryLotsSheet.swift */,
+				F23DDE862F8BEC360020D4F9 /* QuarantineStudioSheet.swift */,
+				F23DDE882F8BEC360020D4FB /* CycleCountStudioView.swift */,
 				D509F65530B14AD38C2F4FB7 /* UsersListView.swift */,
 				9C7168B6DC3440CDAB7B2355 /* ChatsView.swift */,
 				ECD890CCB8754E2E867F436C /* StaffManagementView.swift */,
@@ -2321,6 +2333,10 @@
 				F23DDE732F8BEC360020D4F4 /* PPBranchContextManager.m in Sources */,
 				F23DDE752F8BEC360020D4F4 /* PPBranchContextBridge.swift in Sources */,
 				F23DDE812F8BEC360020D4F4 /* PPBranchInventory.swift in Sources */,
+				F23DDE832F8BEC360020D4F6 /* PPInventoryLot.swift in Sources */,
+				F23DDE852F8BEC360020D4F8 /* InventoryLotsSheet.swift in Sources */,
+				F23DDE872F8BEC360020D4FA /* QuarantineStudioSheet.swift in Sources */,
+				F23DDE892F8BEC360020D4FC /* CycleCountStudioView.swift in Sources */,
 				F23DDE772F8BEC360020D4F4 /* PPBranchSelectionGateView.swift in Sources */,
 				F23DDE792F8BEC360020D4F4 /* PPAdminBranchSwitcherBar.swift in Sources */,
 				F28AE2842E579FAF007279F5 /* UIImageView.m in Sources */,

@@ -304,12 +304,40 @@ struct POSCartItem: Identifiable, Equatable {
         return accessory.pos_canonicalUnitPrice
     }
 
+    // Lot & Expiry Tracking V2
+    var lotId: String? = nil
+    var lotNumber: String? = nil
+    var lotExpiryDate: Date? = nil
+
+    var effectiveExpiryDate: Date? {
+        lotExpiryDate ?? accessory.expiryDate
+    }
+
+    var isExpired: Bool {
+        guard let exp = effectiveExpiryDate else { return false }
+        return exp <= Date()
+    }
+
+    var isNearExpiry: Bool {
+        guard let exp = effectiveExpiryDate, !isExpired else { return false }
+        let days = Calendar.current.dateComponents([.day], from: Date(), to: exp).day ?? 0
+        return days <= 30
+    }
+
+    var expiryDisplayText: String? {
+        guard let exp = effectiveExpiryDate else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: exp)
+    }
+
     static func == (lhs: POSCartItem, rhs: POSCartItem) -> Bool {
         lhs.id == rhs.id
             && lhs.quantity == rhs.quantity
             && lhs.unitIDs == rhs.unitIDs
             && lhs.quantityGroupID == rhs.quantityGroupID
             && lhs.salesChannel == rhs.salesChannel
+            && lhs.lotId == rhs.lotId
     }
 }
 
@@ -811,6 +839,7 @@ final class POSFastSellViewModel: ObservableObject {
     }
 
     var isCheckoutBusy: Bool { isSubmitting || isPreparingReceipt }
+    var hasExpiredItems: Bool { cartItems.contains { $0.isExpired } }
 
     let paymentMethods: [(key: String, title: String, icon: String)] = [
         ("cash", "POS_Cash", "banknote.fill"),
@@ -1171,6 +1200,13 @@ final class POSFastSellViewModel: ObservableObject {
 
     func submitOrder(cashReceived: Double? = nil) {
         guard !cartItems.isEmpty, !isCheckoutBusy, completedReceipt == nil else { return }
+        guard !hasExpiredItems else {
+            submitError = Language.get(
+                "pos_checkout_blocked_expired",
+                alter: "لا يمكن إتمام البيع: السلة تحتوي على منتج منتهي الصلاحية"
+            )
+            return
+        }
         isSubmitting = true
         submitError = nil
         receiptNotice = nil
@@ -1201,6 +1237,12 @@ final class POSFastSellViewModel: ObservableObject {
                 "assertedGroupPriceMinor": item.unitGroupPriceMinor > 0 ? item.unitGroupPriceMinor : Int((item.unitPriceDisplay * 100).rounded()),
                 "lineTotalMinor": Int((item.lineTotal * 100).rounded())
             ]
+            if let lotId = item.lotId {
+                payload["lotId"] = lotId
+            }
+            if let lotNumber = item.lotNumber {
+                payload["lotNumber"] = lotNumber
+            }
             if item.isIndividuallyTracked {
                 payload["inventoryMode"] = kPOSIndividualInventoryMode
                 payload["unitIds"] = item.unitIDs
@@ -3259,20 +3301,42 @@ private struct POSApexFlightDeck: View {
 
     private var apexChargeButton: some View {
         let isChequeMissing = viewModel.selectedPaymentMethod == "cheque" && viewModel.attachedCheque == nil
-        return POSSlideToSaleButton(
-            hasItems: hasItems,
-            isCheckoutBusy: viewModel.isCheckoutBusy,
-            totalAmountText: currency(viewModel.cartTotal),
-            accentColor: methodAccentColor(viewModel.selectedPaymentMethod),
-            onSlideComplete: {
-                if isChequeMissing {
-                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
-                    isShowingScanner = true
-                } else {
-                    viewModel.submitOrder(cashReceived: tenderedAmount)
+        let hasExpired = viewModel.hasExpiredItems
+        return VStack(spacing: 8) {
+            if hasExpired {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(Language.get("pos_checkout_blocked_expired", alter: "لا يمكن إتمام البيع: السلة تحتوي على منتج منتهي الصلاحية"))
+                        .font(AdminType.captionBold)
+                        .lineLimit(2)
                 }
+                .foregroundColor(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(Color.red, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-        )
+
+            POSSlideToSaleButton(
+                hasItems: hasItems && !hasExpired,
+                isCheckoutBusy: viewModel.isCheckoutBusy,
+                totalAmountText: currency(viewModel.cartTotal),
+                accentColor: hasExpired ? Color.gray : methodAccentColor(viewModel.selectedPaymentMethod),
+                onSlideComplete: {
+                    if hasExpired {
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
+                        return
+                    }
+                    if isChequeMissing {
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        isShowingScanner = true
+                    } else {
+                        viewModel.submitOrder(cashReceived: tenderedAmount)
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -4827,6 +4891,37 @@ private struct CartItemRow: View {
                                 .padding(.vertical, 1)
                                 .background((item.salesChannel == "wholesale" ? Color(uiColor: .systemTeal) : AdminSurface.primary).opacity(0.12), in: Capsule())
                         }
+                        if let lotNum = item.lotNumber, !lotNum.isEmpty {
+                            Text("LOT: \(lotNum)")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.blue)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.blue.opacity(0.12), in: Capsule())
+                        }
+                        if item.isExpired {
+                            HStack(spacing: 2) {
+                                Image(systemName: "exclamationmark.octagon.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(Language.get("pos_cart_item_expired", alter: "منتهي الصلاحية"))
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.red.opacity(0.14), in: Capsule())
+                        } else if item.isNearExpiry {
+                            HStack(spacing: 2) {
+                                Image(systemName: "clock.badge.exclamationmark.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(Language.get("pos_cart_item_near_expiry", alter: "قريب الانتهاء"))
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.orange.opacity(0.14), in: Capsule())
+                        }
                         if item.unitsPerGroup > 1 {
                             Text(String(format: Language.get("POS_BaseUnitsDeductionFormat", alter: "(%d قطعة)"), item.baseUnitQuantity))
                                 .font(AdminType.caption2)
@@ -4904,7 +4999,10 @@ private struct CartItemRow: View {
         }
         .padding(AdminSpacing.md)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.medium)
+                .stroke(item.isExpired ? Color.red.opacity(0.6) : AdminSurface.hairline, lineWidth: item.isExpired ? 1.5 : 1.0)
+        )
     }
 
     private func formatCurrency(_ value: Double) -> String {
@@ -4978,6 +5076,38 @@ private struct POSCartCardRow: View {
                             .padding(.vertical, 1.5)
                             .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
                             .foregroundColor(AdminSurface.primary)
+                    }
+
+                    if let lotNum = item.lotNumber, !lotNum.isEmpty {
+                        Text("LOT: \(lotNum)")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .background(Color.blue.opacity(0.12), in: Capsule(style: .continuous))
+                            .foregroundColor(Color.blue)
+                    }
+                    if item.isExpired {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.octagon.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(Language.get("pos_cart_item_expired", alter: "منتهي الصلاحية"))
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.red.opacity(0.15), in: Capsule(style: .continuous))
+                        .foregroundColor(Color.red)
+                    } else if item.isNearExpiry {
+                        HStack(spacing: 2) {
+                            Image(systemName: "clock.badge.exclamationmark.fill")
+                                .font(.system(size: 8, weight: .bold))
+                            Text(Language.get("pos_cart_item_near_expiry", alter: "قريب الانتهاء"))
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(Color.orange.opacity(0.15), in: Capsule(style: .continuous))
+                        .foregroundColor(Color.orange)
                     }
 
                     Text(currency(item.unitPriceDisplay) + " " + Language.get("POS_Each", alter: "للقطعة"))
@@ -5073,7 +5203,12 @@ private struct POSCartCardRow: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.7 : 0.4), lineWidth: 0.75)
+                .strokeBorder(
+                    item.isExpired
+                        ? Color.red.opacity(0.7)
+                        : Color(uiColor: .ppSurfaceBorder).opacity(colorScheme == .dark ? 0.7 : 0.4),
+                    lineWidth: item.isExpired ? 1.5 : 0.75
+                )
         )
         .shadow(
             color: Color.black.opacity(colorScheme == .dark ? 0.30 : 0.06),

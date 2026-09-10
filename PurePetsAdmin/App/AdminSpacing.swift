@@ -19,6 +19,10 @@ enum AdminSpacing {
     static let sectionSpacing: CGFloat = 24
     static let groupSpacing: CGFloat = 20
     static let rowMinimumHeight: CGFloat = 52
+    static let cornerRadiusSmall: CGFloat = AdminRadius.small
+    static let cornerRadiusMedium: CGFloat = AdminRadius.medium
+    static let cornerRadiusLarge: CGFloat = AdminRadius.large
+    static let cornerRadiusCard: CGFloat = AdminRadius.card
 }
 
 // MARK: - Corner Radii

@@ -1887,6 +1887,10 @@ public struct PPInventoryListView: View {
     @State private var spinAngle: Double = 0
     @FocusState private var isSearchFocused: Bool
     @State private var showingBranchSwitcherSheet: Bool = false
+    @State private var itemForDamage: PetAccessory? = nil
+    @State private var itemForQuarantine: PetAccessory? = nil
+    @State private var itemForLots: PetAccessory? = nil
+    @State private var showCycleCountStudio: Bool = false
 
     public init(
         kind: AccessKindType = .typeAccessory,
@@ -1970,6 +1974,40 @@ public struct PPInventoryListView: View {
             PPBranchSelectionGateView()
                 .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .fullScreenCover(item: $itemForLots) { item in
+            InventoryLotsSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                onLotsChanged: {
+                    viewModel.applyFilter()
+                }
+            )
+        }
+        .fullScreenCover(item: $itemForQuarantine) { item in
+            QuarantineStudioSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                onResolved: {
+                    viewModel.applyFilter()
+                }
+            )
+        }
+        .fullScreenCover(item: $itemForDamage) { item in
+            DamageStockSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                onDamageRecorded: {
+                    viewModel.applyFilter()
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showCycleCountStudio) {
+            CycleCountStudioView(
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? ""
+            ) {
+                viewModel.applyFilter()
+            }
+        }
 
         .onAppear {
             viewModel.startListening()
@@ -2019,15 +2057,38 @@ public struct PPInventoryListView: View {
                     }
                 }
             ) {
-                AdminPrimaryPillButton(
-                    title: Language.get("Add", alter: "إضافة منتج"),
-                    systemImage: "plus"
-                ) {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    let addVC = AddAccessoryViewController(accessory: nil)
-                    addVC.showTypeRow = false
-                    addVC.defaultKind = viewModel.currentKind
-                    onPushViewController(addVC)
+                HStack(spacing: 8) {
+                    AdminPrimaryPillButton(
+                        title: Language.get("Add", alter: "إضافة منتج"),
+                        systemImage: "plus"
+                    ) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        let addVC = AddAccessoryViewController(accessory: nil)
+                        addVC.showTypeRow = false
+                        addVC.defaultKind = viewModel.currentKind
+                        onPushViewController(addVC)
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showCycleCountStudio = true
+                    } label: {
+                        Image(systemName: "slider.horizontal.2.square.on.square")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+                            .frame(width: 44, height: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color(uiColor: .systemBackground))
+                                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.20), lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Inventory_Action_Cycle_Count", alter: "استوديو جرد وتسوية المخزون"))
                 }
             }
 
@@ -2475,6 +2536,15 @@ public struct PPInventoryListView: View {
                 },
                 onDelete: {
                     confirmDelete(item: item)
+                },
+                onRecordDamage: {
+                    itemForDamage = item
+                },
+                onQuarantineStudio: {
+                    itemForQuarantine = item
+                },
+                onManageLots: {
+                    itemForLots = item
                 }
             )
         }
@@ -3009,6 +3079,9 @@ private struct FlagshipInventoryCard: View {
     let onAdjustQuantity: (Int) -> Void
     let onToggleStock: () -> Void
     let onDelete: () -> Void
+    var onRecordDamage: (() -> Void)? = nil
+    var onQuarantineStudio: (() -> Void)? = nil
+    var onManageLots: (() -> Void)? = nil
 
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
@@ -3131,6 +3204,39 @@ private struct FlagshipInventoryCard: View {
                 }
             }
 
+            if let onRecordDamage = onRecordDamage {
+                Button(action: onRecordDamage) {
+                    Label {
+                        Text(Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "exclamationmark.octagon.fill")
+                    }
+                }
+            }
+
+            if let onQuarantineStudio = onQuarantineStudio {
+                Button(action: onQuarantineStudio) {
+                    Label {
+                        Text(Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "shield.lefthalf.filled")
+                    }
+                }
+            }
+
+            if let onManageLots = onManageLots {
+                Button(action: onManageLots) {
+                    Label {
+                        Text(Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "calendar.badge.clock")
+                    }
+                }
+            }
+
             Button(action: {
                 if let root = UIApplication.shared.connectedScenes
                     .compactMap({ $0 as? UIWindowScene })
@@ -3217,6 +3323,21 @@ private struct FlagshipInventoryCard: View {
                     .padding(.vertical, 2.5)
                     .background(Color(red: 234/255, green: 88/255, blue: 12/255).opacity(0.10), in: Capsule(style: .continuous))
                     .lineLimit(1)
+            }
+
+            // Size Tag
+            if let size = item.size, !size.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                HStack(spacing: 2) {
+                    Image(systemName: "ruler.fill")
+                        .font(.system(size: 8))
+                    Text(size)
+                        .font(AdminType.caption2)
+                }
+                .foregroundColor(AdminSurface.primary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(AdminSurface.primary.opacity(0.12), in: Capsule(style: .continuous))
+                .lineLimit(1)
             }
 
             // Package Weight Chip
@@ -3570,6 +3691,10 @@ public struct PPInventoryItemDetailView: View {
     @State private var currentQuantity: Int = 0
     @State private var showTransferSheet: Bool = false
     @State private var showBasicDataEditor: Bool = false
+    @State private var showActionsHub: Bool = false
+    @State private var showDamageSheet: Bool = false
+    @State private var showQuarantineSheet: Bool = false
+    @State private var showLotsSheet: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -3689,6 +3814,99 @@ public struct PPInventoryItemDetailView: View {
                 ))
                 .zIndex(100)
             }
+
+            // Category-Defining Item Actions Hub (iPhone Deck / iPad Cockpit)
+            if showActionsHub {
+                PPItemActionsHubView(
+                    item: item,
+                    currentQuantity: currentQuantity,
+                    onDismiss: {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                    },
+                    onOpenFullEditor: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            onOpenFullEditor()
+                        }
+                    },
+                    onOpenPOS: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            onOpenPOS()
+                        }
+                    },
+                    onEditBasicData: item.isLivePet ? {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showBasicDataEditor = true
+                        }
+                    } : nil,
+                    onRecordDamage: !item.isLivePet ? {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showDamageSheet = true
+                        }
+                    } : nil,
+                    onQuarantineStudio: !item.isLivePet ? {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showQuarantineSheet = true
+                        }
+                    } : nil,
+                    onManageLots: !item.isLivePet ? {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showLotsSheet = true
+                        }
+                    } : nil,
+                    onTransferStock: (!item.isLivePet && currentQuantity > 0) ? {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
+                            showTransferSheet = true
+                        }
+                    } : nil,
+                    onToggleStock: !item.isLivePet ? {
+                        toggleStockVisibility()
+                    } : nil,
+                    onShare: {
+                        if let root = UIApplication.shared.connectedScenes
+                            .compactMap({ $0 as? UIWindowScene })
+                            .flatMap({ $0.windows })
+                            .first(where: { $0.isKeyWindow })?.rootViewController {
+                            PetAccessory.share(item, from: root)
+                        }
+                    },
+                    onDelete: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            showActionsHub = false
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.20) {
+                            promptDeleteConfirm()
+                        }
+                    }
+                )
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                    removal: .opacity.combined(with: .scale(scale: 0.98))
+                ))
+                .zIndex(150)
+            }
         }
         .environment(\.layoutDirection, .rightToLeft)
         .onAppear {
@@ -3760,6 +3978,33 @@ public struct PPInventoryItemDetailView: View {
             PPLivePetBasicDataEditorView(item: item) { _ in
                 viewModel?.applyFilter()
             }
+        }
+        .sheet(isPresented: $showDamageSheet) {
+            DamageStockSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                onDamageRecorded: {
+                    Task { await viewModel?.refresh() }
+                }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .sheet(isPresented: $showQuarantineSheet) {
+            QuarantineStudioSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID(),
+                onResolved: {
+                    Task { await viewModel?.refresh() }
+                }
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+        .sheet(isPresented: $showLotsSheet) {
+            InventoryLotsSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? item.resolvedBranchID()
+            )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .onChange(of: branchInventory.inventoryMap) { _ in
             if !item.isLivePet {
@@ -3854,64 +4099,11 @@ public struct PPInventoryItemDetailView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            // Quick Actions / Context Menu Jewel
-            Menu {
-                Button {
-                    onOpenFullEditor()
-                } label: {
-                    Label(Language.get("Edit", alter: "تعديل الصنف"), systemImage: "pencil")
-                }
-
-                if item.isLivePet {
-                    Button {
-                        showBasicDataEditor = true
-                    } label: {
-                        Label(Language.get("LivePet_EditBasicData", alter: "تعديل البيانات الأساسية"), systemImage: "pencil.and.list.clipboard")
-                    }
-                }
-
-                Button {
-                    onOpenPOS()
-                } label: {
-                    Label(Language.get("LivePet_Open_POS", alter: "فتح في نقطة البيع"), systemImage: "cart.fill")
-                }
-
-                if !item.isLivePet {
-                    if currentQuantity > 0 {
-                        Button {
-                            showTransferSheet = true
-                        } label: {
-                            Label(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"), systemImage: "arrow.left.arrow.right")
-                        }
-                    }
-
-                    Button {
-                        toggleStockVisibility()
-                    } label: {
-                        Label(
-                            item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"),
-                            systemImage: item.noStock ? "checkmark.circle" : "xmark.circle"
-                        )
-                    }
-                }
-
-                Button {
-                    if let root = UIApplication.shared.connectedScenes
-                        .compactMap({ $0 as? UIWindowScene })
-                        .flatMap({ $0.windows })
-                        .first(where: { $0.isKeyWindow })?.rootViewController {
-                        PetAccessory.share(item, from: root)
-                    }
-                } label: {
-                    Label(Language.get("Share", alter: "مشاركة الصنف"), systemImage: "square.and.arrow.up")
-                }
-
-                Divider()
-
-                Button(role: .destructive) {
-                    promptDeleteConfirm()
-                } label: {
-                    Label(Language.get("Delete", alter: "حذف من المخزون"), systemImage: "trash")
+            // Category-Defining Actions Hub Jewel Trigger
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+                    showActionsHub = true
                 }
             } label: {
                 ZStack {
@@ -3919,16 +4111,17 @@ public struct PPInventoryItemDetailView: View {
                         .fill(AdminSurface.surface)
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 0.85)
                         )
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(AdminSurface.primary)
                 }
                 .frame(width: 44, height: 44)
                 .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
             }
-            .accessibilityLabel(Language.get("MoreActions", alter: "إجراءات إضافية"))
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(Language.get("Actions", alter: "خيارات وإجراءات الصنف"))
         }
         .padding(.vertical, 4)
     }
@@ -6348,6 +6541,812 @@ private struct PPLivePetActionPortalDeck: View {
     private func triggerAction(_ operation: PPLivePetOperationContext) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         onSelectOperation(operation)
+    }
+}
+
+// MARK: - Category-Defining Sovereign Item Actions Hub (iPhone Deck & iPad Cockpit)
+
+private struct PPCockpitPressStyle: ButtonStyle {
+    var scale: CGFloat = 0.97
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .opacity(configuration.isPressed ? 0.88 : 1.0)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+}
+
+@available(iOS 16.0, *)
+public struct PPItemActionsHubView: View {
+    let item: PetAccessory
+    let currentQuantity: Int
+    let onDismiss: () -> Void
+    let onOpenFullEditor: () -> Void
+    let onOpenPOS: () -> Void
+    var onEditBasicData: (() -> Void)? = nil
+    var onRecordDamage: (() -> Void)? = nil
+    var onQuarantineStudio: (() -> Void)? = nil
+    var onManageLots: (() -> Void)? = nil
+    var onTransferStock: (() -> Void)? = nil
+    var onToggleStock: (() -> Void)? = nil
+    let onShare: () -> Void
+    let onDelete: () -> Void
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var hasAppeared: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+
+    private var imageURL: URL? {
+        PetAccessory.firstImageURL(for: item)
+    }
+
+    private var stockTone: Color {
+        if (item.noStock && !item.isLivePet) || currentQuantity <= 0 {
+            return Color(uiColor: .ppError)
+        } else if currentQuantity <= 3 {
+            return Color(uiColor: .ppWarning)
+        } else {
+            return Color(uiColor: .ppSuccess)
+        }
+    }
+
+    private var stockStatusText: String {
+        if item.noStock && !item.isLivePet {
+            return Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً")
+        } else if currentQuantity <= 0 {
+            return Language.get("OutOfStock", alter: "نفذ من المخزون")
+        } else if currentQuantity <= 3 {
+            return Language.get("LowStock", alter: "وشك النفاذ")
+        } else {
+            return Language.get("InStock", alter: "متوفر بالمخزون")
+        }
+    }
+
+    public var body: some View {
+        GeometryReader { geometry in
+            let isIPad = UIDevice.current.userInterfaceIdiom == .pad && geometry.size.width > 550
+
+            ZStack(alignment: isIPad ? .center : .bottom) {
+                // High-Performance Ambient Dimmed Scrim
+                Color.black.opacity(hasAppeared ? 0.52 : 0.0)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onDismiss()
+                    }
+
+                if isIPad {
+                    iPadCockpit(geometry: geometry)
+                        .scaleEffect(hasAppeared ? 1.0 : 0.94)
+                        .opacity(hasAppeared ? 1.0 : 0.0)
+                } else {
+                    iPhoneDeck(geometry: geometry)
+                        .offset(y: max(0, dragOffset))
+                        .offset(y: hasAppeared ? 0 : geometry.size.height)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.layoutDirection, .rightToLeft)
+            .onAppear {
+                if accessibilityReduceMotion {
+                    hasAppeared = true
+                } else {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.84)) {
+                        hasAppeared = true
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - iPhone Compact Thumb-Zone Sensory Deck
+    @ViewBuilder
+    private func iPhoneDeck(geometry: GeometryProxy) -> some View {
+        VStack(spacing: 0) {
+            // Sensory Dismiss Handle
+            Capsule()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: 44, height: 5)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
+
+            // Specimen Telemetry HUD Bar
+            HStack(spacing: 12) {
+                // Specimen Thumbnail
+                ZStack {
+                    if let imageURL = imageURL {
+                        AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
+                            AdminSurface.control
+                        }
+                        .frame(width: 52, height: 52)
+                        .clipped()
+                    } else {
+                        ZStack {
+                            AdminSurface.control
+                            Image(systemName: item.isLivePet ? "pawprint.fill" : "cube.box.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                        }
+                        .frame(width: 52, height: 52)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.8), lineWidth: 0.8)
+                )
+
+                // Identity & Telemetry Details
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name)
+                        .font(Font.custom("Beiruti-Bold", size: 16))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        // Stock Indicator Capsule
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(stockTone)
+                                .frame(width: 6, height: 6)
+                            Text(stockStatusText)
+                                .font(Font.custom("Beiruti-Bold", size: 11))
+                                .foregroundStyle(stockTone)
+                            if currentQuantity > 0 {
+                                Text("(\(currentQuantity.englishDigits))")
+                                    .font(PPBrandFont.bold(size: 11))
+                                    .foregroundStyle(stockTone.opacity(0.9))
+                            }
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2.5)
+                        .background(stockTone.opacity(0.12), in: Capsule(style: .continuous))
+
+                        // Valuation Readout
+                        Text(item.inventoryDisplayPrice)
+                            .font(Font.custom("Beiruti-Bold", size: 13))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        if let barcode = item.barcode, !barcode.isEmpty {
+                            Text(barcode)
+                                .font(Font.system(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                // Quick Close Button
+                AdminSquircleCloseButton {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDismiss()
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 12)
+
+            Divider()
+                .background(AdminSurface.hairline.opacity(0.7))
+
+            // Action Portfolio Scrollable Stream
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 14) {
+                    // Twin Hero Commercial Launchers (2-Column Grid)
+                    HStack(spacing: 12) {
+                        // Edit Full Specimen
+                        heroLauncherCard(
+                            title: Language.get("Edit", alter: "تعديل الصنف"),
+                            subtitle: Language.get("ItemActions_Edit_Desc", alter: "المحرر الشامل"),
+                            icon: "square.and.pencil",
+                            tint: AdminSurface.primary,
+                            action: onOpenFullEditor
+                        )
+
+                        // Open in POS
+                        heroLauncherCard(
+                            title: Language.get("LivePet_Open_POS", alter: "نقطة البيع"),
+                            subtitle: Language.get("ItemActions_POS_Desc", alter: "إضافة للسلة والبيع"),
+                            icon: "cart.fill.badge.plus",
+                            tint: Color(uiColor: .ppSuccess),
+                            action: onOpenPOS
+                        )
+                    }
+
+                    // Live Pet Basic Data Editor (if applicable)
+                    if item.isLivePet, let onEditBasicData = onEditBasicData {
+                        actionHubRow(
+                            title: Language.get("LivePet_EditBasicData", alter: "تعديل البيانات الأساسية"),
+                            subtitle: Language.get("ItemActions_LivePet_Desc", alter: "تحديث السلالة، العمر، الجنس ورقم الحجل"),
+                            icon: "pencil.and.list.clipboard",
+                            tint: Color(uiColor: .ppInfo),
+                            action: onEditBasicData
+                        )
+                    }
+
+                    // Logistics & Supply Chain Operations Matrix (if not live pet)
+                    if !item.isLivePet {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "shippingbox.and.arrow.backward.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(AdminSurface.primary)
+                                Text(Language.get("Inventory_Ops_Section", alter: "عمليات المخزون والرقابة"))
+                                    .font(Font.custom("Beiruti-Bold", size: 13))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+                            .padding(.horizontal, 4)
+
+                            VStack(spacing: 8) {
+                                if let onManageLots = onManageLots {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Manage_Lots", alter: "إدارة التشغيلات وتواريخ الصلاحية (FEFO)"),
+                                        subtitle: Language.get("ItemActions_Lots_Desc", alter: "تتبع الدفعات وأولويات الصرف الذكية"),
+                                        icon: "calendar.badge.clock",
+                                        tint: Color(uiColor: .ppInfo),
+                                        action: onManageLots
+                                    )
+                                }
+
+                                if let onQuarantineStudio = onQuarantineStudio {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
+                                        subtitle: Language.get("ItemActions_Quarantine_Desc", alter: "حجر العينات وفحص الجودة وإعادة التوجيه"),
+                                        icon: "shield.lefthalf.filled",
+                                        tint: Color(uiColor: .ppWarning),
+                                        action: onQuarantineStudio
+                                    )
+                                }
+
+                                if let onRecordDamage = onRecordDamage {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Record_Damage", alter: "تسجيل إتلاف مخزون"),
+                                        subtitle: Language.get("ItemActions_Damage_Desc", alter: "توثيق التالف وإسقاط الكميات رسمياً"),
+                                        icon: "exclamationmark.octagon.fill",
+                                        tint: Color(uiColor: .ppError),
+                                        action: onRecordDamage
+                                    )
+                                }
+
+                                if let onTransferStock = onTransferStock, currentQuantity > 0 {
+                                    actionHubRow(
+                                        title: Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"),
+                                        subtitle: Language.get("ItemActions_Transfer_Desc", alter: "مناقلة المخزون بين الفروع المعتمدة"),
+                                        icon: "arrow.left.arrow.right",
+                                        tint: Color(uiColor: .ppSuccess),
+                                        trailingPill: "\(Language.get("Available", alter: "متاح")): \(currentQuantity.englishDigits)",
+                                        action: onTransferStock
+                                    )
+                                }
+                            }
+                        }
+
+                        // Availability Controller Card
+                        if let onToggleStock = onToggleStock {
+                            availabilityControllerCard(onToggle: onToggleStock)
+                        }
+                    }
+
+                    // Collaboration & Sharing
+                    actionHubRow(
+                        title: Language.get("Share", alter: "مشاركة الصنف"),
+                        subtitle: Language.get("ItemActions_Share_Desc", alter: "مشاركة بطاقة الصنف والمواصفات"),
+                        icon: "square.and.arrow.up",
+                        tint: AdminCommandInk.secondary,
+                        action: onShare
+                    )
+
+                    // Guarded Destructive Safety Zone
+                    destructiveSafetyCard(onDelete: onDelete)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+                .padding(.bottom, 24)
+            }
+            .frame(maxHeight: geometry.size.height * 0.78)
+        }
+        .background(
+            AdminSurface.surface
+                .clipShape(PPSheetTopRoundedShape(radius: 28))
+                .shadow(color: Color.black.opacity(0.18), radius: 24, x: 0, y: -6)
+        )
+        .overlay(
+            PPSheetTopRoundedShape(radius: 28)
+                .stroke(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
+        )
+        .gesture(
+            DragGesture()
+                .onChanged { val in
+                    if val.translation.height > 0 {
+                        dragOffset = val.translation.height
+                    }
+                }
+                .onEnded { val in
+                    if val.translation.height > 90 || val.predictedEndTranslation.height > 180 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onDismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
+    }
+
+    // MARK: - iPad Floating Tactical Cockpit (Spatial 2-Column Command Hub)
+    @ViewBuilder
+    private func iPadCockpit(geometry: GeometryProxy) -> some View {
+        let cockpitWidth = min(660, geometry.size.width - 64)
+        let cockpitHeight = min(720, geometry.size.height - 80)
+
+        VStack(spacing: 0) {
+            // Apex Command Cockpit Header
+            HStack(spacing: 16) {
+                // High-Res Specimen Avatar
+                ZStack {
+                    if let imageURL = imageURL {
+                        AdminRemoteImage(url: imageURL, contentMode: .fill, targetSize: CGSize(width: 64, height: 64)) {
+                            AdminSurface.control
+                        }
+                        .frame(width: 64, height: 64)
+                        .clipped()
+                    } else {
+                        ZStack {
+                            AdminSurface.control
+                            Image(systemName: item.isLivePet ? "pawprint.fill" : "cube.box.fill")
+                                .font(.system(size: 24))
+                                .foregroundStyle(AdminSurface.primary.opacity(0.6))
+                        }
+                        .frame(width: 64, height: 64)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
+                )
+
+                // Specimen Dossier Telemetry
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name)
+                        .font(Font.custom("Beiruti-Bold", size: 19))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        // Stock Indicator Pill
+                        HStack(spacing: 5) {
+                            Circle()
+                                .fill(stockTone)
+                                .frame(width: 7, height: 7)
+                            Text(stockStatusText)
+                                .font(Font.custom("Beiruti-Bold", size: 12))
+                                .foregroundStyle(stockTone)
+                            if currentQuantity > 0 {
+                                Text("(\(currentQuantity.englishDigits))")
+                                    .font(PPBrandFont.bold(size: 12))
+                                    .foregroundStyle(stockTone.opacity(0.9))
+                            }
+                        }
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(stockTone.opacity(0.12), in: Capsule(style: .continuous))
+
+                        // Price Badge
+                        HStack(spacing: 4) {
+                            Image(systemName: "tag.fill")
+                                .font(.system(size: 10))
+                            Text(item.inventoryDisplayPrice)
+                                .font(Font.custom("Beiruti-Bold", size: 13))
+                        }
+                        .foregroundStyle(AdminSurface.primary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3.5)
+                        .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+
+                        if let barcode = item.barcode, !barcode.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "barcode.viewfinder")
+                                    .font(.system(size: 11))
+                                Text(barcode)
+                                    .font(Font.system(size: 11, weight: .medium, design: .monospaced))
+                            }
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3.5)
+                            .background(AdminSurface.control, in: Capsule(style: .continuous))
+                        }
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                // Dismiss Squircle
+                AdminSquircleCloseButton {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onDismiss()
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 18)
+
+            Divider()
+                .background(AdminSurface.hairline.opacity(0.7))
+
+            // Two-Column Spatial Operations Matrix
+            ScrollView(.vertical, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 18) {
+                    // Column 1: Commercial Engine & Quick Controls
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "slider.horizontal.3")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                            Text(Language.get("Commercial_Controls", alter: "التحكم المالي والتجاري"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundStyle(AdminCommandInk.secondary)
+                        }
+                        .padding(.horizontal, 2)
+
+                        // Edit Full Specimen
+                        heroLauncherCard(
+                            title: Language.get("Edit", alter: "تعديل الصنف"),
+                            subtitle: Language.get("ItemActions_Edit_Desc", alter: "المحرر الشامل للأسعار والصور والبيانات"),
+                            icon: "square.and.pencil",
+                            tint: AdminSurface.primary,
+                            action: onOpenFullEditor
+                        )
+
+                        // Open in POS
+                        heroLauncherCard(
+                            title: Language.get("LivePet_Open_POS", alter: "فتح في نقطة البيع"),
+                            subtitle: Language.get("ItemActions_POS_Desc", alter: "إضافة مباشرة للسلة وإصدار فاتورة سريعة"),
+                            icon: "cart.fill.badge.plus",
+                            tint: Color(uiColor: .ppSuccess),
+                            action: onOpenPOS
+                        )
+
+                        if item.isLivePet, let onEditBasicData = onEditBasicData {
+                            actionHubRow(
+                                title: Language.get("LivePet_EditBasicData", alter: "تعديل البيانات الأساسية"),
+                                subtitle: Language.get("ItemActions_LivePet_Desc", alter: "تحديث السلالة، العمر، الجنس ورقم الحجل"),
+                                icon: "pencil.and.list.clipboard",
+                                tint: Color(uiColor: .ppInfo),
+                                action: onEditBasicData
+                            )
+                        }
+
+                        if !item.isLivePet, let onToggleStock = onToggleStock {
+                            availabilityControllerCard(onToggle: onToggleStock)
+                        }
+
+                        actionHubRow(
+                            title: Language.get("Share", alter: "مشاركة الصنف"),
+                            subtitle: Language.get("ItemActions_Share_Desc", alter: "مشاركة بطاقة الصنف والمواصفات"),
+                            icon: "square.and.arrow.up",
+                            tint: AdminCommandInk.secondary,
+                            action: onShare
+                        )
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // Column 2: Logistics, Operations & Safety
+                    VStack(alignment: .leading, spacing: 14) {
+                        if !item.isLivePet {
+                            HStack(spacing: 6) {
+                                Image(systemName: "shippingbox.and.arrow.backward.fill")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(Color(uiColor: .ppInfo))
+                                Text(Language.get("Inventory_Ops_Section", alter: "عمليات المخزون والرقابة"))
+                                    .font(Font.custom("Beiruti-Bold", size: 14))
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                            }
+                            .padding(.horizontal, 2)
+
+                            VStack(spacing: 8) {
+                                if let onManageLots = onManageLots {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Manage_Lots", alter: "إدارة التشغيلات وتواريخ الصلاحية (FEFO)"),
+                                        subtitle: Language.get("ItemActions_Lots_Desc", alter: "تتبع الدفعات وأولويات الصرف الذكية"),
+                                        icon: "calendar.badge.clock",
+                                        tint: Color(uiColor: .ppInfo),
+                                        action: onManageLots
+                                    )
+                                }
+
+                                if let onQuarantineStudio = onQuarantineStudio {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
+                                        subtitle: Language.get("ItemActions_Quarantine_Desc", alter: "حجر العينات وفحص الجودة وإعادة التوجيه"),
+                                        icon: "shield.lefthalf.filled",
+                                        tint: Color(uiColor: .ppWarning),
+                                        action: onQuarantineStudio
+                                    )
+                                }
+
+                                if let onRecordDamage = onRecordDamage {
+                                    actionHubRow(
+                                        title: Language.get("Inventory_Action_Record_Damage", alter: "تسجيل إتلاف مخزون"),
+                                        subtitle: Language.get("ItemActions_Damage_Desc", alter: "توثيق التالف وإسقاط الكميات رسمياً"),
+                                        icon: "exclamationmark.octagon.fill",
+                                        tint: Color(uiColor: .ppError),
+                                        action: onRecordDamage
+                                    )
+                                }
+
+                                if let onTransferStock = onTransferStock, currentQuantity > 0 {
+                                    actionHubRow(
+                                        title: Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"),
+                                        subtitle: Language.get("ItemActions_Transfer_Desc", alter: "مناقلة المخزون بين الفروع المعتمدة"),
+                                        icon: "arrow.left.arrow.right",
+                                        tint: Color(uiColor: .ppSuccess),
+                                        trailingPill: "\(Language.get("Available", alter: "متاح")): \(currentQuantity.englishDigits)",
+                                        action: onTransferStock
+                                    )
+                                }
+                            }
+                        }
+
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.shield.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(Color(uiColor: .ppError))
+                            Text(Language.get("Safety_Sector", alter: "الإجراءات الحرجة والأمان"))
+                                .font(Font.custom("Beiruti-Bold", size: 14))
+                                .foregroundStyle(Color(uiColor: .ppError).opacity(0.85))
+                        }
+                        .padding(.horizontal, 2)
+
+                        destructiveSafetyCard(onDelete: onDelete)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.horizontal, 22)
+                .padding(.vertical, 16)
+            }
+        }
+        .frame(width: cockpitWidth, height: cockpitHeight)
+        .background(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(AdminSurface.surface)
+                .shadow(color: Color.black.opacity(0.24), radius: 32, x: 0, y: 12)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.85), lineWidth: 0.8)
+        )
+    }
+
+    // MARK: - Tactical Card Primitives
+
+    @ViewBuilder
+    private func heroLauncherCard(
+        title: String,
+        subtitle: String,
+        icon: String,
+        tint: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    ZStack {
+                        Circle()
+                            .fill(tint.opacity(0.14))
+                        Image(systemName: icon)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(tint)
+                    }
+                    .frame(width: 36, height: 36)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "arrow.up.backward")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(tint.opacity(0.7))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 15))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                LinearGradient(
+                    colors: [tint.opacity(0.08), tint.opacity(0.02)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(tint.opacity(0.25), lineWidth: 0.8)
+            )
+        }
+        .buttonStyle(PPCockpitPressStyle())
+    }
+
+    @ViewBuilder
+    private func actionHubRow(
+        title: String,
+        subtitle: String,
+        icon: String,
+        tint: Color,
+        trailingPill: String? = nil,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(tint.opacity(0.12))
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(tint)
+                }
+                .frame(width: 38, height: 38)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(tint.opacity(0.22), lineWidth: 0.75)
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(subtitle)
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                if let pill = trailingPill {
+                    Text(pill)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .foregroundStyle(tint)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+                }
+
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AdminCommandInk.tertiary.opacity(0.6))
+            }
+            .padding(10)
+            .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPCockpitPressStyle())
+    }
+
+    @ViewBuilder
+    private func availabilityControllerCard(onToggle: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onToggle()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(item.noStock ? Color(uiColor: .ppError).opacity(0.12) : Color(uiColor: .ppSuccess).opacity(0.12))
+                    Image(systemName: item.noStock ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                }
+                .frame(width: 38, height: 38)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.22), lineWidth: 0.75)
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+
+                    Text(item.noStock ? Language.get("ItemActions_Inactive_Desc", alter: "الصنف موقوف حالياً من العرض بالمخزون") : Language.get("ItemActions_Active_Desc", alter: "الصنف نشط وجاهز للطلب والبيع"))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                // State Pill Toggle
+                Text(item.noStock ? Language.get("Action_Enable", alter: "تفعيل") : Language.get("Action_Disable", alter: "إيقاف"))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundStyle(item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background((item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12), in: Capsule(style: .continuous))
+                    .overlay(
+                        Capsule(style: .continuous)
+                            .strokeBorder((item.noStock ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.3), lineWidth: 0.75)
+                    )
+            }
+            .padding(10)
+            .background(AdminSurface.control.opacity(0.5), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPCockpitPressStyle())
+    }
+
+    @ViewBuilder
+    private func destructiveSafetyCard(onDelete: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onDelete()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color(uiColor: .ppError).opacity(0.12))
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color(uiColor: .ppError))
+                }
+                .frame(width: 38, height: 38)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppError).opacity(0.25), lineWidth: 0.75)
+                )
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(Language.get("Delete", alter: "حذف من المخزون"))
+                        .font(Font.custom("Beiruti-Bold", size: 14))
+                        .foregroundStyle(Color(uiColor: .ppError))
+                        .lineLimit(1)
+
+                    Text(Language.get("ItemActions_Delete_Warning", alter: "إسقاط نهائي من قاعدة البيانات - يتطلب تأكيداً"))
+                        .font(Font.custom("Beiruti-Regular", size: 11))
+                        .foregroundStyle(Color(uiColor: .ppError).opacity(0.75))
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color(uiColor: .ppError).opacity(0.8))
+            }
+            .padding(10)
+            .background(Color(uiColor: .ppError).opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppError).opacity(0.25), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPCockpitPressStyle())
     }
 }
 

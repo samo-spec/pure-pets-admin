@@ -301,6 +301,11 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     } else {
         dict[@"weightUnit"] = [NSNull null];
     }
+    if (self.size.length > 0) {
+        dict[@"size"] = self.size;
+    } else {
+        dict[@"size"] = [NSNull null];
+    }
 
     // Images
     if (self.imageURLsArray) dict[@"imageURLsArray"] = self.imageURLsArray;
@@ -351,6 +356,12 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.storeName.length > 0) dict[@"storeName"] = self.storeName;
     if (self.ownerType) dict[@"ownerType"] = self.ownerType;
     if (self.source) dict[@"source"] = self.source;
+    if (self.inventoryMode.length > 0) dict[@"inventoryMode"] = self.inventoryMode;
+    if (self.inventoryTrackingPolicy.length > 0) dict[@"inventoryTrackingPolicy"] = self.inventoryTrackingPolicy;
+    if (self.shelfLifeDays != nil) dict[@"shelfLifeDays"] = self.shelfLifeDays;
+    if (self.guaranteedShelfLifeDays != nil) dict[@"guaranteedShelfLifeDays"] = self.guaranteedShelfLifeDays;
+    if (self.expiryCutoffDays != nil) dict[@"expiryCutoffDays"] = self.expiryCutoffDays;
+    dict[@"inventorySchemaVersion"] = @(self.inventorySchemaVersion);
 
     // Enums
     dict[@"accessKindType"] = @(self.accessKindType);
@@ -547,6 +558,11 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             @"measurementUnit",
             @"weight_unit"
         ]));
+        _size = PPAccessoryStringValueForKeys(dict, (@[
+            @"size",
+            @"itemSize",
+            @"accessorySize"
+        ]));
         _imageURLsArray = PPAccessoryStringArray(dict[@"imageURLsArray"]);
         _imageMeta = PPAccessoryDictionaryArray(dict[@"imageMeta"]);
         NSArray *imageItemsPayload = PPAccessoryDictionaryArray(dict[@"imageItems"]);
@@ -699,6 +715,12 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _inventoryMode = [dict[@"inventoryMode"] isKindOfClass:NSString.class]
             ? [dict[@"inventoryMode"] uppercaseString]
             : nil;
+        _inventoryTrackingPolicy = [dict[@"inventoryTrackingPolicy"] isKindOfClass:NSString.class]
+            ? [dict[@"inventoryTrackingPolicy"] lowercaseString]
+            : nil;
+        _shelfLifeDays = PPAccessoryNumberValueForKeys(dict, (@[@"shelfLifeDays", @"shelf_life_days"]));
+        _guaranteedShelfLifeDays = PPAccessoryNumberValueForKeys(dict, (@[@"guaranteedShelfLifeDays", @"guaranteed_shelf_life_days"]));
+        _expiryCutoffDays = PPAccessoryNumberValueForKeys(dict, (@[@"expiryCutoffDays", @"expiry_cutoff_days"]));
         _inventorySchemaVersion = [dict[@"inventorySchemaVersion"] integerValue];
         _standardSellingPrice = PPAccessorySellingPriceValueForKeys(dict, (@[@"standardSellingPrice"]));
         _reservedQuantity = MAX(0, [dict[@"reservedQuantity"] integerValue]);
@@ -787,6 +809,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.weightText = [source.weightText copy];
     copy.weight = [source.weight copy];
     copy.weightUnit = [source.weightUnit copy];
+    copy.size = [source.size copy];
     copy.desc = [source.desc copy];
     copy.descEn = [source.descEn copy];
     copy.blurHash = [source.blurHash copy];
@@ -811,6 +834,10 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.ownerType = [source.ownerType copy];
     copy.source = [source.source copy];
     copy.inventoryMode = [source.inventoryMode copy];
+    copy.inventoryTrackingPolicy = [source.inventoryTrackingPolicy copy];
+    copy.shelfLifeDays = [source.shelfLifeDays copy];
+    copy.guaranteedShelfLifeDays = [source.guaranteedShelfLifeDays copy];
+    copy.expiryCutoffDays = [source.expiryCutoffDays copy];
     copy.inventorySchemaVersion = source.inventorySchemaVersion;
     copy.standardSellingPrice = source.standardSellingPrice;
     copy.reservedQuantity = source.reservedQuantity;

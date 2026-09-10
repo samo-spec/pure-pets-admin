@@ -191,8 +191,19 @@ final class InventoryViewModel: ObservableObject {
                         payload: ["reason": "admin_ios_soft_delete"]
                     )
                     self.items.removeAll { $0.accessoryID == docID }
+                    PPAlertHelper.showSuccess(
+                        in: nil,
+                        title: Language.get("Success", alter: "تم بنجاح"),
+                        subtitle: Language.get("Inventory_Item_Deleted", alter: "تم حذف الصنف بنجاح")
+                    )
                 } catch {
-                    self.errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
+                    let msg = PPLivePetInventoryService.localizedMessage(for: error)
+                    self.errorMessage = msg
+                    await PPAlertHelper.showError(
+                        in: nil,
+                        title: Language.get("Error", alter: "خطأ"),
+                        subtitle: msg
+                    )
                 }
             }
             return
@@ -201,8 +212,18 @@ final class InventoryViewModel: ObservableObject {
             Task { @MainActor in
                 if let error {
                     self?.errorMessage = error.localizedDescription
+                    await PPAlertHelper.showError(
+                        in: nil,
+                        title: Language.get("Error", alter: "خطأ"),
+                        subtitle: error.localizedDescription
+                    )
                 } else {
                     self?.items.removeAll { $0.accessoryID == docID }
+                    PPAlertHelper.showSuccess(
+                        in: nil,
+                        title: Language.get("Success", alter: "تم بنجاح"),
+                        subtitle: Language.get("Inventory_Item_Deleted", alter: "تم حذف الصنف بنجاح")
+                    )
                 }
             }
         }
@@ -284,8 +305,12 @@ struct AdminInventoryView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: InventoryViewModel
     @State private var editingItem: PetAccessory?
-    @State private var showingDeleteAlert = false
-    @State private var itemToDelete: PetAccessory?
+    @State private var itemForStockAction: PetAccessory?
+    @State private var itemForDamage: PetAccessory?
+    @State private var itemForLots: PetAccessory?
+    @State private var itemForQuarantine: PetAccessory?
+    @State private var showingCycleCountStudio = false
+    @State private var showingStockActionSheet = false
 
     init(kind: InventoryKind, session: AdminSession, onDismiss: (() -> Void)? = nil) {
         self.kind = kind
@@ -340,18 +365,61 @@ struct AdminInventoryView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear { viewModel.startListening() }
         .onDisappear { viewModel.stopListening() }
-        .alert(
-            Language.get("Inventory_Delete_Confirm", alter: "تأكيد الحذف"),
-            isPresented: $showingDeleteAlert
+        .confirmationDialog(
+            Language.get("Inventory_Stock_Action_Title", alter: "إدارة مخزون الصنف"),
+            isPresented: $showingStockActionSheet,
+            titleVisibility: .visible
         ) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("Delete", alter: "حذف"), role: .destructive) {
-                if let item = itemToDelete {
-                    viewModel.deleteItem(item)
+            Button(Language.get("Inventory_Action_Manage_Lots", alter: "إدارة التشغيلات والصلاحية (FEFO)")) {
+                if let item = itemForStockAction {
+                    itemForLots = item
                 }
             }
-        } message: {
-            Text(Language.get("Inventory_Delete_Message", alter: "هل أنت متأكد من حذف هذا العنصر؟"))
+            Button(Language.get("Inventory_Action_Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)")) {
+                if let item = itemForStockAction {
+                    itemForQuarantine = item
+                }
+            }
+            Button(Language.get("Inventory_Action_Record_Damage", alter: "تسجيل إتلاف مخزون")) {
+                if let item = itemForStockAction {
+                    itemForDamage = item
+                }
+            }
+            Button(Language.get("Inventory_Action_Cycle_Count", alter: "استوديو جرد وتسوية المخزون")) {
+                showingCycleCountStudio = true
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        }
+        .fullScreenCover(item: $itemForLots) { item in
+            InventoryLotsSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? session.branchId ?? item.resolvedBranchID(),
+                onLotsChanged: {
+                    viewModel.startListening()
+                }
+            )
+        }
+        .fullScreenCover(item: $itemForQuarantine) { item in
+            QuarantineStudioSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? session.branchId ?? item.resolvedBranchID(),
+                onResolved: {
+                    viewModel.startListening()
+                }
+            )
+        }
+        .fullScreenCover(item: $itemForDamage) { item in
+            DamageStockSheet(
+                item: item,
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? session.branchId ?? item.resolvedBranchID()
+            )
+        }
+        .fullScreenCover(isPresented: $showingCycleCountStudio) {
+            CycleCountStudioView(
+                branchId: BranchContextStore.shared.activeBranch?.branchID ?? session.branchId ?? ""
+            ) {
+                viewModel.startListening()
+            }
         }
     }
 
@@ -370,17 +438,38 @@ struct AdminInventoryView: View {
                     }
                 }
             ) {
-                AdminPrimaryPillButton(
-                    title: Language.get("Add", alter: "إضافة"),
-                    systemImage: "plus"
-                ) {
-                    let addVC = AddAccessoryViewController()
-                    addVC.defaultKind = kind.accessKind
-                    guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                          let root = scene.windows.first?.rootViewController,
-                          let nav = root as? UINavigationController ?? root.navigationController
-                    else { return }
-                    nav.pushViewController(addVC, animated: true)
+                HStack(spacing: 8) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        showingCycleCountStudio = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checklist")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(Language.get("Inventory_Action_Cycle_Count_Short", alter: "جرد وتسوية"))
+                                .font(AdminFont.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .frame(height: 44)
+                        .background(Color.indigo, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .shadow(color: Color.indigo.opacity(0.32), radius: 6, x: 0, y: 3)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Inventory_Action_Cycle_Count", alter: "استوديو جرد وتسوية المخزون"))
+
+                    AdminPrimaryPillButton(
+                        title: Language.get("Add", alter: "إضافة"),
+                        systemImage: "plus"
+                    ) {
+                        let addVC = AddAccessoryViewController()
+                        addVC.defaultKind = kind.accessKind
+                        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                              let root = scene.windows.first?.rootViewController,
+                              let nav = root as? UINavigationController ?? root.navigationController
+                        else { return }
+                        nav.pushViewController(addVC, animated: true)
+                    }
                 }
             }
 
@@ -446,34 +535,79 @@ struct AdminInventoryView: View {
         ScrollView {
             LazyVStack(spacing: AdminSpacing.sm) {
                 ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
-                    InventoryItemRow(item: item, kind: viewModel.kind)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                itemToDelete = item
-                                showingDeleteAlert = true
-                            } label: {
-                                Label(Language.get("Delete", alter: "\u{062d}\u{0630}\u{0641}"), systemImage: "trash.fill")
-                            }
+                    InventoryItemRow(
+                        item: item,
+                        kind: viewModel.kind,
+                        onStockAction: {
+                            itemForStockAction = item
+                            showingStockActionSheet = true
+                        },
+                        onQuarantineAction: {
+                            itemForQuarantine = item
+                        }
+                    )
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button {
+                            itemForStockAction = item
+                            showingStockActionSheet = true
+                        } label: {
+                            Label(Language.get("Inventory_Stock_Actions", alter: "المخزون"), systemImage: "shippingbox.fill")
+                        }
+                        .tint(.red)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            promptDeleteConfirmation(for: item)
+                        } label: {
+                            Label(Language.get("Delete", alter: "حذف"), systemImage: "trash.fill")
+                        }
 
-                            Button {
-                                editingItem = item
-                            } label: {
-                                Label(Language.get("Edit", alter: "\u{062a}\u{0639}\u{062f}\u{064a}\u{0644}"), systemImage: "pencil")
-                            }
-                            .tint(.orange)
+                        Button {
+                            editingItem = item
+                        } label: {
+                            Label(Language.get("Edit", alter: "تعديل"), systemImage: "pencil")
                         }
-                        .contextMenu {
-                            Button {
-                                viewModel.toggleNoStock(for: item)
-                            } label: {
-                                Label(
-                                    item.noStock
-                                        ? Language.get("Inventory_Mark_In_Stock", alter: "\u{062a}\u{0648}\u{0641}\u{0631}")
-                                        : Language.get("Inventory_Mark_No_Stock", alter: "\u{0646}\u{0641}\u{0627}\u{062f}"),
-                                    systemImage: item.noStock ? "checkmark.circle" : "xmark.circle"
-                                )
-                            }
+                        .tint(.orange)
+                    }
+                    .contextMenu {
+                        Button {
+                            itemForLots = item
+                        } label: {
+                            Label(
+                                Language.get("Inventory_Action_Manage_Lots", alter: "إدارة التشغيلات والصلاحية (FEFO)"),
+                                systemImage: "calendar.badge.clock"
+                            )
                         }
+
+                        Button {
+                            itemForQuarantine = item
+                        } label: {
+                            Label(
+                                Language.get("Inventory_Action_Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
+                                systemImage: "shield.lefthalf.filled"
+                            )
+                        }
+
+                        Button {
+                            itemForDamage = item
+                        } label: {
+                            Label(
+                                Language.get("Inventory_Action_Record_Damage", alter: "تسجيل إتلاف مخزون"),
+                                systemImage: "exclamationmark.octagon.fill"
+                            )
+                        }
+
+                        Button {
+                            viewModel.toggleNoStock(for: item)
+                        } label: {
+                            Label(
+                                item.noStock
+                                    ? Language.get("Inventory_Mark_In_Stock", alter: "توفر")
+                                    : Language.get("Inventory_Mark_No_Stock", alter: "نفاد"),
+                                systemImage: item.noStock ? "checkmark.circle" : "xmark.circle"
+                            )
+                        }
+                    }
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
@@ -484,6 +618,25 @@ struct AdminInventoryView: View {
             viewModel.startListening()
             try? await Task.sleep(nanoseconds: 300_000_000)
         }
+    }
+
+    private func promptDeleteConfirmation(for item: PetAccessory) {
+        let title = Language.get("Inventory_Delete_Confirm", alter: "تأكيد الحذف")
+        let message = Language.get("Inventory_Delete_Message", alter: "هل أنت متأكد من حذف هذا العنصر؟")
+        let vm = viewModel
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: title,
+            subtitle: "\(message)\n(\(item.name))",
+            confirmButton: Language.get("Delete", alter: "حذف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { [weak vm] _, didConfirm in
+                guard didConfirm else { return }
+                vm?.deleteItem(item)
+            },
+            cancelBlock: nil
+        )
     }
 }
 
@@ -544,9 +697,23 @@ private struct FilterToggle: View {
 private struct InventoryItemRow: View {
     let item: PetAccessory
     let kind: InventoryKind
+    var onStockAction: (() -> Void)? = nil
+    var onQuarantineAction: (() -> Void)? = nil
+
+    private var branchRecord: PPBranchInventory? {
+        PPBranchInventoryService.shared.inventory(for: item.accessoryID)
+    }
 
     private var availableStock: Int {
         PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+    }
+
+    private var onHandStock: Int {
+        branchRecord?.onHandQuantity ?? item.quantity
+    }
+
+    private var needsAttentionCount: Int {
+        branchRecord?.needsAttentionQuantity ?? 0
     }
 
     private var displayPrice: Double {
@@ -580,18 +747,55 @@ private struct InventoryItemRow: View {
                             .padding(.vertical, 1)
                             .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 4))
                     }
+
+                    if let size = item.size, !size.isEmpty {
+                        HStack(spacing: 3) {
+                            Image(systemName: "ruler.fill")
+                                .font(.system(size: 8))
+                            Text(size)
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(AdminSurface.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    }
                 }
 
+                // Inventory Buckets Row: Available (Primary), On-Hand (Secondary), Needs Attention (Badge)
                 HStack(spacing: AdminSpacing.sm) {
-                    Label(
-                        availableStock.englishDigits,
-                        systemImage: "cube.box.fill"
-                    )
+                    HStack(spacing: 3) {
+                        Image(systemName: "cube.box.fill")
+                            .font(.system(size: 11))
+                        Text(verbatim: "\(Language.get("Inventory_Available", alter: "متوفر")): \(availableStock)".normalizedEnglishDigits)
+                    }
                     .font(AdminType.caption2Bold)
                     .foregroundColor(
                         item.noStock || availableStock <= 0 ? .red :
                         availableStock <= 3 ? .orange : AdminSurface.secondaryText
                     )
+
+                    Text(verbatim: "\(Language.get("Inventory_On_Hand", alter: "في الموقع")): \(onHandStock)".normalizedEnglishDigits)
+                        .font(AdminType.caption2)
+                        .foregroundColor(AdminSurface.secondaryText.opacity(0.8))
+
+                    if needsAttentionCount > 0 {
+                        Button {
+                            onQuarantineAction?()
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: "shield.lefthalf.filled")
+                                    .font(.system(size: 10))
+                                Text(verbatim: "\(needsAttentionCount)".normalizedEnglishDigits)
+                            }
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
 
                     if item.noStock || availableStock <= 0 {
                         Text(Language.get("Inventory_No_Stock", alter: "نفاد"))
@@ -606,7 +810,7 @@ private struct InventoryItemRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 4) {
                 Text(verbatim: formatPrice(displayPrice).normalizedEnglishDigits)
                     .font(AdminType.calloutBold)
                     .foregroundColor(AdminSurface.primaryText)
@@ -616,6 +820,18 @@ private struct InventoryItemRow: View {
                         .font(AdminType.caption2)
                         .foregroundColor(.green)
                         .strikethrough(false)
+                }
+
+                if let onStockAction = onStockAction {
+                    Button {
+                        onStockAction()
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 18))
+                            .foregroundColor(AdminSurface.secondaryText)
+                            .padding(2)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
         }
@@ -661,3 +877,869 @@ private struct InventoryItemRow: View {
         return formatted.normalizedEnglishDigits
     }
 }
+
+// MARK: - Damage Stock Sheet (NextGen V6 Dual-Architecture Studio)
+
+struct DamageStockSheet: View {
+    let item: PetAccessory
+    let branchId: String
+    var onDamageRecorded: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    @State private var quantity: Int = 1
+    @State private var selectedReason: String = "packaging_damage"
+    @State private var notes: String = ""
+    @State private var isSubmitting: Bool = false
+    @State private var errorMessage: String? = nil
+    @State private var isManualQuantityEditing: Bool = false
+    @State private var manualQuantityText: String = "1"
+
+    private var isIPadLayout: Bool {
+        horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    private var availableStock: Int {
+        PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
+    }
+
+    private var unitCost: Double {
+        let cost = item.costPrice?.doubleValue ?? 0.0
+        return cost > 0 ? cost : item.price.doubleValue
+    }
+
+    private var totalCostLoss: Double {
+        Double(quantity) * unitCost
+    }
+
+    private var remainingHealthyStock: Int {
+        max(0, availableStock - quantity)
+    }
+
+    private var shrinkagePercent: Double {
+        guard availableStock > 0 else { return 0.0 }
+        return min(100.0, (Double(quantity) / Double(availableStock)) * 100.0)
+    }
+
+    private let reasonOptions: [DamageReasonModel] = [
+        DamageReasonModel(
+            code: "packaging_damage",
+            key: "Damage_Reason_Packaging",
+            titleAlter: "تلف في التغليف",
+            subtitleAlter: "علبة ممزقة أو غلاف متضرر غير صالح للعرض",
+            icon: "shippingbox.and.arrow.backward.fill",
+            badgeColor: .orange
+        ),
+        DamageReasonModel(
+            code: "product_damage",
+            key: "Damage_Reason_Product",
+            titleAlter: "تلف في المنتج",
+            subtitleAlter: "كسر، تسريب، تشوه، أو عطب مباشر بالصنف",
+            icon: "exclamationmark.triangle.fill",
+            badgeColor: AdminSurface.crimson
+        ),
+        DamageReasonModel(
+            code: "manufacturing_defect",
+            key: "Damage_Reason_Defect",
+            titleAlter: "عيب مصنعي",
+            subtitleAlter: "خلل تقني أو عدم مطابقة لمواصفات المصنع",
+            icon: "gearshape.badge.exclamationmark",
+            badgeColor: .purple
+        ),
+        DamageReasonModel(
+            code: "handling_damage",
+            key: "Damage_Reason_Handling",
+            titleAlter: "تلف أثناء المناولة",
+            subtitleAlter: "سقوط أو اصطدام أثناء النقل والترتيب",
+            icon: "arrow.up.and.down.and.sparkles",
+            badgeColor: .blue
+        ),
+        DamageReasonModel(
+            code: "other",
+            key: "Damage_Reason_Other",
+            titleAlter: "أسباب استثنائية أخرى",
+            subtitleAlter: "سبب خاص يتم تفصيله بدقة في تقرير الملاحظات",
+            icon: "doc.text.magnifyingglass",
+            badgeColor: AdminSurface.secondaryText
+        )
+    ]
+
+    private func dismissKeyboard() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                AdminSurface.background
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismissKeyboard()
+                    }
+
+                DamageKeyboardDismissOverlay()
+                    .frame(width: 0, height: 0)
+                    .allowsHitTesting(false)
+
+                if isIPadLayout {
+                    // iPad 2-Column Split Studio
+                    HStack(alignment: .top, spacing: AdminSpacing.lg) {
+                        // Left Column (42%): Telemetry & Quarantine Pass Cockpit
+                        ScrollView {
+                            IPadDamageDispositionCockpit(
+                                item: item,
+                                branchId: branchId,
+                                availableStock: availableStock,
+                                quantity: quantity,
+                                unitCost: unitCost,
+                                totalCostLoss: totalCostLoss,
+                                remainingStock: remainingHealthyStock,
+                                shrinkagePercent: shrinkagePercent,
+                                selectedReason: selectedReasonModel
+                            )
+                            .padding(.top, AdminSpacing.md)
+                            .padding(.bottom, AdminSpacing.xl)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+                        .frame(maxWidth: .infinity)
+
+                        // Vertical Divider
+                        Rectangle()
+                            .fill(AdminSurface.hairline)
+                            .frame(width: 1)
+                            .ignoresSafeArea(edges: .vertical)
+
+                        // Right Column (58%): Precision Intake Deck
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: AdminSpacing.lg) {
+                                intakeFormFields
+                                submitButton
+                                    .padding(.top, AdminSpacing.sm)
+                            }
+                            .padding(AdminSpacing.lg)
+                        }
+                        .scrollDismissesKeyboard(.interactively)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                } else {
+                    // iPhone Fluid Tactical Flow
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: AdminSpacing.base) {
+                            // Hero Impact Card
+                            DamageHeroImpactCard(
+                                item: item,
+                                availableStock: availableStock,
+                                quantity: quantity,
+                                unitCost: unitCost,
+                                totalCostLoss: totalCostLoss,
+                                remainingStock: remainingHealthyStock,
+                                shrinkagePercent: shrinkagePercent
+                            )
+                            .padding(.top, AdminSpacing.xs)
+
+                            intakeFormFields
+                        }
+                        .padding(AdminSpacing.screenMargin)
+                        .padding(.bottom, 90) // Room for sticky bottom bar
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .safeAreaInset(edge: .bottom) {
+                        iphoneFloatingActionBar
+                    }
+                }
+            }
+            .navigationTitle(Language.get("Damage_Sheet_Title", alter: "تسجيل إتلاف مخزون"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(Language.get("Cancel", alter: "إلغاء")) {
+                        dismiss()
+                    }
+                    .foregroundColor(AdminSurface.primary)
+                    .keyboardShortcut(.cancelAction)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if availableStock > 0 {
+                        Button {
+                            selectAllStock()
+                        } label: {
+                            Text(Language.get("Damage_Max", alter: "الكل"))
+                                .font(AdminType.caption1Bold)
+                                .foregroundColor(AdminSurface.primary)
+                        }
+                        .keyboardShortcut("a", modifiers: .command)
+                    }
+                }
+            }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        }
+    }
+
+    private var selectedReasonModel: DamageReasonModel {
+        reasonOptions.first { $0.code == selectedReason } ?? reasonOptions[0]
+    }
+
+    private func selectAllStock() {
+        guard availableStock > 0 else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        quantity = availableStock
+        manualQuantityText = "\(quantity)"
+    }
+
+    // MARK: - Subviews & Form Fields
+
+    @ViewBuilder
+    private var intakeFormFields: some View {
+        // Section 1: Quantity Controller & Quick Batch Chips
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(Language.get("Damage_Quantity_Title", alter: "الكمية التالفة *"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundColor(AdminSurface.primaryText)
+                Spacer()
+                Text("المتاح للصرف: \(availableStock) وحدة")
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+            }
+
+            // Primary Tactile Stepper
+            HStack(spacing: AdminSpacing.md) {
+                Button {
+                    if quantity > 1 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        quantity -= 1
+                        manualQuantityText = "\(quantity)"
+                    }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(quantity > 1 ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.25))
+                }
+                .disabled(quantity <= 1)
+
+                Spacer()
+
+                if isManualQuantityEditing {
+                    TextField("1", text: $manualQuantityText)
+                        .keyboardType(.numberPad)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .multilineTextAlignment(.center)
+                        .frame(width: 80)
+                        .onSubmit {
+                            if let parsed = Int(manualQuantityText), parsed > 0 {
+                                quantity = min(parsed, max(1, availableStock))
+                            }
+                            isManualQuantityEditing = false
+                        }
+                } else {
+                    VStack(spacing: 2) {
+                        Text(verbatim: "\(quantity)".normalizedEnglishDigits)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundColor(AdminSurface.crimson)
+                        Text(Language.get("Tap_To_Type", alter: "انقر للإدخال الرقمي"))
+                            .font(.system(size: 10))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.8))
+                    }
+                    .frame(minWidth: 70)
+                    .onTapGesture {
+                        manualQuantityText = "\(quantity)"
+                        isManualQuantityEditing = true
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    if quantity < max(1, availableStock) {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        quantity += 1
+                        manualQuantityText = "\(quantity)"
+                    }
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(quantity < availableStock ? AdminSurface.crimson : AdminSurface.secondaryText.opacity(0.25))
+                }
+                .disabled(quantity >= availableStock)
+            }
+            .padding(.horizontal, AdminSpacing.md)
+            .padding(.vertical, 10)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+            // Quick Batch Allocation Chips
+            HStack(spacing: 6) {
+                ForEach([1, 2, 5, 10, 25], id: \.self) { amount in
+                    if amount <= availableStock {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            quantity = amount
+                            manualQuantityText = "\(quantity)"
+                        } label: {
+                            Text("\(amount)")
+                                .font(AdminType.caption1Bold)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 6)
+                                .background(quantity == amount ? AdminSurface.crimson.opacity(0.12) : AdminSurface.control, in: Capsule())
+                                .foregroundColor(quantity == amount ? AdminSurface.crimson : AdminSurface.primaryText)
+                                .overlay(Capsule().stroke(quantity == amount ? AdminSurface.crimson : Color.clear, lineWidth: 1))
+                        }
+                    }
+                }
+
+                Spacer()
+
+                if availableStock > 0 {
+                    Button {
+                        selectAllStock()
+                    } label: {
+                        Text(Language.get("Damage_Max", alter: "الكل (\(availableStock))"))
+                            .font(AdminType.caption1Bold)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(quantity == availableStock ? AdminSurface.crimson : AdminSurface.control, in: Capsule())
+                            .foregroundColor(quantity == availableStock ? .white : AdminSurface.primaryText)
+                    }
+                }
+            }
+        }
+
+        // Section 2: Semantic Reason Cards Grid
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("Damage_Reason_Title", alter: "سبب الإتلاف والتصنيف *"))
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+
+            VStack(spacing: 8) {
+                ForEach(reasonOptions) { option in
+                    let isSelected = selectedReason == option.code
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        selectedReason = option.code
+                    } label: {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(option.badgeColor.opacity(isSelected ? 0.20 : 0.10))
+                                    .frame(width: 38, height: 38)
+                                Image(systemName: option.icon)
+                                    .font(.system(size: 17))
+                                    .foregroundColor(option.badgeColor)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(Language.get(option.key, alter: option.titleAlter))
+                                    .font(AdminType.subheadlineBold)
+                                    .foregroundColor(isSelected ? AdminSurface.crimson : AdminSurface.primaryText)
+
+                                Text(option.subtitleAlter)
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            ZStack {
+                                Circle()
+                                    .stroke(isSelected ? AdminSurface.crimson : AdminSurface.hairline, lineWidth: 1.5)
+                                    .frame(width: 20, height: 20)
+                                if isSelected {
+                                    Circle()
+                                        .fill(AdminSurface.crimson)
+                                        .frame(width: 11, height: 11)
+                                }
+                            }
+                        }
+                        .padding(AdminSpacing.md)
+                        .background(
+                            isSelected ? AdminSurface.crimson.opacity(0.06) : AdminSurface.surface,
+                            in: RoundedRectangle(cornerRadius: AdminRadius.card)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AdminRadius.card)
+                                .stroke(isSelected ? AdminSurface.crimson.opacity(0.7) : AdminSurface.hairline, lineWidth: isSelected ? 1.5 : 1)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Section 3: Inspection Notes & Quick Hashtags
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Language.get("Notes", alter: "ملاحظات الفحص والمعاينة (اختياري)"))
+                .font(AdminType.subheadlineBold)
+                .foregroundColor(AdminSurface.primaryText)
+
+            // Quick Hashtag Tag Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(["#كسر_شحن", "#تسريب_سائل", "#تلف_كرتون", "#عيب_مصنعي", "#سقوط_ترتيب"], id: \.self) { tag in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if notes.isEmpty {
+                                notes = tag
+                            } else if !notes.contains(tag) {
+                                notes += " \(tag)"
+                            }
+                        } label: {
+                            Text(tag)
+                                .font(AdminType.caption2Bold)
+                                .padding(.horizontal, 9)
+                                .padding(.vertical, 5)
+                                .background(AdminSurface.control, in: Capsule())
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+            }
+
+            TextField(Language.get("Damage_Notes_Placeholder", alter: "اكتب تفاصيل إضافية إن وجدت..."), text: $notes, axis: .vertical)
+                .lineLimit(3...5)
+                .font(AdminType.body)
+                .padding(AdminSpacing.md)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+        }
+
+        if let error = errorMessage {
+            AdminErrorBanner(message: error, retry: nil)
+        }
+    }
+
+    // MARK: - Action Buttons
+
+    @ViewBuilder
+    private var submitButton: some View {
+        Button {
+            promptDamageConfirmation()
+        } label: {
+            HStack(spacing: 8) {
+                if isSubmitting {
+                    ProgressView().tint(.white).padding(.trailing, 4)
+                } else {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                }
+                Text(Language.get("Damage_Submit", alter: "تأكيد عزل التالف وتحديث المخزون"))
+                    .font(AdminType.calloutBold)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                canSubmit
+                    ? AdminSurface.crimson
+                    : AdminSurface.crimson.opacity(0.35),
+                in: RoundedRectangle(cornerRadius: AdminRadius.card)
+            )
+            .foregroundColor(.white)
+        }
+        .disabled(!canSubmit || isSubmitting)
+        .keyboardShortcut("s", modifiers: .command)
+    }
+
+    private var canSubmit: Bool {
+        quantity > 0 && availableStock > 0 && quantity <= availableStock
+    }
+
+    @ViewBuilder
+    private var iphoneFloatingActionBar: some View {
+        VStack(spacing: 8) {
+            submitButton
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(
+            AdminSurface.background.opacity(0.88)
+                .background(.ultraThinMaterial)
+                .ignoresSafeArea(edges: .bottom)
+        )
+        .overlay(
+            Rectangle()
+                .fill(AdminSurface.hairline)
+                .frame(height: 0.5),
+            alignment: .top
+        )
+    }
+
+    private func promptDamageConfirmation() {
+        guard canSubmit else { return }
+        let formatStr = Language.get("Damage_Confirm_Subtitle_Format", alter: "هل أنت متأكد من استبعاد وتوثيق إتلاف %d وحدات من هذا الصنف ونقلها إلى التوالف؟")
+        let subtitleText = String(format: formatStr, quantity)
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Damage_Confirm_Title", alter: "تأكيد تسجيل إتلاف المخزون"),
+            subtitle: subtitleText,
+            confirmButton: Language.get("Damage_Confirm_Action", alter: "تأكيد الإتلاف"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                self.submitDamage()
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func submitDamage() {
+        guard canSubmit else { return }
+        isSubmitting = true
+        errorMessage = nil
+
+        PPBranchInventoryService.shared.recordDamage(
+            productId: item.accessoryID,
+            branchId: branchId,
+            quantity: quantity,
+            reasonCode: selectedReason,
+            notes: notes
+        ) { result in
+            isSubmitting = false
+            switch result {
+            case .success:
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                PPAlertHelper.showSuccess(
+                    in: nil,
+                    title: Language.get("Damage_Success_Title", alter: "تم تسجيل الإتلاف بنجاح"),
+                    subtitle: Language.get("Damage_Success_Subtitle", alter: "تم عزل الكمية ونقلها إلى سجل التوالف بنجاح")
+                )
+                onDamageRecorded?()
+                dismiss()
+            case .failure(let error):
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                let errorMsg = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                errorMessage = errorMsg
+                PPAlertHelper.showError(
+                    in: nil,
+                    title: Language.get("Error", alter: "خطأ"),
+                    subtitle: errorMsg
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Keyboard Dismiss Overlay
+
+private struct DamageKeyboardDismissOverlay: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller {
+        Controller()
+    }
+
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private var dismissTap: UITapGestureRecognizer?
+
+        override func viewDidLoad() {
+            super.viewDidLoad()
+            view.backgroundColor = .clear
+            view.isUserInteractionEnabled = false
+        }
+
+        override func didMove(toParent parent: UIViewController?) {
+            super.didMove(toParent: parent)
+            setupTap()
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            setupTap()
+        }
+
+        private func setupTap() {
+            guard dismissTap == nil, let hostView = parent?.view else { return }
+            let tap = UITapGestureRecognizer(target: self, action: #selector(handleTap))
+            tap.cancelsTouchesInView = false
+            tap.delegate = self
+            hostView.addGestureRecognizer(tap)
+            dismissTap = tap
+        }
+
+        @objc private func handleTap() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var current = touch.view
+            while let v = current {
+                if v is UITextField || v is UITextView {
+                    return false
+                }
+                current = v.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
+        }
+    }
+}
+
+// MARK: - Reason Model
+
+private struct DamageReasonModel: Identifiable {
+    let code: String
+    let key: String
+    let titleAlter: String
+    let subtitleAlter: String
+    let icon: String
+    let badgeColor: Color
+    var id: String { code }
+}
+
+// MARK: - Hero Impact Card
+
+private struct DamageHeroImpactCard: View {
+    let item: PetAccessory
+    let availableStock: Int
+    let quantity: Int
+    let unitCost: Double
+    let totalCostLoss: Double
+    let remainingStock: Int
+    let shrinkagePercent: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Top Row: Product Identity & Isolation Tag
+            HStack(alignment: .top, spacing: 10) {
+                if let urlStr = item.imageURLsArray.first, let url = URL(string: urlStr) {
+                    AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 52, height: 52)) {
+                        Color.gray.opacity(0.1)
+                    }
+                    .frame(width: 52, height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(AdminSurface.crimson.opacity(0.12))
+                            .frame(width: 52, height: 52)
+                        Image(systemName: "shippingbox.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(AdminSurface.crimson)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.name)
+                        .font(AdminType.headlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        Text("المتاح: \(availableStock) وحدة")
+                            .font(AdminType.captionBold)
+                            .foregroundColor(availableStock > 0 ? AdminSurface.emerald : AdminSurface.crimson)
+
+                        if let sku = item.sku, !sku.isEmpty {
+                            Text("• SKU: \(sku)")
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                // Isolation Tag
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(AdminSurface.crimson)
+                        .frame(width: 6, height: 6)
+                    Text("عزل فوري")
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(AdminSurface.crimson)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
+            }
+
+            Divider().background(AdminSurface.hairline)
+
+            // Shrinkage Progress Bar
+            VStack(alignment: .leading, spacing: 5) {
+                HStack {
+                    Text("أثر الإتلاف على المخزون:")
+                        .font(AdminType.caption)
+                        .foregroundColor(AdminSurface.secondaryText)
+                    Spacer()
+                    Text(String(format: "-%d وحدة (%.1f%%)", quantity, shrinkagePercent))
+                        .font(AdminType.caption1Bold)
+                        .foregroundColor(AdminSurface.crimson)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(AdminSurface.emerald.opacity(0.3))
+                            .frame(height: 6)
+
+                        Capsule()
+                            .fill(AdminSurface.crimson)
+                            .frame(width: max(6, geo.size.width * CGFloat(min(1.0, shrinkagePercent / 100.0))), height: 6)
+                    }
+                }
+                .frame(height: 6)
+            }
+
+            // Bottom Telemetry Pills
+            HStack(spacing: 8) {
+                // Remaining Stock Pill
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 10))
+                        .foregroundColor(AdminSurface.emerald)
+                    Text("المتبقي السليم: \(remainingStock)")
+                        .font(AdminType.caption1Bold)
+                        .foregroundColor(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: Capsule())
+
+                Spacer()
+
+                // Total Loss Pill
+                if totalCostLoss > 0 {
+                    HStack(spacing: 4) {
+                        Text("الخسارة:")
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(String(format: "-%.2f ر.ق", totalCostLoss))
+                            .font(AdminType.caption1Bold)
+                            .foregroundColor(AdminSurface.crimson)
+                    }
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
+                }
+            }
+        }
+        .padding(AdminSpacing.cardPadding)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card)
+                .stroke(AdminSurface.hairline, lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - iPad Disposition Cockpit
+
+private struct IPadDamageDispositionCockpit: View {
+    let item: PetAccessory
+    let branchId: String
+    let availableStock: Int
+    let quantity: Int
+    let unitCost: Double
+    let totalCostLoss: Double
+    let remainingStock: Int
+    let shrinkagePercent: Double
+    let selectedReason: DamageReasonModel
+
+    var body: some View {
+        VStack(spacing: AdminSpacing.md) {
+            // Master Hero Card
+            DamageHeroImpactCard(
+                item: item,
+                availableStock: availableStock,
+                quantity: quantity,
+                unitCost: unitCost,
+                totalCostLoss: totalCostLoss,
+                remainingStock: remainingStock,
+                shrinkagePercent: shrinkagePercent
+            )
+
+            // Financial Write-Off Matrix Card
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("مصفوفة الهدر المالي والمحاسبي", systemImage: "chart.pie.fill")
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Spacer()
+                    Text("عزل \(quantity) قطعة")
+                        .font(AdminType.caption1Bold)
+                        .foregroundColor(AdminSurface.crimson)
+                }
+
+                Divider().background(AdminSurface.hairline)
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("إجمالي قيمة الخسارة")
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(String(format: "-%.2f ر.ق", totalCostLoss))
+                            .font(AdminType.title3Bold)
+                            .foregroundColor(AdminSurface.crimson)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("نسبة الهدر من المخزون")
+                            .font(AdminType.caption)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Text(String(format: "%.1f%%", shrinkagePercent))
+                            .font(AdminType.title3Bold)
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                if unitCost > 0 {
+                    HStack {
+                        Text("تكلفة الوحدة المعتمدة: \(String(format: "%.2f ر.ق", unitCost))")
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                        Spacer()
+                    }
+                }
+            }
+            .padding(AdminSpacing.cardPadding)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+            // Warehouse Routing Protocol
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("بروتوكول عزل وتوجيه التوالف", systemImage: "arrow.triangle.swap")
+                        .font(AdminType.subheadlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                    Spacer()
+                }
+
+                HStack(spacing: 10) {
+                    Image(systemName: selectedReason.icon)
+                        .font(.system(size: 20))
+                        .foregroundColor(selectedReason.badgeColor)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("السبب المحدد: \(selectedReason.titleAlter)")
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primaryText)
+                        Text(selectedReason.subtitleAlter)
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+                }
+                .padding(AdminSpacing.sm)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: AdminRadius.small))
+
+                Text("سيتم نقل الكمية المحددة (\(quantity) وحدة) إلى وعاء التوالف (Damaged Bucket). سيتم حجبها فوراً عن شاشات الكاشير والمبيعات مع تسجيل قيد تدقيق محاسبي لفرع (\(branchId)).")
+                    .font(AdminType.footnote)
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineSpacing(3)
+            }
+            .padding(AdminSpacing.cardPadding)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card))
+            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline))
+
+            Spacer()
+        }
+    }
+}
+
+

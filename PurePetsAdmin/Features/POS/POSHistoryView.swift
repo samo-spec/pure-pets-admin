@@ -32,12 +32,22 @@ extension PPPOSReceipt: Identifiable {
 
 @MainActor
 enum POSReceiptWhatsAppSender {
+    static let brandColor = Color(red: 37 / 255.0, green: 211 / 255.0, blue: 102 / 255.0)
+
     static func buildReceiptMessage(for receipt: PPPOSReceipt) -> String {
+        return buildReceiptMessage(customerName: receipt.customerName, transactionID: receipt.receiptID)
+    }
+
+    static func buildReceiptMessage(for receipt: POSCompletedReceipt) -> String {
+        return buildReceiptMessage(customerName: receipt.customerName, transactionID: receipt.transactionID)
+    }
+
+    static func buildReceiptMessage(customerName: String, transactionID: String) -> String {
         let isRTL = Language.isRTL()
-        let formattedID = POSReceiptFormat.receiptID(receipt.receiptID)
+        let formattedID = POSReceiptFormat.receiptID(transactionID)
 
         if isRTL {
-            let greeting = !receipt.customerName.isEmpty ? "مرحباً بك يا \(receipt.customerName) في بيور بتس 🐾" : "مرحباً بكم في بيور بتس 🐾"
+            let greeting = !customerName.isEmpty ? "مرحباً بك يا \(customerName) في بيور بتس 🐾" : "مرحباً بكم في بيور بتس 🐾"
             let invoiceSnippet = !formattedID.isEmpty ? " (فاتورة رقم: \(formattedID))" : ""
 
             return """
@@ -52,7 +62,7 @@ enum POSReceiptWhatsAppSender {
             🌐 https://pure-pets.net
             """
         } else {
-            let greeting = !receipt.customerName.isEmpty ? "Hello \(receipt.customerName), welcome to Pure Pets 🐾" : "Welcome to Pure Pets 🐾"
+            let greeting = !customerName.isEmpty ? "Hello \(customerName), welcome to Pure Pets 🐾" : "Welcome to Pure Pets 🐾"
             let invoiceSnippet = !formattedID.isEmpty ? " (Invoice #\(formattedID))" : ""
 
             return """
@@ -70,6 +80,11 @@ enum POSReceiptWhatsAppSender {
     }
 
     static func sendReceipt(for receipt: PPPOSReceipt) {
+        let completed = POSCompletedReceipt(receipt: receipt)
+        sendReceipt(for: completed)
+    }
+
+    static func sendReceipt(for receipt: POSCompletedReceipt) {
         let message = buildReceiptMessage(for: receipt)
 
         // 1. Copy PDF binary data and high-res rendered image to UIPasteboard
@@ -1330,7 +1345,7 @@ private struct POSTransactionCard: View {
                             } label: {
                                 ZStack {
                                     Circle()
-                                        .fill(Color(uiColor: .systemTeal))
+                                        .fill(POSReceiptWhatsAppSender.brandColor)
                                         .frame(width: 20, height: 20)
                                     Image("whatsapp")
                                         .renderingMode(.template)
@@ -1724,7 +1739,7 @@ struct POSTransactionDossierSheet: View {
                         } label: {
                             ZStack {
                                 Circle()
-                                    .fill(Color(uiColor: .systemTeal))
+                                    .fill(POSReceiptWhatsAppSender.brandColor)
                                     .frame(width: 30, height: 30)
                                 Image("whatsapp")
                                     .renderingMode(.template)
@@ -2046,8 +2061,53 @@ struct POSRefundStudioSheet: View {
 
     @State private var isFullRefund: Bool = true
     @State private var itemQuantities: [String: Int] = [:]
+    @State private var itemConditions: [String: String] = [:]
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
+
+    private struct ReturnConditionOption: Identifiable {
+        let id: String
+        let titleKey: String
+        let defaultTitle: String
+        let icon: String
+        let tint: Color
+        let defaultDisposition: String
+    }
+
+    private let returnConditionOptions: [ReturnConditionOption] = [
+        ReturnConditionOption(
+            id: "sellable",
+            titleKey: "pos_refund_condition_sellable",
+            defaultTitle: "سليم (صالح للبيع)",
+            icon: "checkmark.seal.fill",
+            tint: Color(uiColor: .systemGreen),
+            defaultDisposition: "return_to_stock"
+        ),
+        ReturnConditionOption(
+            id: "damaged",
+            titleKey: "pos_refund_condition_damaged",
+            defaultTitle: "تالف (عزل للإتلاف)",
+            icon: "exclamationmark.triangle.fill",
+            tint: Color(uiColor: .systemOrange),
+            defaultDisposition: "hold_damaged"
+        ),
+        ReturnConditionOption(
+            id: "expired",
+            titleKey: "pos_refund_condition_expired",
+            defaultTitle: "منتهي الصلاحية",
+            icon: "clock.badge.xmark.fill",
+            tint: Color(uiColor: .systemRed),
+            defaultDisposition: "write_off"
+        ),
+        ReturnConditionOption(
+            id: "quarantine",
+            titleKey: "pos_refund_condition_quarantine",
+            defaultTitle: "حجر (بحاجة لفحص)",
+            icon: "cross.case.fill",
+            tint: Color(uiColor: .systemPurple),
+            defaultDisposition: "hold_for_inspection"
+        )
+    ]
 
     private let reasonPresets: [String] = [
         Language.get("POS_Refund_Reason_Chip_Customer", alter: "رغبة العميل"),
@@ -2099,6 +2159,7 @@ struct POSRefundStudioSheet: View {
                                 isSelected: isFullRefund
                             ) {
                                 isFullRefund = true
+                                initializeQuantities()
                             }
 
                             modeButton(
@@ -2109,18 +2170,16 @@ struct POSRefundStudioSheet: View {
                             }
                         }
 
-                        // If Partial Refund: Item Steppers
-                        if !isFullRefund {
-                            itemSelectionSection
-                        }
+                        // Item Selection & Condition Section (Always displayed)
+                        itemSelectionSection
 
-                        // Restock & Ledger Notice
+                        // Restock & Disposition Notice
                         HStack(alignment: .top, spacing: 10) {
                             Image(systemName: "shippingbox.and.arrow.backward.fill")
                                 .font(.system(size: 18))
                                 .foregroundColor(Color(uiColor: .ppPrimary))
 
-                            Text(Language.get("POS_Refund_Restock_Notice", alter: "سيتم إعادة كميات الأصناف المحددة تلقائياً إلى عهدة الفرع وتوثيق القيد في المحاسبة."))
+                            Text(Language.get("pos_refund_disposition_notice", alter: "سيتم توجيه المنتج إلى قسم المخزون المخصص وفقًا لحالته المحددة."))
                                 .font(AdminType.caption)
                                 .foregroundColor(AdminSurface.secondaryText)
                         }
@@ -2195,62 +2254,117 @@ struct POSRefundStudioSheet: View {
         for item in receipt.items {
             let available = max(0, item.quantity - item.refundedQuantity)
             itemQuantities[item.itemID] = isFullRefund ? available : 0
+            if itemConditions[item.itemID] == nil {
+                itemConditions[item.itemID] = "sellable"
+            }
         }
     }
 
     private var itemSelectionSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(Language.get("POS_Refund_Select_Items", alter: "تحديد الأصناف والكميات"))
+            Text(isFullRefund
+                ? Language.get("pos_refund_items_condition_header", alter: "الأصناف المسترجعة وحالة المخزون")
+                : Language.get("POS_Refund_Select_Items", alter: "تحديد الأصناف والكميات"))
                 .font(AdminType.captionBold)
                 .foregroundColor(AdminSurface.secondaryText)
 
             VStack(spacing: 8) {
                 ForEach(receipt.items, id: \.itemID) { item in
                     let available = max(0, item.quantity - item.refundedQuantity)
-                    let currentQty = itemQuantities[item.itemID] ?? 0
+                    let currentQty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.name)
-                                .font(AdminType.body)
-                                .foregroundColor(AdminSurface.primaryText)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.name)
+                                    .font(AdminType.body)
+                                    .foregroundColor(AdminSurface.primaryText)
 
-                            Text(verbatim: "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • المتاح: \(available.englishDigits)")
-                                .font(AdminType.caption)
-                                .foregroundColor(AdminSurface.secondaryText)
+                                Text(verbatim: isFullRefund
+                                    ? "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • \(Language.get("Quantity", alter: "الكمية")): \(available.englishDigits)"
+                                    : "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • \(Language.get("Available", alter: "المتاح")): \(available.englishDigits)")
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            Spacer()
+
+                            if isFullRefund {
+                                Text(verbatim: "\(available.englishDigits)")
+                                    .font(AdminType.headline)
+                                    .foregroundColor(Color(uiColor: .ppPrimary))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color(uiColor: .ppPrimary).opacity(0.1), in: Capsule())
+                            } else {
+                                // Stepper: - / qty / +
+                                HStack(spacing: 12) {
+                                    Button {
+                                        if currentQty > 0 {
+                                            itemQuantities[item.itemID] = currentQty - 1
+                                        }
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(currentQty > 0 ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(currentQty <= 0)
+
+                                    Text(verbatim: currentQty.englishDigits)
+                                        .font(AdminType.headline)
+                                        .frame(minWidth: 24)
+
+                                    Button {
+                                        if currentQty < available {
+                                            itemQuantities[item.itemID] = currentQty + 1
+                                        }
+                                    } label: {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 24))
+                                            .foregroundColor(currentQty < available ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(currentQty >= available)
+                                }
+                            }
                         }
 
-                        Spacer()
+                        // Condition Selector Chips (Rendered when item has returned quantity)
+                        if currentQty > 0 {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(Language.get("pos_refund_condition_title", alter: "حالة المنتج المرتجع ومصير المخزون"))
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
 
-                        // Stepper: - / qty / +
-                        HStack(spacing: 12) {
-                            Button {
-                                if currentQty > 0 {
-                                    itemQuantities[item.itemID] = currentQty - 1
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 6) {
+                                        ForEach(returnConditionOptions) { opt in
+                                            let selectedCondition = itemConditions[item.itemID] ?? "sellable"
+                                            let isSelected = selectedCondition == opt.id
+                                            Button {
+                                                itemConditions[item.itemID] = opt.id
+                                            } label: {
+                                                HStack(spacing: 4) {
+                                                    Image(systemName: opt.icon)
+                                                        .font(.system(size: 11, weight: .bold))
+                                                    Text(Language.get(opt.titleKey, alter: opt.defaultTitle))
+                                                        .font(AdminType.caption)
+                                                }
+                                                .foregroundColor(isSelected ? .white : AdminSurface.primaryText)
+                                                .padding(.horizontal, 10)
+                                                .padding(.vertical, 6)
+                                                .background(
+                                                    isSelected ? opt.tint : Color(uiColor: .ppBackgroundSecondary),
+                                                    in: Capsule()
+                                                )
+                                            }
+                                            .buttonStyle(.plain)
+                                        }
+                                    }
                                 }
-                            } label: {
-                                Image(systemName: "minus.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(currentQty > 0 ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
                             }
-                            .buttonStyle(.plain)
-                            .disabled(currentQty <= 0)
-
-                            Text(verbatim: currentQty.englishDigits)
-                                .font(AdminType.headline)
-                                .frame(minWidth: 24)
-
-                            Button {
-                                if currentQty < available {
-                                    itemQuantities[item.itemID] = currentQty + 1
-                                }
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(currentQty < available ? Color(uiColor: .ppPrimary) : Color.gray.opacity(0.3))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(currentQty >= available)
+                            .padding(.top, 2)
                         }
                     }
                     .padding(.vertical, 4)
@@ -2347,21 +2461,26 @@ struct POSRefundStudioSheet: View {
         let finalReason = customReason.trimmingCharacters(in: .whitespacesAndNewlines)
         let amount = calculatedRefundAmount
 
-        var itemsPayload: [[String: Any]]? = nil
-        if !isFullRefund {
-            var mapped: [[String: Any]] = []
-            for item in receipt.items {
-                let qty = itemQuantities[item.itemID] ?? 0
-                if qty > 0 {
-                    mapped.append([
-                        "productId": item.itemID,
-                        "quantity": qty,
-                        "refundAmount": Double(qty) * item.price
-                    ])
-                }
+        var mapped: [[String: Any]] = []
+        for item in receipt.items {
+            let available = max(0, item.quantity - item.refundedQuantity)
+            let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
+            if qty > 0 {
+                let cond = itemConditions[item.itemID] ?? "sellable"
+                let disp = returnConditionOptions.first(where: { $0.id == cond })?.defaultDisposition ?? "return_to_stock"
+                let reasonCode = cond == "sellable" ? "customer_return_sellable" : "customer_return_\(cond)"
+                mapped.append([
+                    "productId": item.itemID,
+                    "quantity": qty,
+                    "refundAmount": Double(qty) * item.price,
+                    "condition": cond,
+                    "disposition": disp,
+                    "reasonCode": reasonCode,
+                    "notes": finalReason
+                ])
             }
-            itemsPayload = mapped
         }
+        let itemsPayload: [[String: Any]]? = mapped.isEmpty ? nil : mapped
 
         Task {
             let success = await viewModel.refundTransaction(

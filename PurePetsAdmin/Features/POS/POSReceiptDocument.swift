@@ -465,11 +465,31 @@ struct POSCompletedReceiptSheet: View {
                 )
             }
             if !receipt.customerPhone.isEmpty {
-                receiptValueRow(
-                    Language.get("POS_Receipt_Phone", alter: "الهاتف"),
-                    value: receipt.customerPhone,
-                    monospaced: true
-                )
+                HStack(spacing: 8) {
+                    receiptValueRow(
+                        Language.get("POS_Receipt_Phone", alter: "الهاتف"),
+                        value: receipt.customerPhone,
+                        monospaced: true
+                    )
+
+                    Button {
+                        POSReceiptWhatsAppSender.sendReceipt(for: receipt)
+                    } label: {
+                        ZStack {
+                            Circle()
+                                .fill(POSReceiptWhatsAppSender.brandColor)
+                                .frame(width: 26, height: 26)
+                            Image("whatsapp")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 14, height: 14)
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(POSWhatsAppPressButtonStyle())
+                    .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                }
             }
             if !receipt.note.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
@@ -583,6 +603,7 @@ struct POSCompletedReceiptSheet: View {
                     emphasized: false,
                     action: shareReceipt
                 )
+                whatsAppActionButton
             }
 
             Button {
@@ -604,6 +625,27 @@ struct POSCompletedReceiptSheet: View {
         }
     }
 
+    private var whatsAppActionButton: some View {
+        Button {
+            POSReceiptWhatsAppSender.sendReceipt(for: receipt)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(POSReceiptWhatsAppSender.brandColor)
+                    .frame(width: 48, height: 48)
+                    .shadow(color: POSReceiptWhatsAppSender.brandColor.opacity(0.32), radius: 6, x: 0, y: 3)
+                Image("whatsapp")
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 25, height: 25)
+                    .foregroundColor(.white)
+            }
+        }
+        .buttonStyle(POSWhatsAppPressButtonStyle())
+        .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+    }
+
     private func receiptActionButton(
         title: String,
         symbol: String,
@@ -622,6 +664,15 @@ struct POSCompletedReceiptSheet: View {
         }
         .accessibilityLabel(title)
     }
+
+private struct POSWhatsAppPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
 
     private func printReceipt() {
         do {

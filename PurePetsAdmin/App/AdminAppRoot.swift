@@ -39,6 +39,10 @@ struct AdminSession: Equatable {
         PPAdminSessionBridge.localizedRoleName(for: roleIdentifier)
     }
 
+    var branchId: String? {
+        (scope["branchId"] as? String) ?? (scope["branchIds"] as? [String])?.first
+    }
+
     static func == (lhs: AdminSession, rhs: AdminSession) -> Bool {
         lhs.uid == rhs.uid &&
             lhs.roleIdentifier == rhs.roleIdentifier &&

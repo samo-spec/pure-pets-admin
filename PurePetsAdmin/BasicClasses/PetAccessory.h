@@ -47,6 +47,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *weightText;          // Display-ready package weight, e.g. "2 kg"
 @property (nonatomic, strong, nullable) NSNumber *weight;            // Numeric package weight when stored separately
 @property (nonatomic, copy, nullable) NSString *weightUnit;          // Unit for numeric package weight
+@property (nonatomic, copy, nullable) NSString *size;                // Item size (e.g. "XS", "S", "M", "L", "XL", "Free Size")
 
 @property (nonatomic, strong) NSArray<NSString *> *imageURLsArray;
 @property (nonatomic, copy, nullable) NSArray<NSDictionary *> *imageMeta;
@@ -76,6 +77,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSString *ownerType;
 @property (nonatomic, strong, nullable) NSString *source;
 @property (nonatomic, copy, nullable) NSString *inventoryMode;
+@property (nonatomic, copy, nullable) NSString *inventoryTrackingPolicy;
+@property (nonatomic, strong, nullable) NSNumber *shelfLifeDays;
+@property (nonatomic, strong, nullable) NSNumber *guaranteedShelfLifeDays;
+@property (nonatomic, strong, nullable) NSNumber *expiryCutoffDays;
 @property (nonatomic, assign) NSInteger inventorySchemaVersion;
 @property (nonatomic, strong, nullable) NSNumber *standardSellingPrice;
 @property (nonatomic, assign) NSInteger reservedQuantity;

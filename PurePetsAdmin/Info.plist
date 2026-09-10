@@ -46,6 +46,11 @@
 	<string>Use Face ID to securely sign in to your admin account.</string>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>tel</string>
+	</array>
 	<key>UIUserInterfaceStyle</key>
 	<string>Light</string>
 </dict>
