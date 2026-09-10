@@ -356,12 +356,14 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     if (self.storeName.length > 0) dict[@"storeName"] = self.storeName;
     if (self.ownerType) dict[@"ownerType"] = self.ownerType;
     if (self.source) dict[@"source"] = self.source;
-    if (self.inventoryMode.length > 0) dict[@"inventoryMode"] = self.inventoryMode;
     if (self.inventoryTrackingPolicy.length > 0) dict[@"inventoryTrackingPolicy"] = self.inventoryTrackingPolicy;
     if (self.shelfLifeDays != nil) dict[@"shelfLifeDays"] = self.shelfLifeDays;
     if (self.guaranteedShelfLifeDays != nil) dict[@"guaranteedShelfLifeDays"] = self.guaranteedShelfLifeDays;
     if (self.expiryCutoffDays != nil) dict[@"expiryCutoffDays"] = self.expiryCutoffDays;
-    dict[@"inventorySchemaVersion"] = @(self.inventorySchemaVersion);
+    // NOTE: Authoritative Cloud Function fields ('inventoryMode', 'inventorySchemaVersion',
+    // 'reservedQuantity', etc.) MUST NOT be written by client direct Firestore writes.
+    // Client claims on these keys are rejected fail-closed by firestore.rules
+    // clientDoesNotClaimServerInventoryFields().
 
     // Enums
     dict[@"accessKindType"] = @(self.accessKindType);

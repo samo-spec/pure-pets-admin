@@ -45,6 +45,9 @@
                                                                                    onDismiss:^{
         __strong typeof(weakSelf) self = weakSelf;
         if (!self) return;
+        if (self.onDismissBlock) {
+            self.onDismissBlock();
+        }
         if (self.navigationController && self.navigationController.viewControllers.count > 1) {
             [self.navigationController popViewControllerAnimated:YES];
         } else {

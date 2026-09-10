@@ -195,6 +195,27 @@
     XCTAssertEqualWithAccuracy(livePet.finalPrice.doubleValue, 125.5, 0.001);
 }
 
+- (void)testAccessoryFirestoreDictionaryDoesNotClaimServerInventoryFields {
+    PetAccessory *acc = [[PetAccessory alloc] init];
+    acc.name = @"عش طيور";
+    acc.price = @200;
+    acc.quantity = 10;
+    acc.inventoryMode = @"INDIVIDUAL_TRACKED";
+    acc.inventorySchemaVersion = 2;
+    acc.reservedQuantity = 5;
+
+    NSDictionary *payload = [acc toFirestoreDictionary];
+    XCTAssertNotNil(payload[@"name"]);
+    XCTAssertEqualObjects(payload[@"name"], @"عش طيور");
+    XCTAssertNil(payload[@"inventoryMode"], @"Client writes must not claim inventoryMode (violates clientDoesNotClaimServerInventoryFields)");
+    XCTAssertNil(payload[@"inventorySchemaVersion"], @"Client writes must not claim inventorySchemaVersion (violates clientDoesNotClaimServerInventoryFields)");
+    XCTAssertNil(payload[@"reservedQuantity"], @"Client writes must not claim reservedQuantity");
+    XCTAssertNil(payload[@"inventoryCreateCommandId"]);
+    XCTAssertNil(payload[@"inventoryCreateFingerprint"]);
+    XCTAssertNil(payload[@"inventoryMigratedAt"]);
+    XCTAssertNil(payload[@"inventoryMigratedBy"]);
+}
+
 - (void)testPOSReceiptParsesCanonicalTransactionAndExactUnitDetails {
     PPPOSReceipt *receipt = [[PPPOSReceipt alloc] initWithDictionary:@{
         @"posSchemaVersion": @3,

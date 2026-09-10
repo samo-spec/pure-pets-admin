@@ -16,6 +16,8 @@ import Network
 
 @MainActor
 final class NetworkReachabilityMonitor: ObservableObject {
+    static let shared = NetworkReachabilityMonitor()
+
     @Published private(set) var isConnected: Bool = true
     @Published private(set) var isCellular: Bool = false
 
@@ -25,12 +27,16 @@ final class NetworkReachabilityMonitor: ObservableObject {
     init() {
         let monitor = NWPathMonitor()
         self.monitor = monitor
+
         monitor.pathUpdateHandler = { [weak self] path in
             let connected = (path.status == .satisfied)
             let cellular = path.usesInterfaceType(.cellular)
             Task { @MainActor in
-                self?.isConnected = connected
-                self?.isCellular = cellular
+                guard let self else { return }
+                if self.isConnected != connected || self.isCellular != cellular {
+                    self.isConnected = connected
+                    self.isCellular = cellular
+                }
             }
         }
         monitor.start(queue: queue)
@@ -93,12 +99,28 @@ private enum VerificationStage: Int, CaseIterable {
 
 struct PPSessionRestorationGatewayView: View {
     @ObservedObject var sessionStore: AdminSessionStore
+    @ObservedObject private var networkMonitor = NetworkReachabilityMonitor.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var currentStage: VerificationStage = .securingLink
     @State private var stageTimer: Timer? = nil
 
+    // Auto-Recovery State Machine (Single-Shot Circuit Breaker)
+    @State private var wasOffline: Bool = false
+    @State private var hasAttemptedAutoRecoveryForCurrentOnlineSession: Bool = false
+    @State private var isAutoRetrying: Bool = false
+
     init(sessionStore: AdminSessionStore) {
         self.sessionStore = sessionStore
+    }
+
+    private var effectiveError: String? {
+        if let restoreError = sessionStore.restoreError {
+            return restoreError
+        }
+        if !networkMonitor.isConnected {
+            return Language.get("StatusNetworkError", alter: "حدث خطأ في الشبكة. تحقق من الاتصال وحاول مرة أخرى.")
+        }
+        return nil
     }
 
     var body: some View {
@@ -112,13 +134,25 @@ struct PPSessionRestorationGatewayView: View {
                 if isIPad {
                     iPadSessionRestorationGateway(
                         sessionStore: sessionStore,
-                        currentStage: currentStage
+                        currentStage: currentStage,
+                        networkMonitor: networkMonitor,
+                        effectiveError: effectiveError,
+                        isAutoRetrying: isAutoRetrying,
+                        onManualRetry: {
+                            resetAndManualRetry()
+                        }
                     )
                     .transition(.opacity)
                 } else {
                     iPhoneSessionRestorationVault(
                         sessionStore: sessionStore,
-                        currentStage: currentStage
+                        currentStage: currentStage,
+                        networkMonitor: networkMonitor,
+                        effectiveError: effectiveError,
+                        isAutoRetrying: isAutoRetrying,
+                        onManualRetry: {
+                            resetAndManualRetry()
+                        }
                     )
                     .transition(.opacity)
                 }
@@ -127,10 +161,23 @@ struct PPSessionRestorationGatewayView: View {
             .ignoresSafeArea()
             .onAppear {
                 startStageCycle()
+                if !networkMonitor.isConnected {
+                    wasOffline = true
+                }
             }
             .onDisappear {
                 stageTimer?.invalidate()
                 stageTimer = nil
+            }
+            .onChange(of: networkMonitor.isConnected) { isOnline in
+                if !isOnline {
+                    // Arm the auto-retry trigger: device is confirmed offline
+                    wasOffline = true
+                    hasAttemptedAutoRecoveryForCurrentOnlineSession = false
+                    isAutoRetrying = false
+                } else if isOnline && wasOffline && !hasAttemptedAutoRecoveryForCurrentOnlineSession {
+                    triggerAutoRecovery()
+                }
             }
         }
     }
@@ -170,12 +217,59 @@ struct PPSessionRestorationGatewayView: View {
     private func startStageCycle() {
         stageTimer?.invalidate()
         stageTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { _ in
-            guard sessionStore.restoreError == nil else { return }
+            guard effectiveError == nil else { return }
             withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-                let nextIndex = (currentStage.rawValue + 1) % VerificationStage.allCases.count
-                currentStage = VerificationStage(rawValue: nextIndex) ?? .securingLink
+                if currentStage.rawValue < VerificationStage.allCases.count - 1 {
+                    currentStage = VerificationStage(rawValue: currentStage.rawValue + 1) ?? .armingCockpit
+                } else {
+                    stageTimer?.invalidate()
+                    stageTimer = nil
+                }
             }
         }
+    }
+
+    // MARK: - Autonomous Network Reconnection Trigger
+
+    private func triggerAutoRecovery() {
+        guard !hasAttemptedAutoRecoveryForCurrentOnlineSession else { return }
+        hasAttemptedAutoRecoveryForCurrentOnlineSession = true
+        wasOffline = false
+        isAutoRetrying = true
+
+        // 0.8s stabilization debounce to allow IP assignment, DNS sockets, and routes to settle
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            guard self.networkMonitor.isConnected else {
+                self.isAutoRetrying = false
+                self.wasOffline = true
+                self.hasAttemptedAutoRecoveryForCurrentOnlineSession = false
+                return
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                self.currentStage = .securingLink
+            }
+            self.startStageCycle()
+            self.sessionStore.restoreCurrentSession()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.isAutoRetrying = false
+            }
+        }
+    }
+
+    private func resetAndManualRetry() {
+        hasAttemptedAutoRecoveryForCurrentOnlineSession = false
+        isAutoRetrying = false
+        guard networkMonitor.isConnected else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+            currentStage = .securingLink
+        }
+        startStageCycle()
+        sessionStore.restoreCurrentSession()
     }
 }
 
@@ -184,6 +278,10 @@ struct PPSessionRestorationGatewayView: View {
 private struct iPhoneSessionRestorationVault: View {
     @ObservedObject var sessionStore: AdminSessionStore
     let currentStage: VerificationStage
+    @ObservedObject var networkMonitor: NetworkReachabilityMonitor
+    let effectiveError: String?
+    let isAutoRetrying: Bool
+    let onManualRetry: () -> Void
 
     @State private var auraPulse: Bool = false
     @State private var radarRotation: Double = 0
@@ -206,8 +304,8 @@ private struct iPhoneSessionRestorationVault: View {
             Spacer(minLength: 24)
 
             // Telemetry Status & Recovery Container
-            if let restoreError = sessionStore.restoreError {
-                recoveryDossierCard(errorText: restoreError)
+            if let errorText = effectiveError {
+                recoveryDossierCard(errorText: errorText)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 telemetryStatusCard
@@ -240,29 +338,40 @@ private struct iPhoneSessionRestorationVault: View {
     private var attestationSentinelPill: some View {
         HStack(spacing: 8) {
             Circle()
-                .fill(Color(uiColor: .ppSuccess))
+                .fill(networkMonitor.isConnected ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
                 .frame(width: 7, height: 7)
-                .shadow(color: Color(uiColor: .ppSuccess).opacity(0.6), radius: 4)
+                .shadow(color: (networkMonitor.isConnected ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.6), radius: 4)
 
-            Text(Language.get("CommandCenter_Security_Attestation", alter: "نظام التوثيق والرقابة السيادية"))
+            Text(networkMonitor.isConnected
+                ? (effectiveError != nil
+                    ? Language.get("CommandCenter_AutoDetect_Active", alter: "المراقبة التلقائية نشطة")
+                    : Language.get("CommandCenter_Security_Attestation", alter: "نظام التوثيق والرقابة السيادية"))
+                : Language.get("CommandCenter_Network_Offline", alter: "الإنترنت غير متصل"))
                 .font(AdminType.caption2Bold)
-                .foregroundColor(AdminSurface.primaryText)
+                .foregroundColor(networkMonitor.isConnected ? AdminSurface.primaryText : Color(uiColor: .ppWarning))
 
             Text("•")
                 .foregroundColor(AdminCommandInk.tertiary)
 
-            Text(Language.get("AppCheck_Active", alter: "App Check مفعّل"))
-                .font(AdminType.caption2)
-                .foregroundColor(AdminCommandInk.secondary)
+            HStack(spacing: 4) {
+                Image(systemName: networkMonitor.isConnected ? (networkMonitor.isCellular ? "antenna.radiowaves.left.and.right" : "wifi") : "wifi.slash")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(networkMonitor.isConnected
+                    ? Language.get("AppCheck_Active", alter: "App Check مفعّل")
+                    : Language.get("Restoring_Network_Monitoring_AutoRetry", alter: "بانتظار الشبكة"))
+                    .font(AdminType.caption2)
+            }
+            .foregroundColor(networkMonitor.isConnected ? AdminCommandInk.secondary : Color(uiColor: .ppWarning))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)
         .background(AdminSurface.surface, in: Capsule())
         .overlay(
             Capsule()
-                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75)
+                .strokeBorder(networkMonitor.isConnected ? AdminSurface.borderSubtle : Color(uiColor: .ppWarning).opacity(0.35), lineWidth: 0.75)
         )
         .shadow(color: Color.black.opacity(0.04), radius: 8, y: 2)
+        .animation(.spring(response: 0.35), value: networkMonitor.isConnected)
     }
 
     // MARK: - Kinetic Sovereign Epicenter
@@ -421,12 +530,43 @@ private struct iPhoneSessionRestorationVault: View {
                 .lineLimit(3)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // Autonomous Auto-Recovery Sentinel Pip
+            HStack(spacing: 8) {
+                if isAutoRetrying {
+                    ProgressView()
+                        .scaleEffect(0.68)
+                        .tint(Color(uiColor: .ppSuccess))
+                    Text(Language.get("Restoring_Network_Restored_AutoRetrying", alter: "تم التقاط الاتصال بالإنترنت... جاري إعادة المحاولة تلقائياً"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                } else if !networkMonitor.isConnected {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                    Text(Language.get("Restoring_Network_Monitoring_AutoRetry", alter: "المراقبة التلقائية نشطة: سيتم الاستئناف فور عودة الإنترنت"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                } else {
+                    Image(systemName: "wifi")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                    Text(Language.get("Restoring_Network_Online", alter: "متصل بالإنترنت"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                (networkMonitor.isConnected ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.10),
+                in: Capsule()
+            )
+            .animation(.spring(response: 0.35), value: networkMonitor.isConnected)
+            .animation(.spring(response: 0.35), value: isAutoRetrying)
+
             // Tactical Actions Runway
             VStack(spacing: 10) {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    sessionStore.restoreCurrentSession()
-                }) {
+                Button(action: onManualRetry) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 13, weight: .bold))
@@ -492,6 +632,10 @@ private struct iPhoneSessionRestorationVault: View {
 private struct iPadSessionRestorationGateway: View {
     @ObservedObject var sessionStore: AdminSessionStore
     let currentStage: VerificationStage
+    @ObservedObject var networkMonitor: NetworkReachabilityMonitor
+    let effectiveError: String?
+    let isAutoRetrying: Bool
+    let onManualRetry: () -> Void
 
     @State private var auraPulse: Bool = false
     @State private var gyroOuterRotation: Double = 0
@@ -664,9 +808,9 @@ private struct iPadSessionRestorationGateway: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Circle()
-                        .fill(sessionStore.restoreError != nil ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                        .fill(effectiveError != nil ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
                         .frame(width: 8, height: 8)
-                        .shadow(color: (sessionStore.restoreError != nil ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.6), radius: 4)
+                        .shadow(color: (effectiveError != nil ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.6), radius: 4)
 
                     Text(Language.get("CommandCenter_Restoring_Gateway_Title", alter: "بوابة استعادة الجلسة السيادية"))
                         .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
@@ -680,8 +824,8 @@ private struct iPadSessionRestorationGateway: View {
             }
 
             // Error Recovery Area or 4-Step Checklist Matrix
-            if let restoreError = sessionStore.restoreError {
-                ipadRecoveryDeck(errorText: restoreError)
+            if let errorText = effectiveError {
+                ipadRecoveryDeck(errorText: errorText)
             } else {
                 matrixTelemetryChecklist
             }
@@ -690,7 +834,7 @@ private struct iPadSessionRestorationGateway: View {
 
             // iPad Hardware Keyboard Shortcut Bar
             HStack(spacing: 16) {
-                if sessionStore.restoreError != nil {
+                if effectiveError != nil {
                     HStack(spacing: 4) {
                         Text(verbatim: "⌘R")
                             .font(AdminType.caption2.monospaced())
@@ -714,12 +858,14 @@ private struct iPadSessionRestorationGateway: View {
                     }
                 } else {
                     HStack(spacing: 6) {
-                        Image(systemName: "checkmark.shield.fill")
+                        Image(systemName: networkMonitor.isConnected ? "checkmark.shield.fill" : "wifi.slash")
                             .font(.system(size: 11))
-                            .foregroundColor(Color(uiColor: .ppSuccess))
-                        Text(verbatim: "Hardware Attestation • TLS 1.3 • AES-256")
+                            .foregroundColor(networkMonitor.isConnected ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                        Text(networkMonitor.isConnected
+                            ? "Hardware Attestation • TLS 1.3 • AES-256"
+                            : Language.get("CommandCenter_Network_Offline", alter: "الإنترنت غير متصل"))
                             .font(AdminType.caption2.monospaced())
-                            .foregroundColor(AdminCommandInk.tertiary)
+                            .foregroundColor(networkMonitor.isConnected ? AdminCommandInk.tertiary : Color(uiColor: .ppWarning))
                     }
                 }
 
@@ -818,11 +964,42 @@ private struct iPadSessionRestorationGateway: View {
                 .foregroundColor(AdminSurface.primaryText)
                 .lineLimit(3)
 
+            // Autonomous Auto-Recovery Sentinel Pip
+            HStack(spacing: 8) {
+                if isAutoRetrying {
+                    ProgressView()
+                        .scaleEffect(0.70)
+                        .tint(Color(uiColor: .ppSuccess))
+                    Text(Language.get("Restoring_Network_Restored_AutoRetrying", alter: "تم التقاط الاتصال بالإنترنت... جاري استئناف الجلسة تلقائياً"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                } else if !networkMonitor.isConnected {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                    Text(Language.get("Restoring_Network_Monitoring_AutoRetry", alter: "المراقبة التلقائية نشطة: سيتم الاستئناف فور عودة الإنترنت"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(Color(uiColor: .ppWarning))
+                } else {
+                    Image(systemName: "wifi")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                    Text(Language.get("Restoring_Network_Online", alter: "متصل بالإنترنت"))
+                        .font(AdminType.caption2)
+                        .foregroundColor(Color(uiColor: .ppSuccess))
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(
+                (networkMonitor.isConnected ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.10),
+                in: Capsule()
+            )
+            .animation(.spring(response: 0.35), value: networkMonitor.isConnected)
+            .animation(.spring(response: 0.35), value: isAutoRetrying)
+
             HStack(spacing: 12) {
-                Button(action: {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    sessionStore.restoreCurrentSession()
-                }) {
+                Button(action: onManualRetry) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 13, weight: .bold))

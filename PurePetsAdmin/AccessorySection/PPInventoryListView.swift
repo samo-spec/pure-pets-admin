@@ -747,13 +747,51 @@ enum PPLivePetInventoryService {
 
     @MainActor
     static func updateCatalogPresentation(productID: String, values: [String: Any]) async throws {
-        let boxed = PPSendableDictionary(dict: values)
-        try await Firestore.firestore().collection("petAccessories").document(productID).updateData(boxed.dict)
-
         // Strict: ONLY in live pets case each pet showing in ios consumer app as a separate and independent ad
         let isLive = (values["accessKindType"] as? Int == 3) ||
                      (values["product_type"] as? String == "live") ||
                      (values["category"] as? String == "Live Pets")
+
+        // Sanitize values to omit server-owned and immutable inventory fields
+        // that are protected by firestore.rules hasStableServerInventoryFields()
+        var sanitizedValues = values
+        let immutableServerKeys: Set<String> = [
+            "accessKindType",
+            "type",
+            "product_type",
+            "productType",
+            "inventoryMode",
+            "inventorySchemaVersion",
+            "quantity",
+            "noStock",
+            "reservedQuantity",
+            "inventoryCreateCommandId",
+            "inventoryCreateFingerprint",
+            "inventoryMigratedAt",
+            "inventoryMigratedBy",
+            "supplier",
+            "source",
+            "sourceMetadata",
+            "notes",
+            "intakeNotes",
+            "arrivalDate",
+            "acquisitionDate",
+            "veterinaryReference",
+            "veterinaryMetadata",
+            "isArchived",
+            "isDeleted",
+            "costPrice",
+            "buyPrice",
+            "cost_price",
+            "pricing"
+        ]
+        for key in immutableServerKeys {
+            sanitizedValues.removeValue(forKey: key)
+        }
+
+        let boxed = PPSendableDictionary(dict: sanitizedValues)
+        try await Firestore.firestore().collection("petAccessories").document(productID).updateData(boxed.dict)
+
         guard isLive else { return }
 
         let showInAppMarket = values["showInAppMarket"] as? Bool ?? false
@@ -1892,17 +1930,66 @@ public struct PPInventoryListView: View {
     @State private var itemForLots: PetAccessory? = nil
     @State private var showCycleCountStudio: Bool = false
     @State private var itemForActionMenu: PetAccessory? = nil
-
     public init(
         kind: AccessKindType = .typeAccessory,
         showsCatalogSwitcher: Bool = true,
-        onPushViewController: @escaping (UIViewController) -> Void = { _ in },
+        onPushViewController: ((UIViewController) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
         _viewModel = StateObject(wrappedValue: PPInventoryListViewModel(kind: kind))
         self.showsCatalogSwitcher = showsCatalogSwitcher
-        self.onPushViewController = onPushViewController
+        self.onPushViewController = onPushViewController ?? { targetVC in
+            PPAdminNavigationFallback.presentOrPush(targetVC)
+        }
         self.onDismiss = onDismiss
+    }
+
+    private func openAddEditor() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let addVC = AddAccessoryViewController(accessory: nil)
+        addVC.showTypeRow = false
+        addVC.defaultKind = viewModel.currentKind
+        addVC.onDismissBlock = {
+            viewModel.applyFilter()
+        }
+        onPushViewController(addVC)
+    }
+
+    private func openEditEditor(for item: PetAccessory) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let editVC = AddAccessoryViewController(accessory: item)
+        editVC.showTypeRow = false
+        editVC.defaultKind = viewModel.currentKind
+        editVC.onDismissBlock = {
+            viewModel.applyFilter()
+        }
+        onPushViewController(editVC)
+    }
+
+    private func openItemDetail(for item: PetAccessory) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let detailVC = PPInventoryItemDetailHostingController(
+            item: item,
+            viewModel: viewModel,
+            onOpenFullEditor: {
+                openEditEditor(for: item)
+            },
+            onOpenPOS: {
+                if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
+                    onPushViewController(controller)
+                }
+            },
+            onAdjustQuantity: { delta in
+                viewModel.adjustQuantity(by: delta, for: item)
+            },
+            onToggleStock: {
+                viewModel.toggleStockAvailability(for: item)
+            },
+            onDelete: {
+                confirmDelete(item: item)
+            }
+        )
+        onPushViewController(detailVC)
     }
 
     public var body: some View {
@@ -1983,6 +2070,7 @@ public struct PPInventoryListView: View {
                     viewModel.applyFilter()
                 }
             )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $itemForQuarantine) { item in
             QuarantineStudioSheet(
@@ -1992,6 +2080,7 @@ public struct PPInventoryListView: View {
                     viewModel.applyFilter()
                 }
             )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(item: $itemForDamage) { item in
             DamageStockSheet(
@@ -2001,6 +2090,7 @@ public struct PPInventoryListView: View {
                     viewModel.applyFilter()
                 }
             )
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .fullScreenCover(isPresented: $showCycleCountStudio) {
             CycleCountStudioView(
@@ -2008,24 +2098,34 @@ public struct PPInventoryListView: View {
             ) {
                 viewModel.applyFilter()
             }
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
         .sheet(item: $itemForActionMenu) { item in
             PPInventoryActionMenuSheet(
                 item: item,
                 onEdit: {
-                    let editVC = AddAccessoryViewController(accessory: item)
-                    editVC.showTypeRow = false
-                    editVC.defaultKind = viewModel.currentKind
-                    onPushViewController(editVC)
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        openEditEditor(for: item)
+                    }
                 },
                 onRecordDamage: {
-                    itemForDamage = item
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        itemForDamage = item
+                    }
                 },
                 onQuarantineStudio: {
-                    itemForQuarantine = item
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        itemForQuarantine = item
+                    }
                 },
                 onManageLots: {
-                    itemForLots = item
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        itemForLots = item
+                    }
                 },
                 onShare: {
                     if let root = UIApplication.shared.connectedScenes
@@ -2040,11 +2140,13 @@ public struct PPInventoryListView: View {
                     viewModel.toggleStockAvailability(for: item)
                 },
                 onDelete: {
+                    itemForActionMenu = nil
                     confirmDelete(item: item)
                 }
             )
             .presentationDetents([.fraction(0.72), .large])
             .presentationDragIndicator(.visible)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
 
         .onAppear {
@@ -2100,11 +2202,7 @@ public struct PPInventoryListView: View {
                         title: Language.get("Add", alter: "إضافة منتج"),
                         systemImage: "plus"
                     ) {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        let addVC = AddAccessoryViewController(accessory: nil)
-                        addVC.showTypeRow = false
-                        addVC.defaultKind = viewModel.currentKind
-                        onPushViewController(addVC)
+                        openAddEditor()
                     }
 
                     Button {
@@ -2532,38 +2630,10 @@ public struct PPInventoryListView: View {
             FlagshipInventoryCard(
                 item: item,
                 onTap: {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    let detailVC = PPInventoryItemDetailHostingController(
-                        item: item,
-                        viewModel: viewModel,
-                        onOpenFullEditor: {
-                            let editVC = AddAccessoryViewController(accessory: item)
-                            editVC.showTypeRow = false
-                            editVC.defaultKind = viewModel.currentKind
-                            onPushViewController(editVC)
-                        },
-                        onOpenPOS: {
-                            if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
-                                onPushViewController(controller)
-                            }
-                        },
-                        onAdjustQuantity: { delta in
-                            viewModel.adjustQuantity(by: delta, for: item)
-                        },
-                        onToggleStock: {
-                            viewModel.toggleStockAvailability(for: item)
-                        },
-                        onDelete: {
-                            viewModel.deleteAccessory(item)
-                        }
-                    )
-                    onPushViewController(detailVC)
+                    openItemDetail(for: item)
                 },
                 onEdit: {
-                    let editVC = AddAccessoryViewController(accessory: item)
-                    editVC.showTypeRow = false
-                    editVC.defaultKind = viewModel.currentKind
-                    onPushViewController(editVC)
+                    openEditEditor(for: item)
                 },
                 onAdjustQuantity: { delta in
                     viewModel.adjustQuantity(by: delta, for: item)
@@ -2702,11 +2772,7 @@ public struct PPInventoryListView: View {
                 VStack(spacing: 12) {
                     // Primary Action Button: Add Item
                     Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        let addVC = AddAccessoryViewController(accessory: nil)
-                        addVC.showTypeRow = false
-                        addVC.defaultKind = viewModel.currentKind
-                        onPushViewController(addVC)
+                        openAddEditor()
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "plus.circle.fill")
@@ -2868,11 +2934,7 @@ public struct PPInventoryListView: View {
                 .buttonStyle(CatalogPressStyle())
 
                 Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    let addVC = AddAccessoryViewController(accessory: nil)
-                    addVC.showTypeRow = false
-                    addVC.defaultKind = viewModel.currentKind
-                    onPushViewController(addVC)
+                    openAddEditor()
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus")
@@ -3987,7 +4049,7 @@ public struct PPInventoryItemDetailView: View {
                 .zIndex(150)
             }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             if item.isLivePet && item.quantity > 0 {
                 currentQuantity = item.quantity
@@ -4589,7 +4651,7 @@ public struct PPInventoryItemDetailView: View {
                                 HStack(spacing: 3) {
                                     Image(systemName: "arrow.up.right")
                                         .font(.system(size: 8, weight: .bold))
-                                    Text(verbatim: String(format: "+%.2f ر.ق (%.0f%%)", margin.margin, margin.percent).normalizedEnglishDigits)
+                                    Text(verbatim: String(format: Language.get("Profit_Margin_Format", alter: "+%.2f ر.ق (%.0f%%)"), margin.margin, margin.percent).normalizedEnglishDigits)
                                         .font(PPBrandFont.bold(size: 11))
                                 }
                                 .foregroundStyle(Color(uiColor: .ppSuccess))
@@ -4717,7 +4779,7 @@ public struct PPInventoryItemDetailView: View {
                         Text(Language.get("Stock_Transfer_Action", alter: "نقل كمية إلى فرع آخر"))
                             .font(Font.custom("Beiruti-Bold", size: 12))
                         Spacer()
-                        Image(systemName: "chevron.left")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundStyle(AdminSurface.primary.opacity(0.6))
                     }
@@ -4829,6 +4891,7 @@ public struct PPInventoryItemDetailView: View {
                 .foregroundStyle(AdminSurface.primaryText)
                 .lineLimit(isDescriptionExpanded ? nil : 3)
                 .lineSpacing(4)
+                .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
 
             if item.desc.count > 90 {
@@ -5314,7 +5377,7 @@ public struct PPInventoryItemDetailView: View {
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Color(uiColor: .ppTextTertiary))
                 } else {
-                    Image(systemName: "chevron.left")
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminCommandInk.tertiary)
                 }
@@ -5538,7 +5601,7 @@ public struct PPInventoryItemDetailView: View {
                     Text(PetAccessory.formatCurrency(NSNumber(value: reservation.total)))
                         .font(Font.custom("Beiruti-Bold", size: 13))
                         .foregroundStyle(AdminSurface.primary)
-                    Image(systemName: "chevron.left")
+                    Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(AdminCommandInk.tertiary)
                 }
@@ -6705,7 +6768,7 @@ public struct PPItemActionsHubView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.layoutDirection, .rightToLeft)
+            .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
             .onAppear {
                 if accessibilityReduceMotion {
                     hasAppeared = true
@@ -7310,7 +7373,7 @@ public struct PPItemActionsHubView: View {
                         .background(tint.opacity(0.12), in: Capsule(style: .continuous))
                 }
 
-                Image(systemName: "chevron.left")
+                Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(AdminCommandInk.tertiary.opacity(0.6))
             }
@@ -7490,7 +7553,11 @@ public struct PPItemActionsHubView: View {
                 } else {
                     let editVC = AddAccessoryViewController(accessory: self.item)
                     editVC.showTypeRow = false
-                    self.navigationController?.pushViewController(editVC, animated: true)
+                    if let nav = self.navigationController {
+                        nav.pushViewController(editVC, animated: true)
+                    } else {
+                        PPAdminNavigationFallback.presentOrPush(editVC, from: self)
+                    }
                 }
             },
             onOpenPOS: { [weak self] in
@@ -7498,7 +7565,11 @@ public struct PPItemActionsHubView: View {
                 if let block = self.onOpenPOS {
                     block()
                 } else if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: self.item.accessoryID) {
-                    self.navigationController?.pushViewController(controller, animated: true)
+                    if let nav = self.navigationController {
+                        nav.pushViewController(controller, animated: true)
+                    } else {
+                        PPAdminNavigationFallback.presentOrPush(controller, from: self)
+                    }
                 }
             },
             onAdjustQuantity: { [weak self] delta in
@@ -7518,7 +7589,9 @@ public struct PPItemActionsHubView: View {
             }
         )
 
-        let host = UIHostingController(rootView: detailView)
+        let host = UIHostingController(
+            rootView: detailView.environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        )
         host.view.backgroundColor = .clear
         addChild(host)
         view.addSubview(host.view)
@@ -7726,7 +7799,7 @@ private struct PPLivePetOperationSheet: View {
             }
         }
         .navigationViewStyle(.stack)
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(isPresented: $isBranchPickerPresented) {
             PPBranchSelectionStudioSheet(
                 branches: model.branches,
@@ -8666,7 +8739,7 @@ private struct PPLivePetOperationSheet: View {
                             Text(Language.get("Change", alter: "تغيير"))
                                 .font(Font.custom("Beiruti-Bold", size: 13))
                                 .foregroundStyle(AdminSurface.primary)
-                            Image(systemName: "chevron.left")
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                                 .font(.system(size: 11, weight: .bold))
                                 .foregroundStyle(AdminSurface.primary)
                         }
@@ -8687,7 +8760,7 @@ private struct PPLivePetOperationSheet: View {
                             .font(Font.custom("Beiruti-Bold", size: 15))
                             .foregroundStyle(AdminCommandInk.tertiary)
                         Spacer()
-                        Image(systemName: "chevron.left")
+                        Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(AdminCommandInk.tertiary)
                     }
@@ -9105,7 +9178,7 @@ private struct PPBranchSelectionStudioSheet: View {
             }
         }
         .navigationViewStyle(.stack)
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     private func branchOptionCard(_ branch: PPInventoryBranchOption) -> some View {
@@ -10333,7 +10406,13 @@ private struct CatalogPressStyle: ButtonStyle {
             kind: kind,
             showsCatalogSwitcher: showsCatalogSwitcher,
             onPushViewController: { [weak self] targetVC in
-                self?.navigationController?.pushViewController(targetVC, animated: true)
+                if let nav = self?.navigationController {
+                    nav.pushViewController(targetVC, animated: true)
+                } else if let self = self {
+                    PPAdminNavigationFallback.presentOrPush(targetVC, from: self)
+                } else {
+                    PPAdminNavigationFallback.presentOrPush(targetVC)
+                }
             },
             onDismiss: { [weak self] in
                 if let block = self?.onDismissBlock {

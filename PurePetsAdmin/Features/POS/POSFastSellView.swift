@@ -103,8 +103,16 @@ extension PetAccessory {
                 return branchRecord.availableQuantity
             }
             let itemBranch = (storeID ?? branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != branchId {
-                return 0
+            if isLivePet {
+                // Live pets are physical individual specimens strictly bound to their branch.
+                // The server enforces POS_INVENTORY_UNIT_BRANCH_MISMATCH if the unit does not match the active POS branch.
+                if !itemBranch.isEmpty && itemBranch != branchId {
+                    return 0
+                }
+            } else {
+                if !itemBranch.isEmpty && itemBranch != "main_store" && itemBranch != branchId {
+                    return 0
+                }
             }
         }
         return PPBranchInventoryService.shared.availableStock(for: accessoryID, fallback: quantity)
@@ -403,6 +411,7 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     let ringTag: String
     let sellingPrice: Double
     let currentBranchId: String
+    var fallbackBranchId: String = ""
     var subSubKindID: Int = 0
     var subSubKindNameAr: String = ""
     var subSubKindNameEn: String = ""
@@ -431,8 +440,10 @@ struct POSAnimalUnit: Identifiable, Hashable, Sendable {
     func isSelectable(in activeBranch: String?) -> Bool {
         guard sellingPrice > 0 else { return false }
         let branch = activeBranch?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let branch, !branch.isEmpty, !currentBranchId.isEmpty {
-            return currentBranchId == branch
+        guard let branch, !branch.isEmpty else { return true }
+        let effectiveBranch = (!currentBranchId.isEmpty ? currentBranchId : fallbackBranchId).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !effectiveBranch.isEmpty {
+            return effectiveBranch == branch
         }
         return true
     }
@@ -552,6 +563,7 @@ final class POSUnitPickerState: ObservableObject {
         guard let productID = product?.accessoryID else { return }
         let token = requestID
         let cursor = reset ? nil : nextCursor
+        let fallbackBranch = (product?.storeID ?? product?.branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
         PPPOSService.shared().listAvailableUnits(forProductID: productID, cursor: cursor) { [weak self] units, nextCursor, hasMore, error in
             // Project to Sendable values before crossing to the main actor.
@@ -562,6 +574,7 @@ final class POSUnitPickerState: ObservableObject {
                     ringTag: unit.ringTag ?? "",
                     sellingPrice: unit.sellingPrice,
                     currentBranchId: unit.currentBranchId ?? "",
+                    fallbackBranchId: fallbackBranch,
                     subSubKindID: unit.subSubKindID?.intValue ?? 0,
                     subSubKindNameAr: unit.subSubKindNameAr ?? "",
                     subSubKindNameEn: unit.subSubKindNameEn ?? "",
@@ -1166,6 +1179,21 @@ final class POSFastSellViewModel: ObservableObject {
                 "POS_ProductUnavailable",
                 alter: "لم يعد أحد عناصر السلة متاحًا. حدّث المنتجات وأعد اختيار العنصر."
             )
+        case "POS_INVENTORY_UNIT_BRANCH_MISMATCH", "INVENTORY_UNIT_BRANCH_MISMATCH":
+            return Language.get(
+                "POS_ExactUnitBranchMismatch",
+                alter: "الحيوان المحدد مسجل في فرع آخر ولا يمكن بيعه من هذا الفرع. اختر حيواناً متوفراً في فرعك الحالي."
+            )
+        case "POS_INVENTORY_UNIT_NOT_FOUND":
+            return Language.get(
+                "POS_ExactUnitNotFound",
+                alter: "لم يتم العثور على سجل الحيوان في المخزون. حدّث القائمة ثم أعد المحاولة."
+            )
+        case "POS_INVENTORY_UNIT_UNAVAILABLE":
+            return Language.get(
+                "POS_ExactUnitRefreshNeeded",
+                alter: "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى."
+            )
         default:
             break
         }
@@ -1324,10 +1352,8 @@ final class POSFastSellViewModel: ObservableObject {
                         ringTag: failure.ringTag
                     ) {
                         self.invalidateSubmissionCommand()
-                        self.submitError = Language.get("POS_ExactUnitRefreshNeeded", alter: "تغيّر حيوان واحد أو أكثر من الحيوانات المحددة أو لم يعد متاحًا. اختر سجلات الحيوانات مرة أخرى.")
-                    } else {
-                        self.submitError = self.localizedSubmitFailure(failure)
                     }
+                    self.submitError = self.localizedSubmitFailure(failure)
                     return
                 }
 

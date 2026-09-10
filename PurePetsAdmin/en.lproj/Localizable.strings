@@ -4023,6 +4023,8 @@
 "POS_ExactUnitLoadFailed" = "Couldn’t load available animal records.";
 "POS_ExactUnitAlreadySelected" = "Already selected";
 "POS_ExactUnitRefreshNeeded" = "One or more selected animals changed or are no longer available. Select the animal records again.";
+"POS_ExactUnitBranchMismatch" = "The selected animal belongs to another branch and cannot be sold from this branch. Select an animal available in your current branch.";
+"POS_ExactUnitNotFound" = "The animal record was not found in inventory. Refresh the catalog and try again.";
 "POS_Submitting" = "Completing sale…";
 "POS_Submit" = "Complete sale";
 "POS_Order_Submitted" = "Sale completed";
@@ -5027,7 +5029,7 @@
 
 /* Inventory & Live Pets Localization */
 "LivePets" = "Live Pets";
-"Total_Items_Format" = "%d registered items";
+"Total_Items_Format" = "%@ registered items";
 "Inventory_Live_Radar" = "Live Stock Radar • Real-time Sync";
 "Inventory_Valuation_Format" = "Total inventory valuation: %.2f QAR";
 "Inventory_Unpriced_Items_Format" = "%ld items are awaiting a selling price. Inventory valuation excludes them.";
@@ -5035,10 +5037,10 @@
 "LowStock" = "Low Stock";
 "OutOfStock" = "Out of Stock";
 "Offers" = "Offers";
-"InStock_Qty_Format" = "In stock (%d)";
-"LowStock_Qty_Format" = "Low stock (%d)";
+"InStock_Qty_Format" = "In stock (%@)";
+"LowStock_Qty_Format" = "Low stock (%@)";
 "Inventory_Available_Ratio" = "Availability: %.0f%%";
-"Inventory_Showing_Count" = "%d listed";
+"Inventory_Showing_Count" = "%@ listed";
 "Inventory_Search_Placeholder" = "Search by name, barcode, store, or ID...";
 "Condition_New" = "New";
 "Condition_Used" = "Used";
@@ -6756,19 +6758,31 @@
 "Specimen_Action_Center" = "Specimen Action Center";
 "Specimen_Action_Center_Sub" = "Holistic supervisory control & live operational studios";
 "Inventory_Studios_Section" = "Inventory Studios & Quality Control";
+"Record_Damage" = "Record Damaged Stock";
 "Damage_Studio_Desc" = "Record damage, wastage, or defect with instant stock write-down";
 "Damage_Badge" = "Loss & Waste";
+"Quarantine_Studio" = "Quarantine & Inspection Studio";
 "Quarantine_Studio_Desc" = "Segregate units for veterinary inspection or quarantine disposition";
 "Quarantine_Badge" = "QA & Quarantine";
+"Manage_Lots_FEFO" = "Manage Lots & Expiry (FEFO)";
 "Lots_Studio_Desc" = "Batch & expiry tracking with First-Expired-First-Out enforcement";
 "Lots_Badge" = "FEFO Lots";
 "Edit_Specimen" = "Edit Specimen";
 "Share_Specimen" = "Share Specimen";
+"MarkInStock" = "Enable Stock Availability";
+"MarkOutOfStock" = "Set as Out of Stock";
 "Stock_Currently_Out" = "Item unavailable for POS / catalog sales";
 "Stock_Currently_Active" = "Item active in POS & customer catalog";
+"Disabled_Status" = "Disabled";
+"Active_Status" = "Active";
 "Delete_Specimen_Guarded" = "Permanently Delete Specimen from Inventory";
 "Financial_Specs" = "Financial Specs";
 "Operational_Studios" = "Operational Inventory Studios";
+"Retail_Price" = "Retail Price:";
+"Wholesale_Price" = "Wholesale Price:";
+"Cost_Price" = "Cost Price:";
+"AdminCommandCenter_Switch_Action" = "Switch";
+"BranchContext_Switch_Action" = "Switch";
 
 /* ===================== Sovereign Session Restoration Gateway ===================== */
 "Restoring_Stage_Link_Title" = "Securing Encrypted Cloud Link";
@@ -6786,3 +6800,94 @@
 "CommandCenter_Enterprise_Security" = "Unified Enterprise Security Platform";
 "CommandCenter_Restoring_Gateway_Title" = "Sovereign Session Restoration Gateway";
 "CommandCenter_Restoring_Gateway_Sub" = "Connecting secure workstation to central core and syncing operational permissions.";
+"CommandCenter_Network_Offline" = "Network Offline";
+"CommandCenter_AutoDetect_Active" = "Auto-Detect Active";
+"Restoring_Network_Restored_AutoRetrying" = "Internet connection restored... Retrying automatically";
+"Restoring_Network_Monitoring_AutoRetry" = "Live Monitoring: Will resume immediately once online";
+"Restoring_Network_Online" = "Network Online";
+
+/* ===================== Selling Unit (PPQuantityGroupInspector) ===================== */
+"Edit_Selling_Unit" = "Selling Unit";
+"Group_Identity" = "Unit Identity & Specifications";
+"Group_Name_Ar" = "Unit Name (Arabic)";
+"Group_Name_En" = "Unit Name (English)";
+"Units_Per_Group_Count" = "Pieces in this Unit (Multiplier)";
+"Group_Barcode" = "Unit Barcode (Optional)";
+"Group_SKU" = "Unit SKU (Optional)";
+"Retail_Selling_Channel" = "Available for Retail Sale";
+"Retail_Selling_Price_QAR" = "Retail Selling Price (QAR)";
+"Default_Unit_For_Retail" = "Default Unit for Retail";
+"Wholesale_Selling_Channel" = "Available for Wholesale";
+"Wholesale_Selling_Price_QAR" = "Wholesale Selling Price (QAR)";
+"Default_Unit_For_Wholesale" = "Default Unit for Wholesale";
+"Unit_Active_Status" = "Active in Point of Sale (POS)";
+"Delete_Selling_Unit" = "Delete this Selling Unit";
+"Validation_Group_Units_Positive" = "Pieces per unit must be an integer greater than zero.";
+"Validation_Channel_Required" = "Please enable at least one sales channel (Retail or Wholesale).";
+"Validation_Retail_Price_Required" = "Please specify a valid retail selling price.";
+"Validation_Wholesale_Price_Required" = "Please specify a valid wholesale selling price.";
+"Unit_Single_Piece" = "1 piece";
+"Unit_Multiple_Pieces_Format" = "%@ pieces";
+"Unit_Archetypes_Title" = "Quick Packaging Presets";
+"Unit_Economics_Title" = "Unit Economics & Savings Analysis";
+"Unit_Per_Piece_Price" = "Price per individual piece in this unit";
+"Unit_Wholesale_Savings" = "Wholesale savings vs retail";
+"Unit_Wholesale_Warning_Higher" = "Warning: Wholesale price is higher than retail price!";
+"Unit_POS_Active_Sub" = "This unit will appear to cashiers upon barcode scan or selection";
+"Unit_POS_Disabled_Sub" = "Currently disabled; will not appear on POS checkout screens";
+"Unit_Save_Action" = "Save & Confirm Unit";
+"Unit_Physical_Breakdown" = "Physical Unit Multiplier";
+"Unit_Single_Base" = "Single Piece";
+"Unit_Pack_6" = "Pack / Bundle";
+"Unit_Half_Dozen" = "Half Dozen";
+"Unit_Full_Dozen" = "Full Dozen";
+"Unit_Carton_24" = "Master Carton";
+"Unit_Box_10" = "Box / Bag";
+"Unit_Kilogram" = "Kilogram";
+"Generate_SKU_Auto" = "Generate SKU";
+"Delete_Unit_Confirm_Title" = "Delete this selling unit?";
+"Delete_Unit_Confirm_Msg" = "This unit tier will be removed from this item and will no longer appear at checkout.";
+"Wholesale" = "Wholesale";
+"Barcode" = "Barcode";
+"Savings" = "Savings";
+"Retail" = "Retail";
+"Pieces" = "Pieces";
+"Identifiers" = "Identifiers";
+"e.g. Carton" = "e.g. Carton";
+
+/* Inventory Item Details & Actions */
+"ItemDetails" = "Item Details";
+"Weight" = "Weight & Specs";
+"StandardUnit" = "Standard Unit";
+"Wholesale_Price_Format" = "Wholesale: %.2f QAR";
+"Profit_Margin_Format" = "+%.2f QAR (%.0f%%)";
+"HiddenFromCatalog" = "Hidden";
+"ShowLess" = "Show Less";
+"ShowMore" = "Read More";
+"Edit" = "Edit";
+"EditFullDetails" = "Open Full Data Editor";
+"DeleteConfirm_Title" = "Confirm Item Deletion";
+"DeleteConfirm_Message" = "Are you sure you want to permanently delete this item from inventory?";
+"LivePet_EditBasicData" = "Edit Basic Data";
+
+/* Catalog Intake / Accessory Editor */
+"CatalogIntake_SKULabel" = "Product SKU";
+"CatalogIntake_SKUPlaceholder" = "e.g. PP-10023";
+"CatalogIntake_BarcodeLabel" = "Barcode";
+"CatalogIntake_BarcodePlaceholder" = "Scan or enter barcode";
+"Bilingual_BothComplete" = "Complete in both languages (Arabic & English)";
+"Bilingual_EnglishMissingAction" = "English missing • Tap to add";
+"Bilingual_ArabicMissingAction" = "Arabic required • Tap to add";
+"CatalogIntake_CostPrice" = "Cost price (QAR)";
+"Wholesale_Selling_Title" = "Wholesale";
+"Wholesale_Active_Hint" = "Enabled and available at POS for distributors and wholesale customers";
+"Wholesale_Inactive_Hint" = "Disabled (turn on to set wholesale price)";
+"Wholesale_Price_QAR" = "Default unit wholesale price (QAR)";
+"Selling_Units_Deck_Title" = "Selling Units & Bundles";
+"Add_Selling_Unit" = "Add Unit";
+"Selling_Units_Deck_Subtitle" = "Define selling sizes (single, pack, carton) with automatic stock deduction in base units.";
+"Default_Retail_Badge" = "Retail Default";
+"Default_Wholesale_Badge" = "Wholesale Default";
+"CatalogIntake_SizeLabel" = "Required Size";
+"Size_FreeSize" = "Free Size";
+

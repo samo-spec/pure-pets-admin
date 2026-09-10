@@ -547,12 +547,7 @@ public final class PPAdminNavigationFallback: NSObject {
         }
 
         // Global fallback via key window's top view controller
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive })
-            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
-              let topVC = topViewController(from: window.rootViewController) else {
+        guard let topVC = keyWindowTopViewController() else {
             return
         }
 
@@ -574,6 +569,18 @@ public final class PPAdminNavigationFallback: NSObject {
         popOrDismiss(from: nil)
     }
 
+    @objc
+    public static func keyWindowTopViewController() -> UIViewController? {
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+            ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first else {
+            return nil
+        }
+        return topViewController(from: window.rootViewController)
+    }
+
     @objc(topViewControllerFrom:)
     public static func topViewController(from root: UIViewController?) -> UIViewController? {
         if let presented = root?.presentedViewController {
@@ -585,6 +592,24 @@ public final class PPAdminNavigationFallback: NSObject {
         if let tabs = root as? UITabBarController {
             return topViewController(from: tabs.selectedViewController)
         }
+        if let children = root?.children, let lastChild = children.last {
+            return topViewController(from: lastChild)
+        }
         return root
+    }
+
+    @objc(presentOrPush:from:)
+    public static func presentOrPush(_ targetVC: UIViewController, from sourceVC: UIViewController? = nil) {
+        let fromVC = sourceVC ?? keyWindowTopViewController()
+        guard let fromVC = fromVC else { return }
+
+        if let nav = fromVC as? UINavigationController {
+            nav.pushViewController(targetVC, animated: true)
+        } else if let nav = fromVC.navigationController {
+            nav.pushViewController(targetVC, animated: true)
+        } else {
+            targetVC.modalPresentationStyle = .fullScreen
+            fromVC.present(targetVC, animated: true)
+        }
     }
 }

@@ -62,6 +62,13 @@ public struct PPInventoryActionMenuSheet: View {
         return PPBranchInventoryService.shared.availableStock(for: item.accessoryID, fallback: item.quantity)
     }
 
+    private var itemDisplayName: String {
+        if !Language.isRTL(), let nameEn = item.nameEn?.trimmingCharacters(in: .whitespacesAndNewlines), !nameEn.isEmpty {
+            return nameEn
+        }
+        return item.name
+    }
+
     private var stockTone: Color {
         let qty = displayQuantity
         if qty <= 0 || (item.noStock && !item.isLivePet) {
@@ -233,9 +240,11 @@ public struct PPInventoryActionMenuSheet: View {
                                     Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
                                         .font(PPBrandFont.bold(size: 14))
                                         .foregroundColor(AdminSurface.primaryText)
+                                        .multilineTextAlignment(.leading)
                                     Text(item.noStock ? Language.get("Stock_Currently_Out", alter: "الصنف غير متاح للبيع حالياً") : Language.get("Stock_Currently_Active", alter: "الصنف متاح في عمليات البيع والكاشير"))
                                         .font(AdminType.caption2)
                                         .foregroundColor(AdminSurface.secondaryText)
+                                        .multilineTextAlignment(.leading)
                                 }
 
                                 Spacer()
@@ -547,6 +556,7 @@ public struct PPInventoryActionMenuSheet: View {
                         Text(title)
                             .font(PPBrandFont.bold(size: 15))
                             .foregroundColor(AdminSurface.primaryText)
+                            .multilineTextAlignment(.leading)
                             .lineLimit(1)
 
                         Spacer()
@@ -562,6 +572,7 @@ public struct PPInventoryActionMenuSheet: View {
                     Text(subtitle)
                         .font(AdminType.caption)
                         .foregroundColor(AdminSurface.secondaryText)
+                        .multilineTextAlignment(.leading)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -638,9 +649,10 @@ public struct PPInventoryActionMenuSheet: View {
                         .background(stockTone.opacity(0.12), in: Capsule())
                 }
 
-                Text(item.name)
+                Text(itemDisplayName)
                     .font(Font.custom("Beiruti-Bold", size: compact ? 16 : 18, relativeTo: .headline))
                     .foregroundColor(AdminSurface.primaryText)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(compact ? 2 : 3)
                     .fixedSize(horizontal: false, vertical: true)
 

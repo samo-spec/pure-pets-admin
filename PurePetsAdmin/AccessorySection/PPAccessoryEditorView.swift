@@ -3836,7 +3836,6 @@ struct PPAccessoryEditorScreen: View {
             ) { selectedBranch in
                 viewModel.selectedStoreID = selectedBranch.branchID
                 viewModel.selectedStoreName = selectedBranch.localizedName()
-                viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -5553,8 +5552,155 @@ private struct EditorPressStyle: ButtonStyle {
 
 // MARK: - Flagship Modal Pickers
 
+// MARK: - Flagship Modal Pickers: Sovereign Unit of Sale Architecture (NextGen V6)
+
+// MARK: - Smart Packaging Archetype Model
+
+private struct PPUnitArchetype: Identifiable, Hashable {
+    let id: String
+    let icon: String
+    let nameAr: String
+    let nameEn: String
+    let defaultMultiplier: Int
+    let badgeKey: String
+    let badgeFallback: String
+
+    static let allArchetypes: [PPUnitArchetype] = [
+        PPUnitArchetype(id: "single", icon: "cube.fill", nameAr: "حبة", nameEn: "Single", defaultMultiplier: 1, badgeKey: "Unit_Single_Base", badgeFallback: "قطعة مفردة"),
+        PPUnitArchetype(id: "pack6", icon: "shippingbox.fill", nameAr: "ربطة", nameEn: "Pack", defaultMultiplier: 6, badgeKey: "Unit_Pack_6", badgeFallback: "ربطة / باقة"),
+        PPUnitArchetype(id: "halfDozen", icon: "square.grid.2x2.fill", nameAr: "نصف درزن", nameEn: "Half Dozen", defaultMultiplier: 6, badgeKey: "Unit_Half_Dozen", badgeFallback: "نصف درزن"),
+        PPUnitArchetype(id: "dozen", icon: "square.grid.3x2.fill", nameAr: "درزن", nameEn: "Dozen", defaultMultiplier: 12, badgeKey: "Unit_Full_Dozen", badgeFallback: "درزن كامل"),
+        PPUnitArchetype(id: "carton", icon: "archivebox.fill", nameAr: "كرتون", nameEn: "Carton", defaultMultiplier: 24, badgeKey: "Unit_Carton_24", badgeFallback: "كرتون تجاري"),
+        PPUnitArchetype(id: "box10", icon: "tray.2.fill", nameAr: "صندوق", nameEn: "Box", defaultMultiplier: 10, badgeKey: "Unit_Box_10", badgeFallback: "صندوق / كيس"),
+        PPUnitArchetype(id: "kg", icon: "scalemass.fill", nameAr: "كيلو", nameEn: "Kg", defaultMultiplier: 1, badgeKey: "Unit_Kilogram", badgeFallback: "كيلوجرام")
+    ]
+}
+
+// MARK: - Unit Economics Analysis Helper
+
+private struct PPUnitEconomicsHelper {
+    let retailPrice: Double
+    let wholesalePrice: Double
+    let unitsPerGroup: Int
+
+    var pricePerPiece: Double? {
+        guard retailPrice > 0, unitsPerGroup > 0 else { return nil }
+        return retailPrice / Double(unitsPerGroup)
+    }
+
+    var wholesalePricePerPiece: Double? {
+        guard wholesalePrice > 0, unitsPerGroup > 0 else { return nil }
+        return wholesalePrice / Double(unitsPerGroup)
+    }
+
+    var wholesaleSavingsPercent: Double? {
+        guard retailPrice > 0, wholesalePrice > 0, wholesalePrice < retailPrice else { return nil }
+        return ((retailPrice - wholesalePrice) / retailPrice) * 100.0
+    }
+
+    var wholesaleSavingsAmount: Double? {
+        guard retailPrice > 0, wholesalePrice > 0, wholesalePrice < retailPrice else { return nil }
+        return retailPrice - wholesalePrice
+    }
+
+    var isWholesaleMoreExpensive: Bool {
+        retailPrice > 0 && wholesalePrice > retailPrice
+    }
+}
+
+// MARK: - Dynamic 3D Isometric Unit Packaging Sigil
+
+private struct PPIsometricPackageSigil: View {
+    let unitsCount: Int
+    let isCompact: Bool
+    @State private var isPulsing: Bool = false
+
+    var body: some View {
+        ZStack {
+            // Ambient Aura
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            AdminSurface.primary.opacity(0.18),
+                            AdminSurface.primary.opacity(0.04),
+                            Color.clear
+                        ],
+                        center: .center,
+                        startRadius: 8,
+                        endRadius: isCompact ? 44 : 70
+                    )
+                )
+                .frame(width: isCompact ? 76 : 124, height: isCompact ? 76 : 124)
+                .scaleEffect(isPulsing ? 1.06 : 0.94)
+
+            // Dynamic Box Icon Container
+            ZStack {
+                RoundedRectangle(cornerRadius: isCompact ? 16 : 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.surface,
+                                AdminSurface.control.opacity(0.6)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: isCompact ? 16 : 22, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        AdminSurface.primary.opacity(0.40),
+                                        AdminSurface.borderSubtle
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1.25
+                            )
+                    )
+                    .shadow(color: Color.black.opacity(0.05), radius: 8, y: 3)
+
+                VStack(spacing: isCompact ? 2 : 4) {
+                    Image(systemName: iconNameForCount(unitsCount))
+                        .font(.system(size: isCompact ? 22 : 34, weight: .semibold))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.8)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+
+                    Text(verbatim: "\(unitsCount)x")
+                        .font(Font.custom("Beiruti-Bold", size: isCompact ? 13 : 16))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+            }
+            .frame(width: isCompact ? 62 : 92, height: isCompact ? 62 : 92)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.6).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
+    }
+
+    private func iconNameForCount(_ count: Int) -> String {
+        if count <= 1 { return "cube.fill" }
+        if count <= 6 { return "shippingbox.fill" }
+        if count <= 12 { return "square.grid.3x2.fill" }
+        return "archivebox.fill"
+    }
+}
+
+// MARK: - Main Sovereign Unit Inspector Sheet
+
 struct PPQuantityGroupInspectorSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var group: PPQuantityGroupDraft
     let canManageWholesale: Bool
     let onSave: (PPQuantityGroupDraft) -> Void
@@ -5562,6 +5708,7 @@ struct PPQuantityGroupInspectorSheet: View {
 
     @State private var unitsText: String = "1"
     @State private var localErrorMessage: String? = nil
+    @State private var showDeleteConfirmation: Bool = false
 
     init(
         group: PPQuantityGroupDraft,
@@ -5576,71 +5723,377 @@ struct PPQuantityGroupInspectorSheet: View {
         self.onDelete = onDelete
     }
 
+    private var economics: PPUnitEconomicsHelper {
+        PPUnitEconomicsHelper(
+            retailPrice: group.retailPrice,
+            wholesalePrice: group.wholesalePrice,
+            unitsPerGroup: group.unitsPerGroup
+        )
+    }
+
     var body: some View {
-        NavigationView {
+        GeometryReader { proxy in
+            let isIPad = horizontalSizeClass == .regular || proxy.size.width >= 760
+
             ZStack {
                 AdminSurface.background
                     .ignoresSafeArea()
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        inspectorIdentityCard
-                        inspectorRetailCard
-                        if canManageWholesale {
-                            inspectorWholesaleCard
-                        }
-                        inspectorStatusCard
-
-                        if let err = localErrorMessage {
-                            Text(err)
-                                .font(AdminType.captionBold)
-                                .foregroundStyle(Color(uiColor: .systemRed))
-                                .padding(.horizontal, 8)
-                        }
-
-                        if let onDelete = onDelete {
-                            Button(role: .destructive) {
-                                onDelete()
-                                dismiss()
-                            } label: {
-                                HStack {
-                                    Image(systemName: "trash.fill")
-                                    Text(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"))
-                                }
-                                .font(AdminType.subheadlineBold)
-                                .foregroundStyle(Color(uiColor: .systemRed))
-                                .frame(maxWidth: .infinity)
-                                .padding(14)
-                                .background(Color(uiColor: .systemRed).opacity(0.12), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                            }
-                            .padding(.top, 8)
-                        }
-                    }
-                    .padding(16)
-                }
-                .navigationTitle(Language.get("Edit_Selling_Unit", alter: "وحدة البيع"))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(Language.get("Cancel", alter: "إلغاء")) {
-                            dismiss()
-                        }
-                    }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(Language.get("Done", alter: "تم")) {
-                            validateAndSave()
-                        }
-                        .font(AdminType.bodyBold)
-                    }
+                if isIPad {
+                    iPadQuantityGroupInspector(
+                        group: $group,
+                        unitsText: $unitsText,
+                        canManageWholesale: canManageWholesale,
+                        economics: economics,
+                        localErrorMessage: localErrorMessage,
+                        onSave: validateAndSave,
+                        onCancel: { dismiss() },
+                        onDelete: onDelete != nil ? { showDeleteConfirmation = true } : nil
+                    )
+                } else {
+                    iPhoneQuantityGroupInspector(
+                        group: $group,
+                        unitsText: $unitsText,
+                        canManageWholesale: canManageWholesale,
+                        economics: economics,
+                        localErrorMessage: localErrorMessage,
+                        onSave: validateAndSave,
+                        onCancel: { dismiss() },
+                        onDelete: onDelete != nil ? { showDeleteConfirmation = true } : nil
+                    )
                 }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .alert(
+            Language.get("Delete_Unit_Confirm_Title", alter: "هل أنت متأكد من حذف وحدة البيع هذه؟"),
+            isPresented: $showDeleteConfirmation
+        ) {
+            Button(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"), role: .destructive) {
+                onDelete?()
+                dismiss()
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get("Delete_Unit_Confirm_Msg", alter: "سيتم إلغاء هذه الوحدة من قائمة وحدات البيع لهذا الصنف ولن تتوفر في الكاشير."))
+        }
     }
 
-    private var inspectorIdentityCard: some View {
+    private func validateAndSave() {
+        if let parsed = Int(unitsText.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            group.unitsPerGroup = parsed
+        }
+        if group.unitsPerGroup < 1 {
+            withAnimation(.spring(response: 0.35)) {
+                localErrorMessage = Language.get("Validation_Group_Units_Positive", alter: "يجب أن تكون كمية المجموعة عدداً صحيحاً أكبر من صفر.")
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        if !group.retailEnabled && !group.wholesaleEnabled {
+            withAnimation(.spring(response: 0.35)) {
+                localErrorMessage = Language.get("Validation_Channel_Required", alter: "يرجى تفعيل قناة بيع واحدة على الأقل (تجزئة أو جملة).")
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        if group.retailEnabled && group.retailPrice <= 0 {
+            withAnimation(.spring(response: 0.35)) {
+                localErrorMessage = Language.get("Validation_Retail_Price_Required", alter: "يرجى تحديد سعر بيع التجزئة بدقة.")
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        if group.wholesaleEnabled && group.wholesalePrice <= 0 {
+            withAnimation(.spring(response: 0.35)) {
+                localErrorMessage = Language.get("Validation_Wholesale_Price_Required", alter: "يرجى تحديد سعر بيع الجملة بدقة.")
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            return
+        }
+        localErrorMessage = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        onSave(group)
+        dismiss()
+    }
+}
+
+// MARK: - iPhone Tactical Quantity Group Inspector
+
+private struct iPhoneQuantityGroupInspector: View {
+    @Binding var group: PPQuantityGroupDraft
+    @Binding var unitsText: String
+    let canManageWholesale: Bool
+    let economics: PPUnitEconomicsHelper
+    let localErrorMessage: String?
+    let onSave: () -> Void
+    let onCancel: () -> Void
+    let onDelete: (() -> Void)?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Sticky Navigation Header
+            navigationHeader
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    AdminSurface.surface
+                        .ignoresSafeArea(edges: .top)
+                        .shadow(color: Color.black.opacity(0.04), radius: 6, y: 2)
+                )
+
+            // Scrollable Content Runway
+            ScrollView {
+                VStack(spacing: 16) {
+                    // 1. Live Unit Summary Pill Deck
+                    liveUnitSummaryPill
+
+                    // 2. Smart Packaging Archetypes Carousel
+                    archetypesCarouselSection
+
+                    // 3. Bilingual Nomenclature Card
+                    identityBilingualCard
+
+                    // 4. Physical Multiplier & Packaging Matrix
+                    packagingMultiplierCard
+
+                    // 5. Barcode & SKU Identifiers Studio
+                    identifiersStudioCard
+
+                    // 6. Live Economics & Pricing Breakdown Radar
+                    if economics.pricePerPiece != nil {
+                        economicsRadarCard
+                    }
+
+                    // 7. Retail Sales Channel Card
+                    retailChannelCard
+
+                    // 8. Wholesale Sales Channel Card (if allowed)
+                    if canManageWholesale {
+                        wholesaleChannelCard
+                    }
+
+                    // 9. Point of Sale (POS) Operational Beacon
+                    posMasterBeaconCard
+
+                    // 10. Destructive Action (if allowed)
+                    if let onDelete = onDelete {
+                        Button(role: .destructive, action: onDelete) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "trash.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"))
+                                    .font(AdminType.subheadlineBold)
+                            }
+                            .foregroundStyle(Color(uiColor: .systemRed))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(Color(uiColor: .systemRed).opacity(0.08), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .strokeBorder(Color(uiColor: .systemRed).opacity(0.25), lineWidth: 1)
+                            )
+                        }
+                        .padding(.top, 4)
+                    }
+
+                    Spacer(minLength: 90)
+                }
+                .padding(16)
+            }
+
+            // Floating Tactile Save Dock
+            tactileSaveDock
+        }
+    }
+
+    // MARK: - Navigation Header
+
+    private var navigationHeader: some View {
+        HStack {
+            Button(Language.get("Cancel", alter: "إلغاء"), action: onCancel)
+                .font(AdminType.body)
+                .foregroundStyle(AdminCommandInk.secondary)
+
+            Spacer()
+
+            VStack(spacing: 2) {
+                Text(Language.get("Edit_Selling_Unit", alter: "وحدة البيع"))
+                    .font(Font.custom("Beiruti-Bold", size: 20))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                if !group.localizedName.isEmpty {
+                    Text(group.localizedName)
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.primary)
+                }
+            }
+
+            Spacer()
+
+            Button(action: onSave) {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                    Text(Language.get("Done", alter: "تم"))
+                        .font(AdminType.calloutBold)
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: Capsule()
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
+            }
+            .buttonStyle(EditorPressStyle())
+        }
+    }
+
+    // MARK: - 1. Live Unit Summary Pill Deck
+
+    private var liveUnitSummaryPill: some View {
+        HStack(spacing: 12) {
+            PPIsometricPackageSigil(unitsCount: group.unitsPerGroup, isCompact: true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(group.localizedName.isEmpty ? Language.get("Edit_Selling_Unit", alter: "وحدة البيع") : group.localizedName)
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                HStack(spacing: 6) {
+                    Label(
+                        group.unitsPerGroup == 1
+                            ? Language.get("Unit_Single_Base", alter: "قطعة مفردة")
+                            : String(format: Language.get("Unit_Multiple_Pieces_Format", alter: "%@ قطع"), group.unitsPerGroup.englishDigits),
+                        systemImage: "equal.circle.fill"
+                    )
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primary)
+
+                    if group.retailEnabled && group.retailPrice > 0 {
+                        Text("•")
+                            .foregroundStyle(AdminCommandInk.tertiary)
+                        Text(verbatim: "\(group.retailPriceText) ر.ق")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(Color(uiColor: .ppSuccess))
+                    }
+                }
+            }
+
+            Spacer()
+
+            // Status Badges
+            VStack(alignment: .trailing, spacing: 4) {
+                if group.active {
+                    Text(verbatim: "POS")
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+                }
+                if group.defaultForRetail {
+                    HStack(spacing: 3) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 9))
+                        Text(Language.get("Default", alter: "افتراضي"))
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(Color(red: 217/255, green: 119/255, blue: 6/255))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color(red: 251/255, green: 191/255, blue: 36/255).opacity(0.18), in: Capsule())
+                }
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    // MARK: - 2. Smart Packaging Archetypes Carousel
+
+    private var archetypesCarouselSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(Language.get("Unit_Archetypes_Title", alter: "أنماط التعبئة والتغليف السريعة"), systemImage: "sparkles")
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminCommandInk.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(PPUnitArchetype.allArchetypes) { archetype in
+                        let isSelected = group.unitsPerGroup == archetype.defaultMultiplier &&
+                            (group.nameAr == archetype.nameAr || group.nameEn == archetype.nameEn)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                group.nameAr = archetype.nameAr
+                                group.nameEn = archetype.nameEn
+                                group.unitsPerGroup = archetype.defaultMultiplier
+                                unitsText = archetype.defaultMultiplier.englishDigits
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: archetype.icon)
+                                    .font(.system(size: 13, weight: .bold))
+                                    .foregroundStyle(isSelected ? .white : AdminSurface.primary)
+
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(Language.isRTL() ? archetype.nameAr : archetype.nameEn)
+                                        .font(AdminType.captionBold)
+                                        .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
+
+                                    Text(verbatim: "\(archetype.defaultMultiplier)x")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(isSelected ? .white.opacity(0.85) : AdminCommandInk.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                isSelected
+                                    ? LinearGradient(
+                                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [AdminSurface.surface, AdminSurface.surface],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(isSelected ? Color.clear : AdminSurface.borderSubtle, lineWidth: 1)
+                            )
+                            .shadow(color: isSelected ? AdminSurface.primary.opacity(0.25) : Color.black.opacity(0.02), radius: 4, y: 1)
+                        }
+                        .buttonStyle(EditorPressStyle())
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+    }
+
+    // MARK: - 3. Bilingual Nomenclature Card
+
+    private var identityBilingualCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(Language.get("Group_Identity", alter: "اسم الوحدة ومواصفاتها"), systemImage: "cube.box.fill")
+            Label(Language.get("Group_Identity", alter: "اسم ومواصفات وحدة البيع"), systemImage: "pencil.line")
                 .font(AdminType.headline)
                 .foregroundStyle(AdminSurface.primaryText)
 
@@ -5649,6 +6102,7 @@ struct PPQuantityGroupInspectorSheet: View {
                     Text(Language.get("Group_Name_Ar", alter: "اسم الوحدة (عربي)"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
+
                     TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
                         .font(AdminType.body)
                         .environment(\.layoutDirection, .rightToLeft)
@@ -5657,10 +6111,12 @@ struct PPQuantityGroupInspectorSheet: View {
                         .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .forceKeyboardLanguage(.arabic)
                 }
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(Language.get("Group_Name_En", alter: "اسم الوحدة (إنجليزي)"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
+
                     TextField("e.g. Carton", text: $group.nameEn)
                         .font(AdminType.body)
                         .environment(\.layoutDirection, .leftToRight)
@@ -5671,181 +6127,1050 @@ struct PPQuantityGroupInspectorSheet: View {
                         .forceKeyboardLanguage(.english)
                 }
             }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+        )
+    }
 
-            // Units Count Stepper
-            VStack(alignment: .leading, spacing: 4) {
-                Text(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"))
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
+    // MARK: - 4. Physical Multiplier & Packaging Matrix
 
-                HStack(spacing: 12) {
-                    Button {
-                        let current = Int(unitsText) ?? 1
-                        if current > 1 {
-                            unitsText = (current - 1).englishDigits
-                            group.unitsPerGroup = current - 1
-                        }
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
+    private var packagingMultiplierCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"), systemImage: "square.grid.3x3.fill")
+                    .font(AdminType.headline)
+                    .foregroundStyle(AdminSurface.primaryText)
 
-                    TextField("1", text: $unitsText)
-                        .font(PPBrandFont.bold(size: 20))
-                        .multilineTextAlignment(.center)
-                        .englishNumericInput(text: $unitsText, allowsDecimal: false)
-                        .padding(10)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .onChange(of: unitsText) { newVal in
-                            if let parsed = Int(newVal), parsed >= 1 {
-                                group.unitsPerGroup = parsed
-                            }
-                        }
+                Spacer()
 
-                    Button {
-                        let current = Int(unitsText) ?? 1
-                        unitsText = (current + 1).englishDigits
-                        group.unitsPerGroup = current + 1
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 16, weight: .bold))
-                            .frame(width: 44, height: 44)
-                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
+                Text(verbatim: "\(group.unitsPerGroup)x")
+                    .font(Font.custom("Beiruti-Bold", size: 18))
+                    .foregroundStyle(AdminSurface.primary)
             }
 
-            // Barcode & SKU
+            // Tactile Physical Stepper Row
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    HStack {
-                        Image(systemName: "barcode.viewfinder")
-                            .foregroundStyle(AdminCommandInk.secondary)
-                        TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
-                            .font(AdminType.body)
-                            .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+                Button {
+                    let current = Int(unitsText) ?? 1
+                    if current > 1 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        unitsText = (current - 1).englishDigits
+                        group.unitsPerGroup = current - 1
                     }
-                    .padding(12)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: 48, height: 48)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(AdminSurface.primaryText)
                 }
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(Language.get("Group_SKU", alter: "رمز الصنف SKU (اختياري)"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    TextField("SKU", text: $group.sku)
-                        .font(AdminType.body)
-                        .padding(12)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .buttonStyle(EditorPressStyle())
+
+                TextField("1", text: $unitsText)
+                    .font(PPBrandFont.bold(size: 24))
+                    .multilineTextAlignment(.center)
+                    .englishNumericInput(text: $unitsText, allowsDecimal: false)
+                    .padding(10)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .onChange(of: unitsText) { newVal in
+                        if let parsed = Int(newVal), parsed >= 1 {
+                            group.unitsPerGroup = parsed
+                        }
+                    }
+
+                Button {
+                    let current = Int(unitsText) ?? 1
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    unitsText = (current + 1).englishDigits
+                    group.unitsPerGroup = current + 1
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .bold))
+                        .frame(width: 48, height: 48)
+                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .buttonStyle(EditorPressStyle())
+            }
+
+            // Quick Jump Multiplier Pills
+            HStack(spacing: 8) {
+                ForEach(Self.jumpMultipliers, id: \.self) { count in
+                    multiplierJumpPill(for: count)
                 }
             }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+        )
     }
 
-    private var inspectorRetailCard: some View {
+    private static let jumpMultipliers: [Int] = [1, 6, 12, 24, 50, 100]
+
+    @ViewBuilder
+    private func multiplierJumpPill(for count: Int) -> some View {
+        let isCurrent = group.unitsPerGroup == count
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.3)) {
+                group.unitsPerGroup = count
+                unitsText = count.englishDigits
+            }
+        } label: {
+            Text(verbatim: "\(count)")
+                .font(AdminType.captionBold)
+                .foregroundStyle(isCurrent ? Color.white : AdminCommandInk.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isCurrent ? AdminSurface.primary : AdminSurface.control)
+                )
+        }
+        .buttonStyle(EditorPressStyle())
+    }
+
+    // MARK: - 5. Barcode & SKU Identifiers Studio
+
+    private var identifiersStudioCard: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Label(Language.get("Identifiers", alter: "بيانات التعريف والباركود"), systemImage: "barcode.viewfinder")
+                .font(AdminType.headline)
+                .foregroundStyle(AdminSurface.primaryText)
+
+            // Barcode Field with Integrated Camera Scanner
+            VStack(alignment: .leading, spacing: 4) {
+                Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminCommandInk.secondary)
+
+                HStack(spacing: 8) {
+                    Image(systemName: "barcode")
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                    TextField(Language.get("Barcode", alter: "امسح أو اكتب الباركود"), text: $group.barcode)
+                        .font(AdminType.body.monospaced())
+                        .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+
+                    if !group.barcode.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = group.barcode
+                            UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 13))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+
+                        Button {
+                            group.barcode = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+                    }
+
+                    // Live Camera Scanner Button
+                    AdminBarcodeScanButton { scannedCode in
+                        group.barcode = scannedCode
+                    }
+                }
+                .padding(10)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            // SKU Field with Quick Auto-Generator
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(Language.get("Group_SKU", alter: "رمز الصنف SKU (اختياري)"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                    Spacer()
+
+                    if group.sku.isEmpty {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            let prefix = group.nameEn.filter { $0.isLetter }.prefix(4).uppercased()
+                            let tag = prefix.isEmpty ? "UNIT" : String(prefix)
+                            group.sku = "\(tag)-\(group.unitsPerGroup)X-\(Int.random(in: 100...999))"
+                        } label: {
+                            Label(Language.get("Generate_SKU_Auto", alter: "توليد SKU"), systemImage: "wand.and.stars")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                        }
+                    }
+                }
+
+                HStack {
+                    Image(systemName: "tag.fill")
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                    TextField("SKU", text: $group.sku)
+                        .font(AdminType.body.monospaced())
+                        .keyboardType(.asciiCapable)
+                        .forceKeyboardLanguage(.english)
+
+                    if !group.sku.isEmpty {
+                        Button {
+                            group.sku = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(AdminCommandInk.tertiary)
+                        }
+                    }
+                }
+                .padding(12)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+        )
+    }
+
+    // MARK: - 6. Live Economics Radar Card
+
+    private var economicsRadarCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(Language.get("Unit_Economics_Title", alter: "تحليل التكلفة والوفورات للوحدة"), systemImage: "chart.xyaxis.line")
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(AdminSurface.primary)
+
+            HStack(spacing: 12) {
+                // Per-Piece Breakdown Pill
+                if let perPiece = economics.pricePerPiece {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Unit_Per_Piece_Price", alter: "سعر القطعة الواحدة في هذه الوحدة"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        Text(verbatim: String(format: "%.2f ر.ق / قطعة", perPiece))
+                            .font(PPBrandFont.bold(size: 16))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(AdminSurface.control.opacity(0.8), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                // Wholesale Savings Pill
+                if let savings = economics.wholesaleSavingsPercent, savings > 0 {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Unit_Wholesale_Savings", alter: "وفر الجملة مقارنة بالتجزئة"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+
+                        Text(verbatim: String(format: "%.0f%% وفر (%.2f ر.ق)", savings, economics.wholesaleSavingsAmount ?? 0))
+                            .font(PPBrandFont.bold(size: 15))
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(Color(uiColor: .systemTeal).opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+
+            // Warning if wholesale is higher than retail
+            if economics.isWholesaleMoreExpensive {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                    Text(Language.get("Unit_Wholesale_Warning_Higher", alter: "تنبيه: سعر الجملة أعلى من سعر التجزئة!"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(Color(uiColor: .ppWarning))
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .background(AdminSurface.primarySoft.opacity(0.35), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    // MARK: - 7. Retail Sales Channel Card
+
+    private var retailChannelCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
             Toggle(isOn: $group.retailEnabled) {
-                Label(Language.get("Retail_Selling_Channel", alter: "متاح للبيع بالتجزئة (قطاعي)"), systemImage: "cart.fill")
-                    .font(AdminType.headline)
-                    .foregroundStyle(AdminSurface.primaryText)
+                HStack(spacing: 8) {
+                    Image(systemName: "cart.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(AdminSurface.primary)
+                    Text(Language.get("Retail_Selling_Channel", alter: "متاح للبيع بالتجزئة (قطاعي)"))
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
             }
             .tint(AdminSurface.primary)
 
             if group.retailEnabled {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(Language.get("Retail_Selling_Price_QAR", alter: "سعر بيع التجزئة للوحدة (ر.ق)"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
-                    TextField("0.00", text: $group.retailPriceText)
-                        .font(PPBrandFont.bold(size: 18))
-                        .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
-                        .padding(12)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    HStack {
+                        TextField("0.00", text: $group.retailPriceText)
+                            .font(PPBrandFont.bold(size: 22))
+                            .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
+
+                        Text(verbatim: "ر.ق")
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(12)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
 
                 Toggle(isOn: $group.defaultForRetail) {
-                    Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية عند البيع بالتجزئة"))
-                        .font(AdminType.subheadline)
-                        .foregroundStyle(AdminSurface.primaryText)
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(red: 217/255, green: 119/255, blue: 6/255))
+                        Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية عند البيع بالتجزئة"))
+                            .font(AdminType.subheadline)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
                 }
                 .tint(AdminSurface.primary)
             }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(group.retailEnabled ? AdminSurface.primary.opacity(0.3) : AdminSurface.borderSubtle, lineWidth: 1)
+        )
     }
 
-    private var inspectorWholesaleCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    // MARK: - 8. Wholesale Sales Channel Card
+
+    private var wholesaleChannelCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
             Toggle(isOn: $group.wholesaleEnabled) {
-                Label(Language.get("Wholesale_Selling_Channel", alter: "متاح للبيع بالجملة"), systemImage: "shippingbox.fill")
-                    .font(AdminType.headline)
-                    .foregroundStyle(AdminSurface.primaryText)
+                HStack(spacing: 8) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color(uiColor: .systemTeal))
+                    Text(Language.get("Wholesale_Selling_Channel", alter: "متاح للبيع بالجملة"))
+                        .font(AdminType.headline)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
             }
             .tint(Color(uiColor: .systemTeal))
 
             if group.wholesaleEnabled {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text(Language.get("Wholesale_Selling_Price_QAR", alter: "سعر بيع الجملة للوحدة (ر.ق)"))
                         .font(AdminType.caption2Bold)
                         .foregroundStyle(AdminCommandInk.secondary)
-                    TextField("0.00", text: $group.wholesalePriceText)
-                        .font(PPBrandFont.bold(size: 18))
-                        .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
-                        .padding(12)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    HStack {
+                        TextField("0.00", text: $group.wholesalePriceText)
+                            .font(PPBrandFont.bold(size: 22))
+                            .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
+
+                        Text(verbatim: "ر.ق")
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(12)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
 
                 Toggle(isOn: $group.defaultForWholesale) {
-                    Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية عند البيع بالجملة"))
-                        .font(AdminType.subheadline)
-                        .foregroundStyle(AdminSurface.primaryText)
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                        Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية عند البيع بالجملة"))
+                            .font(AdminType.subheadline)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
                 }
                 .tint(Color(uiColor: .systemTeal))
             }
         }
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(group.wholesaleEnabled ? Color(uiColor: .systemTeal).opacity(0.3) : AdminSurface.borderSubtle, lineWidth: 1)
+        )
     }
 
-    private var inspectorStatusCard: some View {
-        Toggle(isOn: $group.active) {
-            Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع"))
-                .font(AdminType.subheadline)
-                .foregroundStyle(AdminSurface.primaryText)
+    // MARK: - 9. Point of Sale (POS) Operational Beacon
+
+    private var posMasterBeaconCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: $group.active) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(group.active ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                        .frame(width: 10, height: 10)
+                        .shadow(color: (group.active ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.6), radius: 4)
+
+                    Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+            }
+            .tint(Color(uiColor: .ppSuccess))
+
+            Text(group.active
+                ? Language.get("Unit_POS_Active_Sub", alter: "تظهر هذه الوحدة لموظفي الكاشير عند مسح الباركود أو اختيار الصنف")
+                : Language.get("Unit_POS_Disabled_Sub", alter: "هذه الوحدة معطلة حالياً ولن تظهر على شاشات نقاط البيع"))
+                .font(AdminType.caption2)
+                .foregroundStyle(AdminCommandInk.secondary)
         }
-        .tint(Color(uiColor: .ppSuccess))
         .padding(16)
         .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+        )
     }
 
-    private func validateAndSave() {
-        if group.unitsPerGroup < 1 {
-            localErrorMessage = Language.get("Validation_Group_Units_Positive", alter: "يجب أن تكون كمية المجموعة عدداً صحيحاً أكبر من صفر.")
-            return
+    // MARK: - Floating Save Dock
+
+    private var tactileSaveDock: some View {
+        VStack(spacing: 8) {
+            if let errorText = localErrorMessage {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.octagon.fill")
+                        .foregroundStyle(Color(uiColor: .systemRed))
+                    Text(errorText)
+                        .font(AdminType.captionBold)
+                        .foregroundStyle(Color(uiColor: .systemRed))
+                        .lineLimit(2)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Color(uiColor: .systemRed).opacity(0.12), in: Capsule())
+                .transition(.scale.combined(with: .opacity))
+            }
+
+            Button(action: onSave) {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 17, weight: .bold))
+                    Text(Language.get("Unit_Save_Action", alter: "حفظ واعتماد وحدة البيع"))
+                        .font(PPBrandFont.bold(size: 16))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(
+                    LinearGradient(
+                        colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+                .shadow(color: AdminSurface.primary.opacity(0.35), radius: 10, y: 4)
+            }
+            .buttonStyle(EditorPressStyle())
         }
-        if !group.retailEnabled && !group.wholesaleEnabled {
-            localErrorMessage = Language.get("Validation_Channel_Required", alter: "يرجى تفعيل قناة بيع واحدة على الأقل (تجزئة أو جملة).")
-            return
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 16)
+        .background(
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .ignoresSafeArea(edges: .bottom)
+                .overlay(alignment: .top) {
+                    Divider().background(AdminSurface.borderSubtle)
+                }
+        )
+    }
+}
+
+// MARK: - iPad Spatial Command Quantity Group Inspector
+
+private struct iPadQuantityGroupInspector: View {
+    @Binding var group: PPQuantityGroupDraft
+    @Binding var unitsText: String
+    let canManageWholesale: Bool
+    let economics: PPUnitEconomicsHelper
+    let localErrorMessage: String?
+    let onSave: () -> Void
+    let onCancel: () -> Void
+    let onDelete: (() -> Void)?
+
+    var body: some View {
+        ZStack {
+            // Centered High-Grade Floating Modal Console
+            HStack(spacing: 28) {
+                // Leading Pane: Live Commercial Vitrine & Unit Radar
+                unitCommercialVitrine
+                    .frame(width: 320)
+
+                // Divider Line
+                Rectangle()
+                    .fill(AdminSurface.hairline)
+                    .frame(width: 1)
+                    .padding(.vertical, 20)
+
+                // Trailing Pane: Interactive Configuration Deck
+                unitConfigurationDeck
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(28)
+            .background(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .fill(AdminSurface.surface)
+                    .shadow(color: Color.black.opacity(0.08), radius: 32, x: 0, y: 14)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+            )
+            .frame(maxWidth: 900, maxHeight: 720)
+            .padding(24)
         }
-        if group.retailEnabled && group.retailPrice <= 0 {
-            localErrorMessage = Language.get("Validation_Retail_Price_Required", alter: "يرجى تحديد سعر بيع التجزئة بدقة.")
-            return
+    }
+
+    // MARK: - Leading Pane: Unit Commercial Vitrine
+
+    private var unitCommercialVitrine: some View {
+        VStack(spacing: 16) {
+            // Packaging Sigil
+            PPIsometricPackageSigil(unitsCount: group.unitsPerGroup, isCompact: false)
+                .padding(.top, 8)
+
+            // Brand Typography
+            VStack(spacing: 4) {
+                Text(group.localizedName.isEmpty ? Language.get("Edit_Selling_Unit", alter: "وحدة البيع") : group.localizedName)
+                    .font(Font.custom("Beiruti-Bold", size: 24))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+
+                if !group.nameEn.isEmpty {
+                    Text(group.nameEn)
+                        .font(AdminType.callout.monospaced())
+                        .foregroundStyle(AdminCommandInk.secondary)
+                }
+            }
+
+            // Physical Multiplier Formula Pill
+            HStack(spacing: 6) {
+                Image(systemName: "equal.circle.fill")
+                    .foregroundStyle(AdminSurface.primary)
+                Text(verbatim: "1 \(group.localizedName) = \(group.unitsPerGroup) \(Language.get("Pieces", alter: "حبات"))")
+                    .font(AdminType.captionBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(AdminSurface.control, in: Capsule())
+
+            Divider()
+                .padding(.horizontal, 16)
+
+            // Economics Matrix
+            VStack(spacing: 10) {
+                if let perPiece = economics.pricePerPiece {
+                    HStack {
+                        Text(Language.get("Unit_Per_Piece_Price", alter: "سعر الحبة:"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Spacer()
+                        Text(verbatim: String(format: "%.2f ر.ق", perPiece))
+                            .font(PPBrandFont.bold(size: 15))
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                }
+
+                if group.retailEnabled && group.retailPrice > 0 {
+                    HStack {
+                        Text(Language.get("Retail", alter: "التجزئة:"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Spacer()
+                        Text(verbatim: "\(group.retailPriceText) ر.ق")
+                            .font(PPBrandFont.bold(size: 15))
+                            .foregroundStyle(Color(uiColor: .ppSuccess))
+                    }
+                }
+
+                if group.wholesaleEnabled && group.wholesalePrice > 0 {
+                    HStack {
+                        Text(Language.get("Wholesale", alter: "الجملة:"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                        Spacer()
+                        Text(verbatim: "\(group.wholesalePriceText) ر.ق")
+                            .font(PPBrandFont.bold(size: 15))
+                            .foregroundStyle(Color(uiColor: .systemTeal))
+                    }
+
+                    if let savings = economics.wholesaleSavingsPercent, savings > 0 {
+                        HStack {
+                            Text(Language.get("Savings", alter: "وفر الجملة:"))
+                                .font(AdminType.caption2)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                            Spacer()
+                            Text(verbatim: String(format: "%.0f%%", savings))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(Color(uiColor: .systemTeal))
+                        }
+                    }
+                }
+            }
+            .padding(14)
+            .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+            Spacer()
+
+            // Channels Presence Matrix
+            HStack(spacing: 8) {
+                // POS Channel Pill
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(group.active ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                        .frame(width: 7, height: 7)
+                    Text(verbatim: "POS")
+                        .font(AdminType.caption2Bold)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background((group.active ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning)).opacity(0.12), in: Capsule())
+
+                // Retail Default Pill
+                if group.retailEnabled {
+                    HStack(spacing: 4) {
+                        Image(systemName: group.defaultForRetail ? "crown.fill" : "cart.fill")
+                            .font(.system(size: 9))
+                        Text(group.defaultForRetail ? Language.get("Default", alter: "افتراضي") : Language.get("Retail", alter: "تجزئة"))
+                            .font(AdminType.caption2)
+                    }
+                    .foregroundStyle(AdminSurface.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.primary.opacity(0.10), in: Capsule())
+                }
+
+                // Wholesale Default Pill
+                if group.wholesaleEnabled {
+                    HStack(spacing: 4) {
+                        Image(systemName: group.defaultForWholesale ? "crown.fill" : "shippingbox.fill")
+                            .font(.system(size: 9))
+                        Text(group.defaultForWholesale ? Language.get("Default", alter: "افتراضي") : Language.get("Wholesale", alter: "جملة"))
+                            .font(AdminType.caption2)
+                    }
+                    .foregroundStyle(Color(uiColor: .systemTeal))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(Color(uiColor: .systemTeal).opacity(0.12), in: Capsule())
+                }
+            }
+
+            // Monospace Barcode Chip
+            if !group.barcode.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "barcode")
+                        .font(.system(size: 11))
+                    Text(group.barcode)
+                        .font(AdminType.caption2.monospaced())
+                }
+                .foregroundStyle(AdminCommandInk.tertiary)
+            }
         }
-        if group.wholesaleEnabled && group.wholesalePrice <= 0 {
-            localErrorMessage = Language.get("Validation_Wholesale_Price_Required", alter: "يرجى تحديد سعر بيع الجملة بدقة.")
-            return
+        .padding(8)
+    }
+
+    // MARK: - Trailing Pane: Configuration Deck
+
+    private var unitConfigurationDeck: some View {
+        VStack(spacing: 12) {
+            // Top Bar
+            HStack {
+                Text(Language.get("Edit_Selling_Unit", alter: "وحدة البيع"))
+                    .font(Font.custom("Beiruti-Bold", size: 22))
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Spacer()
+
+                Button(Language.get("Cancel", alter: "إلغاء"), action: onCancel)
+                    .font(AdminType.callout)
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .keyboardShortcut(.escape, modifiers: [])
+
+                Button(action: onSave) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                        Text(Language.get("Unit_Save_Action", alter: "حفظ واعتماد (⌘S)"))
+                            .font(AdminType.calloutBold)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(
+                        LinearGradient(
+                            colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                }
+                .buttonStyle(EditorPressStyle())
+                .keyboardShortcut("s", modifiers: .command)
+            }
+
+            Divider()
+
+            // Scrollable Settings
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Archetypes Row
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(Language.get("Unit_Archetypes_Title", alter: "أنماط التعبئة والتغليف السريعة"), systemImage: "sparkles")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(PPUnitArchetype.allArchetypes) { archetype in
+                                    let isSelected = group.unitsPerGroup == archetype.defaultMultiplier &&
+                                        (group.nameAr == archetype.nameAr || group.nameEn == archetype.nameEn)
+
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        withAnimation(.spring(response: 0.3)) {
+                                            group.nameAr = archetype.nameAr
+                                            group.nameEn = archetype.nameEn
+                                            group.unitsPerGroup = archetype.defaultMultiplier
+                                            unitsText = archetype.defaultMultiplier.englishDigits
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: archetype.icon)
+                                                .font(.system(size: 12, weight: .bold))
+                                            Text(Language.isRTL() ? archetype.nameAr : archetype.nameEn)
+                                                .font(AdminType.captionBold)
+                                            Text(verbatim: "\(archetype.defaultMultiplier)x")
+                                                .font(.system(size: 10))
+                                                .opacity(0.85)
+                                        }
+                                        .foregroundStyle(isSelected ? .white : AdminSurface.primaryText)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 6)
+                                        .background(isSelected ? AdminSurface.primary : AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    }
+                                    .buttonStyle(EditorPressStyle())
+                                }
+                            }
+                        }
+                    }
+
+                    // Names Row
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Language.get("Group_Name_Ar", alter: "اسم الوحدة (عربي)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            TextField(Language.get("e.g. Carton", alter: "مثال: كرتون"), text: $group.nameAr)
+                                .font(AdminType.body)
+                                .environment(\.layoutDirection, .rightToLeft)
+                                .padding(10)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .forceKeyboardLanguage(.arabic)
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Language.get("Group_Name_En", alter: "اسم الوحدة (إنجليزي)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            TextField("e.g. Carton", text: $group.nameEn)
+                                .font(AdminType.body)
+                                .environment(\.layoutDirection, .leftToRight)
+                                .padding(10)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .forceKeyboardLanguage(.english)
+                        }
+                    }
+
+                    // Multiplier Row + Jump Matrix
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(Language.get("Units_Per_Group_Count", alter: "عدد الحبات في هذه الوحدة (القطع الأساسية)"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+
+                        HStack(spacing: 8) {
+                            Button {
+                                let current = Int(unitsText) ?? 1
+                                if current > 1 {
+                                    unitsText = (current - 1).englishDigits
+                                    group.unitsPerGroup = current - 1
+                                }
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .frame(width: 38, height: 38)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(EditorPressStyle())
+
+                            TextField("1", text: $unitsText)
+                                .font(PPBrandFont.bold(size: 20))
+                                .multilineTextAlignment(.center)
+                                .frame(width: 70)
+                                .englishNumericInput(text: $unitsText, allowsDecimal: false)
+                                .padding(8)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                .onChange(of: unitsText) { newVal in
+                                    if let parsed = Int(newVal), parsed >= 1 {
+                                        group.unitsPerGroup = parsed
+                                    }
+                                }
+
+                            Button {
+                                let current = Int(unitsText) ?? 1
+                                unitsText = (current + 1).englishDigits
+                                group.unitsPerGroup = current + 1
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .frame(width: 38, height: 38)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            }
+                            .buttonStyle(EditorPressStyle())
+
+                            Spacer()
+
+                            // Jump pills
+                            HStack(spacing: 6) {
+                                ForEach(Self.jumpMultipliers, id: \.self) { count in
+                                    ipadMultiplierJumpPill(for: count)
+                                }
+                            }
+                        }
+                    }
+
+                    // Barcode & SKU Row
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(Language.get("Group_Barcode", alter: "باركود المجموعة (اختياري)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            HStack(spacing: 6) {
+                                Image(systemName: "barcode")
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                TextField(Language.get("Barcode", alter: "الباركود"), text: $group.barcode)
+                                    .font(AdminType.body.monospaced())
+                                    .englishNumericInput(text: $group.barcode, allowsDecimal: false)
+
+                                AdminBarcodeScanButton { scannedCode in
+                                    group.barcode = scannedCode
+                                }
+                            }
+                            .padding(8)
+                            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(Language.get("Group_SKU", alter: "رمز الصنف SKU"))
+                                    .font(AdminType.caption2Bold)
+                                    .foregroundStyle(AdminCommandInk.secondary)
+                                Spacer()
+                                if group.sku.isEmpty {
+                                    Button {
+                                        let prefix = group.nameEn.filter { $0.isLetter }.prefix(4).uppercased()
+                                        let tag = prefix.isEmpty ? "UNIT" : String(prefix)
+                                        group.sku = "\(tag)-\(group.unitsPerGroup)X-\(Int.random(in: 100...999))"
+                                    } label: {
+                                        Text(Language.get("Generate_SKU_Auto", alter: "توليد"))
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(AdminSurface.primary)
+                                    }
+                                }
+                            }
+
+                            TextField("SKU", text: $group.sku)
+                                .font(AdminType.body.monospaced())
+                                .padding(10)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                    }
+
+                    // Channels Section
+                    HStack(alignment: .top, spacing: 12) {
+                        // Retail Channel Card
+                        VStack(alignment: .leading, spacing: 10) {
+                            Toggle(isOn: $group.retailEnabled) {
+                                Label(Language.get("Retail_Selling_Channel", alter: "التجزئة (قطاعي)"), systemImage: "cart.fill")
+                                    .font(AdminType.subheadlineBold)
+                            }
+                            .tint(AdminSurface.primary)
+
+                            if group.retailEnabled {
+                                HStack {
+                                    TextField("0.00", text: $group.retailPriceText)
+                                        .font(PPBrandFont.bold(size: 18))
+                                        .englishNumericInput(text: $group.retailPriceText, allowsDecimal: true)
+                                    Text(verbatim: "ر.ق")
+                                        .font(AdminType.caption)
+                                        .foregroundStyle(AdminCommandInk.secondary)
+                                }
+                                .padding(10)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                Toggle(isOn: $group.defaultForRetail) {
+                                    Text(Language.get("Default_Unit_For_Retail", alter: "الوحدة الافتراضية"))
+                                        .font(AdminType.caption)
+                                }
+                                .tint(AdminSurface.primary)
+                            }
+                        }
+                        .padding(12)
+                        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+                        )
+
+                        // Wholesale Channel Card (if allowed)
+                        if canManageWholesale {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Toggle(isOn: $group.wholesaleEnabled) {
+                                    Label(Language.get("Wholesale_Selling_Channel", alter: "الجملة والشركات"), systemImage: "shippingbox.fill")
+                                        .font(AdminType.subheadlineBold)
+                                }
+                                .tint(Color(uiColor: .systemTeal))
+
+                                if group.wholesaleEnabled {
+                                    HStack {
+                                        TextField("0.00", text: $group.wholesalePriceText)
+                                            .font(PPBrandFont.bold(size: 18))
+                                            .englishNumericInput(text: $group.wholesalePriceText, allowsDecimal: true)
+                                        Text(verbatim: "ر.ق")
+                                            .font(AdminType.caption)
+                                            .foregroundStyle(AdminCommandInk.secondary)
+                                    }
+                                    .padding(10)
+                                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                    Toggle(isOn: $group.defaultForWholesale) {
+                                        Text(Language.get("Default_Unit_For_Wholesale", alter: "الوحدة الافتراضية"))
+                                            .font(AdminType.caption)
+                                    }
+                                    .tint(Color(uiColor: .systemTeal))
+                                }
+                            }
+                            .padding(12)
+                            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+                            )
+                        }
+                    }
+
+                    // POS Master Switch
+                    HStack {
+                        Circle()
+                            .fill(group.active ? Color(uiColor: .ppSuccess) : Color(uiColor: .ppWarning))
+                            .frame(width: 8, height: 8)
+
+                        Text(Language.get("Unit_Active_Status", alter: "تفعيل هذه الوحدة في نقطة البيع (POS)"))
+                            .font(AdminType.subheadline)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Spacer()
+
+                        Toggle("", isOn: $group.active)
+                            .labelsHidden()
+                            .tint(Color(uiColor: .ppSuccess))
+                    }
+                    .padding(12)
+                    .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(AdminSurface.borderSubtle, lineWidth: 1)
+                    )
+
+                    // Error Message Banner (if any)
+                    if let err = localErrorMessage {
+                        HStack(spacing: 6) {
+                            Image(systemName: "exclamationmark.octagon.fill")
+                                .foregroundStyle(Color(uiColor: .systemRed))
+                            Text(err)
+                                .font(AdminType.captionBold)
+                                .foregroundStyle(Color(uiColor: .systemRed))
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color(uiColor: .systemRed).opacity(0.10), in: Capsule())
+                    }
+
+                    // Delete Action (if allowed)
+                    if let onDelete = onDelete {
+                        Button(role: .destructive, action: onDelete) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "trash.fill")
+                                Text(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه (⌘⌫)"))
+                            }
+                            .font(AdminType.captionBold)
+                            .foregroundStyle(Color(uiColor: .systemRed))
+                            .padding(.vertical, 8)
+                        }
+                        .keyboardShortcut(.delete, modifiers: .command)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
         }
-        onSave(group)
-        dismiss()
+    }
+
+    private static let jumpMultipliers: [Int] = [1, 6, 12, 24, 50, 100]
+
+    @ViewBuilder
+    private func ipadMultiplierJumpPill(for count: Int) -> some View {
+        let isCur = group.unitsPerGroup == count
+        Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.3)) {
+                group.unitsPerGroup = count
+                unitsText = count.englishDigits
+            }
+        } label: {
+            Text(verbatim: "\(count)")
+                .font(AdminType.caption2Bold)
+                .foregroundStyle(isCur ? Color.white : AdminCommandInk.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(isCur ? AdminSurface.primary : AdminSurface.control)
+                )
+        }
+        .buttonStyle(EditorPressStyle())
     }
 }
 
@@ -5914,7 +7239,6 @@ private struct PPAccessorySpeciesPickerSheet: View {
                                     Button {
                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         onSelect(species)
-                                        dismiss()
                                     } label: {
                                         HStack(spacing: 12) {
                                             ZStack {
@@ -6043,7 +7367,6 @@ private struct PPAccessoryBreedPickerSheet: View {
                                     Button {
                                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                         onSelect(breed)
-                                        dismiss()
                                     } label: {
                                         HStack(spacing: 12) {
                                             ZStack {
@@ -6239,8 +7562,12 @@ private struct PPImagePickerSheet: UIViewControllerRepresentable {
 
 /// Keeps the established editor and state owner intact while routing only the
 /// dedicated live-pet catalog path into the task-led intake experience.
-private struct PPAccessoryEditorExperienceRouter: View {
+struct PPAccessoryEditorExperienceRouter: View {
     @ObservedObject var viewModel: PPAccessoryEditorViewModel
+
+    init(viewModel: PPAccessoryEditorViewModel) {
+        self.viewModel = viewModel
+    }
 
     var body: some View {
         Group {
@@ -6253,6 +7580,7 @@ private struct PPAccessoryEditorExperienceRouter: View {
                 PPAccessoryEditorScreen(viewModel: viewModel)
             }
         }
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .interactiveDismissDisabled(viewModel.blocksDismissal)
         .background {
             PPUIKitDismissalGuard(isBlocked: viewModel.blocksDismissal)
@@ -6592,7 +7920,6 @@ private struct PPLivePetIntakeJourney: View {
             ) { selectedBranch in
                 viewModel.selectedStoreID = selectedBranch.branchID
                 viewModel.selectedStoreName = selectedBranch.localizedName()
-                viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -10826,7 +12153,6 @@ private struct PPLivePetChoiceSheet: View {
         return Button {
             UISelectionFeedbackGenerator().selectionChanged()
             onSelect(choice.id)
-            dismiss()
         } label: {
             HStack(spacing: AdminSpacing.md) {
                 Image(systemName: choice.symbol)
@@ -11674,33 +13000,42 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
         guard !trimmed.isEmpty, let val = Double(trimmed), val > 0 else { return nil }
 
         let formattedVal = trimmed
+        let isArabic = Language.isRTL()
         switch weightUnit.lowercased() {
         case "kg":
+            let unitName = isArabic ? "كجم" : "kg"
+            let subUnit = isArabic ? "جم" : "g"
             if val < 1.0 {
                 let grams = Int(val * 1000)
-                return "\(formattedVal) كجم (\(grams) جم)".normalizedEnglishDigits
+                return "\(formattedVal) \(unitName) (\(grams) \(subUnit))".normalizedEnglishDigits
             }
-            return "\(formattedVal) كجم".normalizedEnglishDigits
+            return "\(formattedVal) \(unitName)".normalizedEnglishDigits
         case "g":
+            let unitName = isArabic ? "جم" : "g"
+            let superUnit = isArabic ? "كجم" : "kg"
             if val >= 1000 {
                 let kg = val / 1000.0
                 let kgStr = String(format: "%.2f", kg).replacingOccurrences(of: ".00", with: "")
-                return "\(formattedVal) جم (\(kgStr) كجم)".normalizedEnglishDigits
+                return "\(formattedVal) \(unitName) (\(kgStr) \(superUnit))".normalizedEnglishDigits
             }
-            return "\(formattedVal) جم".normalizedEnglishDigits
+            return "\(formattedVal) \(unitName)".normalizedEnglishDigits
         case "l":
+            let unitName = isArabic ? "لتر" : "L"
+            let subUnit = isArabic ? "مل" : "ml"
             if val < 1.0 {
                 let ml = Int(val * 1000)
-                return "\(formattedVal) لتر (\(ml) مل)".normalizedEnglishDigits
+                return "\(formattedVal) \(unitName) (\(ml) \(subUnit))".normalizedEnglishDigits
             }
-            return "\(formattedVal) لتر".normalizedEnglishDigits
+            return "\(formattedVal) \(unitName)".normalizedEnglishDigits
         case "ml":
+            let unitName = isArabic ? "مل" : "ml"
+            let superUnit = isArabic ? "لتر" : "L"
             if val >= 1000 {
                 let liters = val / 1000.0
                 let lStr = String(format: "%.2f", liters).replacingOccurrences(of: ".00", with: "")
-                return "\(formattedVal) مل (\(lStr) لتر)".normalizedEnglishDigits
+                return "\(formattedVal) \(unitName) (\(lStr) \(superUnit))".normalizedEnglishDigits
             }
-            return "\(formattedVal) مل".normalizedEnglishDigits
+            return "\(formattedVal) \(unitName)".normalizedEnglishDigits
         default:
             return "\(formattedVal) \(weightUnit)".normalizedEnglishDigits
         }
@@ -12154,29 +13489,31 @@ private struct PPAccessoryFoodIntakeJourney: View {
             catalogBackground
 
             VStack(spacing: 0) {
+                catalogHeader
+                    .background(
+                        AdminSurface.background
+                            .ignoresSafeArea(edges: .top)
+                    )
+                    .accessibilitySortPriority(4)
+
                 ScrollViewReader { proxy in
                     ScrollView(.vertical, showsIndicators: false) {
-                        VStack(spacing: 0) {
-                            catalogHeader
-                                .accessibilitySortPriority(4)
-
-                            VStack(spacing: AdminSpacing.base) {
-                                catalogCompass
-                                    .accessibilitySortPriority(3)
-                                catalogFeedback
-                                catalogStageScene
-                                    .id(viewModel.activeStage)
-                                    .transition(
-                                        accessibilityReduceMotion
-                                            ? .opacity
-                                            : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
-                                    )
-                                    .accessibilitySortPriority(2)
-                            }
-                            .padding(.horizontal, AdminSpacing.screenMargin)
-                            .padding(.top, AdminSpacing.sm)
-                            .padding(.bottom, 140)
+                        VStack(spacing: AdminSpacing.base) {
+                            catalogCompass
+                                .accessibilitySortPriority(3)
+                            catalogFeedback
+                            catalogStageScene
+                                .id(viewModel.activeStage)
+                                .transition(
+                                    accessibilityReduceMotion
+                                        ? .opacity
+                                        : .opacity.combined(with: .scale(scale: 0.985, anchor: .top))
+                                )
+                                .accessibilitySortPriority(2)
                         }
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.xs)
+                        .padding(.bottom, 140)
                     }
                     .scrollDismissesKeyboardCompat()
                     .onChange(of: focusedField) { field in
@@ -12307,7 +13644,6 @@ private struct PPAccessoryFoodIntakeJourney: View {
             ) { selectedBranch in
                 viewModel.selectedStoreID = selectedBranch.branchID
                 viewModel.selectedStoreName = selectedBranch.localizedName()
-                viewModel.showStorePicker = false
             }
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
@@ -13528,15 +14864,19 @@ private struct PPAccessoryFoodIntakeJourney: View {
             HStack(spacing: AdminSpacing.sm) {
                 if viewModel.isSubmitting {
                     ProgressView().tint(.white)
-                } else {
-                    Image(systemName: viewModel.activeStage == .governance
-                        ? (viewModel.isDraft ? "doc.badge.plus" : "checkmark.shield.fill")
-                        : "arrow.forward")
+                } else if viewModel.activeStage == .governance {
+                    Image(systemName: viewModel.isDraft ? "doc.badge.plus" : "checkmark.shield.fill")
                         .font(.system(size: 16, weight: .bold))
                 }
+
                 Text(primaryActionTitle)
                     .font(AdminType.headline)
                     .lineLimit(2)
+
+                if !viewModel.isSubmitting && viewModel.activeStage != .governance {
+                    Image(systemName: "arrow.forward")
+                        .font(.system(size: 16, weight: .bold))
+                }
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.expanded)

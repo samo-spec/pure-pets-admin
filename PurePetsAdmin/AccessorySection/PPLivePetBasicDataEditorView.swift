@@ -254,7 +254,7 @@ public struct PPLivePetBasicDataEditorView: View {
                 }
             }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - Computed Properties & Diffs
@@ -1588,7 +1588,7 @@ private struct PPLivePetBreedPickerSheet: View {
                 }
             }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 }
 
@@ -1741,7 +1741,7 @@ private struct PPLivePetRelatedAccessoryPickerSheet: View {
                 await loadCatalogAccessories()
             }
         }
-        .environment(\.layoutDirection, .rightToLeft)
+        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     private func loadCatalogAccessories() async {

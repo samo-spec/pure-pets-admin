@@ -30,6 +30,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// (lets you preselect which kind to create)
 @property (nonatomic, assign) AccessKindType defaultKind;
 
+/// Optional block called when the editor is dismissed so the host list can refresh.
+@property (nonatomic, copy, nullable) void (^onDismissBlock)(void);
+
 - (instancetype)initWithAccessory:(nullable PetAccessory *)accessory;
 
 @end
