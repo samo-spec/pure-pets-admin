@@ -6724,3 +6724,40 @@
 "POS_Customer_DirectorySearchPlaceholder" = "Search by customer name or phone...";
 "POS_Customer_StatsTotal" = "Registered Customers";
 "POS_Customer_DetailsCardTitle" = "Contact & Branch Details";
+
+/* ===================== POS Refund Receipt & Printing Integration ===================== */
+"POS_Receipt_Refund_Ready" = "Refund Receipt Ready";
+"POS_Receipt_Refund_Ready_Sub" = "You can print the transaction refund receipt or share it with the customer.";
+"POS_Receipt_Refund_Title_Full" = "Financial Refund Receipt (Full)";
+"POS_Receipt_Refund_Title_Partial" = "Financial Refund Receipt (Partial)";
+"POS_Receipt_Badge_FullyRefunded" = "Fully Refunded";
+"POS_Receipt_Badge_PartiallyRefunded" = "Partially Refunded";
+"POS_Receipt_RefundedAmount" = "Refunded Amount";
+"POS_Receipt_NetAfterRefund" = "Net After Refund";
+"POS_Receipt_RefundDate" = "Refund Date";
+"POS_Receipt_RefundReason" = "Refund Reason";
+"POS_Receipt_RefundedBy" = "Refunded By";
+"POS_Receipt_RefundedUnits_Tag" = "Refunded: %d units";
+"POS_Receipt_RefundSuccess_Notice" = "Refund recorded successfully. The refund receipt is ready for printing and sharing.";
+"POS_Receipt_RefundDossier_Notice" = "Refunded transaction - certified financial refund receipt.";
+"POS_Action_PrintRefundReceipt" = "Print Refund Receipt";
+"POS_Receipt_OriginalTotal" = "Original Total";
+
+/* ===================== Specimen Action Center & Studios ===================== */
+"Specimen_Actions" = "Specimen Actions";
+"Specimen_Action_Center" = "Specimen Action Center";
+"Specimen_Action_Center_Sub" = "Holistic supervisory control & live operational studios";
+"Inventory_Studios_Section" = "Inventory Studios & Quality Control";
+"Damage_Studio_Desc" = "Record damage, wastage, or defect with instant stock write-down";
+"Damage_Badge" = "Loss & Waste";
+"Quarantine_Studio_Desc" = "Segregate units for veterinary inspection or quarantine disposition";
+"Quarantine_Badge" = "QA & Quarantine";
+"Lots_Studio_Desc" = "Batch & expiry tracking with First-Expired-First-Out enforcement";
+"Lots_Badge" = "FEFO Lots";
+"Edit_Specimen" = "Edit Specimen";
+"Share_Specimen" = "Share Specimen";
+"Stock_Currently_Out" = "Item unavailable for POS / catalog sales";
+"Stock_Currently_Active" = "Item active in POS & customer catalog";
+"Delete_Specimen_Guarded" = "Permanently Delete Specimen from Inventory";
+"Financial_Specs" = "Financial Specs";
+"Operational_Studios" = "Operational Inventory Studios";

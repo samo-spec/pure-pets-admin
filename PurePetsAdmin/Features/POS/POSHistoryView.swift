@@ -35,11 +35,61 @@ enum POSReceiptWhatsAppSender {
     static let brandColor = Color(red: 37 / 255.0, green: 211 / 255.0, blue: 102 / 255.0)
 
     static func buildReceiptMessage(for receipt: PPPOSReceipt) -> String {
-        return buildReceiptMessage(customerName: receipt.customerName, transactionID: receipt.receiptID)
+        let completed = POSCompletedReceipt(receipt: receipt)
+        return buildReceiptMessage(for: completed)
     }
 
     static func buildReceiptMessage(for receipt: POSCompletedReceipt) -> String {
-        return buildReceiptMessage(customerName: receipt.customerName, transactionID: receipt.transactionID)
+        let isRTL = Language.isRTL()
+        let formattedID = receipt.formattedReceiptID
+        let customerName = receipt.customerName
+
+        if receipt.isRefunded {
+            let refundAmountFormatted = POSReceiptFormat.currency(receipt.refundedAmount, code: receipt.currency)
+            let reasonSnippet = (receipt.refundReason != nil && !receipt.refundReason!.isEmpty)
+                ? "\n" + Language.get("POS_Receipt_RefundReason", alter: "سبب الاسترداد") + ": \(receipt.refundReason!)"
+                : ""
+
+            if isRTL {
+                let greeting = !customerName.isEmpty ? "مرحباً بك يا \(customerName) في بيور بتس 🐾" : "مرحباً بكم في بيور بتس 🐾"
+                let invoiceSnippet = !formattedID.isEmpty ? " (معاملة رقم: \(formattedID))" : ""
+                let refundStatusDesc = receipt.isFullyRefunded ? "استرداد مالي كامل" : "استرداد مالي جزئي"
+
+                return """
+                \(greeting)
+                نحيطكم علماً بأنه تم تسجيل عملية \(refundStatusDesc) بنجاح ✨
+
+                مرفق إيصال الاسترداد المالي الإلكتروني\(invoiceSnippet) 🧾
+                المبلغ المسترد: \(refundAmountFormatted)\(reasonSnippet)
+
+                شاكرين ومقدّرين تعاملكم وثقتكم ببيور بتس 🤍
+
+                بيور بتس | رعاية تليق بأليفك
+                📞 خدمة العملاء: +974 5999 7720
+                🌐 https://pure-pets.net
+                """
+            } else {
+                let greeting = !customerName.isEmpty ? "Hello \(customerName), welcome to Pure Pets 🐾" : "Welcome to Pure Pets 🐾"
+                let invoiceSnippet = !formattedID.isEmpty ? " (Transaction #\(formattedID))" : ""
+                let refundStatusDesc = receipt.isFullyRefunded ? "full refund" : "partial refund"
+
+                return """
+                \(greeting)
+                We would like to confirm that a \(refundStatusDesc) has been successfully processed ✨
+
+                Attached is your official electronic refund receipt\(invoiceSnippet) 🧾
+                Refunded Amount: \(refundAmountFormatted)\(reasonSnippet)
+
+                Thank you for choosing Pure Pets! 🤍
+
+                Pure Pets | Care Fitting Your Pet
+                📞 Customer Care: +974 5999 7720
+                🌐 https://pure-pets.net
+                """
+            }
+        }
+
+        return buildReceiptMessage(customerName: customerName, transactionID: receipt.transactionID)
     }
 
     static func buildReceiptMessage(customerName: String, transactionID: String) -> String {
@@ -554,6 +604,7 @@ struct AdminPOSHistoryView: View {
     // Presentation States
     @State private var selectedDossierReceipt: PPPOSReceipt? = nil
     @State private var receiptForThermalPrint: POSCompletedReceipt? = nil
+    @State private var receiptNoticeForPrint: String? = nil
     @State private var receiptForRefund: PPPOSReceipt? = nil
     @State private var receiptForCancel: PPPOSReceipt? = nil
     @State private var copyToastText: String? = nil
@@ -635,8 +686,8 @@ struct AdminPOSHistoryView: View {
             viewModel.load(branchID: branchID)
         }
         // Thermal Receipt Sheet
-        .sheet(item: $receiptForThermalPrint) { completedReceipt in
-            POSCompletedReceiptSheet(receipt: completedReceipt, notice: nil)
+        .sheet(item: $receiptForThermalPrint, onDismiss: { receiptNoticeForPrint = nil }) { completedReceipt in
+            POSCompletedReceiptSheet(receipt: completedReceipt, notice: receiptNoticeForPrint)
         }
         // Transaction Dossier Modal
         .sheet(item: $selectedDossierReceipt) { receipt in
@@ -645,6 +696,9 @@ struct AdminPOSHistoryView: View {
                 onPrint: {
                     selectedDossierReceipt = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        receiptNoticeForPrint = (receipt.refundedAmount > 0 || receipt.status.lowercased() == "refunded" || receipt.status.lowercased() == "partially_refunded")
+                            ? Language.get("POS_Receipt_RefundDossier_Notice", alter: "معاملة مستردة - إيصال الاسترداد المالي المعتمد.")
+                            : nil
                         receiptForThermalPrint = POSCompletedReceipt(receipt: receipt)
                     }
                 },
@@ -670,9 +724,16 @@ struct AdminPOSHistoryView: View {
             POSRefundStudioSheet(
                 receipt: receipt,
                 viewModel: viewModel,
-                onSuccess: {
+                onSuccess: { refundedReceipt in
                     receiptForRefund = nil
                     showToast(Language.get("POS_Refund_Success_Title", alter: "تم الاسترداد بنجاح"))
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                        receiptNoticeForPrint = Language.get(
+                            "POS_Receipt_RefundSuccess_Notice",
+                            alter: "تم تسجيل الاسترداد بنجاح في النظام. إيصال الاسترداد جاهز للطباعة والمشاركة."
+                        )
+                        receiptForThermalPrint = POSCompletedReceipt(receipt: refundedReceipt)
+                    }
                 }
             )
         }
@@ -1990,7 +2051,7 @@ struct POSTransactionDossierSheet: View {
                     HStack(spacing: 6) {
                         Image(systemName: "printer.fill")
                             .font(.system(size: 14, weight: .bold))
-                        Text(Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
+                        Text(isRefunded ? Language.get("POS_Action_PrintRefundReceipt", alter: "طباعة إيصال الاسترداد") : Language.get("POS_Action_PrintReceipt", alter: "طباعة الإيصال"))
                             .font(AdminType.captionBold)
                     }
                     .foregroundColor(AdminSurface.primaryText)
@@ -2056,7 +2117,7 @@ struct POSTransactionDossierSheet: View {
 struct POSRefundStudioSheet: View {
     let receipt: PPPOSReceipt
     @ObservedObject var viewModel: POSHistoryViewModel
-    let onSuccess: () -> Void
+    let onSuccess: (PPPOSReceipt) -> Void
     @Environment(\.dismiss) private var dismiss
 
     @State private var isFullRefund: Bool = true
@@ -2490,8 +2551,27 @@ struct POSRefundStudioSheet: View {
                 reason: finalReason
             )
             if success {
+                // Update local receipt instance with refund facts
+                receipt.refundedAmount += amount
+                receipt.refundReason = finalReason
+                receipt.refundedAt = Date()
+                if let cashier = receipt.cashierName ?? receipt.operatorID {
+                    receipt.refundedBy = cashier
+                }
+                if receipt.refundedAmount >= (receipt.total - 0.001) {
+                    receipt.status = "refunded"
+                } else {
+                    receipt.status = "partially_refunded"
+                }
+                for item in receipt.items {
+                    let available = max(0, item.quantity - item.refundedQuantity)
+                    let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
+                    if qty > 0 {
+                        item.refundedQuantity += qty
+                    }
+                }
                 dismiss()
-                onSuccess()
+                onSuccess(receipt)
             }
         }
     }

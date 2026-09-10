@@ -23,6 +23,10 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         let subSubKindItem: String?
         let unitSubSubKinds: [String]
         let unitSubSubKindItems: [String]
+        let refundedQuantity: Int
+
+        var isRefunded: Bool { refundedQuantity > 0 }
+        var isFullyRefunded: Bool { refundedQuantity >= quantity }
 
         var subSubKindFormatted: String {
             var parts: [String] = []
@@ -55,9 +59,29 @@ struct POSCompletedReceipt: Identifiable, Sendable {
     let customerPhone: String
     let note: String
     let isAuthoritative: Bool
+    let refundedAmount: Double
+    let refundReason: String?
+    let refundedAt: Date?
+    let refundedBy: String?
 
     var id: String { transactionID }
     var formattedReceiptID: String { POSReceiptFormat.receiptID(transactionID) }
+
+    var isRefunded: Bool {
+        refundedAmount > 0 || status.lowercased() == "refunded" || status.lowercased() == "partially_refunded"
+    }
+
+    var isFullyRefunded: Bool {
+        isRefunded && (refundedAmount >= (total - 0.01) || status.lowercased() == "refunded")
+    }
+
+    var isPartiallyRefunded: Bool {
+        isRefunded && !isFullyRefunded
+    }
+
+    var netAfterRefund: Double {
+        max(0.0, total - refundedAmount)
+    }
 
     init(receipt: PPPOSReceipt) {
         transactionID = receipt.receiptID
@@ -77,7 +101,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 subSubKind: item.subSubKindName,
                 subSubKindItem: item.subSubKindItemName,
                 unitSubSubKinds: item.unitSubSubKinds,
-                unitSubSubKindItems: item.unitSubSubKindItems
+                unitSubSubKindItems: item.unitSubSubKindItems,
+                refundedQuantity: max(0, item.refundedQuantity)
             )
         }
         subtotal = receipt.subtotal > 0 ? receipt.subtotal : receipt.total + receipt.discount
@@ -92,6 +117,10 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         customerPhone = receipt.customerPhone
         note = receipt.note
         isAuthoritative = true
+        refundedAmount = max(0, receipt.refundedAmount)
+        refundReason = receipt.refundReason
+        refundedAt = receipt.refundedAt
+        refundedBy = receipt.refundedBy
     }
 
     /// Confirmed-response fallback used only when the post-commit Firestore read
@@ -108,7 +137,11 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         cashReceived: Double,
         cartItems: [POSCartItem],
         customerName: String = "",
-        customerPhone: String = ""
+        customerPhone: String = "",
+        refundedAmount: Double = 0,
+        refundReason: String? = nil,
+        refundedAt: Date? = nil,
+        refundedBy: String? = nil
     ) {
         self.transactionID = transactionID
         createdAt = Date()
@@ -123,7 +156,8 @@ struct POSCompletedReceipt: Identifiable, Sendable {
                 subSubKind: item.unitSubSubKinds.first,
                 subSubKindItem: item.unitSubSubKindItems.first,
                 unitSubSubKinds: item.unitSubSubKinds,
-                unitSubSubKindItems: item.unitSubSubKindItems
+                unitSubSubKindItems: item.unitSubSubKindItems,
+                refundedQuantity: 0
             )
         }
         self.subtotal = subtotal > 0 ? subtotal : total + discount
@@ -138,6 +172,10 @@ struct POSCompletedReceipt: Identifiable, Sendable {
         self.customerPhone = customerPhone
         note = ""
         isAuthoritative = false
+        self.refundedAmount = refundedAmount
+        self.refundReason = refundReason
+        self.refundedAt = refundedAt
+        self.refundedBy = refundedBy
     }
 }
 
@@ -204,18 +242,26 @@ struct POSCompletedReceiptSheet: View {
         HStack(spacing: 12) {
             ZStack {
                 Circle()
-                    .fill(Color.green.opacity(0.13))
+                    .fill(receipt.isRefunded
+                          ? (receipt.isFullyRefunded ? Color(uiColor: .systemPurple).opacity(0.15) : Color(uiColor: .systemOrange).opacity(0.15))
+                          : Color.green.opacity(0.13))
                     .frame(width: 44, height: 44)
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: receipt.isRefunded ? (receipt.isFullyRefunded ? "checkmark.seal.fill" : "arrow.uturn.backward.circle.fill") : "checkmark.seal.fill")
                     .font(.system(size: 22, weight: .semibold))
-                    .foregroundColor(.green)
+                    .foregroundColor(receipt.isRefunded
+                                     ? (receipt.isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
+                                     : .green)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("POS_Receipt_Ready", alter: "الإيصال جاهز"))
+                Text(receipt.isRefunded
+                     ? Language.get("POS_Receipt_Refund_Ready", alter: "إيصال الاسترداد جاهز")
+                     : Language.get("POS_Receipt_Ready", alter: "الإيصال جاهز"))
                     .font(Font.custom("Beiruti-Bold", size: 21, relativeTo: .headline))
                     .foregroundColor(AdminSurface.primaryText)
-                Text(Language.get("POS_Receipt_Ready_Subtitle", alter: "يمكنك طباعة إيصال عملية البيع المكتملة أو مشاركته."))
+                Text(receipt.isRefunded
+                     ? Language.get("POS_Receipt_Refund_Ready_Sub", alter: "يمكنك طباعة إيصال استرداد المعاملة أو مشاركته مع العميل.")
+                     : Language.get("POS_Receipt_Ready_Subtitle", alter: "يمكنك طباعة إيصال عملية البيع المكتملة أو مشاركته."))
                     .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .caption))
                     .foregroundColor(AdminSurface.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -275,9 +321,29 @@ struct POSCompletedReceiptSheet: View {
                     .font(Font.custom("Beiruti-Bold", size: 22, relativeTo: .title3))
                     .foregroundColor(AdminSurface.primaryText)
 
-                Text(Language.get("POS_Receipt_Title", alter: "إيصال بيع"))
-                    .font(Font.custom("Beiruti-Medium", size: 15, relativeTo: .callout))
-                    .foregroundColor(AdminSurface.secondaryText)
+                if receipt.isRefunded {
+                    Text(receipt.isFullyRefunded
+                         ? Language.get("POS_Receipt_Refund_Title_Full", alter: "إيصال استرداد مالي (كامل)")
+                         : Language.get("POS_Receipt_Refund_Title_Partial", alter: "إيصال استرداد مالي (جزئي)"))
+                        .font(Font.custom("Beiruti-Bold", size: 16, relativeTo: .callout))
+                        .foregroundColor(receipt.isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
+
+                    Text(receipt.isFullyRefunded
+                         ? Language.get("POS_Receipt_Badge_FullyRefunded", alter: "مسترد بالكامل")
+                         : Language.get("POS_Receipt_Badge_PartiallyRefunded", alter: "مسترد جزئياً"))
+                        .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                        .foregroundColor(receipt.isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(
+                            (receipt.isFullyRefunded ? Color(uiColor: .systemPurple) : Color(uiColor: .systemOrange)).opacity(0.12),
+                            in: Capsule()
+                        )
+                } else {
+                    Text(Language.get("POS_Receipt_Title", alter: "إيصال بيع"))
+                        .font(Font.custom("Beiruti-Medium", size: 15, relativeTo: .callout))
+                        .foregroundColor(AdminSurface.secondaryText)
+                }
             }
 
             receiptMetadata
@@ -355,14 +421,42 @@ struct POSCompletedReceiptSheet: View {
                 Language.get("POS_Receipt_Date", alter: "التاريخ"),
                 value: POSReceiptFormat.date(receipt.createdAt)
             )
+            if receipt.isRefunded, let refDate = receipt.refundedAt {
+                receiptValueRow(
+                    Language.get("POS_Receipt_RefundDate", alter: "تاريخ الاسترداد"),
+                    value: POSReceiptFormat.date(refDate)
+                )
+            }
             receiptValueRow(
                 Language.get("POS_Receipt_Payment", alter: "طريقة الدفع"),
                 value: POSReceiptFormat.paymentMethod(receipt.paymentMethod)
             )
             receiptValueRow(
                 Language.get("POS_Receipt_Status", alter: "الحالة"),
-                value: Language.get("POS_Receipt_Completed", alter: "مكتملة")
+                value: receiptStatusText
             )
+            if receipt.isRefunded, let reason = receipt.refundReason, !reason.isEmpty {
+                receiptValueRow(
+                    Language.get("POS_Receipt_RefundReason", alter: "سبب الاسترداد"),
+                    value: reason
+                )
+            }
+            if receipt.isRefunded, let by = receipt.refundedBy, !by.isEmpty {
+                receiptValueRow(
+                    Language.get("POS_Receipt_RefundedBy", alter: "المسؤول عن الاسترداد"),
+                    value: by
+                )
+            }
+        }
+    }
+
+    private var receiptStatusText: String {
+        if receipt.isFullyRefunded {
+            return Language.get("POS_Status_Refunded", alter: "مستردة بالكامل")
+        } else if receipt.isPartiallyRefunded {
+            return Language.get("POS_Status_PartiallyRefunded", alter: "مستردة جزئياً")
+        } else {
+            return Language.get("POS_Receipt_Completed", alter: "مكتملة")
         }
     }
 
@@ -403,6 +497,19 @@ struct POSCompletedReceiptSheet: View {
                             .foregroundColor(AdminSurface.secondaryText)
                             .fixedSize(horizontal: false, vertical: true)
                         }
+
+                        if line.refundedQuantity > 0 {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 10))
+                                Text(String(format: Language.get("POS_Receipt_RefundedUnits_Tag", alter: "مسترد: %d وحدة"), line.refundedQuantity))
+                                    .font(Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2))
+                            }
+                            .foregroundColor(Color(uiColor: .systemOrange))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .systemOrange).opacity(0.12), in: Capsule())
+                        }
                     }
 
                     Spacer(minLength: 8)
@@ -432,15 +539,38 @@ struct POSCompletedReceiptSheet: View {
                 )
             }
 
-            HStack(alignment: .firstTextBaseline) {
-                Text(Language.get("POS_Receipt_Total", alter: "الإجمالي"))
-                    .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
-                    .foregroundColor(AdminSurface.primaryText)
-                Spacer()
-                Text(POSReceiptFormat.currency(receipt.total, code: receipt.currency))
-                    .font(Font.custom("Beiruti-Bold", size: 26, relativeTo: .title2))
-                    .foregroundColor(AdminSurface.primary)
-                    .monospacedDigit()
+            if receipt.isRefunded {
+                receiptValueRow(
+                    Language.get("POS_Receipt_OriginalTotal", alter: "إجمالي المعاملة الأصلية"),
+                    value: POSReceiptFormat.currency(receipt.total, code: receipt.currency)
+                )
+
+                receiptValueRow(
+                    Language.get("POS_Receipt_RefundedAmount", alter: "المبلغ المسترد"),
+                    value: "−" + POSReceiptFormat.currency(receipt.refundedAmount, code: receipt.currency)
+                )
+
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Language.get("POS_Receipt_NetAfterRefund", alter: "الصافي بعد الاسترداد"))
+                        .font(Font.custom("Beiruti-Bold", size: 19, relativeTo: .headline))
+                        .foregroundColor(AdminSurface.primaryText)
+                    Spacer()
+                    Text(POSReceiptFormat.currency(receipt.netAfterRefund, code: receipt.currency))
+                        .font(Font.custom("Beiruti-Bold", size: 24, relativeTo: .title2))
+                        .foregroundColor(receipt.isFullyRefunded ? Color(uiColor: .systemPurple) : AdminSurface.primary)
+                        .monospacedDigit()
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(Language.get("POS_Receipt_Total", alter: "الإجمالي"))
+                        .font(Font.custom("Beiruti-Bold", size: 20, relativeTo: .headline))
+                        .foregroundColor(AdminSurface.primaryText)
+                    Spacer()
+                    Text(POSReceiptFormat.currency(receipt.total, code: receipt.currency))
+                        .font(Font.custom("Beiruti-Bold", size: 26, relativeTo: .title2))
+                        .foregroundColor(AdminSurface.primary)
+                        .monospacedDigit()
+                }
             }
 
             if receipt.paymentMethod.lowercased() == "cash" {
@@ -884,11 +1014,20 @@ enum POSReceiptPDFExporter {
             dynamicHeight += 50.0 + 8.0
         }
 
-        // Brand + Subtitle
+        // Brand + Subtitle + Refund badge
         dynamicHeight += 26.0 + 18.0 + 12.0
+        if receipt.isRefunded {
+            dynamicHeight += 22.0 + 16.0
+        }
 
         // Metadata rows
-        dynamicHeight += (4 * 18.0) + 12.0
+        var metadataRowCount = 4
+        if receipt.isRefunded {
+            if receipt.refundedAt != nil { metadataRowCount += 1 }
+            if let reason = receipt.refundReason, !reason.isEmpty { metadataRowCount += 1 }
+            if let by = receipt.refundedBy, !by.isEmpty { metadataRowCount += 1 }
+        }
+        dynamicHeight += (CGFloat(metadataRowCount) * 18.0) + 12.0
 
         // Items Header
         dynamicHeight += 20.0
@@ -902,6 +1041,9 @@ enum POSReceiptPDFExporter {
             if !line.ringTags.isEmpty {
                 itemTextHeight += 14.0
             }
+            if line.refundedQuantity > 0 {
+                itemTextHeight += 14.0
+            }
             dynamicHeight += itemTextHeight + 4.0
         }
         dynamicHeight += 12.0
@@ -909,6 +1051,7 @@ enum POSReceiptPDFExporter {
         // Totals
         var totalRowCount = 2
         if receipt.discount > 0 { totalRowCount += 1 }
+        if receipt.isRefunded { totalRowCount += 2 }
         if receipt.paymentMethod.lowercased() == "cash" { totalRowCount += 2 }
         dynamicHeight += CGFloat(totalRowCount - 1) * 18.0 + 30.0 + 12.0
 
@@ -923,10 +1066,16 @@ enum POSReceiptPDFExporter {
         let totalPageHeight = max(dynamicHeight, 350.0)
         let pageBounds = CGRect(x: 0, y: 0, width: receiptWidth, height: totalPageHeight)
 
+        let pdfTitle = receipt.isRefunded
+            ? (receipt.isFullyRefunded
+                ? "\(Language.get("POS_Receipt_Refund_Title_Full", alter: "إيصال استرداد مالي (كامل)")) #\(receipt.formattedReceiptID)"
+                : "\(Language.get("POS_Receipt_Refund_Title_Partial", alter: "إيصال استرداد مالي (جزئي)")) #\(receipt.formattedReceiptID)")
+            : "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.formattedReceiptID)"
+
         let rendererFormat = UIGraphicsPDFRendererFormat()
         rendererFormat.documentInfo = [
             kCGPDFContextCreator as String: "Pure Pets Admin",
-            kCGPDFContextTitle as String: "\(Language.get("POS_Receipt_Title", alter: "إيصال بيع")) #\(receipt.formattedReceiptID)"
+            kCGPDFContextTitle as String: pdfTitle
         ]
 
         let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageBounds, format: rendererFormat)
@@ -964,16 +1113,38 @@ enum POSReceiptPDFExporter {
             brandString.draw(in: brandRect, withAttributes: brandAttr)
             currentY += 24.0
 
-            // 3. Title "إيصال بيع"
-            let titleString = Language.get("POS_Receipt_Title", alter: "إيصال بيع")
+            // 3. Title & Refund Stamp
+            let titleString = receipt.isRefunded
+                ? (receipt.isFullyRefunded
+                    ? Language.get("POS_Receipt_Refund_Title_Full", alter: "إيصال استرداد مالي (كامل)")
+                    : Language.get("POS_Receipt_Refund_Title_Partial", alter: "إيصال استرداد مالي (جزئي)"))
+                : Language.get("POS_Receipt_Title", alter: "إيصال بيع")
+
+            let titleColor = receipt.isRefunded ? primaryColor : secondaryColor
             let titleAttr: [NSAttributedString.Key: Any] = [
                 .font: titleFont,
-                .foregroundColor: secondaryColor,
+                .foregroundColor: titleColor,
                 .paragraphStyle: centerStyle
             ]
             let titleRect = CGRect(x: m, y: currentY, width: cw, height: 18.0)
             titleString.draw(in: titleRect, withAttributes: titleAttr)
-            currentY += 22.0
+            currentY += 20.0
+
+            if receipt.isRefunded {
+                let badgeText = receipt.isFullyRefunded
+                    ? "[ \(Language.get("POS_Receipt_Badge_FullyRefunded", alter: "مسترد بالكامل")) ]"
+                    : "[ \(Language.get("POS_Receipt_Badge_PartiallyRefunded", alter: "مسترد جزئياً")) ]"
+                let badgeAttr: [NSAttributedString.Key: Any] = [
+                    .font: boldBodyFont,
+                    .foregroundColor: primaryColor,
+                    .paragraphStyle: centerStyle
+                ]
+                let badgeRect = CGRect(x: m, y: currentY, width: cw, height: 16.0)
+                badgeText.draw(in: badgeRect, withAttributes: badgeAttr)
+                currentY += 18.0
+            } else {
+                currentY += 2.0
+            }
 
             // Helper to draw dashed line
             func drawDashedSeparator(y: CGFloat) {
@@ -1047,10 +1218,26 @@ enum POSReceiptPDFExporter {
             currentY += 16.0
             drawRow(label: Language.get("POS_Receipt_Date", alter: "التاريخ"), value: POSReceiptFormat.date(receipt.createdAt), y: currentY)
             currentY += 16.0
+            if receipt.isRefunded, let refDate = receipt.refundedAt {
+                drawRow(label: Language.get("POS_Receipt_RefundDate", alter: "تاريخ الاسترداد"), value: POSReceiptFormat.date(refDate), y: currentY)
+                currentY += 16.0
+            }
             drawRow(label: Language.get("POS_Receipt_Payment", alter: "طريقة الدفع"), value: POSReceiptFormat.paymentMethod(receipt.paymentMethod), y: currentY)
             currentY += 16.0
-            drawRow(label: Language.get("POS_Receipt_Status", alter: "الحالة"), value: Language.get("POS_Receipt_Completed", alter: "مكتملة"), y: currentY)
-            currentY += 20.0
+            let statusText = receipt.isFullyRefunded
+                ? Language.get("POS_Status_Refunded", alter: "مستردة بالكامل")
+                : (receipt.isPartiallyRefunded ? Language.get("POS_Status_PartiallyRefunded", alter: "مستردة جزئياً") : Language.get("POS_Receipt_Completed", alter: "مكتملة"))
+            drawRow(label: Language.get("POS_Receipt_Status", alter: "الحالة"), value: statusText, y: currentY)
+            currentY += 16.0
+            if receipt.isRefunded, let reason = receipt.refundReason, !reason.isEmpty {
+                drawRow(label: Language.get("POS_Receipt_RefundReason", alter: "سبب الاسترداد"), value: reason, y: currentY)
+                currentY += 16.0
+            }
+            if receipt.isRefunded, let by = receipt.refundedBy, !by.isEmpty {
+                drawRow(label: Language.get("POS_Receipt_RefundedBy", alter: "المسؤول عن الاسترداد"), value: by, y: currentY)
+                currentY += 16.0
+            }
+            currentY += 4.0
 
             drawDashedSeparator(y: currentY)
             currentY += 8.0
@@ -1124,6 +1311,18 @@ enum POSReceiptPDFExporter {
                     tagsStr.draw(in: CGRect(x: tagX, y: currentY, width: nameWidth, height: 12.0), withAttributes: tagAttr)
                     currentY += 14.0
                 }
+
+                if line.refundedQuantity > 0 {
+                    let refStr = "• " + String(format: Language.get("POS_Receipt_RefundedUnits_Tag", alter: "مسترد: %d وحدة"), line.refundedQuantity)
+                    let refAttr: [NSAttributedString.Key: Any] = [
+                        .font: microFont,
+                        .foregroundColor: primaryColor,
+                        .paragraphStyle: leadingStyle
+                    ]
+                    let refX = rtl ? (m + priceWidth + 4.0) : (m + qtyWidth + 4.0)
+                    refStr.draw(in: CGRect(x: refX, y: currentY, width: nameWidth, height: 12.0), withAttributes: refAttr)
+                    currentY += 14.0
+                }
                 currentY += 2.0
             }
 
@@ -1140,31 +1339,65 @@ enum POSReceiptPDFExporter {
                 currentY += 16.0
             }
 
-            // Grand Total (Large & Maroon)
-            let grandLabel = Language.get("POS_Receipt_Total", alter: "الإجمالي")
-            let grandVal = POSReceiptFormat.currency(receipt.total, code: receipt.currency)
+            if receipt.isRefunded {
+                drawRow(label: Language.get("POS_Receipt_OriginalTotal", alter: "إجمالي المعاملة الأصلية"), value: POSReceiptFormat.currency(receipt.total, code: receipt.currency), y: currentY)
+                currentY += 16.0
 
-            let grandLabelAttr: [NSAttributedString.Key: Any] = [
-                .font: totalTitleFont,
-                .foregroundColor: textColor,
-                .paragraphStyle: leadingStyle
-            ]
-            let grandValAttr: [NSAttributedString.Key: Any] = [
-                .font: totalAmountFont,
-                .foregroundColor: primaryColor,
-                .paragraphStyle: trailingStyle
-            ]
+                drawRow(label: Language.get("POS_Receipt_RefundedAmount", alter: "المبلغ المسترد"), value: "−" + POSReceiptFormat.currency(receipt.refundedAmount, code: receipt.currency), valueColor: primaryColor, y: currentY)
+                currentY += 16.0
 
-            let grandHalf = cw * 0.4
-            let grandValW = cw * 0.6
-            if rtl {
-                grandLabel.draw(in: CGRect(x: w - m - grandHalf, y: currentY, width: grandHalf, height: 26.0), withAttributes: grandLabelAttr)
-                grandVal.draw(in: CGRect(x: m, y: currentY, width: grandValW, height: 26.0), withAttributes: grandValAttr)
+                // Net After Refund (Large & Maroon)
+                let netLabel = Language.get("POS_Receipt_NetAfterRefund", alter: "الصافي بعد الاسترداد")
+                let netVal = POSReceiptFormat.currency(receipt.netAfterRefund, code: receipt.currency)
+
+                let netLabelAttr: [NSAttributedString.Key: Any] = [
+                    .font: totalTitleFont,
+                    .foregroundColor: textColor,
+                    .paragraphStyle: leadingStyle
+                ]
+                let netValAttr: [NSAttributedString.Key: Any] = [
+                    .font: totalAmountFont,
+                    .foregroundColor: primaryColor,
+                    .paragraphStyle: trailingStyle
+                ]
+
+                let grandHalf = cw * 0.45
+                let grandValW = cw * 0.55
+                if rtl {
+                    netLabel.draw(in: CGRect(x: w - m - grandHalf, y: currentY, width: grandHalf, height: 26.0), withAttributes: netLabelAttr)
+                    netVal.draw(in: CGRect(x: m, y: currentY, width: grandValW, height: 26.0), withAttributes: netValAttr)
+                } else {
+                    netLabel.draw(in: CGRect(x: m, y: currentY, width: grandHalf, height: 26.0), withAttributes: netLabelAttr)
+                    netVal.draw(in: CGRect(x: m + grandHalf, y: currentY, width: grandValW, height: 26.0), withAttributes: netValAttr)
+                }
+                currentY += 26.0
             } else {
-                grandLabel.draw(in: CGRect(x: m, y: currentY, width: grandHalf, height: 26.0), withAttributes: grandLabelAttr)
-                grandVal.draw(in: CGRect(x: m + grandHalf, y: currentY, width: grandValW, height: 26.0), withAttributes: grandValAttr)
+                // Grand Total (Large & Maroon)
+                let grandLabel = Language.get("POS_Receipt_Total", alter: "الإجمالي")
+                let grandVal = POSReceiptFormat.currency(receipt.total, code: receipt.currency)
+
+                let grandLabelAttr: [NSAttributedString.Key: Any] = [
+                    .font: totalTitleFont,
+                    .foregroundColor: textColor,
+                    .paragraphStyle: leadingStyle
+                ]
+                let grandValAttr: [NSAttributedString.Key: Any] = [
+                    .font: totalAmountFont,
+                    .foregroundColor: primaryColor,
+                    .paragraphStyle: trailingStyle
+                ]
+
+                let grandHalf = cw * 0.4
+                let grandValW = cw * 0.6
+                if rtl {
+                    grandLabel.draw(in: CGRect(x: w - m - grandHalf, y: currentY, width: grandHalf, height: 26.0), withAttributes: grandLabelAttr)
+                    grandVal.draw(in: CGRect(x: m, y: currentY, width: grandValW, height: 26.0), withAttributes: grandValAttr)
+                } else {
+                    grandLabel.draw(in: CGRect(x: m, y: currentY, width: grandHalf, height: 26.0), withAttributes: grandLabelAttr)
+                    grandVal.draw(in: CGRect(x: m + grandHalf, y: currentY, width: grandValW, height: 26.0), withAttributes: grandValAttr)
+                }
+                currentY += 26.0
             }
-            currentY += 26.0
 
             if receipt.paymentMethod.lowercased() == "cash" {
                 drawRow(label: Language.get("POS_Receipt_CashReceived", alter: "المبلغ المستلم"), value: POSReceiptFormat.currency(receipt.cashReceived, code: receipt.currency), y: currentY)

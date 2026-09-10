@@ -8,11 +8,6 @@
 import SwiftUI
 import UIKit
 
-private extension PetAccessory {
-    var inventoryDisplayPrice: String {
-        String(format: "%.2f QAR", finalPrice.doubleValue).normalizedEnglishDigits
-    }
-}
 
 // MARK: - Filter & Sort Enums
 

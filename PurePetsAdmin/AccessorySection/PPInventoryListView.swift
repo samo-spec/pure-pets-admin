@@ -19,7 +19,7 @@ extension PetAccessory: @unchecked Sendable, Identifiable {
     public var id: String { accessoryID }
 }
 
-private extension PetAccessory {
+extension PetAccessory {
     var inventoryDisplayPrice: String {
         guard hasResolvedSellingPrice else {
             return Language.get("Inventory_Price_Unavailable", alter: "السعر غير متاح")
@@ -1891,6 +1891,7 @@ public struct PPInventoryListView: View {
     @State private var itemForQuarantine: PetAccessory? = nil
     @State private var itemForLots: PetAccessory? = nil
     @State private var showCycleCountStudio: Bool = false
+    @State private var itemForActionMenu: PetAccessory? = nil
 
     public init(
         kind: AccessKindType = .typeAccessory,
@@ -2007,6 +2008,43 @@ public struct PPInventoryListView: View {
             ) {
                 viewModel.applyFilter()
             }
+        }
+        .sheet(item: $itemForActionMenu) { item in
+            PPInventoryActionMenuSheet(
+                item: item,
+                onEdit: {
+                    let editVC = AddAccessoryViewController(accessory: item)
+                    editVC.showTypeRow = false
+                    editVC.defaultKind = viewModel.currentKind
+                    onPushViewController(editVC)
+                },
+                onRecordDamage: {
+                    itemForDamage = item
+                },
+                onQuarantineStudio: {
+                    itemForQuarantine = item
+                },
+                onManageLots: {
+                    itemForLots = item
+                },
+                onShare: {
+                    if let root = UIApplication.shared.connectedScenes
+                        .compactMap({ $0 as? UIWindowScene })
+                        .flatMap({ $0.windows })
+                        .first(where: { $0.isKeyWindow })?.rootViewController {
+                        PetAccessory.share(item, from: root)
+                    }
+                },
+                onToggleStock: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.toggleStockAvailability(for: item)
+                },
+                onDelete: {
+                    confirmDelete(item: item)
+                }
+            )
+            .presentationDetents([.fraction(0.72), .large])
+            .presentationDragIndicator(.visible)
         }
 
         .onAppear {
@@ -2545,6 +2583,9 @@ public struct PPInventoryListView: View {
                 },
                 onManageLots: {
                     itemForLots = item
+                },
+                onOpenActionMenu: {
+                    itemForActionMenu = item
                 }
             )
         }
@@ -2990,7 +3031,7 @@ public struct PPInventoryListView: View {
 
 // MARK: - Category Specimen Aura Theme Engine
 
-private struct CategorySpecimenAuraTheme {
+struct CategorySpecimenAuraTheme {
     let gradient: [Color]
     let glyphName: String
     let accentTint: Color
@@ -3082,6 +3123,7 @@ private struct FlagshipInventoryCard: View {
     var onRecordDamage: (() -> Void)? = nil
     var onQuarantineStudio: (() -> Void)? = nil
     var onManageLots: (() -> Void)? = nil
+    var onOpenActionMenu: (() -> Void)? = nil
 
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
@@ -3194,7 +3236,24 @@ private struct FlagshipInventoryCard: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
         )
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onOpenActionMenu?()
+        }
         .contextMenu {
+            if let onOpenActionMenu = onOpenActionMenu {
+                Button(action: onOpenActionMenu) {
+                    Label {
+                        Text(Language.get("Specimen_Action_Center", alter: "مركز عمليات الصنف المخزني"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "slider.horizontal.2.square.on.square")
+                    }
+                }
+
+                Divider()
+            }
+
             Button(action: onEdit) {
                 Label {
                     Text(Language.get("Edit", alter: "تعديل الصنف"))
@@ -3523,6 +3582,26 @@ private struct FlagshipInventoryCard: View {
                 livePetRosterButton
             } else {
                 quantumPrecisionStepper
+            }
+
+            // Quick Specimen Action Beacon
+            if let onOpenActionMenu = onOpenActionMenu {
+                Button(action: {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onOpenActionMenu()
+                }) {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(AdminCommandInk.secondary)
+                        .frame(width: 36, height: 36)
+                        .background(AdminSurface.control, in: Circle())
+                        .overlay(
+                            Circle()
+                                .strokeBorder(AdminSurface.borderSubtle, lineWidth: 0.75)
+                        )
+                }
+                .buttonStyle(CatalogPressStyle())
+                .accessibilityLabel(Language.get("Specimen_Actions", alter: "خيارات الصنف"))
             }
         }
     }

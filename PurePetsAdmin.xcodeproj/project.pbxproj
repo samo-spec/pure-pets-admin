@@ -85,6 +85,7 @@
 		B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200012FAA000100B0A001 /* PPInventoryListView.swift */; };
 		B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */; };
 		B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */; };
+		B0A200082FAA000100B0A002 /* PPInventoryActionMenuSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
 		BF4031A37BA040D3A26BE0C8 /* BranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6564A1528C24320B208A2D2 /* BranchesView.swift */; };
 		BFA92434ABD548479D7C6D92 /* AccountingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B81D643527420280F321EA /* AccountingView.swift */; };
@@ -461,6 +462,7 @@
 		B0A200012FAA000100B0A001 /* PPInventoryListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryListView.swift; sourceTree = "<group>"; };
 		B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryEditorView.swift; sourceTree = "<group>"; };
 		B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPLivePetBasicDataEditorView.swift; sourceTree = "<group>"; };
+		B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryActionMenuSheet.swift; sourceTree = "<group>"; };
 		B4B25A3F0AC9C2AC1635B8EF /* PPImageCollectionRow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollectionRow.h; sourceTree = "<group>"; };
 		B7D4E5F62A1B4C6D8E9F0011 /* PPFirebaseCompat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFirebaseCompat.h; sourceTree = "<group>"; };
 		BA5C4EF51A2F4831BE0C1FA2 /* NotificationComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/NotificationComposerView.swift; sourceTree = "<group>"; };
@@ -1821,6 +1823,7 @@
 				B0A200012FAA000100B0A001 /* PPInventoryListView.swift */,
 				B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */,
 				B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */,
+				B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */,
 			);
 			path = AccessorySection;
 			sourceTree = "<group>";
@@ -2405,6 +2408,7 @@
 				B0A200022FAA000100B0A002 /* PPInventoryListView.swift in Sources */,
 				B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */,
 				B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */,
+				B0A200082FAA000100B0A002 /* PPInventoryActionMenuSheet.swift in Sources */,
 				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,
 				F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */,
 				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,

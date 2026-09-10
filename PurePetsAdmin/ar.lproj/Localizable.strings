@@ -6785,3 +6785,40 @@
 "POS_Customer_DirectorySearchPlaceholder" = "ابحث بالاسم أو رقم الهاتف...";
 "POS_Customer_StatsTotal" = "إجمالي المسجلين";
 "POS_Customer_DetailsCardTitle" = "بيانات الاتصال والفرع";
+
+/* ===================== POS Refund Receipt & Printing Integration ===================== */
+"POS_Receipt_Refund_Ready" = "إيصال الاسترداد جاهز";
+"POS_Receipt_Refund_Ready_Sub" = "يمكنك طباعة إيصال استرداد المعاملة أو مشاركته مع العميل.";
+"POS_Receipt_Refund_Title_Full" = "إيصال استرداد مالي (كامل)";
+"POS_Receipt_Refund_Title_Partial" = "إيصال استرداد مالي (جزئي)";
+"POS_Receipt_Badge_FullyRefunded" = "مسترد بالكامل";
+"POS_Receipt_Badge_PartiallyRefunded" = "مسترد جزئياً";
+"POS_Receipt_RefundedAmount" = "المبلغ المسترد";
+"POS_Receipt_NetAfterRefund" = "الصافي بعد الاسترداد";
+"POS_Receipt_RefundDate" = "تاريخ الاسترداد";
+"POS_Receipt_RefundReason" = "سبب الاسترداد";
+"POS_Receipt_RefundedBy" = "المسؤول عن الاسترداد";
+"POS_Receipt_RefundedUnits_Tag" = "مسترد: %d وحدة";
+"POS_Receipt_RefundSuccess_Notice" = "تم تسجيل الاسترداد بنجاح في النظام. إيصال الاسترداد جاهز للطباعة والمشاركة.";
+"POS_Receipt_RefundDossier_Notice" = "معاملة مستردة - إيصال الاسترداد المالي المعتمد.";
+"POS_Action_PrintRefundReceipt" = "طباعة إيصال الاسترداد";
+"POS_Receipt_OriginalTotal" = "إجمالي المعاملة الأصلية";
+
+/* ===================== Specimen Action Center & Studios ===================== */
+"Specimen_Actions" = "خيارات الصنف";
+"Specimen_Action_Center" = "مركز عمليات الصنف المخزني";
+"Specimen_Action_Center_Sub" = "نظام التحكم الرقابي الشامل والتشغيلات المباشرة";
+"Inventory_Studios_Section" = "استوديوهات الجرد والرقابة النوعية";
+"Damage_Studio_Desc" = "تسجيل تالف أو هالك أو عيب مصنعي مع حسم فوري من الرصيد";
+"Damage_Badge" = "إتلاف وركود";
+"Quarantine_Studio_Desc" = "حجز كميات للفحص الطبي أو البيطري أو فك الحجر للتداول";
+"Quarantine_Badge" = "عزل وجودة";
+"Lots_Studio_Desc" = "متابعة الباتشات وتواريخ الصلاحية وقاعدة الصرف الأقرب انتهاءً";
+"Lots_Badge" = "تشغيلات FEFO";
+"Edit_Specimen" = "تعديل الصنف";
+"Share_Specimen" = "مشاركة الصنف";
+"Stock_Currently_Out" = "الصنف غير متاح للبيع حالياً";
+"Stock_Currently_Active" = "الصنف متاح في عمليات البيع والكاشير";
+"Delete_Specimen_Guarded" = "حذف الصنف نهائياً من المخزون";
+"Financial_Specs" = "البيانات المالية";
+"Operational_Studios" = "استوديوهات الجرد المتخصصة";
