@@ -134,16 +134,19 @@ public final class PPInventoryLotService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let resolvedBranch = {
-            let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "all_branches" {
-                return trimmed
-            }
-            if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-                return active
-            }
-            return "main_store"
-        }()
+        let resolvedBranch: String
+        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "all_branches" && trimmed != "main_store" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
+            resolvedBranch = active
+        } else {
+            throw NSError(
+                domain: "PPInventoryLotService",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error", alter: "يجب تحديد الفرع لعرض التشغيلات")]
+            )
+        }
 
         let payload: [String: Any] = [
             "branchId": resolvedBranch,
@@ -194,8 +197,14 @@ public final class PPInventoryLotService: ObservableObject {
                 return parsedLots
             }
         } catch {
+            let nsError = error as NSError
+            if nsError.domain == FunctionsErrorDomain {
+                // If backend explicitly rejected with Functions error (permission-denied, unauthenticated, invalid-argument),
+                // fail closed and never attempt direct Firestore query bypass.
+                throw error
+            }
             #if DEBUG
-            print("[PPInventoryLotService] Cloud function listBranchInventoryLots unavailable: \(error.localizedDescription). Falling back to direct Firestore read.")
+            print("[PPInventoryLotService] Cloud function listBranchInventoryLots network failure: \(error.localizedDescription). Falling back to direct Firestore read.")
             #endif
         }
 
@@ -230,6 +239,8 @@ public final class PPInventoryLotService: ObservableObject {
         }
 
         let now = Date()
+        let staff = PPStaffAuth.shared().cachedCurrentStaff
+        let canViewCosts = (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
         var parsedLots: [PPInventoryLot] = []
 
         for doc in snap.documents {
@@ -270,10 +281,10 @@ public final class PPInventoryLotService: ObservableObject {
                 availableQuantity: avail,
                 reservedQuantity: (data["reservedQuantity"] as? Int) ?? 0,
                 onHandQuantity: data["onHandQuantity"] as? Int,
-                costPrice: (data["costPrice"] as? Double) ?? 0.0,
+                costPrice: canViewCosts ? ((data["costPrice"] as? Double) ?? 0.0) : 0.0,
                 expiryDate: expDate,
                 status: isExpired ? "expired" : ((data["status"] as? String) ?? "active"),
-                supplier: (data["supplier"] as? String) ?? "",
+                supplier: canViewCosts ? ((data["supplier"] as? String) ?? "") : "",
                 notes: (data["notes"] as? String) ?? "",
                 createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
             )
@@ -305,16 +316,19 @@ public final class PPInventoryLotService: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let resolvedBranch = {
-            let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "all_branches" {
-                return trimmed
-            }
-            if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-                return active
-            }
-            return "main_store"
-        }()
+        let resolvedBranch: String
+        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "all_branches" && trimmed != "main_store" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty && active != "main_store" {
+            resolvedBranch = active
+        } else {
+            throw NSError(
+                domain: "PPInventoryLotManager",
+                code: 400,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error_Create_Lot", alter: "يجب تحديد الفرع لإنشاء التشغيلة")]
+            )
+        }
 
         let isoFormatter = ISO8601DateFormatter()
         let payload: [String: Any] = [

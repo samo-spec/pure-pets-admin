@@ -81,15 +81,15 @@ struct AdminRouteDestinationView: View {
                 router.presentedRoute = nil
             }
         case .accessories:
-            PPInventoryListView(kind: .typeAccessory, onDismiss: {
+            PPInventoryListView(kind: .typeAccessory, session: session, onDismiss: {
                 router.presentedRoute = nil
             })
         case .food:
-            PPInventoryListView(kind: .typeFood, onDismiss: {
+            PPInventoryListView(kind: .typeFood, session: session, onDismiss: {
                 router.presentedRoute = nil
             })
         case .livePets:
-            PPInventoryListView(kind: .typeLivePets, onDismiss: {
+            PPInventoryListView(kind: .typeLivePets, session: session, onDismiss: {
                 router.presentedRoute = nil
             })
         case .providerApplications:

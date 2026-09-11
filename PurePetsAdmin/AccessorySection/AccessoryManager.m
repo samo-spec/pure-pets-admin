@@ -139,6 +139,26 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     }];
 }
 
+- (void)fetchAccessoriesOfKind:(AccessKindType)kind
+                         limit:(NSUInteger)limit
+            startAfterDocument:(FIRDocumentSnapshot * _Nullable)lastDoc
+                    completion:(void (^)(NSArray<PetAccessory *> * _Nullable items, FIRDocumentSnapshot * _Nullable lastSnapshot, NSError * _Nullable error))completion {
+    FIRQuery *q = [[[self _queryForKind:kind] queryOrderedByField:kFieldUpdatedAt descending:YES] queryLimitedTo:limit > 0 ? limit : 50];
+    if (lastDoc) {
+        q = [q queryStartingAfterDocument:lastDoc];
+    }
+    [q getDocumentsWithCompletion:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
+        if (!completion) return;
+        if (error) {
+            completion(nil, nil, error);
+            return;
+        }
+        NSArray<PetAccessory *> *items = [self _mapDocs:snap.documents];
+        FIRDocumentSnapshot *newLast = snap.documents.lastObject;
+        completion(items, newLast, nil);
+    }];
+}
+
 - (id<FIRListenerRegistration>)observeAccessoriesOfKind:(AccessKindType)kind callback:(AccessoryArrayBlock)onChange {
     return [[self _queryForKind:kind] addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
         if (!onChange) return;
@@ -233,7 +253,7 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     return [self observeAccessoriesOfKind:AccessTypeFood callback:onChange];
 }
 
-#pragma mark - WRITE
+#pragma mark - WRITE (AUTHORITATIVE CALLABLE ROUTING)
 
 - (void)createOrUpdateAccessory:(PetAccessory *)model completion:(AccessoryVoidBlock)completion {
     if (!model) {
@@ -252,11 +272,37 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     }
     [model normalizeInventoryState];
 
-    NSString *docID = model.accessoryID.length ? model.accessoryID : [[self col] documentWithAutoID].documentID;
-    model.accessoryID = docID;
+    BOOL isUpdate = model.accessoryID.length > 0;
+    NSString *action = isUpdate ? @"update" : @"create";
+    NSMutableDictionary *payload = [[model toFirestoreDictionary] mutableCopy];
+    // Public catalog document never holds client-supplied cost
+    [payload removeObjectForKey:@"costPrice"];
+    [payload removeObjectForKey:@"buyPrice"];
 
-    NSDictionary *dict = [model toFirestoreDictionary];
-    [[[self col] documentWithPath:docID] setData:dict merge:YES completion:completion];
+    NSMutableDictionary *requestData = [@{
+        @"contractVersion": @2,
+        @"action": action,
+        @"payload": payload
+    } mutableCopy];
+    if (isUpdate) {
+        requestData[@"productId"] = model.accessoryID;
+    }
+
+    FIRFunctions *functions = [FIRFunctions functions];
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:requestData completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] validateInventoryChange %@ failed: %@", action, error.localizedDescription);
+            if (completion) completion(error);
+            return;
+        }
+        if (!isUpdate && [result.data isKindOfClass:[NSDictionary class]]) {
+            NSString *newId = result.data[@"productId"];
+            if (newId.length) {
+                model.accessoryID = newId;
+            }
+        }
+        if (completion) completion(nil);
+    }];
 }
 
 - (void)updateQuantity:(NSInteger)qty forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -264,9 +310,23 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         if (completion) completion(PPAccessoryError(400, @"Accessory id is missing."));
         return;
     }
-    [[[self col] documentWithPath:docID]
-     updateData:[self _inventoryPayloadForQuantity:qty]
-     completion:completion];
+
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSDictionary *payload = @{
+        @"contractVersion": @2,
+        @"action": @"update",
+        @"productId": docID,
+        @"payload": @{
+            @"quantity": @(qty),
+            @"noStock": @(qty <= 0)
+        }
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] updateQuantity via validateInventoryChange failed: %@", error.localizedDescription);
+        }
+        if (completion) completion(error);
+    }];
 }
 
 - (void)adjustQuantityBy:(NSInteger)delta forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -275,20 +335,20 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRDocumentReference *ref = [[self col] documentWithPath:docID];
-    [self.db runTransactionWithBlock:^id _Nullable(FIRTransaction * _Nonnull transaction, NSError * _Nonnull * _Nullable errorPointer) {
-        FIRDocumentSnapshot *snap = [transaction getDocument:ref error:errorPointer];
-        if (*errorPointer) return nil;
-        if (!snap.exists) {
-            if (errorPointer) *errorPointer = PPAccessoryError(404, @"Accessory not found.");
-            return nil;
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSDictionary *payload = @{
+        @"action": @"adjust",
+        @"productId": docID,
+        @"payload": @{
+            @"type": delta >= 0 ? @"stock_in" : @"stock_out",
+            @"quantity": @(ABS(delta)),
+            @"reason": @"manual_adjustment"
         }
-
-        NSInteger currentQty = MAX(0, [snap.data[kFieldQuantity] integerValue]);
-        NSInteger nextQty = MAX(0, currentQty + delta);
-        [transaction updateData:[self _inventoryPayloadForQuantity:nextQty] forDocument:ref];
-        return @(nextQty);
-    } completion:^(id  _Nullable result, NSError * _Nullable error) {
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] adjustQuantityBy via validateInventoryChange failed: %@", error.localizedDescription);
+        }
         if (completion) completion(error);
     }];
 }
@@ -299,14 +359,23 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    NSMutableDictionary *data = [@{
-        kFieldNoStock: @(noStock),
-        kFieldUpdatedAt: [FIRTimestamp timestamp]
-    } mutableCopy];
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSMutableDictionary *updatePayload = [@{ @"noStock": @(noStock) } mutableCopy];
     if (noStock) {
-        data[kFieldQuantity] = @0;
+        updatePayload[@"quantity"] = @0;
     }
-    [[[self col] documentWithPath:docID] updateData:data completion:completion];
+    NSDictionary *payload = @{
+        @"contractVersion": @2,
+        @"action": @"update",
+        @"productId": docID,
+        @"payload": updatePayload
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] setNoStock via validateInventoryChange failed: %@", error.localizedDescription);
+        }
+        if (completion) completion(error);
+    }];
 }
 
 - (void)updatePrice:(NSNumber *)price forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -318,9 +387,20 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         if (completion) completion(nil);
         return;
     }
-    [[[self col] documentWithPath:docID]
-     updateData:@{ @"price": price, kFieldUpdatedAt: [FIRTimestamp timestamp] }
-     completion:completion];
+
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSDictionary *payload = @{
+        @"contractVersion": @2,
+        @"action": @"update",
+        @"productId": docID,
+        @"payload": @{ @"price": price }
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] updatePrice via validateInventoryChange failed: %@", error.localizedDescription);
+        }
+        if (completion) completion(error);
+    }];
 }
 
 - (void)setActive:(BOOL)active forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -328,9 +408,20 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         if (completion) completion(PPAccessoryError(400, @"Accessory id is missing."));
         return;
     }
-    [[[self col] documentWithPath:docID]
-     updateData:@{ kFieldActive: @(active), kFieldUpdatedAt: [FIRTimestamp timestamp] }
-     completion:completion];
+
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSDictionary *payload = @{
+        @"contractVersion": @2,
+        @"action": @"update",
+        @"productId": docID,
+        @"payload": @{ @"active": @(active) }
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] setActive via validateInventoryChange failed: %@", error.localizedDescription);
+        }
+        if (completion) completion(error);
+    }];
 }
 
 - (void)deleteAccessoryWithID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -338,7 +429,20 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         if (completion) completion(PPAccessoryError(400, @"Accessory id is missing."));
         return;
     }
-    [[[self col] documentWithPath:docID] deleteDocumentWithCompletion:completion];
+    // Zero physical deletions: route through authoritative validateInventoryChange Cloud Function for soft deletion.
+    FIRFunctions *functions = [FIRFunctions functions];
+    NSDictionary *payload = @{
+        @"action": @"delete",
+        @"productId": docID
+    };
+    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            NSLog(@"[AccessoryManager] validateInventoryChange delete failed: %@", error.localizedDescription);
+            if (completion) completion(error);
+            return;
+        }
+        if (completion) completion(nil);
+    }];
 }
 
 - (void)batchUpdateQuantities:(NSDictionary<NSString *,NSNumber *> *)idToQty completion:(AccessoryVoidBlock)completion {

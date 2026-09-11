@@ -4,15 +4,20 @@
 //
 //  Category-defining Apple-grade Studio for Blind Cycle Counting,
 //  Discrepancy Evaluation & Transactional Stock Reconciliation.
-//  Crafted with distinct, bespoke architectures for iPhone & iPad.
+//  Reinvented from absolute first principles for iPhone & iPad separately.
 //
 
 import SwiftUI
 import AudioToolbox
 import FirebaseFunctions
 
+// MARK: - Semantic Color Aliases
+
 private extension Color {
     static let emerald = Color(uiColor: .ppSuccess)
+    static let crimson = Color(uiColor: .ppError)
+    static let amber = Color(uiColor: .ppWarning)
+    static let sapphire = Color(red: 0.12, green: 0.44, blue: 0.98)
 }
 
 // MARK: - Main Container View
@@ -36,7 +41,7 @@ public struct CycleCountStudioView: View {
         public var title: String {
             switch self {
             case .count:
-                return Language.get("CycleCount_Tab_Count", alter: "العد الفعلي")
+                return Language.get("CycleCount_Tab_Count", alter: "الجرد الفعلي")
             case .review:
                 return Language.get("CycleCount_Tab_Review", alter: "فحص الفروقات")
             case .history:
@@ -55,16 +60,16 @@ public struct CycleCountStudioView: View {
 
     public enum CountFilter: String, CaseIterable, Identifiable {
         case all = "all"
-        case counted = "counted"
         case pending = "pending"
+        case counted = "counted"
 
         public var id: String { rawValue }
 
         public var title: String {
             switch self {
             case .all: return Language.get("All", alter: "الكل")
-            case .counted: return Language.get("CycleCount_Filter_Counted", alter: "تم العد")
             case .pending: return Language.get("CycleCount_Filter_Pending", alter: "بانتظار العد")
+            case .counted: return Language.get("CycleCount_Filter_Counted", alter: "تم العد")
             }
         }
     }
@@ -103,11 +108,14 @@ public struct CycleCountStudioView: View {
 
     // Active Counting State
     @State private var localCounts: [String: Int] = [:]
+    @State private var zeroVerifiedIds: Set<String> = []
     @State private var itemNotes: [String: String] = [:]
     @State private var searchText: String = ""
     @State private var countFilter: CountFilter = .all
+    @State private var selectedShelfFilter: String? = nil
     @State private var showingScanner: Bool = false
     @State private var scannedFeedbackMessage: String? = nil
+    @State private var sessionStartTime: Date = Date()
 
     // Direct Keypad Modal State
     @State private var itemForDirectInput: PPCycleCountItem? = nil
@@ -129,6 +137,10 @@ public struct CycleCountStudioView: View {
     private var isIPad: Bool {
         horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad
     }
+
+    // Multiplier Jumps (Predefined Typesafe Arrays)
+    private static let standardMultipliers: [Int] = [1, 5, 10, 24]
+    private static let ipadMultipliers: [Int] = [1, 5, 10, 25]
 
     // MARK: - Initialization
 
@@ -187,7 +199,7 @@ public struct CycleCountStudioView: View {
                         HStack(spacing: 12) {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.system(size: 20))
-                                .foregroundColor(.green)
+                                .foregroundColor(Color.emerald)
                             Text(success)
                                 .font(AdminType.calloutBold)
                                 .foregroundColor(.white)
@@ -219,6 +231,7 @@ public struct CycleCountStudioView: View {
             .onAppear {
                 loadInitialData()
                 loadAccessoryImagesCache()
+                sessionStartTime = Date()
             }
         }
     }
@@ -227,34 +240,36 @@ public struct CycleCountStudioView: View {
 
     private var headerBar: some View {
         HStack(spacing: 12) {
-            // Dismiss Button
+            // Dismiss Button with RTL-safe Direction
             Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                UISelectionFeedbackGenerator().selectionChanged()
                 dismiss()
             } label: {
                 Image(systemName: Language.isRTL() ? "chevron.right" : "chevron.left")
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(AdminSurface.primaryText)
                     .frame(width: 40, height: 40)
                     .background(AdminSurface.card, in: Circle())
-                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.5))
+                    .overlay(Circle().stroke(AdminSurface.hairline, lineWidth: 0.8))
             }
+            .buttonStyle(KeypadPressFeedbackStyle())
 
-            // Title & Branch Context Block
+            // Title & Active Branch Context Block
             VStack(alignment: .leading, spacing: 3) {
                 Text(Language.get("CycleCount_Studio_Title", alter: "استوديو جرد وتسوية المخزون"))
-                    .font(AdminType.title3Bold)
+                    .font(PPBrandFont.bold(size: 19))
                     .foregroundColor(AdminSurface.primaryText)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(Color.green)
-                        .frame(width: 6, height: 6)
+                        .fill(Color.emerald)
+                        .frame(width: 7, height: 7)
+                        .shadow(color: Color.emerald.opacity(0.6), radius: 3)
 
                     let branchTitle = BranchContextStore.shared.activeBranch?.localizedName() ?? branchId
                     Text(branchTitle)
-                        .font(AdminType.caption)
+                        .font(AdminType.captionBold)
                         .foregroundColor(AdminSurface.secondaryText)
                 }
             }
@@ -269,7 +284,7 @@ public struct CycleCountStudioView: View {
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "barcode.viewfinder")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                         Text(Language.get("Scan", alter: "مسح باركود"))
                             .font(AdminType.captionBold)
                     }
@@ -286,6 +301,7 @@ public struct CycleCountStudioView: View {
                     )
                     .shadow(color: Color.indigo.opacity(0.35), radius: 8, y: 3)
                 }
+                .buttonStyle(KeypadPressFeedbackStyle())
             }
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
@@ -296,11 +312,11 @@ public struct CycleCountStudioView: View {
     // MARK: - Tab Segmented Control
 
     private var tabSegmentedBar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             ForEach(StudioTab.allCases) { tab in
                 let isSelected = selectedTab == tab
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    UISelectionFeedbackGenerator().selectionChanged()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         selectedTab = tab
                     }
@@ -310,31 +326,34 @@ public struct CycleCountStudioView: View {
                             .font(.system(size: 13, weight: isSelected ? .bold : .medium))
                         Text(tab.title)
                             .font(isSelected ? AdminType.captionBold : AdminType.caption)
+
+                        // Discrepancy counter badge for review tab
+                        if tab == .review, let session = activeSession, session.discrepancyCount > 0 {
+                            Text(verbatim: "\(session.discrepancyCount)".normalizedEnglishDigits)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.crimson, in: Capsule())
+                        }
                     }
                     .foregroundColor(isSelected ? .white : AdminSurface.secondaryText)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
+                    .padding(.vertical, 9)
                     .background(
-                        Group {
-                            if isSelected {
-                                RoundedRectangle(cornerRadius: AdminRadius.small)
-                                    .fill(AdminSurface.primary)
-                                    .shadow(color: AdminSurface.primary.opacity(0.3), radius: 6, y: 2)
-                            } else {
-                                Color.clear
-                            }
-                        }
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(isSelected ? AdminSurface.primary : Color.clear)
+                            .shadow(color: isSelected ? AdminSurface.primary.opacity(0.3) : .clear, radius: 6, y: 2)
                     )
                 }
                 .buttonStyle(.plain)
             }
         }
         .padding(4)
-        .background(AdminSurface.card)
-        .cornerRadius(AdminRadius.medium)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.medium)
-                .stroke(AdminSurface.hairline, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
         )
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.bottom, 8)
@@ -370,12 +389,13 @@ public struct CycleCountStudioView: View {
                 .padding(.vertical, 9)
                 .background(AdminSurface.card)
                 .cornerRadius(AdminRadius.medium)
-                .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.5))
+                .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.8))
 
                 // Count Filter Picker
                 Menu {
                     ForEach(CountFilter.allCases) { f in
                         Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
                             countFilter = f
                         } label: {
                             HStack {
@@ -398,11 +418,58 @@ public struct CycleCountStudioView: View {
                     .padding(.vertical, 9)
                     .background(AdminSurface.card)
                     .cornerRadius(AdminRadius.medium)
-                    .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.8))
                 }
             }
             .padding(.horizontal, AdminSpacing.screenMargin)
             .padding(.vertical, 4)
+
+            // Intelligent Shelf Filter Carousel (If session has shelf locations)
+            let uniqueShelves = extractUniqueShelves(session: session)
+            if !uniqueShelves.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            selectedShelfFilter = nil
+                        } label: {
+                            Text(Language.get("All", alter: "كل الرفوف"))
+                                .font(AdminType.captionBold)
+                                .foregroundColor(selectedShelfFilter == nil ? .white : AdminSurface.secondaryText)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    selectedShelfFilter == nil ? AdminSurface.primary : AdminSurface.cardElevated,
+                                    in: Capsule()
+                                )
+                        }
+
+                        ForEach(uniqueShelves, id: \.self) { shelf in
+                            let isCur = selectedShelfFilter == shelf
+                            Button {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                selectedShelfFilter = isCur ? nil : shelf
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "mappin")
+                                        .font(.system(size: 9))
+                                    Text(verbatim: shelf.normalizedEnglishDigits)
+                                }
+                                .font(AdminType.captionBold)
+                                .foregroundColor(isCur ? .white : .orange)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    isCur ? Color.orange : Color.orange.opacity(0.12),
+                                    in: Capsule()
+                                )
+                            }
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.screenMargin)
+                    .padding(.vertical, 4)
+                }
+            }
 
             // Blind Counting List
             let items = filteredItems(session: session)
@@ -422,7 +489,7 @@ public struct CycleCountStudioView: View {
                         }
                     }
                     .padding(AdminSpacing.screenMargin)
-                    .padding(.bottom, 96) // Space for sticky bottom bar
+                    .padding(.bottom, 110) // Space for floating bottom command dock
                 }
             }
 
@@ -435,7 +502,7 @@ public struct CycleCountStudioView: View {
 
     private func iPadActiveCountingView(session: PPCycleCountSession) -> some View {
         HStack(spacing: 0) {
-            // Left Leading Telemetry & Command Tower (Width: 340)
+            // Left Leading Telemetry & Command Tower (Width: 360)
             VStack(spacing: AdminSpacing.md) {
                 iPadTelemetryTower(session: session)
                 Spacer()
@@ -447,31 +514,33 @@ public struct CycleCountStudioView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 18, weight: .bold))
                         Text(Language.get("CycleCount_Submit_Count", alter: "إنهاء الجرد واحتساب الفروقات"))
                             .font(AdminType.headlineBold)
                     }
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 15)
                     .background(
                         LinearGradient(
                             colors: [Color.green, Color.emerald],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        in: RoundedRectangle(cornerRadius: AdminRadius.card)
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                     )
                     .shadow(color: Color.green.opacity(0.35), radius: 8, y: 4)
                 }
+                .buttonStyle(KeypadPressFeedbackStyle())
+                .keyboardShortcut("s", modifiers: .command)
             }
             .padding(AdminSpacing.lg)
-            .frame(width: 340)
+            .frame(width: 360)
             .background(AdminSurface.card.ignoresSafeArea())
             .overlay(
                 Rectangle()
                     .fill(AdminSurface.hairline)
-                    .frame(width: 0.5),
+                    .frame(width: 1),
                 alignment: .trailing
             )
 
@@ -490,7 +559,7 @@ public struct CycleCountStudioView: View {
                     .padding(.vertical, 10)
                     .background(AdminSurface.card)
                     .cornerRadius(AdminRadius.medium)
-                    .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.5))
+                    .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.8))
 
                     // Filter Picker Segments
                     Picker("", selection: $countFilter) {
@@ -499,7 +568,18 @@ public struct CycleCountStudioView: View {
                         }
                     }
                     .pickerStyle(.segmented)
-                    .frame(width: 240)
+                    .frame(width: 260)
+
+                    // Scanner Button
+                    Button {
+                        showingScanner = true
+                    } label: {
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 18))
+                            .foregroundColor(AdminSurface.primary)
+                            .frame(width: 42, height: 42)
+                            .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 10))
+                    }
                 }
                 .padding(.horizontal, AdminSpacing.lg)
                 .padding(.vertical, 12)
@@ -539,13 +619,18 @@ public struct CycleCountStudioView: View {
         let counted = countedItemsCount(session: session)
         let total = max(1, session.itemCount)
         let progress = min(1.0, Double(counted) / Double(total))
+        let remaining = max(0, total - counted)
+
+        // Pacing: velocity rate per minute
+        let elapsedMinutes = max(0.1, Date().timeIntervalSince(sessionStartTime) / 60.0)
+        let itemsPerMin = counted > 0 ? Int(Double(counted) / elapsedMinutes) : 0
 
         return HStack(spacing: 14) {
             // Radial Mini Gauge
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 5)
-                    .frame(width: 46, height: 46)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 6)
+                    .frame(width: 50, height: 50)
 
                 Circle()
                     .trim(from: 0.0, to: CGFloat(progress))
@@ -555,26 +640,26 @@ public struct CycleCountStudioView: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 46, height: 46)
+                    .frame(width: 50, height: 50)
                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: progress)
 
                 Text(verbatim: "\(Int(progress * 100))%".normalizedEnglishDigits)
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.system(size: 12, weight: .heavy, design: .rounded))
                     .foregroundColor(AdminSurface.primaryText)
             }
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     Text(Language.get("CycleCount_Progress_Title", alter: "التقدم في الجرد الفعلي"))
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.secondaryText)
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.primaryText)
                     Spacer()
                     Text(verbatim: "\(counted) / \(total) \(Language.get("Items", alter: "صنف"))".normalizedEnglishDigits)
                         .font(AdminType.captionBold)
-                        .foregroundColor(AdminSurface.primary)
+                        .foregroundColor(progress >= 1.0 ? Color.emerald : AdminSurface.primary)
                 }
 
                 // Progress Bar
@@ -582,21 +667,45 @@ public struct CycleCountStudioView: View {
                     ZStack(alignment: .leading) {
                         Capsule()
                             .fill(Color.white.opacity(0.06))
-                            .frame(height: 5)
+                            .frame(height: 6)
                         Capsule()
-                            .fill(Color.green)
-                            .frame(width: max(4, geo.size.width * CGFloat(progress)), height: 5)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.green, Color.emerald],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: max(6, geo.size.width * CGFloat(progress)), height: 6)
+                            .animation(.spring(response: 0.35), value: progress)
                     }
                 }
-                .frame(height: 5)
+                .frame(height: 6)
+
+                // Sub-telemetry details
+                HStack {
+                    HStack(spacing: 3) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.orange)
+                        Text(verbatim: String(format: Language.get("CycleCount_Pacing_Rate", alter: "%@ صنف / دقيقة"), "\(itemsPerMin)".normalizedEnglishDigits))
+                            .font(AdminType.caption2)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Spacer()
+
+                    Text(verbatim: String(format: Language.get("CycleCount_Remaining_Format", alter: "المتبقي: %@ صنف"), "\(remaining)".normalizedEnglishDigits))
+                        .font(AdminType.caption2Bold)
+                        .foregroundColor(remaining == 0 ? Color.emerald : .orange)
+                }
             }
         }
         .padding(AdminSpacing.md)
-        .background(AdminSurface.card)
-        .cornerRadius(AdminRadius.card)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AdminRadius.card)
-                .stroke(AdminSurface.hairline, lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(AdminSurface.hairline, lineWidth: 0.8)
         )
     }
 
@@ -612,8 +721,8 @@ public struct CycleCountStudioView: View {
             // Big Radial Dial
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.08), lineWidth: 10)
-                    .frame(width: 130, height: 130)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 12)
+                    .frame(width: 140, height: 140)
 
                 Circle()
                     .trim(from: 0.0, to: CGFloat(progress))
@@ -623,18 +732,18 @@ public struct CycleCountStudioView: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
-                        style: StrokeStyle(lineWidth: 10, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 12, lineCap: .round)
                     )
                     .rotationEffect(.degrees(-90))
-                    .frame(width: 130, height: 130)
+                    .frame(width: 140, height: 140)
                     .animation(.spring(response: 0.5, dampingFraction: 0.8), value: progress)
 
                 VStack(spacing: 2) {
                     Text(verbatim: "\(Int(progress * 100))%".normalizedEnglishDigits)
-                        .font(.system(size: 28, weight: .bold))
+                        .font(.system(size: 32, weight: .heavy, design: .rounded))
                         .foregroundColor(AdminSurface.primaryText)
                     Text(Language.get("Completed", alter: "مكتمل"))
-                        .font(AdminType.caption)
+                        .font(AdminType.captionBold)
                         .foregroundColor(AdminSurface.secondaryText)
                 }
             }
@@ -658,12 +767,11 @@ public struct CycleCountStudioView: View {
                             .foregroundColor(AdminSurface.secondaryText)
                         Text(verbatim: "\(totalUnits)".normalizedEnglishDigits)
                             .font(AdminType.calloutBold)
-                            .foregroundColor(Color.green)
+                            .foregroundColor(Color.emerald)
                     }
                 }
                 .padding(AdminSpacing.md)
-                .background(AdminSurface.cardElevated)
-                .cornerRadius(AdminRadius.medium)
+                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 // Scope Badge
                 HStack(spacing: 8) {
@@ -675,8 +783,50 @@ public struct CycleCountStudioView: View {
                     Spacer()
                 }
                 .padding(AdminSpacing.sm)
-                .background(AdminSurface.cardElevated)
-                .cornerRadius(AdminRadius.small)
+                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            // Shelf Breakdown Checklist
+            let shelves = extractUniqueShelves(session: session)
+            if !shelves.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(Language.get("CycleCount_Aisle_Navigator", alter: "خريطة الرفوف والممرات"))
+                        .font(AdminType.captionBold)
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    ScrollView {
+                        VStack(spacing: 6) {
+                            ForEach(shelves, id: \.self) { sh in
+                                let shelfItems = session.items.filter { $0.shelfLocation == sh }
+                                let shelfCounted = shelfItems.filter { (localCounts[$0.productId] ?? $0.countedQuantity) > 0 || zeroVerifiedIds.contains($0.productId) }.count
+                                let isComplete = shelfCounted == shelfItems.count
+
+                                HStack {
+                                    Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(isComplete ? Color.emerald : .orange)
+
+                                    Text(verbatim: sh.normalizedEnglishDigits)
+                                        .font(AdminType.captionBold)
+                                        .foregroundColor(AdminSurface.primaryText)
+
+                                    Spacer()
+
+                                    Text(verbatim: "\(shelfCounted)/\(shelfItems.count)".normalizedEnglishDigits)
+                                        .font(AdminType.caption2Bold)
+                                        .foregroundColor(AdminSurface.secondaryText)
+                                }
+                                .padding(8)
+                                .background(selectedShelfFilter == sh ? AdminSurface.primary.opacity(0.12) : AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 8))
+                                .onTapGesture {
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                    selectedShelfFilter = (selectedShelfFilter == sh) ? nil : sh
+                                }
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 180)
+                }
             }
         }
     }
@@ -684,178 +834,39 @@ public struct CycleCountStudioView: View {
     // MARK: - iPhone Tactile Item Card
 
     private func iPhoneTactileItemCard(item: PPCycleCountItem) -> some View {
-        let current = localCounts[item.productId] ?? item.countedQuantity
-        let isCounted = (localCounts[item.productId] != nil) || (item.countedQuantity > 0)
+        let count = localCounts[item.productId] ?? item.countedQuantity
+        let isZeroVerified = zeroVerifiedIds.contains(item.productId) && count == 0
+        let isCounted = (localCounts[item.productId] != nil && count > 0) || (item.countedQuantity > 0) || isZeroVerified
         let imageURL = imageCache[item.productId]
 
-        return HStack(spacing: 12) {
-            // Product Hero Thumbnail
-            ZStack {
-                RoundedRectangle(cornerRadius: AdminRadius.medium)
-                    .fill(AdminSurface.cardElevated)
-                    .frame(width: 62, height: 62)
-
-                if let url = imageURL {
-                    AsyncImage(url: url) { img in
-                        img.resizable().aspectRatio(contentMode: .fill)
-                    } placeholder: {
-                        ProgressView().scaleEffect(0.7)
-                    }
-                    .frame(width: 62, height: 62)
-                    .clipShape(RoundedRectangle(cornerRadius: AdminRadius.medium))
-                } else {
-                    Image(systemName: "cube.box.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                }
-            }
-
-            // Product Details Block
-            VStack(alignment: .leading, spacing: 3) {
-                Text(item.productName)
-                    .font(AdminType.headline)
-                    .foregroundColor(AdminSurface.primaryText)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    if !item.sku.isEmpty {
-                        Text(verbatim: item.sku.normalizedEnglishDigits)
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 4))
-                    }
-
-                    if !item.shelfLocation.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "mappin")
-                                .font(.system(size: 9))
-                            Text(verbatim: item.shelfLocation.normalizedEnglishDigits)
-                        }
-                        .font(AdminType.caption2Bold)
-                        .foregroundColor(.orange)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
-                    }
-                }
-
-                // Counted Status Pill
-                if isCounted {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundColor(.green)
-                        Text(verbatim: "\(Language.get("CycleCount_Counted_Badge", alter: "تم العد")): \(current) \(Language.get("Units", alter: "قطع"))".normalizedEnglishDigits)
-                            .font(AdminType.captionBold)
-                            .foregroundColor(.green)
-                    }
-                    .padding(.top, 2)
-                } else {
-                    Text(Language.get("CycleCount_Filter_Pending", alter: "بانتظار العد"))
-                        .font(AdminType.caption)
-                        .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
-                        .padding(.top, 2)
-                }
-            }
-
-            Spacer()
-
-            // Tactical Stepper & Keypad Bubble
-            HStack(spacing: 4) {
-                // Decrement Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    let updated = max(0, current - 1)
-                    localCounts[item.productId] = updated
-                } label: {
-                    Image(systemName: "minus")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(current > 0 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.3))
-                        .frame(width: 32, height: 32)
-                        .background(AdminSurface.cardElevated, in: Circle())
-                }
-                .disabled(current == 0)
-
-                // Numeric Keypad Trigger Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    directInputText = "\(current)"
-                    itemForDirectInput = item
-                } label: {
-                    Text(verbatim: "\(current)".normalizedEnglishDigits)
-                        .font(AdminType.headlineBold)
-                        .foregroundColor(isCounted ? .white : AdminSurface.secondaryText)
-                        .frame(minWidth: 38, minHeight: 34)
-                        .background(
-                            isCounted ? AdminSurface.primary : AdminSurface.cardElevated,
-                            in: RoundedRectangle(cornerRadius: 8)
-                        )
-                }
-
-                // Increment Button
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    localCounts[item.productId] = current + 1
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            LinearGradient(
-                                colors: [AdminSurface.primary, AdminSurface.primaryPressed],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: Circle()
-                        )
-                        .shadow(color: AdminSurface.primary.opacity(0.35), radius: 4, y: 2)
-                }
-            }
-        }
-        .padding(AdminSpacing.md)
-        .background(
-            RoundedRectangle(cornerRadius: AdminRadius.card)
-                .fill(isCounted ? AdminSurface.card : AdminSurface.card)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AdminRadius.card)
-                        .stroke(isCounted ? Color.green.opacity(0.35) : AdminSurface.hairline, lineWidth: isCounted ? 1.2 : 0.5)
-                )
-        )
-    }
-
-    // MARK: - iPad Tactile Item Card
-
-    private func iPadTactileItemCard(item: PPCycleCountItem) -> some View {
-        let current = localCounts[item.productId] ?? item.countedQuantity
-        let isCounted = (localCounts[item.productId] != nil) || (item.countedQuantity > 0)
-        let imageURL = imageCache[item.productId]
-
-        return VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                // Large Product Thumbnail
+        return VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                // Product Thumbnail
                 ZStack {
-                    RoundedRectangle(cornerRadius: AdminRadius.medium)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(AdminSurface.cardElevated)
-                        .frame(width: 70, height: 70)
+                        .frame(width: 66, height: 66)
 
                     if let url = imageURL {
                         AsyncImage(url: url) { img in
                             img.resizable().aspectRatio(contentMode: .fill)
                         } placeholder: {
-                            ProgressView().scaleEffect(0.8)
+                            ProgressView().scaleEffect(0.7)
                         }
-                        .frame(width: 70, height: 70)
-                        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.medium))
+                        .frame(width: 66, height: 66)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     } else {
                         Image(systemName: "cube.box.fill")
-                            .font(.system(size: 28))
-                            .foregroundColor(AdminSurface.secondaryText.opacity(0.6))
+                            .font(.system(size: 26))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
                     }
                 }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isCounted ? Color.emerald.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.8)
+                )
 
+                // Product Details
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.productName)
                         .font(AdminType.headline)
@@ -864,17 +875,245 @@ public struct CycleCountStudioView: View {
 
                     HStack(spacing: 6) {
                         if !item.sku.isEmpty {
-                            Text(verbatim: "SKU: \(item.sku)".normalizedEnglishDigits)
+                            Text(verbatim: item.sku.normalizedEnglishDigits)
                                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                                 .foregroundColor(AdminSurface.secondaryText)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 4))
                         }
+
                         if !item.shelfLocation.isEmpty {
-                            Text(verbatim: "• \(item.shelfLocation)".normalizedEnglishDigits)
+                            HStack(spacing: 3) {
+                                Image(systemName: "mappin")
+                                    .font(.system(size: 8))
+                                Text(verbatim: item.shelfLocation.normalizedEnglishDigits)
+                            }
+                            .font(AdminType.caption2Bold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+
+                    // Count Status Badge
+                    if isZeroVerified {
+                        HStack(spacing: 4) {
+                            Image(systemName: "slash.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                            Text(Language.get("CycleCount_Zero_Stock_Badge", alter: "رف فارغ (0 قطعة)"))
                                 .font(AdminType.captionBold)
                                 .foregroundColor(.orange)
                         }
+                        .padding(.top, 2)
+                    } else if isCounted {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 11))
+                                .foregroundColor(Color.emerald)
+                            Text(verbatim: String(format: Language.get("CycleCount_Counted_Badge", alter: "تم العد: %d"), count).normalizedEnglishDigits)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(Color.emerald)
+                        }
+                        .padding(.top, 2)
+                    } else {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.amber)
+                                .frame(width: 6, height: 6)
+                            Text(Language.get("CycleCount_Filter_Pending", alter: "بانتظار العد"))
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                        .padding(.top, 2)
                     }
                 }
+
+                Spacer()
+
+                // Ergonomic Stepper Stack
+                HStack(spacing: 6) {
+                    // Decrement Button
+                    Button {
+                        decrementCount(for: item)
+                    } label: {
+                        Image(systemName: "minus")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(count > 0 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.25))
+                            .frame(width: 36, height: 36)
+                            .background(AdminSurface.cardElevated, in: Circle())
+                    }
+                    .buttonStyle(KeypadPressFeedbackStyle())
+                    .disabled(count == 0)
+
+                    // Numeric Count Dial (Tap opens Direct Keypad Sheet)
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        directInputText = "\(count)"
+                        itemForDirectInput = item
+                    } label: {
+                        Text(verbatim: "\(count)".normalizedEnglishDigits)
+                            .font(.system(size: 20, weight: .heavy, design: .rounded))
+                            .foregroundColor(isCounted ? .white : AdminSurface.secondaryText)
+                            .frame(minWidth: 44, minHeight: 38)
+                            .background(
+                                isCounted ? AdminSurface.primary : AdminSurface.cardElevated,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            )
+                            .shadow(color: isCounted ? AdminSurface.primary.opacity(0.3) : .clear, radius: 4, y: 2)
+                    }
+                    .buttonStyle(KeypadPressFeedbackStyle())
+
+                    // Increment Button
+                    Button {
+                        incrementCount(for: item, delta: 1)
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 36, height: 36)
+                            .background(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, AdminSurface.primaryPressed],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: Circle()
+                            )
+                            .shadow(color: AdminSurface.primary.opacity(0.35), radius: 4, y: 2)
+                    }
+                    .buttonStyle(KeypadPressFeedbackStyle())
+                }
+            }
+
+            // Quick Jump Multiplier Pills Rail
+            HStack(spacing: 8) {
+                // Quick Zero Out Confirmation Pill (If not counted)
+                if !isCounted || count > 0 {
+                    Button {
+                        markZeroStock(for: item)
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "slash.circle")
+                                .font(.system(size: 10))
+                            Text(Language.get("CycleCount_Keypad_Zero_Out", alter: "0 (نفاذ الرف)"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundColor(Color.crimson)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(Color.crimson.opacity(0.1), in: Capsule())
+                    }
+                    .buttonStyle(KeypadPressFeedbackStyle())
+                }
+
+                Spacer()
+
+                // Multiplier pills: +1, +5, +10, +24
+                ForEach(Self.standardMultipliers, id: \.self) { delta in
+                    Button {
+                        incrementCount(for: item, delta: delta)
+                    } label: {
+                        Text(verbatim: "+\(delta)".normalizedEnglishDigits)
+                            .font(AdminType.captionBold)
+                            .foregroundColor(AdminSurface.primary)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 5)
+                            .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                    }
+                    .buttonStyle(KeypadPressFeedbackStyle())
+                }
+            }
+        }
+        .padding(AdminSpacing.md)
+        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(
+                    isCounted ? Color.emerald.opacity(0.35) : AdminSurface.hairline,
+                    lineWidth: isCounted ? 1.2 : 0.8
+                )
+        )
+    }
+
+    // MARK: - iPad Tactile Item Card
+
+    private func iPadTactileItemCard(item: PPCycleCountItem) -> some View {
+        let count = localCounts[item.productId] ?? item.countedQuantity
+        let isZeroVerified = zeroVerifiedIds.contains(item.productId) && count == 0
+        let isCounted = (localCounts[item.productId] != nil && count > 0) || (item.countedQuantity > 0) || isZeroVerified
+        let imageURL = imageCache[item.productId]
+
+        return VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                // Large Product Thumbnail
+                ZStack {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(AdminSurface.cardElevated)
+                        .frame(width: 72, height: 72)
+
+                    if let url = imageURL {
+                        AsyncImage(url: url) { img in
+                            img.resizable().aspectRatio(contentMode: .fill)
+                        } placeholder: {
+                            ProgressView().scaleEffect(0.8)
+                        }
+                        .frame(width: 72, height: 72)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else {
+                        Image(systemName: "cube.box.fill")
+                            .font(.system(size: 30))
+                            .foregroundColor(AdminSurface.secondaryText.opacity(0.5))
+                    }
+                }
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(isCounted ? Color.emerald.opacity(0.4) : AdminSurface.hairline, lineWidth: 0.8)
+                )
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.productName)
+                        .font(AdminType.headlineBold)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        if !item.sku.isEmpty {
+                            Text(verbatim: item.sku.normalizedEnglishDigits)
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundColor(AdminSurface.secondaryText)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 4))
+                        }
+                        if !item.shelfLocation.isEmpty {
+                            HStack(spacing: 3) {
+                                Image(systemName: "mappin")
+                                    .font(.system(size: 9))
+                                Text(verbatim: item.shelfLocation.normalizedEnglishDigits)
+                            }
+                            .font(AdminType.captionBold)
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                    }
+
+                    if isCounted {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.system(size: 12))
+                                .foregroundColor(Color.emerald)
+                            Text(verbatim: String(format: Language.get("CycleCount_Counted_Badge", alter: "تم العد: %d"), count).normalizedEnglishDigits)
+                                .font(AdminType.captionBold)
+                                .foregroundColor(Color.emerald)
+                        }
+                    }
+                }
+
                 Spacer()
             }
 
@@ -884,54 +1123,69 @@ public struct CycleCountStudioView: View {
             HStack(spacing: 8) {
                 // Stepper Controls
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    localCounts[item.productId] = max(0, current - 1)
+                    decrementCount(for: item)
                 } label: {
                     Image(systemName: "minus")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 34, height: 34)
+                        .foregroundColor(count > 0 ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.3))
+                        .frame(width: 36, height: 36)
                         .background(AdminSurface.cardElevated, in: Circle())
                 }
+                .buttonStyle(KeypadPressFeedbackStyle())
+                .disabled(count == 0)
 
                 Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    directInputText = "\(current)"
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    directInputText = "\(count)"
                     itemForDirectInput = item
                 } label: {
-                    Text(verbatim: "\(current)".normalizedEnglishDigits)
+                    Text(verbatim: "\(count)".normalizedEnglishDigits)
                         .font(AdminType.title3Bold)
                         .foregroundColor(.white)
-                        .frame(minWidth: 44, minHeight: 34)
+                        .frame(minWidth: 48, minHeight: 36)
                         .background(isCounted ? AdminSurface.primary : AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 8))
                 }
+                .buttonStyle(KeypadPressFeedbackStyle())
 
                 Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    localCounts[item.productId] = current + 1
+                    incrementCount(for: item, delta: 1)
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
-                        .frame(width: 34, height: 34)
+                        .frame(width: 36, height: 36)
                         .background(AdminSurface.primary, in: Circle())
                 }
+                .buttonStyle(KeypadPressFeedbackStyle())
 
                 Spacer()
 
-                // Quick Multiplier Pills
-                ForEach([5, 10, 25], id: \.self) { delta in
+                // Zero Out Pill
+                Button {
+                    markZeroStock(for: item)
+                } label: {
+                    Text("0")
+                        .font(AdminType.captionBold)
+                        .foregroundColor(Color.crimson)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.crimson.opacity(0.12), in: Capsule())
+                }
+                .buttonStyle(KeypadPressFeedbackStyle())
+
+                // Multipliers
+                ForEach(Self.ipadMultipliers, id: \.self) { delta in
                     Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        localCounts[item.productId] = current + delta
+                        incrementCount(for: item, delta: delta)
                     } label: {
-                        Text("+\(delta)")
+                        Text(verbatim: "+\(delta)".normalizedEnglishDigits)
                             .font(AdminType.captionBold)
                             .foregroundColor(AdminSurface.primary)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 9)
                             .padding(.vertical, 6)
                             .background(AdminSurface.primary.opacity(0.12), in: Capsule())
                     }
+                    .buttonStyle(KeypadPressFeedbackStyle())
                 }
             }
         }
@@ -941,7 +1195,7 @@ public struct CycleCountStudioView: View {
                 .fill(AdminSurface.card)
                 .overlay(
                     RoundedRectangle(cornerRadius: AdminRadius.card)
-                        .stroke(isCounted ? Color.green.opacity(0.35) : AdminSurface.hairline, lineWidth: isCounted ? 1.2 : 0.5)
+                        .stroke(isCounted ? Color.emerald.opacity(0.4) : AdminSurface.hairline, lineWidth: isCounted ? 1.2 : 0.8)
                 )
         )
     }
@@ -951,16 +1205,17 @@ public struct CycleCountStudioView: View {
     private func iPhoneBottomActionBar(session: PPCycleCountSession) -> some View {
         let counted = countedItemsCount(session: session)
         let total = session.itemCount
+        let remaining = max(0, total - counted)
 
         return VStack(spacing: 8) {
             HStack {
                 Text(verbatim: "\(Language.get("Progress", alter: "المنجز")): \(counted) / \(total) \(Language.get("Items", alter: "صنف"))".normalizedEnglishDigits)
                     .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
+                    .foregroundColor(remaining == 0 ? Color.emerald : AdminSurface.secondaryText)
                 Spacer()
-                Text(verbatim: "\(Language.get("Remaining", alter: "المتبقي")): \(max(0, total - counted))".normalizedEnglishDigits)
-                    .font(AdminType.caption)
-                    .foregroundColor(.orange)
+                Text(verbatim: "\(Language.get("Remaining", alter: "المتبقي")): \(remaining)".normalizedEnglishDigits)
+                    .font(AdminType.captionBold)
+                    .foregroundColor(remaining == 0 ? Color.emerald : .orange)
             }
             .padding(.horizontal, 4)
 
@@ -976,17 +1231,18 @@ public struct CycleCountStudioView: View {
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                .padding(.vertical, 15)
                 .background(
                     LinearGradient(
                         colors: [Color.green, Color.emerald],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     ),
-                    in: RoundedRectangle(cornerRadius: AdminRadius.card)
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
-                .shadow(color: Color.green.opacity(0.3), radius: 8, y: 4)
+                .shadow(color: Color.green.opacity(0.35), radius: 8, y: 4)
             }
+            .buttonStyle(KeypadPressFeedbackStyle())
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.top, 10)
@@ -996,23 +1252,38 @@ public struct CycleCountStudioView: View {
                 .overlay(
                     Rectangle()
                         .fill(AdminSurface.hairline)
-                        .frame(height: 0.5),
+                        .frame(height: 0.8),
                     alignment: .top
                 )
         )
     }
 
-    // MARK: - Direct Numeric Keypad Studio (Reinvented for iPhone & iPad from First Principles)
+    // MARK: - Direct Numeric Keypad Studio
 
     private func directKeypadEntrySheet(for item: PPCycleCountItem) -> some View {
-        Group {
-            if isIPad {
-                iPadDirectKeypadStudio(item: item)
-            } else {
-                iPhoneDirectKeypadStudio(item: item)
-            }
+        let current = localCounts[item.productId] ?? (Int(directInputText) ?? (item.expectedOnHand ?? 0))
+        let expected = item.expectedOnHand ?? 0
+        let config = PPTactileNumberPadConfig(
+            title: Language.get("CycleCount_Keypad_Title", alter: "إدخال الكمية الفعلية"),
+            subtitle: item.productName,
+            mode: .quantity(unit: Language.get("Units", alter: "وحدات"), allowZero: true),
+            initialValue: Double(current),
+            referenceValue: Double(expected),
+            referenceLabel: Language.get("CycleCount_Keypad_Expected", alter: "الرصيد الدفتري"),
+            specimen: PPTactileSpecimenInfo(
+                title: item.productName,
+                imageURL: imageCache[item.productId],
+                sku: item.sku,
+                shelfLocation: item.shelfLocation,
+                barcode: item.barcode,
+                unitCost: item.costPrice
+            )
+        )
+        return PPTactileNumberPadSheet(config: config) { val in
+            commitDirectCount(for: item, value: Int(val))
+        } onDismiss: {
+            itemForDirectInput = nil
         }
-        .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
     }
 
     // MARK: - iPhone Tactile Quantity Studio
@@ -1040,7 +1311,7 @@ public struct CycleCountStudioView: View {
                 Spacer()
 
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    UISelectionFeedbackGenerator().selectionChanged()
                     itemForDirectInput = nil
                 } label: {
                     Image(systemName: "xmark.circle.fill")
@@ -1142,30 +1413,30 @@ public struct CycleCountStudioView: View {
                     if delta == 0 {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AdminSurface.emerald)
+                            .foregroundColor(Color.emerald)
                         Text(Language.get("CycleCount_Keypad_Matched_Badge", alter: "مطابق للرصيد الدفتري (0 فرق)"))
                             .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.emerald)
+                            .foregroundColor(Color.emerald)
                     } else if delta < 0 {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AdminSurface.crimson)
+                            .foregroundColor(Color.crimson)
                         Text(verbatim: String(format: Language.get("CycleCount_Keypad_Shrinkage_Badge", alter: "عجز %d وحدة (خسارة %.2f ر.ق)"), abs(delta), impactCost).normalizedEnglishDigits)
                             .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.crimson)
+                            .foregroundColor(Color.crimson)
                     } else {
                         Image(systemName: "arrow.up.right.circle.fill")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AdminSurface.amber)
+                            .foregroundColor(Color.amber)
                         Text(verbatim: String(format: Language.get("CycleCount_Keypad_Surplus_Badge", alter: "فائض +%d وحدة (+%.2f ر.ق)"), delta, impactCost).normalizedEnglishDigits)
                             .font(AdminType.captionBold)
-                            .foregroundColor(AdminSurface.amber)
+                            .foregroundColor(Color.amber)
                     }
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 4)
                 .background(
-                    (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber)).opacity(0.12),
+                    (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber)).opacity(0.12),
                     in: Capsule()
                 )
                 .animation(.easeInOut(duration: 0.2), value: delta)
@@ -1176,7 +1447,7 @@ public struct CycleCountStudioView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(
-                        (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber)).opacity(0.3),
+                        (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber)).opacity(0.3),
                         lineWidth: 1
                     )
             )
@@ -1213,11 +1484,11 @@ public struct CycleCountStudioView: View {
                             Text(Language.get("CycleCount_Keypad_Zero_Out", alter: "0 (نفاذ الرف)"))
                                 .font(AdminType.captionBold)
                         }
-                        .foregroundColor(AdminSurface.crimson)
+                        .foregroundColor(Color.crimson)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
-                        .background(AdminSurface.crimson.opacity(0.12), in: Capsule())
-                        .overlay(Capsule().stroke(AdminSurface.crimson.opacity(0.3), lineWidth: 0.8))
+                        .background(Color.crimson.opacity(0.12), in: Capsule())
+                        .overlay(Capsule().stroke(Color.crimson.opacity(0.3), lineWidth: 0.8))
                     }
 
                     // Increment / Decrement Chips
@@ -1290,11 +1561,11 @@ public struct CycleCountStudioView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
                 .background(
-                    (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.primary)),
+                    (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : AdminSurface.primary)),
                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                 )
                 .shadow(
-                    color: (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.primary)).opacity(0.3),
+                    color: (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : AdminSurface.primary)).opacity(0.3),
                     radius: 6, y: 3
                 )
             }
@@ -1330,7 +1601,7 @@ public struct CycleCountStudioView: View {
                     Spacer()
 
                     Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        UISelectionFeedbackGenerator().selectionChanged()
                         itemForDirectInput = nil
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -1454,18 +1725,18 @@ public struct CycleCountStudioView: View {
                                 if delta == 0 {
                                     Text("0.00 ر.ق")
                                         .font(AdminType.captionBold)
-                                        .foregroundColor(AdminSurface.emerald)
+                                        .foregroundColor(Color.emerald)
                                 } else {
                                     Text(verbatim: String(format: "%@%.2f ر.ق", delta < 0 ? "-" : "+", impactCost).normalizedEnglishDigits)
                                         .font(AdminType.captionBold)
-                                        .foregroundColor(delta < 0 ? AdminSurface.crimson : AdminSurface.amber)
+                                        .foregroundColor(delta < 0 ? Color.crimson : Color.amber)
                                 }
                             }
 
                             HStack(spacing: 8) {
                                 Image(systemName: delta == 0 ? "shield.checkmark.fill" : (delta < 0 ? "exclamationmark.triangle.fill" : "chart.line.uptrend.xyaxis.circle.fill"))
                                     .font(.system(size: 18))
-                                    .foregroundColor(delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber))
+                                    .foregroundColor(delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber))
 
                                 Text(verbatim: (delta == 0 ?
                                     Language.get("CycleCount_Keypad_Matched_Badge", alter: "مطابق للرصيد الدفتري (0 فرق)") :
@@ -1475,18 +1746,18 @@ public struct CycleCountStudioView: View {
                                     )
                                 ).normalizedEnglishDigits)
                                     .font(AdminType.footnoteBold)
-                                    .foregroundColor(delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber))
+                                    .foregroundColor(delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber))
                             }
                         }
                         .padding(14)
                         .background(
-                            (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber)).opacity(0.08),
+                            (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber)).opacity(0.08),
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                         )
                         .overlay(
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .stroke(
-                                    (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber)).opacity(0.3),
+                                    (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber)).opacity(0.3),
                                     lineWidth: 0.8
                                 )
                         )
@@ -1519,11 +1790,11 @@ public struct CycleCountStudioView: View {
                                         Text(Language.get("CycleCount_Keypad_Zero_Out", alter: "0 (نفاذ الرف)"))
                                             .font(AdminType.subheadlineBold)
                                     }
-                                    .foregroundColor(AdminSurface.crimson)
+                                    .foregroundColor(Color.crimson)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
-                                    .background(AdminSurface.crimson.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(AdminSurface.crimson.opacity(0.3), lineWidth: 0.8))
+                                    .background(Color.crimson.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(Color.crimson.opacity(0.3), lineWidth: 0.8))
                                 }
 
                                 ForEach([1, 5, 10], id: \.self) { plus in
@@ -1568,7 +1839,7 @@ public struct CycleCountStudioView: View {
                                 )
                             ).normalizedEnglishDigits)
                             .font(AdminType.captionBold)
-                            .foregroundColor(delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.amber))
+                            .foregroundColor(delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : Color.amber))
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -1601,7 +1872,7 @@ public struct CycleCountStudioView: View {
                         // Dual Action Buttons
                         HStack(spacing: 12) {
                             Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                UISelectionFeedbackGenerator().selectionChanged()
                                 itemForDirectInput = nil
                             } label: {
                                 Text(Language.get("Cancel", alter: "إلغاء"))
@@ -1628,11 +1899,11 @@ public struct CycleCountStudioView: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                                 .background(
-                                    (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.primary)),
+                                    (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : AdminSurface.primary)),
                                     in: RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 )
                                 .shadow(
-                                    color: (delta == 0 ? AdminSurface.emerald : (delta < 0 ? AdminSurface.crimson : AdminSurface.primary)).opacity(0.3),
+                                    color: (delta == 0 ? Color.emerald : (delta < 0 ? Color.crimson : AdminSurface.primary)).opacity(0.3),
                                     radius: 6, y: 3
                                 )
                             }
@@ -1707,7 +1978,7 @@ public struct CycleCountStudioView: View {
                 case .clear:
                     Text(verbatim: "C")
                         .font(.system(size: 20, weight: .heavy, design: .rounded))
-                        .foregroundColor(AdminSurface.crimson)
+                        .foregroundColor(Color.crimson)
                 case .backspace:
                     Image(systemName: "delete.left.fill")
                         .font(.system(size: 20, weight: .bold))
@@ -1725,7 +1996,7 @@ public struct CycleCountStudioView: View {
         case .digit:
             return AdminSurface.card
         case .clear:
-            return AdminSurface.crimson.opacity(0.08)
+            return Color.crimson.opacity(0.08)
         case .backspace:
             return AdminSurface.cardElevated
         }
@@ -1746,7 +2017,7 @@ public struct CycleCountStudioView: View {
     }
 
     private func handleKeypadBackspace() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UISelectionFeedbackGenerator().selectionChanged()
         if !directInputText.isEmpty {
             directInputText.removeLast()
         }
@@ -1763,16 +2034,22 @@ public struct CycleCountStudioView: View {
     }
 
     private func handleKeypadDelta(_ change: Int) {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        UISelectionFeedbackGenerator().selectionChanged()
         let current = Int(directInputText) ?? 0
         let updated = max(0, current + change)
         directInputText = "\(updated)"
     }
 
-    private func commitDirectCount(for item: PPCycleCountItem) {
+    private func commitDirectCount(for item: PPCycleCountItem, value: Int? = nil) {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
-        let parsed = Int(directInputText) ?? 0
-        localCounts[item.productId] = max(0, parsed)
+        let parsed = value ?? (Int(directInputText) ?? 0)
+        let val = max(0, parsed)
+        localCounts[item.productId] = val
+        if val == 0 {
+            zeroVerifiedIds.insert(item.productId)
+        } else {
+            zeroVerifiedIds.remove(item.productId)
+        }
         itemForDirectInput = nil
     }
 
@@ -1797,6 +2074,32 @@ public struct CycleCountStudioView: View {
         )
     }
 
+    // MARK: - Helper Counting Mutators
+
+    private func incrementCount(for item: PPCycleCountItem, delta: Int) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let current = localCounts[item.productId] ?? item.countedQuantity
+        let updated = current + delta
+        localCounts[item.productId] = updated
+        zeroVerifiedIds.remove(item.productId)
+    }
+
+    private func decrementCount(for item: PPCycleCountItem) {
+        UISelectionFeedbackGenerator().selectionChanged()
+        let current = localCounts[item.productId] ?? item.countedQuantity
+        let updated = max(0, current - 1)
+        localCounts[item.productId] = updated
+        if updated == 0 {
+            zeroVerifiedIds.remove(item.productId)
+        }
+    }
+
+    private func markZeroStock(for item: PPCycleCountItem) {
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        localCounts[item.productId] = 0
+        zeroVerifiedIds.insert(item.productId)
+    }
+
     // MARK: - 3. Discrepancy & Shrinkage Review Stage
 
     private func discrepancyReviewView(session: PPCycleCountSession) -> some View {
@@ -1814,7 +2117,7 @@ public struct CycleCountStudioView: View {
                         value: "\(session.totalShrinkageUnits) \(Language.get("Units", alter: "قطعة"))",
                         subvalue: String(format: "-%.2f ر.ق", session.totalShrinkageValue),
                         icon: "arrow.down.right.circle.fill",
-                        color: .red
+                        color: Color.crimson
                     )
 
                     reviewMetricCard(
@@ -1822,7 +2125,7 @@ public struct CycleCountStudioView: View {
                         value: "\(session.totalSurplusUnits) \(Language.get("Units", alter: "قطعة"))",
                         subvalue: String(format: "+%.2f ر.ق", session.totalSurplusValue),
                         icon: "arrow.up.right.circle.fill",
-                        color: .green
+                        color: Color.emerald
                     )
 
                     reviewMetricCard(
@@ -1830,15 +2133,15 @@ public struct CycleCountStudioView: View {
                         value: "\(session.totalVariance > 0 ? "+" : "")\(session.totalVariance)",
                         subvalue: "\(session.discrepancyCount) \(Language.get("Items_With_Diff", alter: "صنف به فرق"))",
                         icon: "plus.forwardslash.minus",
-                        color: session.totalVariance == 0 ? .green : .orange
+                        color: session.totalVariance == 0 ? Color.emerald : .orange
                     )
 
                     reviewMetricCard(
                         title: Language.get("CycleCount_Accuracy_Score", alter: "نسبة دقة المخزون"),
                         value: String(format: "%.1f%%", session.accuracyRate),
-                        subvalue: session.accuracyRate >= 95 ? Language.get("High_Accuracy", alter: "دقة ممتازة") : Language.get("Requires_Attention", alter: "تتطلب تدقيقاً"),
+                        subvalue: session.accuracyRate >= 95 ? Language.get("CycleCount_Accuracy_High", alter: "دقة ممتازة (ضمن المعايير)") : Language.get("CycleCount_Accuracy_Low", alter: "تتطلب مراجعة وتدقيقاً"),
                         icon: "chart.line.uptrend.xyaxis.circle.fill",
-                        color: session.accuracyRate >= 95 ? .green : .orange
+                        color: session.accuracyRate >= 95 ? Color.emerald : .orange
                     )
                 }
 
@@ -1847,7 +2150,7 @@ public struct CycleCountStudioView: View {
                     HStack(spacing: 8) {
                         ForEach(ReviewFilter.allCases) { rf in
                             Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                UISelectionFeedbackGenerator().selectionChanged()
                                 reviewFilter = rf
                             } label: {
                                 Text(rf.title)
@@ -1880,7 +2183,7 @@ public struct CycleCountStudioView: View {
                             .textFieldStyle(.plain)
                             .padding(12)
                             .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: AdminRadius.medium))
-                            .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.5))
+                            .overlay(RoundedRectangle(cornerRadius: AdminRadius.medium).stroke(AdminSurface.hairline, lineWidth: 0.8))
 
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -1916,11 +2219,11 @@ public struct CycleCountStudioView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 28))
-                            .foregroundColor(.green)
+                            .foregroundColor(Color.emerald)
                         VStack(alignment: .leading, spacing: 3) {
                             Text(Language.get("CycleCount_Status_Reconciled", alter: "تمت التسوية والترحيل الدفتري بنجاح"))
                                 .font(AdminType.calloutBold)
-                                .foregroundColor(.green)
+                                .foregroundColor(Color.emerald)
                             if let recBy = session.reconciledByName {
                                 Text("\(Language.get("Approved_By", alter: "اعتمد بواسطة")): \(recBy)")
                                     .font(AdminType.caption)
@@ -1930,7 +2233,7 @@ public struct CycleCountStudioView: View {
                         Spacer()
                     }
                     .padding(AdminSpacing.md)
-                    .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: AdminRadius.card))
+                    .background(Color.emerald.opacity(0.12), in: RoundedRectangle(cornerRadius: AdminRadius.card))
                 }
             }
             .padding(AdminSpacing.screenMargin)
@@ -1957,12 +2260,12 @@ public struct CycleCountStudioView: View {
         }
         .padding(AdminSpacing.md)
         .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: AdminRadius.card))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.8))
     }
 
     private func discrepancyCard(item: PPCycleCountItem) -> some View {
         let variance = item.variance ?? 0
-        let color: Color = variance < 0 ? .red : (variance > 0 ? .green : .gray)
+        let color: Color = variance < 0 ? Color.crimson : (variance > 0 ? Color.emerald : .gray)
 
         return VStack(spacing: 10) {
             HStack(spacing: 12) {
@@ -2010,7 +2313,7 @@ public struct CycleCountStudioView: View {
                 }
 
                 Spacer()
-                Image(systemName: "arrow.right")
+                Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
                     .foregroundColor(AdminSurface.secondaryText.opacity(0.4))
                 Spacer()
 
@@ -2038,7 +2341,7 @@ public struct CycleCountStudioView: View {
         }
         .padding(AdminSpacing.md)
         .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: AdminRadius.card))
-        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.5))
+        .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.8))
     }
 
     private var noActiveReviewPlaceholder: some View {
@@ -2177,7 +2480,7 @@ public struct CycleCountStudioView: View {
 
     private func scopeCard(id: String, title: String, subtitle: String, icon: String, color: Color) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UISelectionFeedbackGenerator().selectionChanged()
             selectedScope = id
         } label: {
             HStack(spacing: 12) {
@@ -2209,7 +2512,7 @@ public struct CycleCountStudioView: View {
             .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: AdminRadius.card))
             .overlay(
                 RoundedRectangle(cornerRadius: AdminRadius.card)
-                    .stroke(selectedScope == id ? AdminSurface.primary : AdminSurface.hairline, lineWidth: selectedScope == id ? 1.5 : 0.5)
+                    .stroke(selectedScope == id ? AdminSurface.primary : AdminSurface.hairline, lineWidth: selectedScope == id ? 1.5 : 0.8)
             )
         }
     }
@@ -2238,7 +2541,7 @@ public struct CycleCountStudioView: View {
 
     private func historySessionCard(session: PPCycleCountSession) -> some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            UISelectionFeedbackGenerator().selectionChanged()
             activeSession = session
             selectedTab = .review
         } label: {
@@ -2276,16 +2579,16 @@ public struct CycleCountStudioView: View {
             }
             .padding(AdminSpacing.md)
             .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: AdminRadius.card))
-            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: AdminRadius.card).stroke(AdminSurface.hairline, lineWidth: 0.8))
         }
     }
 
     private func historyStatusBadge(status: String) -> some View {
         let (title, color): (String, Color) = {
             switch status {
-            case "in_progress": return (Language.get("In_Progress", alter: "قيد الجرد"), .blue)
-            case "pending_review": return (Language.get("Pending_Review", alter: "قيد التدقيق"), .orange)
-            case "reconciled": return (Language.get("Reconciled", alter: "تمت التسوية"), .green)
+            case "in_progress": return (Language.get("In_Progress", alter: "قيد الجرد"), Color.sapphire)
+            case "pending_review": return (Language.get("Pending_Review", alter: "قيد التدقيق"), Color.amber)
+            case "reconciled": return (Language.get("Reconciled", alter: "تمت التسوية"), Color.emerald)
             default: return (status, .gray)
             }
         }()
@@ -2335,8 +2638,8 @@ public struct CycleCountStudioView: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
-                        .background(Color.green.opacity(0.95), in: Capsule())
-                        .shadow(color: .green.opacity(0.4), radius: 10, y: 4)
+                        .background(Color.emerald.opacity(0.95), in: Capsule())
+                        .shadow(color: Color.emerald.opacity(0.4), radius: 10, y: 4)
                         .padding(.bottom, 50)
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -2429,7 +2732,9 @@ public struct CycleCountStudioView: View {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     self.activeSession = session
                     self.localCounts.removeAll()
+                    self.zeroVerifiedIds.removeAll()
                     self.selectedTab = .count
+                    self.sessionStartTime = Date()
                     self.showBanner(Language.get("CycleCount_Session_Started", alter: "تم بدء جلسة الجرد بنجاح."))
                     PPAlertHelper.showSuccess(
                         in: nil,
@@ -2541,8 +2846,9 @@ public struct CycleCountStudioView: View {
         if let matching = session.items.first(where: { $0.barcode == clean || $0.sku == clean }) {
             let current = localCounts[matching.productId] ?? matching.countedQuantity
             localCounts[matching.productId] = current + 1
+            zeroVerifiedIds.remove(matching.productId)
 
-            AudioServicesPlaySystemSound(1057) // Beep/shutter
+            AudioServicesPlaySystemSound(1057) // Camera beep
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -2570,11 +2876,22 @@ public struct CycleCountStudioView: View {
     // MARK: - Helpers & Filtering
 
     private func countedItemsCount(session: PPCycleCountSession) -> Int {
-        session.items.filter { (localCounts[$0.productId] ?? $0.countedQuantity) > 0 }.count
+        session.items.filter {
+            (localCounts[$0.productId] != nil && (localCounts[$0.productId] ?? 0) > 0) ||
+            $0.countedQuantity > 0 ||
+            zeroVerifiedIds.contains($0.productId)
+        }.count
+    }
+
+    private func extractUniqueShelves(session: PPCycleCountSession) -> [String] {
+        let shelves = session.items.compactMap { $0.shelfLocation.isEmpty ? nil : $0.shelfLocation }
+        return Array(Set(shelves)).sorted()
     }
 
     private func filteredItems(session: PPCycleCountSession) -> [PPCycleCountItem] {
         var result = session.items
+
+        // Search text
         if !searchText.isEmpty {
             let q = searchText.lowercased()
             result = result.filter {
@@ -2584,12 +2901,27 @@ public struct CycleCountStudioView: View {
                 $0.shelfLocation.lowercased().contains(q)
             }
         }
+
+        // Shelf location filter
+        if let shelf = selectedShelfFilter {
+            result = result.filter { $0.shelfLocation == shelf }
+        }
+
+        // Count state filter
         switch countFilter {
         case .all: break
         case .counted:
-            result = result.filter { (localCounts[$0.productId] ?? $0.countedQuantity) > 0 }
+            result = result.filter {
+                (localCounts[$0.productId] != nil && (localCounts[$0.productId] ?? 0) > 0) ||
+                $0.countedQuantity > 0 ||
+                zeroVerifiedIds.contains($0.productId)
+            }
         case .pending:
-            result = result.filter { (localCounts[$0.productId] ?? $0.countedQuantity) == 0 }
+            result = result.filter {
+                (localCounts[$0.productId] == nil || (localCounts[$0.productId] ?? 0) == 0) &&
+                $0.countedQuantity == 0 &&
+                !zeroVerifiedIds.contains($0.productId)
+            }
         }
         return result
     }
@@ -2615,7 +2947,7 @@ public struct CycleCountStudioView: View {
 private struct KeypadPressFeedbackStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.93 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .opacity(configuration.isPressed ? 0.85 : 1.0)
             .animation(.spring(response: 0.18, dampingFraction: 0.65), value: configuration.isPressed)
     }

@@ -1177,6 +1177,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         Functions.functions().httpsCallable("upsertProductCommerce").call(["payload": payload]) { [weak self] result, error in
             if let err = error {
                 print("[PPAccessoryEditorView] upsertProductCommerce error:", err.localizedDescription)
+                DispatchQueue.main.async {
+                    PPHUD.showError(
+                        Language.get("CommercePricingError", alter: "تنبيه التسعير"),
+                        subtitle: err.localizedDescription
+                    )
+                }
             } else if let data = result?.data as? [String: Any], let rev = data["pricingRevision"] as? Int {
                 DispatchQueue.main.async {
                     self?.pricingRevision = rev
@@ -2355,6 +2361,42 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }
     }
 
+    private func buildCommercePayload() -> [String: Any]? {
+        guard !isIndividualLivePet else { return nil }
+        ensureDefaultSingleGroup()
+        guard !quantityGroups.isEmpty else { return nil }
+
+        let groupsPayload: [[String: Any]] = quantityGroups.map { g in
+            var dict: [String: Any] = [
+                "id": g.id,
+                "nameAr": g.nameAr.isEmpty ? (Language.isRTL() ? "وحدة" : "Unit") : g.nameAr,
+                "nameEn": g.nameEn.isEmpty ? "Unit" : g.nameEn,
+                "unitsPerGroup": max(1, g.unitsPerGroup),
+                "barcode": g.barcode.isEmpty ? NSNull() : g.barcode,
+                "sku": g.sku.isEmpty ? NSNull() : g.sku,
+                "sortOrder": g.sortOrder,
+                "retailEnabled": g.retailEnabled,
+                "wholesaleEnabled": g.wholesaleEnabled,
+                "retailPriceMinor": g.retailPriceMinor,
+                "wholesalePriceMinor": g.wholesaleEnabled ? (g.wholesalePriceMinor as Any) : NSNull(),
+                "defaultForRetail": g.defaultForRetail,
+                "defaultForWholesale": g.defaultForWholesale,
+                "active": g.active
+            ]
+            return dict
+        }
+
+        return [
+            "currency": "QAR",
+            "baseUnit": [
+                "id": commerceBaseUnitID,
+                "nameAr": commerceBaseUnitNameAr,
+                "nameEn": commerceBaseUnitNameEn
+            ],
+            "quantityGroups": groupsPayload
+        ]
+    }
+
     private func finalizeAccessorySave(accessory: PetAccessory, oldImageURLs: [String]) {
         if isLivePet {
             Task { @MainActor [weak self] in
@@ -2362,10 +2404,30 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             }
             return
         }
-        AccessoryManager.shared().createOrUpdate(accessory) { [weak self] error in
+
+        let resolvedBranchId: String = {
+            if let bid = accessory.branchID, !bid.isEmpty, bid != "main_store" {
+                if let matched = PPBranchContextManager.shared().branch(withID: bid) {
+                    return matched.branchID
+                }
+                return bid
+            }
+            if let activeId = BranchContextStore.shared.activeBranch?.branchID, !activeId.isEmpty, activeId != "main_store" {
+                return activeId
+            }
+            return accessory.branchID ?? ""
+        }()
+
+        let commercePayload = buildCommercePayload()
+
+        PPInventoryCommandService.shared.saveProduct(
+            accessory: accessory,
+            branchId: resolvedBranchId,
+            commerce: commercePayload
+        ) { [weak self] cmdResult, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
-                
+
                 if let err = error {
                     self.isSubmitting = false
                     self.errorMessage = err.localizedDescription
@@ -2373,33 +2435,11 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return
                 }
 
-                self.commitSavedAccessory(accessory)
-                self.persistCommerceRecord(for: accessory.accessoryID ?? "")
-
-                let resolvedBranchId: String = {
-                    if let bid = accessory.branchID, !bid.isEmpty, bid != "main_store" {
-                        if let matched = PPBranchContextManager.shared().branch(withID: bid) {
-                            return matched.branchID
-                        }
-                        return bid
-                    }
-                    if let activeId = BranchContextStore.shared.activeBranch?.branchID, !activeId.isEmpty, activeId != "main_store" {
-                        return activeId
-                    }
-                    return accessory.branchID ?? ""
-                }()
-
-                if !resolvedBranchId.isEmpty && resolvedBranchId != "main_store" && accessory.quantity > 0 {
-                    PPBranchInventoryService.shared.adjustStock(
-                        productId: accessory.accessoryID ?? "",
-                        branchId: resolvedBranchId,
-                        newQuantity: accessory.quantity,
-                        type: "purchase",
-                        referenceId: "catalog_init",
-                        reason: "catalog_product_init",
-                        notes: "Initialized during product catalog creation"
-                    ) { _ in }
+                if let res = cmdResult, let pid = res.productId {
+                    accessory.accessoryID = pid
                 }
+
+                self.commitSavedAccessory(accessory)
 
                 // Clean up removed old images from Storage (best-effort)
                 let newSet = Set(accessory.imageURLsArray ?? [])
@@ -3716,6 +3756,8 @@ struct PPAccessoryEditorScreen: View {
     @FocusState private var focusedField: FormField?
     @Namespace private var stageAnimation
     @State private var showQuantityAlert: Bool = false
+    @State private var showPricePad: Bool = false
+    @State private var showDiscountPad: Bool = false
     @State private var quantityAlertText: String = ""
     @State private var bilingualLanguage: PPBilingualLanguage = .arabic
     
@@ -3853,29 +3895,53 @@ struct PPAccessoryEditorScreen: View {
                 )
             }
         }
+        .tactileQuantityPad(
+            isPresented: $showQuantityAlert,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            currentQuantity: viewModel.quantity,
+            referenceQuantity: viewModel.quantity,
+            specimen: PPTactileSpecimenInfo(
+                title: viewModel.nameAr.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.nameAr,
+                sku: viewModel.sku,
+                barcode: viewModel.barcode,
+                unitCost: Double(viewModel.costPriceText)
+            )
+        ) { newQty in
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                viewModel.quantity = max(0, newQty)
+            }
+        }
+        .tactilePricePad(
+            isPresented: $showPricePad,
+            title: Language.get("EditPrice", alter: "تعديل السعر"),
+            currentPrice: Double(viewModel.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0.0,
+            referencePrice: Double(viewModel.priceText.replacingOccurrences(of: ",", with: ".")),
+            specimen: PPTactileSpecimenInfo(
+                title: viewModel.nameAr.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.nameAr,
+                sku: viewModel.sku,
+                barcode: viewModel.barcode,
+                unitCost: Double(viewModel.costPriceText)
+            )
+        ) { newPrice in
+            viewModel.priceText = String(format: "%.2f", newPrice)
+        }
+        .sheet(isPresented: $showDiscountPad) {
+            PPTactileNumberPadSheet(
+                config: PPTactileNumberPadConfig(
+                    title: Language.get("DiscountPercent", alter: "نسبة الخصم"),
+                    subtitle: viewModel.nameAr,
+                    mode: .percentage(maxLimit: 100),
+                    initialValue: Double(viewModel.discountPercentText.replacingOccurrences(of: ",", with: ".")) ?? 0.0
+                )
+            ) { newDiscount in
+                viewModel.discountPercentText = String(format: "%.1f", newDiscount)
+            }
+        }
     }
 
     private func promptQuantityEdit() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        PPAlertHelper.showTextPrompt(
-            in: nil,
-            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
-            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
-            placeholder: Language.get("Quantity", alter: "الكمية"),
-            initialText: "\(viewModel.quantity)",
-            confirmText: Language.get("Save", alter: "حفظ"),
-            cancelText: Language.get("Cancel", alter: "إلغاء"),
-            secureEntry: false,
-            keyboardType: .numberPad
-        ) { text in
-            guard let text else { return }
-            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
-            if let val = Int(normalized) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                    viewModel.quantity = max(0, val)
-                }
-            }
-        }
+        showQuantityAlert = true
     }
 
     private func showDiscardAlert() {
@@ -5030,13 +5096,26 @@ struct PPAccessoryEditorScreen: View {
             HStack(spacing: 12) {
                 // Base Price
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(
-                        viewModel.isIndividualLivePet
-                            ? Language.get("LivePet_Standard_SellingPrice_QAR", alter: "السعر القياسي (ر.ق)")
-                            : Language.get("BasePrice", alter: "السعر الأساسي (ر.ق)")
-                    )
-                    .font(AdminType.caption2Bold)
-                    .foregroundStyle(AdminCommandInk.secondary)
+                    HStack {
+                        Text(
+                            viewModel.isIndividualLivePet
+                                ? Language.get("LivePet_Standard_SellingPrice_QAR", alter: "السعر القياسي (ر.ق)")
+                                : Language.get("BasePrice", alter: "السعر الأساسي (ر.ق)")
+                        )
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminCommandInk.secondary)
+
+                        Spacer()
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            showPricePad = true
+                        } label: {
+                            Image(systemName: "circle.grid.3x3.fill")
+                                .font(.system(size: 13))
+                                .foregroundColor(AdminSurface.primary)
+                        }
+                    }
 
                     TextField("0.00", text: $viewModel.priceText)
                         .font(PPBrandFont.bold(size: 18))
@@ -5049,9 +5128,22 @@ struct PPAccessoryEditorScreen: View {
                 if !viewModel.isIndividualLivePet {
                     // Discount Percent
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(Language.get("DiscountPercent", alter: "نسبة الخصم (%)"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminCommandInk.secondary)
+                        HStack {
+                            Text(Language.get("DiscountPercent", alter: "نسبة الخصم (%)"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminCommandInk.secondary)
+
+                            Spacer()
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showDiscountPad = true
+                            } label: {
+                                Image(systemName: "circle.grid.3x3.fill")
+                                    .font(.system(size: 13))
+                                    .foregroundColor(AdminSurface.primary)
+                            }
+                        }
 
                         TextField("0", text: $viewModel.discountPercentText)
                             .font(PPBrandFont.bold(size: 18))

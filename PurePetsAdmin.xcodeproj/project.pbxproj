@@ -19,6 +19,7 @@
 		425C070B41FB46F2A28B098B /* PPPaymentManagementService.m in Sources */ = {isa = PBXBuildFile; fileRef = AFB8946774C24C23A585F8C5 /* PPPaymentManagementService.m */; };
 		46E5A999B95D4FD8BDD6A964 /* PPVetSubscriptionViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = EF6EFC6E14664F16AB54D315 /* PPVetSubscriptionViewController.m */; };
 		48ACE98451E14BD29F239486 /* Shared/Components/AdminSharedComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF6A30E2669147BEB8C4CBC6 /* Shared/Components/AdminSharedComponents.swift */; };
+		F2C71BA62F9741290071629E /* Shared/Components/PPTactileNumberPadSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2C71BA72F9741290071629F /* Shared/Components/PPTactileNumberPadSheet.swift */; };
 		4A10BD8B38924554A193EEA1 /* Features/More/NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E7F8CC8A13C484C95016649 /* Features/More/NotificationSettingsView.swift */; };
 		533CBA5E149AA91874136710 /* QBImagePicker.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = F18B2ED8BBF11FC7A093DEDC /* QBImagePicker.storyboard */; };
 		55EFB874297048C0B9150FC2 /* Features/More/BannersView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C189C4ACC16F404B80F3C3E4 /* Features/More/BannersView.swift */; };
@@ -87,6 +88,7 @@
 		B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */; };
 		B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */; };
 		B0A200082FAA000100B0A002 /* PPInventoryActionMenuSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */; };
+		B0A200102FAA000100B0A002 /* PPInventoryCommandService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0A200092FAA000100B0A001 /* PPInventoryCommandService.swift */; };
 		B1F2E7D32C99BE04EF9D5A2E /* Pods_PurePetsAdmin.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 380FB3B9B3805FA82F10A7E3 /* Pods_PurePetsAdmin.framework */; };
 		BF4031A37BA040D3A26BE0C8 /* Features/Operations/BranchesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */; };
 		BFA92434ABD548479D7C6D92 /* Features/More/AccountingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6B81D643527420280F321EA /* Features/More/AccountingView.swift */; };
@@ -331,6 +333,7 @@
 		F3C100052F9A000100000001 /* PPAddEditServiceViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100A2F9A000100000001 /* PPAddEditServiceViewController.m */; };
 		F3C100062F9A000100000001 /* PPServiceModerationViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100C2F9A000100000001 /* PPServiceModerationViewController.m */; };
 		F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */; };
+		F3C100082F9A000100000001 /* PPServiceEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C110102F9A000100000001 /* PPServiceEditorView.swift */; };
 		F3D100022F9A100100000001 /* PPProLoginHostingController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3D100012F9A100100000001 /* PPProLoginHostingController.swift */; };
 		F3D100052F9A100100000001 /* PPProLoginCoordinator.m in Sources */ = {isa = PBXBuildFile; fileRef = F3D100042F9A100100000001 /* PPProLoginCoordinator.m */; };
 		F3E6A1012FA1000100A1D001 /* AddUserViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = F3E6A1002FA1000100A1D001 /* AddUserViewController.m */; };
@@ -465,6 +468,7 @@
 		B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPAccessoryEditorView.swift; sourceTree = "<group>"; };
 		B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPLivePetBasicDataEditorView.swift; sourceTree = "<group>"; };
 		B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryActionMenuSheet.swift; sourceTree = "<group>"; };
+		B0A200092FAA000100B0A001 /* PPInventoryCommandService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPInventoryCommandService.swift; sourceTree = "<group>"; };
 		B4B25A3F0AC9C2AC1635B8EF /* PPImageCollectionRow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPImageCollectionRow.h; sourceTree = "<group>"; };
 		B7D4E5F62A1B4C6D8E9F0011 /* PPFirebaseCompat.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPFirebaseCompat.h; sourceTree = "<group>"; };
 		BA5C4EF51A2F4831BE0C1FA2 /* Features/More/NotificationComposerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/NotificationComposerView.swift; sourceTree = "<group>"; };
@@ -481,6 +485,7 @@
 		D509F65530B14AD38C2F4FB7 /* Features/Customers/UsersListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Customers/UsersListView.swift; sourceTree = "<group>"; };
 		DE14AC5B600617327E026CDA /* QBImagePickerController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBImagePickerController.h; sourceTree = "<group>"; };
 		DF6A30E2669147BEB8C4CBC6 /* Shared/Components/AdminSharedComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/AdminSharedComponents.swift; sourceTree = "<group>"; };
+		F2C71BA72F9741290071629F /* Shared/Components/PPTactileNumberPadSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Shared/Components/PPTactileNumberPadSheet.swift; sourceTree = "<group>"; };
 		E052D77C53614E45BF9E1687 /* Features/More/SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/More/SettingsView.swift; sourceTree = "<group>"; };
 		E3B58C28B4FC29BF66823B12 /* QBVideoIconView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QBVideoIconView.h; sourceTree = "<group>"; };
 		E6564A1528C24320B208A2D2 /* Features/Operations/BranchesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Features/Operations/BranchesView.swift; sourceTree = "<group>"; };
@@ -912,6 +917,7 @@
 		F3C1100C2F9A000100000001 /* PPServiceModerationViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPServiceModerationViewController.m; sourceTree = "<group>"; };
 		F3C1100D2F9A000100000001 /* PPServiceDetailViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPServiceDetailViewController.h; sourceTree = "<group>"; };
 		F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPServiceDetailViewController.m; sourceTree = "<group>"; };
+		F3C110102F9A000100000001 /* PPServiceEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPServiceEditorView.swift; sourceTree = "<group>"; };
 		F3D100012F9A100100000001 /* PPProLoginHostingController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPProLoginHostingController.swift; sourceTree = "<group>"; };
 		F3D100032F9A100100000001 /* PPProLoginCoordinator.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PPProLoginCoordinator.h; sourceTree = "<group>"; };
 		F3D100042F9A100100000001 /* PPProLoginCoordinator.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PPProLoginCoordinator.m; sourceTree = "<group>"; };
@@ -1322,6 +1328,7 @@
 				7871FA36A67146949629E864 /* Features/More/AccountView.swift */,
 				A4625C65E1CE495C9DE824C0 /* Features/More/NotificationsView.swift */,
 				DF6A30E2669147BEB8C4CBC6 /* Shared/Components/AdminSharedComponents.swift */,
+				F2C71BA72F9741290071629F /* Shared/Components/PPTactileNumberPadSheet.swift */,
 				F2C71BA22F9741290071629A /* Shared/Components/UITextField+PPEnglishNumberKeyboard.h */,
 				F2C71BA32F9741290071629B /* Shared/Components/UITextField+PPEnglishNumberKeyboard.m */,
 				A6C0010A2FA9000100A6C00A /* Services/Session/PPAdminSessionBridge.h */,
@@ -1827,6 +1834,7 @@
 				B0A200032FAA000100B0A001 /* PPAccessoryEditorView.swift */,
 				B0A200052FAA000100B0A001 /* PPLivePetBasicDataEditorView.swift */,
 				B0A200072FAA000100B0A001 /* PPInventoryActionMenuSheet.swift */,
+				B0A200092FAA000100B0A001 /* PPInventoryCommandService.swift */,
 			);
 			path = AccessorySection;
 			sourceTree = "<group>";
@@ -2023,6 +2031,7 @@
 				F3C1100C2F9A000100000001 /* PPServiceModerationViewController.m */,
 				F3C1100D2F9A000100000001 /* PPServiceDetailViewController.h */,
 				F3C1100E2F9A000100000001 /* PPServiceDetailViewController.m */,
+				F3C110102F9A000100000001 /* PPServiceEditorView.swift */,
 			);
 			path = ServicesSection;
 			sourceTree = "<group>";
@@ -2280,6 +2289,7 @@
 				F3C100052F9A000100000001 /* PPAddEditServiceViewController.m in Sources */,
 				F3C100062F9A000100000001 /* PPServiceModerationViewController.m in Sources */,
 				F3C100072F9A000100000001 /* PPServiceDetailViewController.m in Sources */,
+				F3C100082F9A000100000001 /* PPServiceEditorView.swift in Sources */,
 				F2E33F343005D4FA005E31C6 /* PPAgentsViewController.m in Sources */,
 				F2E33F353005D4FA005E31C6 /* PPAgentEditorViewController.m in Sources */,
 				C54AFB88580CEB55093C550F /* ImageViewerController.m in Sources */,
@@ -2417,6 +2427,7 @@
 				B0A200042FAA000100B0A002 /* PPAccessoryEditorView.swift in Sources */,
 				B0A200062FAA000100B0A002 /* PPLivePetBasicDataEditorView.swift in Sources */,
 				B0A200082FAA000100B0A002 /* PPInventoryActionMenuSheet.swift in Sources */,
+				B0A200102FAA000100B0A002 /* PPInventoryCommandService.swift in Sources */,
 				A5E100042FF1000100A5E004 /* PPHeroApexBridge.m in Sources */,
 				F2E33F2F30055AD6005E31C6 /* PPDesignTokens.m in Sources */,
 				F2E33F2B30055AD6005E31C6 /* PPThemeRefresh.m in Sources */,
@@ -2543,6 +2554,7 @@
 				ABBBFA1F9BDC48678C2EAFA9 /* Features/More/AccountView.swift in Sources */,
 				1A501138C31C4AB198EC2143 /* Features/More/NotificationsView.swift in Sources */,
 				48ACE98451E14BD29F239486 /* Shared/Components/AdminSharedComponents.swift in Sources */,
+				F2C71BA62F9741290071629E /* Shared/Components/PPTactileNumberPadSheet.swift in Sources */,
 				F2C71BA42F9741290071629C /* Shared/Components/UITextField+PPEnglishNumberKeyboard.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

@@ -1533,8 +1533,6 @@ struct AdminPOSFastSellView: View {
     @State private var lastScannedCode: String?
     @State private var animalSearchQuery = ""
     @State private var quantityEditingItem: POSCartItem? = nil
-    @State private var quantityInputText: String = ""
-    @FocusState private var isQuantityFieldFocused: Bool
 
     // Fly-to-cart choreography
     @State private var flyPayload: POSFlyPayload?
@@ -1552,7 +1550,7 @@ struct AdminPOSFastSellView: View {
             isSearchFocused = false
         }
         if quantityEditingItem != nil {
-            dismissQuantityKeyboardInput()
+            quantityEditingItem = nil
         }
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
@@ -1608,15 +1606,69 @@ struct AdminPOSFastSellView: View {
                 )
             }
 
-            if let editingItem = quantityEditingItem {
-                quantityKeyboardOverlay(for: editingItem)
-                    .transition(.opacity)
-                    .zIndex(100)
-            }
         }
         .ignoresSafeArea(.all, edges: .bottom)
         .coordinateSpace(name: POSFastSellSpace.root)
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(item: $quantityEditingItem) { item in
+            let branchStock = item.accessory.pos_branchStock()
+            let unitsPerGroup = max(1, item.unitsPerGroup)
+            let maxGroups = branchStock / unitsPerGroup
+            let imageURL = PetAccessory.firstImageURL(for: item.accessory)
+
+            let specimen = PPTactileSpecimenInfo(
+                title: item.accessory.name,
+                subtitle: String(format: Language.get("POS_AvailableStockFormat", alter: "المتوفر في الفرع: %d"), maxGroups),
+                imageURL: imageURL,
+                sku: item.accessory.sku.isEmpty ? nil : item.accessory.sku,
+                shelfLocation: item.accessory.shelfLocation.isEmpty ? nil : item.accessory.shelfLocation,
+                barcode: item.accessory.barcode.isEmpty ? nil : item.accessory.barcode,
+                unitCost: item.unitPriceDisplay
+            )
+
+            let chips: [PPTactilePresetChip] = [
+                PPTactilePresetChip(title: "+1".normalizedEnglishDigits, action: .delta(1)),
+                PPTactilePresetChip(title: "+5".normalizedEnglishDigits, action: .delta(5)),
+                PPTactilePresetChip(title: "+10".normalizedEnglishDigits, action: .delta(10)),
+                PPTactilePresetChip(
+                    title: String(format: Language.get("Max_Stock_Format", alter: "كامل المخزون (%d)"), maxGroups).normalizedEnglishDigits,
+                    icon: "shippingbox.fill",
+                    action: .set(Double(maxGroups)),
+                    tint: AdminSurface.primary
+                ),
+                PPTactilePresetChip(
+                    title: Language.get("Remove_From_Cart", alter: "حذف من السلة"),
+                    icon: "trash.fill",
+                    action: .set(0),
+                    tint: AdminSurface.crimson
+                )
+            ]
+
+            let config = PPTactileNumberPadConfig(
+                title: Language.get("POS_EditCartQuantity", alter: "تعديل كمية السلة"),
+                subtitle: item.accessory.name,
+                mode: .quantity(unit: Language.get("Units", alter: "وحدات"), allowZero: true, maxLimit: max(1, maxGroups)),
+                initialValue: Double(item.quantity),
+                referenceValue: Double(maxGroups),
+                referenceLabel: Language.get("POS_BranchAvailableStock", alter: "المتاح بالفرع"),
+                specimen: specimen,
+                customChips: chips,
+                primaryActionTitle: Language.get("POS_ConfirmQuantity", alter: "تأكيد الكمية")
+            )
+
+            PPTactileNumberPadSheet(
+                config: config,
+                onCommit: { newQty in
+                    let target = Int(newQty)
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    viewModel.updateQuantity(item, newQuantity: target)
+                    quantityEditingItem = nil
+                },
+                onDismiss: {
+                    quantityEditingItem = nil
+                }
+            )
+        }
         .sheet(isPresented: $showsCustomerPicker) {
             POSCustomerPickerSheet(
                 currentSelected: viewModel.selectedCustomer,
@@ -2397,230 +2449,14 @@ struct AdminPOSFastSellView: View {
         pulseCart()
     }
 
-    // MARK: - Quantity Keyboard Editing
+    // MARK: - Quantity Editing
 
     private func handleQuantityTap(for item: POSCartItem) {
         if item.isIndividuallyTracked {
             openUnitPicker(for: item.accessory)
         } else {
-            quantityEditingItem = item
-            quantityInputText = "\(item.quantity)"
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                isQuantityFieldFocused = true
-            }
-        }
-    }
-
-    private func confirmQuantityChange(for item: POSCartItem) {
-        guard let newQty = Int(quantityInputText) else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        viewModel.updateQuantity(item, newQuantity: newQty)
-        dismissQuantityKeyboardInput()
-    }
-
-    private func dismissQuantityKeyboardInput() {
-        isQuantityFieldFocused = false
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
-            quantityEditingItem = nil
-        }
-    }
-
-    private func quantityKeyboardOverlay(for item: POSCartItem) -> some View {
-        ZStack(alignment: .bottom) {
-            Color.black.opacity(0.35)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    dismissQuantityKeyboardInput()
-                }
-
-            VStack(spacing: 0) {
-                Spacer()
-
-                VStack(spacing: 12) {
-                    // Grabber handle
-                    RoundedRectangle(cornerRadius: 2.5)
-                        .fill(AdminSurface.hairline)
-                        .frame(width: 36, height: 4)
-                        .padding(.top, 4)
-
-                    // Header: Product info + Available stock pill + Dismiss button
-                    HStack(spacing: 10) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(AdminSurface.primary.opacity(0.12))
-                                .frame(width: 36, height: 36)
-
-                            Image(systemName: "shippingbox.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(AdminSurface.primary)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.accessory.name)
-                                .font(AdminType.subheadlineBold)
-                                .foregroundColor(AdminSurface.primaryText)
-                                .lineLimit(1)
-
-                            let branchStock = item.accessory.pos_branchStock()
-                            let unitsPerGroup = max(1, item.unitsPerGroup)
-                            let maxGroups = branchStock / unitsPerGroup
-                            Text(String(format: Language.get("POS_AvailableStockFormat", alter: "المتوفر في الفرع: %d"), maxGroups))
-                                .font(AdminType.caption2)
-                                .foregroundColor(maxGroups > 0 ? AdminSurface.secondaryText : Color.red)
-                        }
-
-                        Spacer(minLength: 4)
-
-                        Button {
-                            dismissQuantityKeyboardInput()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 22))
-                                .foregroundColor(AdminSurface.secondaryText.opacity(0.7))
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .accessibilityLabel(Language.get("Close", alter: "إغلاق"))
-                    }
-
-                    // Numeric Stepper & Direct TextField Bar
-                    let currentParsed = Int(quantityInputText) ?? 0
-                    let branchStock = item.accessory.pos_branchStock()
-                    let unitsPerGroup = max(1, item.unitsPerGroup)
-                    let maxGroups = branchStock / unitsPerGroup
-
-                    HStack(spacing: 10) {
-                        // Quick decrement button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            let val = max(0, currentParsed - 1)
-                            quantityInputText = "\(val)"
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(currentParsed > 0 ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.35))
-                                .frame(width: 44, height: 44)
-                                .background(AdminSurface.control, in: Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(currentParsed <= 0)
-
-                        // Central Large Number TextField
-                        HStack(spacing: 6) {
-                            TextField("0", text: $quantityInputText)
-                                .font(Font.custom("Beiruti-Bold", size: 32, relativeTo: .title))
-                                .keyboardType(.numberPad)
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(AdminSurface.primaryText)
-                                .focused($isQuantityFieldFocused)
-                                .frame(minWidth: 80)
-                                .frame(height: 46)
-
-                            if !quantityInputText.isEmpty {
-                                Button {
-                                    quantityInputText = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(AdminSurface.secondaryText)
-                                }
-                                .buttonStyle(PlainButtonStyle())
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(AdminSurface.surface)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(AdminSurface.primary.opacity(0.5), lineWidth: 1.5)
-                        )
-
-                        // Quick increment button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            let val = min(maxGroups, currentParsed + 1)
-                            quantityInputText = "\(val)"
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(currentParsed < maxGroups ? .white : AdminSurface.secondaryText.opacity(0.35))
-                                .frame(width: 44, height: 44)
-                                .background(currentParsed < maxGroups ? AdminSurface.primary : AdminSurface.control, in: Circle())
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .disabled(currentParsed >= maxGroups)
-                    }
-
-                    // Feedback status banner
-                    if currentParsed == 0 && !quantityInputText.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 11))
-                            Text(Language.get("POS_WillRemoveNotice", alter: "تحديد الكمية إلى 0 سيؤدي لإزالة الصنف من السلة"))
-                                .font(AdminType.caption2)
-                        }
-                        .foregroundColor(Color.red.opacity(0.9))
-                    } else if currentParsed > maxGroups {
-                        HStack(spacing: 4) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 11))
-                            Text(String(format: Language.get("POS_ExceedsStockFormat", alter: "الكمية المطلوبة تتجاوز المخزون المتوفر (%d)"), maxGroups))
-                                .font(AdminType.caption2)
-                        }
-                        .foregroundColor(Color.orange)
-                    } else if currentParsed > 0 {
-                        let lineTotal = Double(currentParsed) * item.unitPriceDisplay
-                        Text(String(format: Language.get("POS_LineTotalPreviewFormat", alter: "المجموع: %@ (%@ للقطعة)"), formatCurrency(lineTotal), formatCurrency(item.unitPriceDisplay)))
-                            .font(AdminType.caption2Bold)
-                            .foregroundColor(AdminSurface.secondaryText)
-                            .monospacedDigit()
-                    }
-
-                    // Action Button (Confirm or Remove if 0)
-                    Button {
-                        confirmQuantityChange(for: item)
-                    } label: {
-                        HStack(spacing: 6) {
-                            if currentParsed == 0 {
-                                Image(systemName: "trash.fill")
-                                    .font(.system(size: 13))
-                                Text(Language.get("POS_RemoveItemFromCart", alter: "حذف الصنف من السلة"))
-                                    .font(AdminType.subheadlineBold)
-                            } else {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 13, weight: .bold))
-                                Text(Language.get("POS_ConfirmQuantity", alter: "تأكيد الكمية"))
-                                    .font(AdminType.subheadlineBold)
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(currentParsed == 0 ? Color.red : AdminSurface.primary)
-                        )
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .disabled(quantityInputText.isEmpty || (currentParsed > maxGroups && maxGroups > 0))
-                    .opacity((quantityInputText.isEmpty || (currentParsed > maxGroups && maxGroups > 0)) ? 0.45 : 1.0)
-                }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(.thinMaterial)
-                        .shadow(color: Color.black.opacity(0.18), radius: 16, x: 0, y: -4)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .strokeBorder(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.4), lineWidth: 0.5)
-                )
-                .padding(.horizontal, 12)
-                .padding(.bottom, -12)
-            }
+            quantityEditingItem = item
         }
     }
 
@@ -2794,11 +2630,37 @@ private struct POSApexFlightDeck: View {
             }
         )
         .sheet(isPresented: $showsCustomCashSheet) {
-            POSCustomCashSheet(
-                cartTotal: viewModel.cartTotal,
-                initialAmount: isCustomTender ? tenderedAmount : nil,
-                currency: currency,
-                onConfirm: { amount in
+            let chips: [PPTactilePresetChip] = [
+                PPTactilePresetChip(
+                    title: Language.get("POS_ExactCash", alter: "المبلغ بالضبط"),
+                    icon: "banknote.fill",
+                    action: .matchReference,
+                    tint: emeraldColor
+                ),
+                PPTactilePresetChip(title: "+10".normalizedEnglishDigits, action: .delta(10)),
+                PPTactilePresetChip(title: "+20".normalizedEnglishDigits, action: .delta(20)),
+                PPTactilePresetChip(title: "+50".normalizedEnglishDigits, action: .delta(50)),
+                PPTactilePresetChip(title: "+100".normalizedEnglishDigits, action: .delta(100)),
+                PPTactilePresetChip(
+                    title: Language.get("Reset", alter: "إعادة ضبط"),
+                    icon: "arrow.counterclockwise",
+                    action: .zeroOut,
+                    tint: AdminSurface.secondaryText
+                )
+            ]
+            let config = PPTactileNumberPadConfig(
+                title: Language.get("POS_CustomCashReceivedTitle", alter: "المبلغ المستلم من العميل"),
+                subtitle: String(format: Language.get("POS_CartTotalRequiredFormat", alter: "إجمالي السلة المطلوب: %@"), currency(viewModel.cartTotal)),
+                mode: .amount(currency: Language.get("QAR", alter: "ر.ق")),
+                initialValue: (isCustomTender ? tenderedAmount : nil) ?? viewModel.cartTotal,
+                referenceValue: viewModel.cartTotal,
+                referenceLabel: Language.get("POS_CartTotalRequired", alter: "المطلوب"),
+                customChips: chips,
+                primaryActionTitle: Language.get("Confirm", alter: "تأكيد")
+            )
+            PPTactileNumberPadSheet(
+                config: config,
+                onCommit: { amount in
                     withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
                         tenderedAmount = amount
                         isCustomTender = true
@@ -5567,6 +5429,7 @@ struct POSDiscountSheet: View {
     @State private var fixedValueText: String = ""
     @State private var selectedPercentPreset: Double? = 10.0
     @State private var selectedFixedPreset: Double? = nil
+    @State private var showTactilePad: Bool = false
 
     private var emeraldColor: Color { Color(red: 0.06, green: 0.72, blue: 0.51) }
 
@@ -5665,6 +5528,54 @@ struct POSDiscountSheet: View {
                             .font(AdminType.calloutBold)
                             .foregroundColor(AdminSurface.primary)
                     }
+                }
+            }
+            .sheet(isPresented: $showTactilePad) {
+                if discountType == .percentage {
+                    let config = PPTactileNumberPadConfig(
+                        title: Language.get("POS_Discount_Percentage", alter: "نسبة الخصم"),
+                        subtitle: String(format: Language.get("POS_OriginalSubtotalFormat", alter: "المجموع الأصلي للسلة: %@"), currency(subtotal)),
+                        mode: .percentage(maxLimit: 100),
+                        initialValue: percentageValue,
+                        referenceValue: 100,
+                        referenceLabel: Language.get("Max", alter: "الحد الأقصى"),
+                        primaryActionTitle: Language.get("Apply", alter: "تطبيق")
+                    )
+                    PPTactileNumberPadSheet(
+                        config: config,
+                        onCommit: { val in
+                            percentageValue = min(100, max(0, val))
+                            selectedPercentPreset = percentageValue
+                            showTactilePad = false
+                        },
+                        onDismiss: {
+                            showTactilePad = false
+                        }
+                    )
+                } else {
+                    let sanitized = fixedValueText.replacingOccurrences(of: ",", with: ".")
+                    let currentVal = Double(sanitized) ?? 0.0
+                    let config = PPTactileNumberPadConfig(
+                        title: Language.get("POS_Discount_Amount", alter: "قيمة الخصم"),
+                        subtitle: String(format: Language.get("POS_OriginalSubtotalFormat", alter: "المجموع الأصلي للسلة: %@"), currency(subtotal)),
+                        mode: .discount(currency: Language.get("QAR", alter: "ر.ق"), isPercentage: false, maxLimit: subtotal),
+                        initialValue: currentVal,
+                        referenceValue: subtotal,
+                        referenceLabel: Language.get("POS_OriginalSubtotal", alter: "إجمالي السلة"),
+                        primaryActionTitle: Language.get("Apply", alter: "تطبيق")
+                    )
+                    PPTactileNumberPadSheet(
+                        config: config,
+                        onCommit: { val in
+                            let clamped = min(subtotal, max(0, val))
+                            fixedValueText = String(format: "%.2f", clamped)
+                            selectedFixedPreset = clamped
+                            showTactilePad = false
+                        },
+                        onDismiss: {
+                            showTactilePad = false
+                        }
+                    )
                 }
             }
         }
@@ -5833,6 +5744,17 @@ struct POSDiscountSheet: View {
                     Spacer()
 
                     Button {
+                        showTactilePad = true
+                    } label: {
+                        Image(systemName: "circle.grid.3x3.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(emeraldColor)
+                            .frame(width: 40, height: 40)
+                            .background(emeraldColor.opacity(0.12), in: Circle())
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button {
                         if percentageValue < 100 {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             percentageValue = min(100, percentageValue + (percentageValue >= 10 ? 5 : 1))
@@ -5874,6 +5796,17 @@ struct POSDiscountSheet: View {
                                 .foregroundColor(AdminSurface.secondaryText)
                         }
                     }
+
+                    Button {
+                        showTactilePad = true
+                    } label: {
+                        Image(systemName: "circle.grid.3x3.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(emeraldColor)
+                            .padding(7)
+                            .background(emeraldColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)

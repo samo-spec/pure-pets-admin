@@ -794,147 +794,10 @@ enum PPLivePetInventoryService {
 
         guard isLive else { return }
 
-        let showInAppMarket = values["showInAppMarket"] as? Bool ?? false
-        let active = values["active"] as? Bool ?? true
-        let shouldBeVisible = showInAppMarket && active
-
-        let db = Firestore.firestore()
-        let name = values["name"] as? String ?? ""
-        let desc = values["desc"] as? String ?? ""
-        let category = values["petMainCategoryID"] as? Int ?? 1
-        let subcategory = values["petSubCategoryID"] as? Int ?? 0
-        let storeID = values["storeID"] as? String ?? ""
-        let storeName = values["storeName"] as? String ?? "Pure Pets"
-        let ownerID = values["ownerID"] as? String ?? Auth.auth().currentUser?.uid ?? ""
-        let catalogImages = values["imageURLsArray"] as? [String] ?? []
-        let basePrice = (values["price"] as? Double) ?? (values["finalPrice"] as? Double) ?? 0.0
-
-        do {
-            let unitsSnapshot = try await db.collection("petAccessories")
-                .document(productID)
-                .collection("inventoryUnits")
-                .getDocuments()
-
-            if !unitsSnapshot.isEmpty {
-                for unitDoc in unitsSnapshot.documents {
-                    let unitData = unitDoc.data()
-                    let unitID = unitDoc.documentID
-                    let unitStatus = (unitData["status"] as? String ?? "AVAILABLE").uppercased()
-                    let adDocID = "ad_unit_\(unitID)"
-                    let adRef = db.collection("pet_ads").document(adDocID)
-
-                    if shouldBeVisible && unitStatus == "AVAILABLE" {
-                        let ringTag = (unitData["ringTag"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        let adTitle = ringTag.isEmpty ? name : "\(name) (\(ringTag))"
-                        let unitPrice = (unitData["sellingPrice"] as? Double) ?? basePrice
-                        let gender = unitData["gender"] as? String ?? "undefined"
-                        let unitImages = (unitData["mediaURLs"] as? [String])?.filter { !$0.isEmpty }
-                        let images = (unitImages != nil && !unitImages!.isEmpty) ? unitImages! : catalogImages
-
-                        var adPayload: [String: Any] = [
-                            "adID": adDocID,
-                            "adTitle": adTitle,
-                            "name_lowercase": adTitle.lowercased(),
-                            "desc": (unitData["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? desc,
-                            "adDescription": (unitData["notes"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? desc,
-                            "price": unitPrice,
-                            "finalPrice": unitPrice,
-                            "category": category,
-                            "mainKindID": category,
-                            "subcategory": subcategory,
-                            "kindID": subcategory,
-                            "gender": gender,
-                            "isFemale": gender == "female",
-                            "imageURLs": images,
-                            "images": images,
-                            "imageItems": images.map { ["url": $0, "media_type": "image"] },
-                            "status": 1, // PetAdStatusActive
-                            "visibility": 0, // PetAdVisibilityPublic
-                            "isApproved": true,
-                            "isDeleted": false,
-                            "isBlocked": false,
-                            "isSold": false,
-                            "ownerID": ownerID,
-                            "ownerName": storeName,
-                            "storeID": storeID,
-                            "branchId": storeID,
-                            "catalogItemId": productID,
-                            "unitId": unitID,
-                            "ringTag": ringTag,
-                            "isLivePet": true,
-                            "isFromCatalog": true,
-                            "latitude": 25.2854,
-                            "longitude": 51.5310,
-                            "geohash": "tky60",
-                            "adLocation": 1,
-                            "locationName": "Doha",
-                            "updatedAt": FieldValue.serverTimestamp(),
-                        ]
-                        try await adRef.setData(adPayload, merge: true)
-                    } else {
-                        try await adRef.setData([
-                            "status": 0,
-                            "visibility": 1,
-                            "isDeleted": !shouldBeVisible,
-                            "isSold": unitStatus == "SOLD",
-                            "updatedAt": FieldValue.serverTimestamp(),
-                        ], merge: true)
-                    }
-                }
-            } else {
-                let adDocID = "ad_live_\(productID)"
-                let adRef = db.collection("pet_ads").document(adDocID)
-                if shouldBeVisible {
-                    var adPayload: [String: Any] = [
-                        "adID": adDocID,
-                        "adTitle": name,
-                        "name_lowercase": name.lowercased(),
-                        "desc": desc,
-                        "adDescription": desc,
-                        "price": basePrice,
-                        "finalPrice": basePrice,
-                        "category": category,
-                        "mainKindID": category,
-                        "subcategory": subcategory,
-                        "kindID": subcategory,
-                        "gender": "undefined",
-                        "isFemale": false,
-                        "imageURLs": catalogImages,
-                        "images": catalogImages,
-                        "imageItems": catalogImages.map { ["url": $0, "media_type": "image"] },
-                        "status": 1,
-                        "visibility": 0,
-                        "isApproved": true,
-                        "isDeleted": false,
-                        "isBlocked": false,
-                        "isSold": false,
-                        "ownerID": ownerID,
-                        "ownerName": storeName,
-                        "storeID": storeID,
-                        "branchId": storeID,
-                        "catalogItemId": productID,
-                        "isLivePet": true,
-                        "isFromCatalog": true,
-                        "latitude": 25.2854,
-                        "longitude": 51.5310,
-                        "geohash": "tky60",
-                        "adLocation": 1,
-                        "locationName": "Doha",
-                        "updatedAt": FieldValue.serverTimestamp(),
-                    ]
-                    try await adRef.setData(adPayload, merge: true)
-                } else {
-                    try await adRef.setData([
-                        "status": 0,
-                        "visibility": 1,
-                        "isDeleted": true,
-                        "updatedAt": FieldValue.serverTimestamp(),
-                    ], merge: true)
-                }
-            }
-        } catch {
-            print("⚠️ [PPLivePetInventoryService] syncLivePetAds error: \(error.localizedDescription)")
-        }
+        // Marketplace projection for live pets is canonically governed by Infra Cloud Functions:
+        // Updating petAccessories triggers `syncLivePetMarketplaceProjection` which safely
+        // manages ad lifecycles, avoids duplicate records, and protects private unit media.
+        // Client direct writes to pet_ads are removed to prevent uncoordinated schemas and privacy leaks.
     }
 
     private static func call(_ name: String, payload: [String: Any]) async throws -> [String: Any] {
@@ -1060,7 +923,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         canSell && (staff?.hasPermission(kStaffPermPaymentsRefund) ?? false)
     }
     var canReleaseQuarantine: Bool { canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false) }
-    var canViewCosts: Bool { canManageStock || (staff?.hasPermission("stock.view") ?? false) || (staff?.hasPermission("stock.cost.view") ?? false) }
+    var canViewCosts: Bool { (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false) }
 
     func reservation(for unit: PPLivePetInventoryUnit) -> PPLivePetReservation? {
         reservations.first { $0.contains(productID: item.accessoryID, unitID: unit.id) }
@@ -1141,8 +1004,12 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         do {
             try await work()
             await load()
-            successMessage = Language.get(successKey, alter: successFallback)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if errorMessage != nil {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            } else {
+                successMessage = Language.get(successKey, alter: successFallback)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
             isMutating = false
             return true
         } catch {
@@ -1614,7 +1481,9 @@ final class PPInventoryListViewModel: ObservableObject {
         }
         listener = nil
         for workItem in pendingDebounceWorkItems.values {
-            workItem.cancel()
+            if !workItem.isCancelled {
+                workItem.perform()
+            }
         }
         pendingDebounceWorkItems.removeAll()
         pendingQuantityDeltas.removeAll()
@@ -1675,9 +1544,19 @@ final class PPInventoryListViewModel: ObservableObject {
 
     func refresh() async {
         await withCheckedContinuation { continuation in
-            AccessoryManager.shared().fetchAccessories(of: currentKind) { [weak self] items, _ in
+            AccessoryManager.shared().fetchAccessories(of: currentKind, limit: 50, startAfterDocument: nil) { [weak self] items, _, error in
                 DispatchQueue.main.async {
-                    self?.allItems = (items ?? []).filter { item in
+                    if let error = error {
+                        self?.errorMessage = error.localizedDescription
+                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                        continuation.resume()
+                        return
+                    }
+                    guard let items = items else {
+                        continuation.resume()
+                        return
+                    }
+                    self?.allItems = items.filter { item in
                         !item.isDeleted && !(self?.pendingDeletedIDs.contains(item.accessoryID) ?? false)
                     }.sorted { a, b in
                         let dateA = a.createdAt
@@ -1787,7 +1666,30 @@ final class PPInventoryListViewModel: ObservableObject {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             return
         }
-        let newNoStock = !item.noStock
+
+        let previousNoStock = item.noStock
+        let previousQuantity = item.quantity
+        let newNoStock = !previousNoStock
+
+        guard let branchId = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !branchId.isEmpty else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("SelectBranchFirst", alter: "يرجى اختيار الفرع أولاً قبل تعديل حالة المخزون")
+            )
+            return
+        }
+
+        let currentBranchStock = PPBranchInventoryService.shared.availableStock(for: docID, fallback: item.quantity)
+
+        if !newNoStock && currentBranchStock <= 0 {
+            // Cannot mark in stock when available quantity is 0 without adding quantity
+            PPHUD.showError(
+                Language.get("Stock_Zero_Title", alter: "الكمية صفر"),
+                subtitle: Language.get("Stock_Zero_Desc", alter: "لا يمكن تفعيل توفر الصنف بينما الرصيد الفعلي في الفرع صفر. أضف كمية للصنف أولاً.")
+            )
+            return
+        }
+
         item.noStock = newNoStock
         if newNoStock {
             item.quantity = 0
@@ -1795,33 +1697,48 @@ final class PPInventoryListViewModel: ObservableObject {
         objectWillChange.send()
         applyFilter()
 
-        AccessoryManager.shared().setNoStock(item.noStock, forAccessoryID: docID) { _ in }
-        AccessoryManager.shared().updateQuantity(item.quantity, forAccessoryID: docID) { error in
-            if let error = error {
+        if newNoStock && currentBranchStock > 0 {
+            PPBranchInventoryService.shared.adjustStock(
+                productId: docID,
+                branchId: branchId,
+                newQuantity: 0,
+                type: "adjustment",
+                referenceId: "admin_toggle_stock",
+                reason: "marked_no_stock",
+                notes: "Marked out of stock from inventory list"
+            ) { [weak self] result in
                 DispatchQueue.main.async {
-                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                    switch result {
+                    case .success:
+                        AccessoryManager.shared().setNoStock(true, forAccessoryID: docID) { _ in }
+                        AccessoryManager.shared().updateQuantity(0, forAccessoryID: docID) { _ in }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    case .failure(let error):
+                        // Rollback state cleanly
+                        item.noStock = previousNoStock
+                        item.quantity = previousQuantity
+                        self?.objectWillChange.send()
+                        self?.applyFilter()
+                        let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                    }
                 }
             }
-        }
-
-        if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
-            let currentBranchStock = PPBranchInventoryService.shared.availableStock(for: docID, fallback: item.quantity)
-            if newNoStock && currentBranchStock > 0 {
-                PPBranchInventoryService.shared.adjustStock(
-                    productId: docID,
-                    branchId: branchId,
-                    delta: -currentBranchStock,
-                    type: "adjustment",
-                    referenceId: "admin_toggle_stock",
-                    reason: "marked_no_stock",
-                    notes: "Marked out of stock from inventory list"
-                ) { result in
-                    if case .failure(let error) = result {
-                        DispatchQueue.main.async {
-                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+        } else {
+            // Covers: (newNoStock && currentBranchStock <= 0) and (!newNoStock)
+            AccessoryManager.shared().setNoStock(newNoStock, forAccessoryID: docID) { [weak self] error in
+                DispatchQueue.main.async {
+                    if let error = error {
+                        item.noStock = previousNoStock
+                        item.quantity = previousQuantity
+                        self?.objectWillChange.send()
+                        self?.applyFilter()
+                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
+                    } else {
+                        if newNoStock {
+                            AccessoryManager.shared().updateQuantity(0, forAccessoryID: docID) { _ in }
                         }
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
                     }
                 }
             }
@@ -1842,58 +1759,28 @@ final class PPInventoryListViewModel: ObservableObject {
         objectWillChange.send()
 
         PPHUD.showIndeterminate(in: nil, title: Language.get("Deleting", alter: "جاري الحذف..."), subtitle: nil)
-        if item.isLivePet {
-            Task { @MainActor in
-                do {
-                    _ = try await PPLivePetInventoryService.callInventory(
-                        action: "delete",
-                        productID: docID,
-                        payload: ["reason": "admin_ios_soft_delete"]
-                    )
-                    // Also soft-delete linked live-pet marketplace ad if present
-                    let db = Firestore.firestore()
-                    try? await db.collection("pet_ads").document("ad_live_\(docID)").setData([
-                        "status": 0,
-                        "visibility": 1,
-                        "isDeleted": true,
-                        "updatedAt": FieldValue.serverTimestamp()
-                    ], merge: true)
+        Task { @MainActor in
+            do {
+                _ = try await PPLivePetInventoryService.callInventory(
+                    action: "delete",
+                    productID: docID,
+                    payload: ["reason": "admin_ios_soft_delete"]
+                )
 
-                    PPHUD.dismiss()
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    PPHUD.showSuccess(
-                        Language.get("Deleted", alter: "تم الحذف بنجاح"),
-                        subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون")
-                    )
-                } catch {
-                    self.pendingDeletedIDs.remove(docID)
-                    Task { await self.refresh() }
-                    PPHUD.dismiss()
-                    PPHUD.showError(
-                        Language.get("Error", alter: "خطأ"),
-                        subtitle: PPLivePetInventoryService.localizedMessage(for: error)
-                    )
-                }
-            }
-            return
-        }
-        AccessoryManager.shared().deleteAccessory(withID: docID) { [weak self] error in
-            PPHUD.dismiss()
-            if let error = error {
-                DispatchQueue.main.async {
-                    self?.pendingDeletedIDs.remove(docID)
-                    Task { await self?.refresh() }
-                    PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
-                }
-            } else {
-                DispatchQueue.main.async {
-                    self?.allItems.removeAll { $0.accessoryID == docID }
-                    self?.filteredItems.removeAll { $0.accessoryID == docID }
-                    self?.applyFilter()
-                    self?.objectWillChange.send()
-                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    PPHUD.showSuccess(Language.get("Deleted", alter: "تم الحذف بنجاح"), subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون"))
-                }
+                PPHUD.dismiss()
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                PPHUD.showSuccess(
+                    Language.get("Deleted", alter: "تم الحذف بنجاح"),
+                    subtitle: Language.get("StockUpdated", alter: "تم تحديث المخزون")
+                )
+            } catch {
+                self.pendingDeletedIDs.remove(docID)
+                Task { await self.refresh() }
+                PPHUD.dismiss()
+                PPHUD.showError(
+                    Language.get("Error", alter: "خطأ"),
+                    subtitle: PPLivePetInventoryService.localizedMessage(for: error)
+                )
             }
         }
     }
@@ -1914,7 +1801,8 @@ final class PPInventoryListViewModel: ObservableObject {
 
 @available(iOS 16.0, *)
 @MainActor
-public struct PPInventoryListView: View {
+struct PPInventoryListView: View {
+    private let session: AdminSession?
     @StateObject private var viewModel: PPInventoryListViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
@@ -1930,12 +1818,47 @@ public struct PPInventoryListView: View {
     @State private var itemForLots: PetAccessory? = nil
     @State private var showCycleCountStudio: Bool = false
     @State private var itemForActionMenu: PetAccessory? = nil
-    public init(
+
+    private var staff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
+    private var canManageStock: Bool {
+        if let session {
+            return session.hasPermission("stock.manage") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+        }
+        return (staff?.hasPermission(kStaffPermStockManage) ?? false) || (staff?.isAdmin() ?? false)
+    }
+    private var canCreateStock: Bool {
+        if let session {
+            return session.hasPermission("stock.create") || session.hasPermission("stock.manage") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+        }
+        return (staff?.hasPermission("stock.create") ?? false) || canManageStock
+    }
+    private var canDeleteStock: Bool {
+        if let session {
+            return session.hasPermission("stock.delete") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+        }
+        return (staff?.hasPermission("stock.delete") ?? false) || (staff?.isAdmin() ?? false)
+    }
+    private var canReleaseQuarantine: Bool {
+        if let session {
+            return session.hasPermission("stock.quarantine.release") || canManageStock
+        }
+        return canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false)
+    }
+    private var canViewCosts: Bool {
+        if let session {
+            return session.hasPermission("stock.cost.view") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+        }
+        return (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
+    }
+
+    init(
         kind: AccessKindType = .typeAccessory,
+        session: AdminSession? = nil,
         showsCatalogSwitcher: Bool = true,
         onPushViewController: ((UIViewController) -> Void)? = nil,
         onDismiss: (() -> Void)? = nil
     ) {
+        self.session = session
         _viewModel = StateObject(wrappedValue: PPInventoryListViewModel(kind: kind))
         self.showsCatalogSwitcher = showsCatalogSwitcher
         self.onPushViewController = onPushViewController ?? { targetVC in
@@ -1945,6 +1868,13 @@ public struct PPInventoryListView: View {
     }
 
     private func openAddEditor() {
+        guard canCreateStock else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("NoPermissionToCreate", alter: "ليس لديك صلاحية إضافة أصناف جديدة للمخزون")
+            )
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let addVC = AddAccessoryViewController(accessory: nil)
         addVC.showTypeRow = false
@@ -1956,6 +1886,13 @@ public struct PPInventoryListView: View {
     }
 
     private func openEditEditor(for item: PetAccessory) {
+        guard canManageStock else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("NoPermissionToManage", alter: "ليس لديك صلاحية تعديل بيانات المخزون")
+            )
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         let editVC = AddAccessoryViewController(accessory: item)
         editVC.showTypeRow = false
@@ -2164,11 +2101,18 @@ public struct PPInventoryListView: View {
     }
 
     private func confirmDelete(item: PetAccessory) {
+        guard canDeleteStock else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("NoPermissionToDelete", alter: "ليس لديك صلاحية حذف الأصناف من المخزون")
+            )
+            return
+        }
         PPAlertHelper.showConfirmation(
             in: nil,
             title: Language.get("Confirm Delete", alter: "تأكيد حذف المنتج"),
-            subtitle: Language.get("Are you sure you want to delete this accessory?", alter: "هل أنت متأكد من رغبتك في حذف هذا المنتج نهائياً من قاعدة بيانات المخزون؟"),
-            confirmButton: Language.get("Delete", alter: "حذف نهائي من المخزون"),
+            subtitle: Language.get("Confirm_Delete_Desc", alter: "هل أنت متأكد من رغبتك في حذف هذا الصنف من المخزون؟ سيتم إلغاء تفعيله وإيقاف ظهوره بأمان."),
+            confirmButton: Language.get("Delete", alter: "حذف من المخزون"),
             cancelButton: Language.get("Cancel", alter: "إلغاء"),
             icon: UIImage(systemName: "trash.fill"),
             confirmBlock: { _, didConfirm in
@@ -2198,33 +2142,37 @@ public struct PPInventoryListView: View {
                 }
             ) {
                 HStack(spacing: 8) {
-                    AdminPrimaryPillButton(
-                        title: Language.get("Add", alter: "إضافة منتج"),
-                        systemImage: "plus"
-                    ) {
-                        openAddEditor()
+                    if canCreateStock {
+                        AdminPrimaryPillButton(
+                            title: Language.get("Add", alter: "إضافة منتج"),
+                            systemImage: "plus"
+                        ) {
+                            openAddEditor()
+                        }
                     }
 
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        showCycleCountStudio = true
-                    } label: {
-                        Image(systemName: "slider.horizontal.2.square.on.square")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(uiColor: .ppPrimary))
-                            .frame(width: 44, height: 44)
-                            .background(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .fill(Color(uiColor: .systemBackground))
-                                    .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.20), lineWidth: 1)
-                            )
+                    if canManageStock {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            showCycleCountStudio = true
+                        } label: {
+                            Image(systemName: "slider.horizontal.2.square.on.square")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundColor(Color(uiColor: .ppPrimary))
+                                .frame(width: 44, height: 44)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(Color(uiColor: .systemBackground))
+                                        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.20), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Inventory_Action_Cycle_Count", alter: "استوديو جرد وتسوية المخزون"))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Language.get("Inventory_Action_Cycle_Count", alter: "استوديو جرد وتسوية المخزون"))
                 }
             }
 
@@ -2629,6 +2577,9 @@ public struct PPInventoryListView: View {
         ForEach(viewModel.filteredItems, id: \.accessoryID) { item in
             FlagshipInventoryCard(
                 item: item,
+                canManageStock: canManageStock,
+                canDeleteStock: canDeleteStock,
+                canReleaseQuarantine: canReleaseQuarantine,
                 onTap: {
                     openItemDetail(for: item)
                 },
@@ -2771,28 +2722,30 @@ public struct PPInventoryListView: View {
                 // Command Horizon Action Buttons
                 VStack(spacing: 12) {
                     // Primary Action Button: Add Item
-                    Button {
-                        openAddEditor()
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 17, weight: .semibold))
-                            Text(catalogTabAddButtonTitle)
-                                .font(AdminType.bodyBold)
+                    if canCreateStock {
+                        Button {
+                            openAddEditor()
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 17, weight: .semibold))
+                                Text(catalogTabAddButtonTitle)
+                                    .font(AdminType.bodyBold)
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 52)
+                            .background(
+                                LinearGradient(
+                                    colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.90)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            )
+                            .shadow(color: AdminSurface.primary.opacity(0.28), radius: 12, x: 0, y: 6)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .background(
-                            LinearGradient(
-                                colors: [AdminSurface.primary, AdminSurface.primary.opacity(0.90)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        )
-                        .shadow(color: AdminSurface.primary.opacity(0.28), radius: 12, x: 0, y: 6)
+                        .buttonStyle(CatalogPressStyle())
                     }
-                    .buttonStyle(CatalogPressStyle())
 
                     // Secondary Action Horizon: Switch Branch & Refresh
                     HStack(spacing: 10) {
@@ -2933,21 +2886,23 @@ public struct PPInventoryListView: View {
                 }
                 .buttonStyle(CatalogPressStyle())
 
-                Button {
-                    openAddEditor()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                        Text(Language.get("Add", alter: "إضافة صنف جديد"))
-                            .font(AdminType.captionBold)
+                if canCreateStock {
+                    Button {
+                        openAddEditor()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 12, weight: .bold))
+                            Text(Language.get("Add", alter: "إضافة صنف جديد"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(AdminSurface.primary, in: Capsule(style: .continuous))
                     }
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                    .background(AdminSurface.primary, in: Capsule(style: .continuous))
+                    .buttonStyle(CatalogPressStyle())
                 }
-                .buttonStyle(CatalogPressStyle())
             }
             .padding(.bottom, 8)
         }
@@ -3187,6 +3142,12 @@ private struct FlagshipInventoryCard: View {
     var onManageLots: (() -> Void)? = nil
     var onOpenActionMenu: (() -> Void)? = nil
 
+    @State private var showTactileQuantityPad: Bool = false
+
+    var canManageStock: Bool = true
+    var canDeleteStock: Bool = true
+    var canReleaseQuarantine: Bool = true
+
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
     }
@@ -3316,16 +3277,18 @@ private struct FlagshipInventoryCard: View {
                 Divider()
             }
 
-            Button(action: onEdit) {
-                Label {
-                    Text(Language.get("Edit", alter: "تعديل الصنف"))
-                        .font(PPBrandFont.bold(size: 16))
-                } icon: {
-                    Image(systemName: "pencil")
+            if canManageStock {
+                Button(action: onEdit) {
+                    Label {
+                        Text(Language.get("Edit", alter: "تعديل الصنف"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "pencil")
+                    }
                 }
             }
 
-            if let onRecordDamage = onRecordDamage {
+            if canManageStock, let onRecordDamage = onRecordDamage {
                 Button(action: onRecordDamage) {
                     Label {
                         Text(Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"))
@@ -3336,7 +3299,7 @@ private struct FlagshipInventoryCard: View {
                 }
             }
 
-            if let onQuarantineStudio = onQuarantineStudio {
+            if canReleaseQuarantine, let onQuarantineStudio = onQuarantineStudio {
                 Button(action: onQuarantineStudio) {
                     Label {
                         Text(Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"))
@@ -3347,7 +3310,7 @@ private struct FlagshipInventoryCard: View {
                 }
             }
 
-            if let onManageLots = onManageLots {
+            if canManageStock, let onManageLots = onManageLots {
                 Button(action: onManageLots) {
                     Label {
                         Text(Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"))
@@ -3374,7 +3337,7 @@ private struct FlagshipInventoryCard: View {
                 }
             }
 
-            if !item.isLivePet {
+            if canManageStock && !item.isLivePet {
                 Button(action: onToggleStock) {
                     Label {
                         Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
@@ -3385,15 +3348,36 @@ private struct FlagshipInventoryCard: View {
                 }
             }
 
-            Divider()
+            if canDeleteStock {
+                Divider()
 
-            Button(role: .destructive, action: onDelete) {
-                Label {
-                    Text(Language.get("Delete", alter: "حذف من المخزون"))
-                        .font(PPBrandFont.bold(size: 16))
-                } icon: {
-                    Image(systemName: "trash")
+                Button(role: .destructive, action: onDelete) {
+                    Label {
+                        Text(Language.get("Delete", alter: "حذف من المخزون"))
+                            .font(PPBrandFont.bold(size: 16))
+                    } icon: {
+                        Image(systemName: "trash")
+                    }
                 }
+            }
+        }
+        .tactileQuantityPad(
+            isPresented: $showTactileQuantityPad,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            currentQuantity: displayQuantity,
+            referenceQuantity: displayQuantity,
+            specimen: PPTactileSpecimenInfo(
+                title: item.name,
+                imageURL: imageURL,
+                sku: item.sku,
+                shelfLocation: item.shelfLocation,
+                barcode: item.barcode,
+                unitCost: item.costPrice.doubleValue
+            )
+        ) { newQty in
+            let delta = newQty - displayQuantity
+            if delta != 0 {
+                onAdjustQuantity(delta)
             }
         }
     }
@@ -3668,11 +3652,9 @@ private struct FlagshipInventoryCard: View {
         }
     }
 
+    @ViewBuilder
     private var storeVisibilitySentinel: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            onToggleStock()
-        }) {
+        if !canManageStock {
             HStack(spacing: 5) {
                 Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
                     .font(.system(size: 11, weight: .bold))
@@ -3692,9 +3674,34 @@ private struct FlagshipInventoryCard: View {
                 Capsule(style: .continuous)
                     .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.24), lineWidth: 0.75)
             )
+        } else {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onToggleStock()
+            }) {
+                HStack(spacing: 5) {
+                    Image(systemName: item.noStock ? "eye.slash.fill" : "checkmark.seal.fill")
+                        .font(.system(size: 11, weight: .bold))
+
+                    Text(item.noStock ? Language.get("HiddenFromCatalog", alter: "موقوف مؤقتاً") : Language.get("ActiveInCatalog", alter: "متاح بالمتجر"))
+                        .font(AdminType.caption2Bold)
+                        .lineLimit(1)
+                }
+                .foregroundColor(item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess))
+                .padding(.horizontal, 10)
+                .frame(height: 36)
+                .background(
+                    (item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.09),
+                    in: Capsule(style: .continuous)
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder((item.noStock ? Color(uiColor: .ppError) : Color(uiColor: .ppSuccess)).opacity(0.24), lineWidth: 0.75)
+                )
+            }
+            .buttonStyle(CatalogPressStyle())
+            .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
         }
-        .buttonStyle(CatalogPressStyle())
-        .accessibilityLabel(item.noStock ? Language.get("MarkInStock", alter: "تفعيل المخزون") : Language.get("MarkOutOfStock", alter: "تعطيل المخزون"))
     }
 
     private var livePetRosterButton: some View {
@@ -3725,23 +3732,9 @@ private struct FlagshipInventoryCard: View {
         .buttonStyle(CatalogPressStyle())
     }
 
+    @ViewBuilder
     private var quantumPrecisionStepper: some View {
-        HStack(spacing: 0) {
-            // Decrement (-)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(-1)
-            } label: {
-                Image(systemName: "minus")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundColor(displayQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.35))
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(CatalogPressStyle())
-            .disabled(displayQuantity <= 0)
-
-            // Tabular Count with Stock Vitality Tint & Rolling Transition
+        if !canManageStock {
             HStack(spacing: 4) {
                 Circle()
                     .fill(stockTone)
@@ -3751,60 +3744,76 @@ private struct FlagshipInventoryCard: View {
                     .font(PPBrandFont.bold(size: 14))
                     .monospacedDigit()
                     .foregroundColor(stockTone == Color(uiColor: .ppError) ? Color(uiColor: .ppError) : AdminSurface.primaryText)
-                    .contentTransition(.numericText())
             }
-            .padding(.horizontal, 8)
-            .frame(minWidth: 44)
+            .padding(.horizontal, 12)
             .frame(height: 36)
-            .contentShape(Rectangle())
+            .background(AdminSurface.control, in: Capsule(style: .continuous))
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
             .accessibilityLabel(stockStatusText)
-            .onTapGesture {
-                promptQuantityEdit()
-            }
+        } else {
+            HStack(spacing: 0) {
+                // Decrement (-)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onAdjustQuantity(-1)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(displayQuantity > 0 ? AdminSurface.primaryText : AdminCommandInk.tertiary.opacity(0.35))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(CatalogPressStyle())
+                .disabled(displayQuantity <= 0)
 
-            // Increment (+)
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                onAdjustQuantity(1)
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .black))
-                    .foregroundColor(AdminSurface.primaryText)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
+                // Tabular Count with Stock Vitality Tint & Rolling Transition
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(stockTone)
+                        .frame(width: 5, height: 5)
+
+                    Text(verbatim: displayQuantity.englishDigits)
+                        .font(PPBrandFont.bold(size: 14))
+                        .monospacedDigit()
+                        .foregroundColor(stockTone == Color(uiColor: .ppError) ? Color(uiColor: .ppError) : AdminSurface.primaryText)
+                        .contentTransition(.numericText())
+                }
+                .padding(.horizontal, 8)
+                .frame(minWidth: 44)
+                .frame(height: 36)
+                .contentShape(Rectangle())
+                .accessibilityLabel(stockStatusText)
+                .onTapGesture {
+                    promptQuantityEdit()
+                }
+
+                // Increment (+)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onAdjustQuantity(1)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(CatalogPressStyle())
             }
-            .buttonStyle(CatalogPressStyle())
+            .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
+            )
         }
-        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.65), lineWidth: 0.75)
-        )
     }
 
     private func promptQuantityEdit() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        PPAlertHelper.showTextPrompt(
-            in: nil,
-            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
-            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
-            placeholder: Language.get("Quantity", alter: "الكمية"),
-            initialText: displayQuantity.englishDigits,
-            confirmText: Language.get("Save", alter: "حفظ"),
-            cancelText: Language.get("Cancel", alter: "إلغاء"),
-            secureEntry: false,
-            keyboardType: .numberPad
-        ) { text in
-            guard let text else { return }
-            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
-            if let val = Int(normalized) {
-                let sanitized = max(0, val)
-                let delta = sanitized - displayQuantity
-                if delta != 0 {
-                    onAdjustQuantity(delta)
-                }
-            }
-        }
+        showTactileQuantityPad = true
     }
 }
 
@@ -3836,6 +3845,7 @@ public struct PPInventoryItemDetailView: View {
     @State private var showDamageSheet: Bool = false
     @State private var showQuarantineSheet: Bool = false
     @State private var showLotsSheet: Bool = false
+    @State private var showTactileQuantityPad: Bool = false
     @State private var activeCommandUnit: PPLivePetInventoryUnit? = nil
     @State private var showHistoryUnits: Bool = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -4147,6 +4157,22 @@ public struct PPInventoryItemDetailView: View {
             )
             .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         }
+        .tactileQuantityPad(
+            isPresented: $showTactileQuantityPad,
+            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
+            currentQuantity: currentQuantity,
+            referenceQuantity: currentQuantity,
+            specimen: PPTactileSpecimenInfo(
+                title: item.name,
+                imageURL: PetAccessory.firstImageURL(for: item),
+                sku: item.sku,
+                shelfLocation: item.shelfLocation,
+                barcode: item.barcode,
+                unitCost: item.costPrice.doubleValue
+            )
+        ) { newQty in
+            setExactQuantity(newQty)
+        }
         .onChange(of: branchInventory.inventoryMap) { _ in
             if !item.isLivePet {
                 let fresh = branchInventory.availableStock(for: item.accessoryID, fallback: currentQuantity)
@@ -4173,23 +4199,7 @@ public struct PPInventoryItemDetailView: View {
 
     private func promptQuantityEdit() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        PPAlertHelper.showTextPrompt(
-            in: nil,
-            title: Language.get("EditQuantity", alter: "تعديل الكمية"),
-            subtitle: Language.get("EnterQuantityPrompt", alter: "أدخل كمية المخزون المتاحة لهذا الصنف"),
-            placeholder: Language.get("Quantity", alter: "الكمية"),
-            initialText: "\(currentQuantity)",
-            confirmText: Language.get("Save", alter: "حفظ"),
-            cancelText: Language.get("Cancel", alter: "إلغاء"),
-            secureEntry: false,
-            keyboardType: .numberPad
-        ) { text in
-            guard let text else { return }
-            let normalized = text.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
-            if let val = Int(normalized) {
-                setExactQuantity(val)
-            }
-        }
+        showTactileQuantityPad = true
     }
 
     // MARK: - Dynamic Ambient Luminous Aura

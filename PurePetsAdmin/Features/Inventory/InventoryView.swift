@@ -274,12 +274,11 @@ final class InventoryViewModel: ObservableObject {
         }
 
         if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
-            let currentBranchStock = PPBranchInventoryService.shared.availableStock(for: docID, fallback: accessory.quantity)
-            if newNoStock && currentBranchStock > 0 {
+            if newNoStock {
                 PPBranchInventoryService.shared.adjustStock(
                     productId: docID,
                     branchId: branchId,
-                    delta: -currentBranchStock,
+                    newQuantity: 0,
                     type: "adjustment",
                     referenceId: "admin_toggle_stock",
                     reason: "marked_no_stock",

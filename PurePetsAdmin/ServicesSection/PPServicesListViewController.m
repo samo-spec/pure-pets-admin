@@ -13,7 +13,7 @@
 @import Firebase;
 @import FirebaseAuth;
 @import FirebaseMessaging;
-@import FirebaseAuth;
+#import "PurePetsAdmin-Swift.h"
 
 typedef NS_ENUM(NSInteger, PPServicePrimaryFilter) {
     PPServicePrimaryFilterAll = 0,
@@ -124,26 +124,22 @@ typedef NS_ENUM(NSInteger, PPServiceSortOption) {
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor = AppBackgroundClr;
-    self.allServices = [NSMutableArray array];
-    self.filteredServices = [NSMutableArray array];
-    self.searchQuery = @"";
-    self.primaryFilter = PPServicePrimaryFilterAll;
-    self.secondaryFilter = PPServiceSecondaryFilterAny;
-    self.sortOption = PPServiceSortOptionUpdatedDesc;
-
-    [self setupStatsHeader];
-    [self setupControls];
-    [self setupTableView];
-    [self setupPlaceholderView];
-    [self setupLoadingView];
-    [self updateRefineButtonTitle];
-    [self startListening];
+    AdminServicesHostingController *host = [AdminServicesHostingController new];
+    [self addChildViewController:host];
+    [self.view addSubview:host.view];
+    host.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [NSLayoutConstraint activateConstraints:@[
+        [host.view.topAnchor constraintEqualToAnchor:self.view.topAnchor],
+        [host.view.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
+        [host.view.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [host.view.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor]
+    ]];
+    [host didMoveToParentViewController:self];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    UIButton *plusButton = [self pp_ButtonWithSystemName:@"plus" action:@selector(addServiceTapped)];
-    [self pp_navBarWithOtherButton:plusButton title:kLang(@"Service_Section_Title")];
+    [self.navigationController setNavigationBarHidden:YES animated:animated];
 }
 
 - (void)dealloc {

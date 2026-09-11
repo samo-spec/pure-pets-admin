@@ -48,6 +48,20 @@ public struct PPInventoryActionMenuSheet: View {
         PetAccessory.firstImageURL(for: item)
     }
 
+    private var staff: PPStaffDoc? { PPStaffAuth.shared().cachedCurrentStaff }
+    private var canManageStock: Bool {
+        (staff?.hasPermission(kStaffPermStockManage) ?? false) || (staff?.isAdmin() ?? false)
+    }
+    private var canDeleteStock: Bool {
+        (staff?.hasPermission("stock.delete") ?? false) || (staff?.isAdmin() ?? false)
+    }
+    private var canReleaseQuarantine: Bool {
+        canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false)
+    }
+    private var canViewCosts: Bool {
+        (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
+    }
+
     private var displayQuantity: Int {
         let activeBranch = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines)
         if let activeBranch, !activeBranch.isEmpty {
@@ -147,63 +161,71 @@ public struct PPInventoryActionMenuSheet: View {
                     .padding(.horizontal, 4)
 
                     // 1. Damage Studio
-                    studioFlightDeckCard(
-                        title: Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"),
-                        subtitle: Language.get("Damage_Studio_Desc", alter: "تسجيل تالف، هالك، أو عيب مصنعي وخصمه فورياً"),
-                        badge: Language.get("Damage_Badge", alter: "إتلاف وركود"),
-                        symbol: "exclamationmark.octagon.fill",
-                        tintColor: Color(red: 225/255, green: 29/255, blue: 72/255)
-                    ) {
-                        dismiss()
-                        onRecordDamage()
+                    if canManageStock {
+                        studioFlightDeckCard(
+                            title: Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"),
+                            subtitle: Language.get("Damage_Studio_Desc", alter: "تسجيل تالف، هالك، أو عيب مصنعي وخصمه فورياً"),
+                            badge: Language.get("Damage_Badge", alter: "إتلاف وركود"),
+                            symbol: "exclamationmark.octagon.fill",
+                            tintColor: Color(red: 225/255, green: 29/255, blue: 72/255)
+                        ) {
+                            dismiss()
+                            onRecordDamage()
+                        }
                     }
 
                     // 2. Quarantine Studio
-                    studioFlightDeckCard(
-                        title: Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
-                        subtitle: Language.get("Quarantine_Studio_Desc", alter: "عزل كميات للفحص الطبي أو البيطري أو إعادة الفرز"),
-                        badge: Language.get("Quarantine_Badge", alter: "عزل وجودة"),
-                        symbol: "shield.lefthalf.filled",
-                        tintColor: Color(red: 234/255, green: 88/255, blue: 12/255)
-                    ) {
-                        dismiss()
-                        onQuarantineStudio()
+                    if canReleaseQuarantine {
+                        studioFlightDeckCard(
+                            title: Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
+                            subtitle: Language.get("Quarantine_Studio_Desc", alter: "عزل كميات للفحص الطبي أو البيطري أو إعادة الفرز"),
+                            badge: Language.get("Quarantine_Badge", alter: "عزل وجودة"),
+                            symbol: "shield.lefthalf.filled",
+                            tintColor: Color(red: 234/255, green: 88/255, blue: 12/255)
+                        ) {
+                            dismiss()
+                            onQuarantineStudio()
+                        }
                     }
 
                     // 3. Lots & FEFO Studio
-                    studioFlightDeckCard(
-                        title: Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"),
-                        subtitle: Language.get("Lots_Studio_Desc", alter: "تتبع الباتشات والتواريخ وقاعدة الصرف الأقرب انتهاءً"),
-                        badge: Language.get("Lots_Badge", alter: "تشغيلات FEFO"),
-                        symbol: "calendar.badge.clock",
-                        tintColor: Color(red: 16/255, green: 185/255, blue: 129/255)
-                    ) {
-                        dismiss()
-                        onManageLots()
+                    if canManageStock {
+                        studioFlightDeckCard(
+                            title: Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"),
+                            subtitle: Language.get("Lots_Studio_Desc", alter: "تتبع الباتشات والتواريخ وقاعدة الصرف الأقرب انتهاءً"),
+                            badge: Language.get("Lots_Badge", alter: "تشغيلات FEFO"),
+                            symbol: "calendar.badge.clock",
+                            tintColor: Color(red: 16/255, green: 185/255, blue: 129/255)
+                        ) {
+                            dismiss()
+                            onManageLots()
+                        }
                     }
                 }
 
                 // Quick Operational Actions Grid
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        // Edit Item Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            dismiss()
-                            onEdit()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 15, weight: .bold))
-                                Text(Language.get("Edit_Specimen", alter: "تعديل الصنف"))
-                                    .font(PPBrandFont.bold(size: 15))
+                        if canManageStock {
+                            // Edit Item Button
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                dismiss()
+                                onEdit()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 15, weight: .bold))
+                                    Text(Language.get("Edit_Specimen", alter: "تعديل الصنف"))
+                                        .font(PPBrandFont.bold(size: 15))
+                                }
+                                .foregroundColor(AdminSurface.primary)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                             }
-                            .foregroundColor(AdminSurface.primary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .buttonStyle(SpecimenActionPressStyle())
                         }
-                        .buttonStyle(SpecimenActionPressStyle())
 
                         // Share Item Button
                         Button {
@@ -226,7 +248,7 @@ public struct PPInventoryActionMenuSheet: View {
                     }
 
                     // Stock Availability Toggle Row
-                    if !item.isLivePet {
+                    if canManageStock && !item.isLivePet {
                         Button {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             onToggleStock()
@@ -271,29 +293,31 @@ public struct PPInventoryActionMenuSheet: View {
                     }
                 }
 
-                // Guarded Destructive Zone
-                Divider()
-                    .background(AdminSurface.hairline)
-                    .padding(.top, 4)
+                if canDeleteStock {
+                    // Guarded Destructive Zone
+                    Divider()
+                        .background(AdminSurface.hairline)
+                        .padding(.top, 4)
 
-                Button(role: .destructive) {
-                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                    dismiss()
-                    onDelete()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text(Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
-                            .font(PPBrandFont.bold(size: 14))
+                    Button(role: .destructive) {
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        dismiss()
+                        onDelete()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text(Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
+                                .font(PPBrandFont.bold(size: 14))
+                        }
+                        .foregroundColor(Color(uiColor: .ppError))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .foregroundColor(Color(uiColor: .ppError))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 46)
-                    .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .buttonStyle(SpecimenActionPressStyle())
+                    .padding(.bottom, 24)
                 }
-                .buttonStyle(SpecimenActionPressStyle())
-                .padding(.bottom, 24)
             }
             .padding(.horizontal, 16)
         }
@@ -370,7 +394,7 @@ public struct PPInventoryActionMenuSheet: View {
                             }
                         }
 
-                        if let cost = item.costPrice?.doubleValue, cost > 0 {
+                        if canViewCosts, let cost = item.costPrice?.doubleValue, cost > 0 {
                             HStack {
                                 Text(Language.get("Cost_Price", alter: "سعر التكلفة:"))
                                     .font(AdminType.caption)
@@ -400,61 +424,69 @@ public struct PPInventoryActionMenuSheet: View {
                             .foregroundColor(AdminSurface.secondaryText)
 
                         // 1. Damage Studio
-                        studioFlightDeckCard(
-                            title: Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"),
-                            subtitle: Language.get("Damage_Studio_Desc", alter: "تسجيل تالف أو هالك أو عيب مصنعي مع حسم فوري من الرصيد"),
-                            badge: Language.get("Damage_Badge", alter: "إتلاف وركود"),
-                            symbol: "exclamationmark.octagon.fill",
-                            tintColor: Color(red: 225/255, green: 29/255, blue: 72/255)
-                        ) {
-                            dismiss()
-                            onRecordDamage()
+                        if canManageStock {
+                            studioFlightDeckCard(
+                                title: Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"),
+                                subtitle: Language.get("Damage_Studio_Desc", alter: "تسجيل تالف أو هالك أو عيب مصنعي مع حسم فوري من الرصيد"),
+                                badge: Language.get("Damage_Badge", alter: "إتلاف وركود"),
+                                symbol: "exclamationmark.octagon.fill",
+                                tintColor: Color(red: 225/255, green: 29/255, blue: 72/255)
+                            ) {
+                                dismiss()
+                                onRecordDamage()
+                            }
                         }
 
                         // 2. Quarantine Studio
-                        studioFlightDeckCard(
-                            title: Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
-                            subtitle: Language.get("Quarantine_Studio_Desc", alter: "حجز كميات للفحص الطبي أو البيطري أو فك الحجر للتداول"),
-                            badge: Language.get("Quarantine_Badge", alter: "عزل وجودة"),
-                            symbol: "shield.lefthalf.filled",
-                            tintColor: Color(red: 234/255, green: 88/255, blue: 12/255)
-                        ) {
-                            dismiss()
-                            onQuarantineStudio()
+                        if canReleaseQuarantine {
+                            studioFlightDeckCard(
+                                title: Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"),
+                                subtitle: Language.get("Quarantine_Studio_Desc", alter: "حجز كميات للفحص الطبي أو البيطري أو فك الحجر للتداول"),
+                                badge: Language.get("Quarantine_Badge", alter: "عزل وجودة"),
+                                symbol: "shield.lefthalf.filled",
+                                tintColor: Color(red: 234/255, green: 88/255, blue: 12/255)
+                            ) {
+                                dismiss()
+                                onQuarantineStudio()
+                            }
                         }
 
                         // 3. Lots & FEFO Studio
-                        studioFlightDeckCard(
-                            title: Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"),
-                            subtitle: Language.get("Lots_Studio_Desc", alter: "متابعة الباتشات وتواريخ الصلاحية وقاعدة الصرف الأقرب انتهاءً"),
-                            badge: Language.get("Lots_Badge", alter: "تشغيلات FEFO"),
-                            symbol: "calendar.badge.clock",
-                            tintColor: Color(red: 16/255, green: 185/255, blue: 129/255)
-                        ) {
-                            dismiss()
-                            onManageLots()
+                        if canManageStock {
+                            studioFlightDeckCard(
+                                title: Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"),
+                                subtitle: Language.get("Lots_Studio_Desc", alter: "متابعة الباتشات وتواريخ الصلاحية وقاعدة الصرف الأقرب انتهاءً"),
+                                badge: Language.get("Lots_Badge", alter: "تشغيلات FEFO"),
+                                symbol: "calendar.badge.clock",
+                                tintColor: Color(red: 16/255, green: 185/255, blue: 129/255)
+                            ) {
+                                dismiss()
+                                onManageLots()
+                            }
                         }
 
                         // Quick Actions Strip
                         HStack(spacing: 10) {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                dismiss()
-                                onEdit()
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 14, weight: .bold))
-                                    Text(Language.get("Edit_Specimen", alter: "تعديل الصنف"))
-                                        .font(PPBrandFont.bold(size: 14))
+                            if canManageStock {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    dismiss()
+                                    onEdit()
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "pencil")
+                                            .font(.system(size: 14, weight: .bold))
+                                        Text(Language.get("Edit_Specimen", alter: "تعديل الصنف"))
+                                            .font(PPBrandFont.bold(size: 14))
+                                    }
+                                    .foregroundColor(AdminSurface.primary)
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 }
-                                .foregroundColor(AdminSurface.primary)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 44)
-                                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                .buttonStyle(SpecimenActionPressStyle())
+                                .keyboardShortcut("e", modifiers: .command)
                             }
-                            .buttonStyle(SpecimenActionPressStyle())
-                            .keyboardShortcut("e", modifiers: .command)
 
                             Button {
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -475,7 +507,7 @@ public struct PPInventoryActionMenuSheet: View {
                             .buttonStyle(SpecimenActionPressStyle())
                             .keyboardShortcut("s", modifiers: .command)
 
-                            if !item.isLivePet {
+                            if canManageStock && !item.isLivePet {
                                 Button {
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                                     onToggleStock()
@@ -499,24 +531,26 @@ public struct PPInventoryActionMenuSheet: View {
                         }
                         .padding(.top, 4)
 
-                        // Destructive Danger Strip
-                        Button(role: .destructive) {
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            dismiss()
-                            onDelete()
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "trash.fill")
-                                    .font(.system(size: 13, weight: .bold))
-                                Text(Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
-                                    .font(PPBrandFont.bold(size: 13))
+                        if canDeleteStock {
+                            // Destructive Danger Strip
+                            Button(role: .destructive) {
+                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                dismiss()
+                                onDelete()
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 13, weight: .bold))
+                                    Text(Language.get("Delete_Specimen_Guarded", alter: "حذف الصنف نهائياً من المخزون"))
+                                        .font(PPBrandFont.bold(size: 13))
+                                }
+                                .foregroundColor(Color(uiColor: .ppError))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 40)
+                                .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                             }
-                            .foregroundColor(Color(uiColor: .ppError))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 40)
-                            .background(Color(uiColor: .ppError).opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(SpecimenActionPressStyle())
                         }
-                        .buttonStyle(SpecimenActionPressStyle())
                     }
                 }
             }

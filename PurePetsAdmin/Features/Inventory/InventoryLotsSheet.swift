@@ -1154,6 +1154,8 @@ private struct AddLotSheet: View {
     @State private var isCustomCalendarExpanded: Bool = false
     @State private var isManualQuantityEditing: Bool = false
     @State private var manualQuantityInput: String = "10"
+    @State private var showTactileQuantityPad: Bool = false
+    @State private var showTactileCostPad: Bool = false
 
     private var isIPadLayout: Bool {
         horizontalSizeClass == .regular && UIDevice.current.userInterfaceIdiom == .pad
@@ -1303,6 +1305,34 @@ private struct AddLotSheet: View {
                 generateSmartLotCode()
             }
         }
+        .tactileQuantityPad(
+            isPresented: $showTactileQuantityPad,
+            title: Language.get("Inventory_Lot_Initial_Qty", alter: "كمية الدفعة الواردة"),
+            currentQuantity: quantity,
+            referenceQuantity: quantity,
+            specimen: PPTactileSpecimenInfo(
+                title: item.name,
+                imageURL: PetAccessory.firstImageURL(for: item),
+                sku: item.sku,
+                unitCost: unitCostDouble
+            )
+        ) { newQty in
+            quantity = max(1, newQty)
+            manualQuantityInput = "\(quantity)"
+        }
+        .tactilePricePad(
+            isPresented: $showTactileCostPad,
+            title: Language.get("Cost_Price", alter: "سعر التكلفة للوحدة"),
+            currentPrice: unitCostDouble,
+            referencePrice: item.costPrice?.doubleValue,
+            specimen: PPTactileSpecimenInfo(
+                title: item.name,
+                imageURL: PetAccessory.firstImageURL(for: item),
+                sku: item.sku
+            )
+        ) { newCost in
+            costPrice = String(format: "%.2f", newCost)
+        }
     }
 
     // MARK: - Subviews & Form Fields
@@ -1401,9 +1431,10 @@ private struct AddLotSheet: View {
                             .foregroundColor(AdminSurface.secondaryText.opacity(0.8))
                     }
                     .frame(minWidth: 70)
+                    .contentShape(Rectangle())
                     .onTapGesture {
-                        manualQuantityInput = "\(quantity)"
-                        isManualQuantityEditing = true
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showTactileQuantityPad = true
                     }
                 }
 
@@ -1569,6 +1600,16 @@ private struct AddLotSheet: View {
                     Text(Language.get("Cost_Price", alter: "سعر التكلفة للوحدة (ر.ق)"))
                         .font(AdminType.subheadlineBold)
                         .foregroundColor(AdminSurface.primaryText)
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showTactileCostPad = true
+                    } label: {
+                        Image(systemName: "circle.grid.3x3.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(AdminSurface.primary)
+                    }
+
                     Spacer()
                     if let defaultCost = item.costPrice?.doubleValue, defaultCost > 0 {
                         Button {

@@ -3516,7 +3516,7 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
         return [PPInventoryListHostingController makeForLivePets];
     }
     if ([tag isEqualToString:@"services"]) {
-        return [PPServicesListViewController new];
+        return [AdminServicesHostingController new];
     }
     if ([tag isEqualToString:@"vets"]) {
         return [PPVetsListHostingController new];

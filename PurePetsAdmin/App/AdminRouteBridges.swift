@@ -557,3 +557,33 @@ extension UIViewController {
         }
     }
 }
+
+@objc public final class AdminServicesHostingController: UIViewController {
+    private var priorNavigationBarHidden: Bool?
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .ppBackground
+        pp_embedSwiftUI(AdminServicesView { [weak self] in
+            guard let self = self else {
+                PPAdminNavigationFallback.popOrDismiss()
+                return
+            }
+            PPAdminNavigationFallback.popOrDismiss(from: self)
+        })
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        priorNavigationBarHidden = navigationController?.isNavigationBarHidden
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if let prior = priorNavigationBarHidden {
+            navigationController?.setNavigationBarHidden(prior, animated: animated)
+        }
+    }
+}
+

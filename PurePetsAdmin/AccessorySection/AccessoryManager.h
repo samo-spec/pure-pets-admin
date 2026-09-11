@@ -41,26 +41,32 @@ typedef void (^AccessoryCountBlock)(NSInteger count);
                                                         kind:(AccessKindType)kind
                                                     callback:(AccessoryArrayBlock)onChange;
 
-// WRITE
-- (void)updateQuantity:(NSInteger)qty forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
-- (void)adjustQuantityBy:(NSInteger)delta forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
-- (void)setNoStock:(BOOL)noStock forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
-- (void)updatePrice:(NSNumber *)price forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
-- (void)deleteAccessoryWithID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
+// WRITE (DEPRECATED: Canonical writes must route through validateInventoryChange / adjustBranchStock Cloud Functions)
+- (void)updateQuantity:(NSInteger)qty forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use PPBranchInventoryService.shared.adjustStock instead.")));
+- (void)adjustQuantityBy:(NSInteger)delta forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use PPBranchInventoryService.shared.adjustStock instead.")));
+- (void)setNoStock:(BOOL)noStock forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use PPBranchInventoryService.shared.adjustStock instead.")));
+- (void)updatePrice:(NSNumber *)price forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use upsertProductCommerce or validateInventoryChange instead.")));
+- (void)deleteAccessoryWithID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use validateInventoryChange with action delete instead.")));
 
-// UPSERT
-- (void)createOrUpdateAccessory:(PetAccessory *)model completion:(AccessoryVoidBlock)completion;
+// UPSERT (DEPRECATED: Canonical catalog writes must route through validateInventoryChange)
+- (void)createOrUpdateAccessory:(PetAccessory *)model completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use validateInventoryChange with action create/update instead.")));
 
-// BATCH
-- (void)batchUpdateQuantities:(NSDictionary<NSString *, NSNumber *> *)idToQty completion:(AccessoryVoidBlock)completion;
+// BATCH (DEPRECATED: Use adjustBranchStock or cycle counts)
+- (void)batchUpdateQuantities:(NSDictionary<NSString *, NSNumber *> *)idToQty completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use adjustBranchStock instead.")));
 
 // Optional admin toggles
-- (void)setActive:(BOOL)active forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion;
+- (void)setActive:(BOOL)active forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion __attribute__((deprecated("Use validateInventoryChange instead.")));
 
 #pragma mark - New: Kind & Food helpers
 
 /// Fetch all accessories of the given kind (Accessory or Food).
 - (void)fetchAccessoriesOfKind:(AccessKindType)kind completion:(AccessoryArrayBlock)completion;
+
+/// Bounded pagination fetch for accessories of a given kind.
+- (void)fetchAccessoriesOfKind:(AccessKindType)kind
+                         limit:(NSUInteger)limit
+            startAfterDocument:(FIRDocumentSnapshot * _Nullable)lastDoc
+                    completion:(void (^)(NSArray<PetAccessory *> * _Nullable items, FIRDocumentSnapshot * _Nullable lastSnapshot, NSError * _Nullable error))completion;
 
 /// Live observer for accessories of a given kind.
 - (id<FIRListenerRegistration>)observeAccessoriesOfKind:(AccessKindType)kind

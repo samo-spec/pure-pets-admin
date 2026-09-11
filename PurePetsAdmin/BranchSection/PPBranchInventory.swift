@@ -441,16 +441,20 @@ public final class PPBranchInventoryService: ObservableObject {
         commandId: String? = nil,
         completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
-        let resolvedBranch = {
-            let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "all_branches" {
-                return trimmed
-            }
-            if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-                return active
-            }
-            return "main_store"
-        }()
+        let resolvedBranch: String
+        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "all_branches" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
+            resolvedBranch = active
+        } else {
+            completion?(.failure(NSError(
+                domain: "PPBranchInventory",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error_Damage", alter: "يجب تحديد الفرع لتسجيل التلفيات")]
+            )))
+            return
+        }
 
         let cleanCommandId = commandId ?? "dmg_\(UUID().uuidString)"
         let payload: [String: Any] = [
@@ -530,16 +534,20 @@ public final class PPBranchInventoryService: ObservableObject {
         commandId: String? = nil,
         completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
-        let resolvedBranch = {
-            let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty && trimmed != "all_branches" {
-                return trimmed
-            }
-            if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
-                return active
-            }
-            return "main_store"
-        }()
+        let resolvedBranch: String
+        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && trimmed != "all_branches" {
+            resolvedBranch = trimmed
+        } else if let active = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !active.isEmpty {
+            resolvedBranch = active
+        } else {
+            completion?(.failure(NSError(
+                domain: "PPBranchInventory",
+                code: -1,
+                userInfo: [NSLocalizedDescriptionKey: Language.get("Branch_Required_Error_Disposition", alter: "يجب تحديد الفرع لمعالجة حالة المخزون")]
+            )))
+            return
+        }
 
         let cleanCommandId = commandId ?? "disp_res_\(UUID().uuidString)"
         var payload: [String: Any] = [

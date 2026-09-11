@@ -70,7 +70,7 @@
     if ([identifier isEqualToString:@"audit"]) return [PPAuditLogViewController new];
     if ([identifier isEqualToString:@"moderation"]) return [AdminModerationHostingController new];
     if ([identifier isEqualToString:@"homeControl"]) return [AdminHomeControlHostingController new];
-    if ([identifier isEqualToString:@"services"]) return [PPServicesListViewController new];
+    if ([identifier isEqualToString:@"services"]) return [AdminServicesHostingController new];
     if ([identifier isEqualToString:@"vets"]) return [PPAdminRouteFactory makeSwiftUIHostingControllerForVets];
     if ([identifier isEqualToString:@"categories"]) return [AdminCategoriesHostingController new];
     if ([identifier isEqualToString:@"banners"]) return [PPBannersListVC new];
