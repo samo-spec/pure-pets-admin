@@ -1617,12 +1617,11 @@ struct AdminPOSFastSellView: View {
             let imageURL = PetAccessory.firstImageURL(for: item.accessory)
 
             let specimen = PPTactileSpecimenInfo(
-                title: item.accessory.name,
+                title: item.accessory.name ?? "",
                 subtitle: String(format: Language.get("POS_AvailableStockFormat", alter: "المتوفر في الفرع: %d"), maxGroups),
                 imageURL: imageURL,
-                sku: item.accessory.sku.isEmpty ? nil : item.accessory.sku,
-                shelfLocation: item.accessory.shelfLocation.isEmpty ? nil : item.accessory.shelfLocation,
-                barcode: item.accessory.barcode.isEmpty ? nil : item.accessory.barcode,
+                sku: (item.accessory.sku?.isEmpty ?? true) ? nil : item.accessory.sku,
+                barcode: (item.accessory.barcode?.isEmpty ?? true) ? nil : item.accessory.barcode,
                 unitCost: item.unitPriceDisplay
             )
 

@@ -192,6 +192,10 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
     @Published var name: String = "" { didSet { updateUnsavedChanges() } }
     @Published var nameEn: String = "" { didSet { updateUnsavedChanges() } }
+    var nameAr: String {
+        get { name }
+        set { name = newValue }
+    }
     @Published var desc: String = "" { didSet { updateUnsavedChanges() } }
     @Published var descEn: String = "" { didSet { updateUnsavedChanges() } }
     
@@ -3901,7 +3905,7 @@ struct PPAccessoryEditorScreen: View {
             currentQuantity: viewModel.quantity,
             referenceQuantity: viewModel.quantity,
             specimen: PPTactileSpecimenInfo(
-                title: viewModel.nameAr.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.nameAr,
+                title: viewModel.name.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.name,
                 sku: viewModel.sku,
                 barcode: viewModel.barcode,
                 unitCost: Double(viewModel.costPriceText)
@@ -3917,7 +3921,7 @@ struct PPAccessoryEditorScreen: View {
             currentPrice: Double(viewModel.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0.0,
             referencePrice: Double(viewModel.priceText.replacingOccurrences(of: ",", with: ".")),
             specimen: PPTactileSpecimenInfo(
-                title: viewModel.nameAr.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.nameAr,
+                title: viewModel.name.isEmpty ? (viewModel.nameEn.isEmpty ? Language.get("Product", alter: "منتج") : viewModel.nameEn) : viewModel.name,
                 sku: viewModel.sku,
                 barcode: viewModel.barcode,
                 unitCost: Double(viewModel.costPriceText)
@@ -3929,7 +3933,7 @@ struct PPAccessoryEditorScreen: View {
             PPTactileNumberPadSheet(
                 config: PPTactileNumberPadConfig(
                     title: Language.get("DiscountPercent", alter: "نسبة الخصم"),
-                    subtitle: viewModel.nameAr,
+                    subtitle: viewModel.name,
                     mode: .percentage(maxLimit: 100),
                     initialValue: Double(viewModel.discountPercentText.replacingOccurrences(of: ",", with: ".")) ?? 0.0
                 )

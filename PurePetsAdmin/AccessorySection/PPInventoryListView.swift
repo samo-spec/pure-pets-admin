@@ -3143,10 +3143,41 @@ private struct FlagshipInventoryCard: View {
     var onOpenActionMenu: (() -> Void)? = nil
 
     @State private var showTactileQuantityPad: Bool = false
+    @State private var isChamberPressed: Bool = false
 
     var canManageStock: Bool = true
     var canDeleteStock: Bool = true
     var canReleaseQuarantine: Bool = true
+
+    init(
+        item: PetAccessory,
+        canManageStock: Bool = true,
+        canDeleteStock: Bool = true,
+        canReleaseQuarantine: Bool = true,
+        onTap: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onAdjustQuantity: @escaping (Int) -> Void,
+        onToggleStock: @escaping () -> Void,
+        onDelete: @escaping () -> Void,
+        onRecordDamage: (() -> Void)? = nil,
+        onQuarantineStudio: (() -> Void)? = nil,
+        onManageLots: (() -> Void)? = nil,
+        onOpenActionMenu: (() -> Void)? = nil
+    ) {
+        self.item = item
+        self.canManageStock = canManageStock
+        self.canDeleteStock = canDeleteStock
+        self.canReleaseQuarantine = canReleaseQuarantine
+        self.onTap = onTap
+        self.onEdit = onEdit
+        self.onAdjustQuantity = onAdjustQuantity
+        self.onToggleStock = onToggleStock
+        self.onDelete = onDelete
+        self.onRecordDamage = onRecordDamage
+        self.onQuarantineStudio = onQuarantineStudio
+        self.onManageLots = onManageLots
+        self.onOpenActionMenu = onOpenActionMenu
+    }
 
     private var imageURL: URL? {
         PetAccessory.firstImageURL(for: item)
@@ -3209,38 +3240,47 @@ private struct FlagshipInventoryCard: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Main Specimen Presentation Chamber (Tappable Area)
-            Button(action: {
+            // Main Specimen Presentation Chamber (Tappable Area + Tap & Hold)
+            HStack(alignment: .top, spacing: 14) {
+                // Visual Specimen Vitrine (88x88)
+                specimenVitrine
+
+                // Nomenclature, Runway & Valuation Track
+                VStack(alignment: .leading, spacing: 6) {
+                    // Architectural Metadata Runway
+                    architecturalMetadataRunway
+
+                    // Specimen Nomenclature (Title)
+                    Text(item.name ?? "")
+                        .font(AdminType.headline)
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer(minLength: 2)
+
+                    // Financial Valuation Readout
+                    financialValuationReadout
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+            .scaleEffect(isChamberPressed ? 0.98 : 1.0)
+            .opacity(isChamberPressed ? 0.88 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isChamberPressed)
+            .onTapGesture {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 onTap()
-            }) {
-                HStack(alignment: .top, spacing: 14) {
-                    // Visual Specimen Vitrine (88x88)
-                    specimenVitrine
-
-                    // Nomenclature, Runway & Valuation Track
-                    VStack(alignment: .leading, spacing: 6) {
-                        // Architectural Metadata Runway
-                        architecturalMetadataRunway
-
-                        // Specimen Nomenclature (Title)
-                        Text(item.name)
-                            .font(AdminType.headline)
-                            .foregroundColor(AdminSurface.primaryText)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer(minLength: 2)
-
-                        // Financial Valuation Readout
-                        financialValuationReadout
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .contentShape(Rectangle())
             }
-            .buttonStyle(CatalogPressStyle())
+            .onLongPressGesture(minimumDuration: 0.35, pressing: { isPressing in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    isChamberPressed = isPressing
+                }
+            }) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onOpenActionMenu?()
+            }
 
             // Tactical Horizon Negative-Space Divider
             Divider()
@@ -3259,107 +3299,10 @@ private struct FlagshipInventoryCard: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(Color(uiColor: .ppSurfaceBorder).opacity(0.60), lineWidth: 0.75)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onLongPressGesture(minimumDuration: 0.35) {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             onOpenActionMenu?()
-        }
-        .contextMenu {
-            if let onOpenActionMenu = onOpenActionMenu {
-                Button(action: onOpenActionMenu) {
-                    Label {
-                        Text(Language.get("Specimen_Action_Center", alter: "مركز عمليات الصنف المخزني"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "slider.horizontal.2.square.on.square")
-                    }
-                }
-
-                Divider()
-            }
-
-            if canManageStock {
-                Button(action: onEdit) {
-                    Label {
-                        Text(Language.get("Edit", alter: "تعديل الصنف"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "pencil")
-                    }
-                }
-            }
-
-            if canManageStock, let onRecordDamage = onRecordDamage {
-                Button(action: onRecordDamage) {
-                    Label {
-                        Text(Language.get("Record_Damage", alter: "تسجيل إتلاف مخزون"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "exclamationmark.octagon.fill")
-                    }
-                }
-            }
-
-            if canReleaseQuarantine, let onQuarantineStudio = onQuarantineStudio {
-                Button(action: onQuarantineStudio) {
-                    Label {
-                        Text(Language.get("Quarantine_Studio", alter: "استوديو الفحص والتصرف (الحجر)"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "shield.lefthalf.filled")
-                    }
-                }
-            }
-
-            if canManageStock, let onManageLots = onManageLots {
-                Button(action: onManageLots) {
-                    Label {
-                        Text(Language.get("Manage_Lots_FEFO", alter: "إدارة التشغيلات والصلاحية (FEFO)"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "calendar.badge.clock")
-                    }
-                }
-            }
-
-            Button(action: {
-                if let root = UIApplication.shared.connectedScenes
-                    .compactMap({ $0 as? UIWindowScene })
-                    .flatMap({ $0.windows })
-                    .first(where: { $0.isKeyWindow })?.rootViewController {
-                    PetAccessory.share(item, from: root)
-                }
-            }) {
-                Label {
-                    Text(Language.get("Share", alter: "مشاركة الصنف"))
-                        .font(PPBrandFont.bold(size: 16))
-                } icon: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-            }
-
-            if canManageStock && !item.isLivePet {
-                Button(action: onToggleStock) {
-                    Label {
-                        Text(item.noStock ? Language.get("MarkInStock", alter: "تفعيل التوفر بالمخزون") : Language.get("MarkOutOfStock", alter: "تعيين كنفاذ المخزون"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: item.noStock ? "checkmark.circle" : "xmark.circle")
-                    }
-                }
-            }
-
-            if canDeleteStock {
-                Divider()
-
-                Button(role: .destructive, action: onDelete) {
-                    Label {
-                        Text(Language.get("Delete", alter: "حذف من المخزون"))
-                            .font(PPBrandFont.bold(size: 16))
-                    } icon: {
-                        Image(systemName: "trash")
-                    }
-                }
-            }
         }
         .tactileQuantityPad(
             isPresented: $showTactileQuantityPad,
@@ -3367,12 +3310,11 @@ private struct FlagshipInventoryCard: View {
             currentQuantity: displayQuantity,
             referenceQuantity: displayQuantity,
             specimen: PPTactileSpecimenInfo(
-                title: item.name,
+                title: item.name ?? "",
                 imageURL: imageURL,
-                sku: item.sku,
-                shelfLocation: item.shelfLocation,
-                barcode: item.barcode,
-                unitCost: item.costPrice.doubleValue
+                sku: (item.sku?.isEmpty ?? true) ? nil : item.sku,
+                barcode: (item.barcode?.isEmpty ?? true) ? nil : item.barcode,
+                unitCost: item.costPrice?.doubleValue
             )
         ) { newQty in
             let delta = newQty - displayQuantity
@@ -4163,12 +4105,11 @@ public struct PPInventoryItemDetailView: View {
             currentQuantity: currentQuantity,
             referenceQuantity: currentQuantity,
             specimen: PPTactileSpecimenInfo(
-                title: item.name,
+                title: item.name ?? "",
                 imageURL: PetAccessory.firstImageURL(for: item),
-                sku: item.sku,
-                shelfLocation: item.shelfLocation,
-                barcode: item.barcode,
-                unitCost: item.costPrice.doubleValue
+                sku: (item.sku?.isEmpty ?? true) ? nil : item.sku,
+                barcode: (item.barcode?.isEmpty ?? true) ? nil : item.barcode,
+                unitCost: item.costPrice?.doubleValue
             )
         ) { newQty in
             setExactQuantity(newQty)

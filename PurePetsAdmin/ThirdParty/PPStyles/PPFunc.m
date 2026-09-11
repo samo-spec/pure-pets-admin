@@ -5,7 +5,8 @@
 //  Created by Mohammed Ahmed on 23/08/2025.
 //
 
-#import "PPFunc.h"
+#import "PPFunc.h"  
+#import <TOCropViewController/TOCropViewController.h>
 #import <objc/runtime.h>
 
 @implementation PPFunc
@@ -752,7 +753,7 @@ static void PPApplyBrandFontRecursively(UIView *view) {
     }];
 
     if ([action respondsToSelector:@selector(setAttributedTitle:)]) {
-        action.attributedTitle = attributedTitle;
+        [(id)action performSelector:@selector(setAttributedTitle:) withObject:attributedTitle];
     }
     @try {
         [action setValue:attributedTitle forKey:@"attributedTitle"];
