@@ -6234,7 +6234,7 @@
 "POS_GrandTotal" = "Grand Total";
 "POS_Action_PrintReceipt" = "View & Print Receipt";
 "POS_Action_WhatsAppReceipt" = "Send Receipt via WhatsApp";
-"POS_History_WhatsAppShareHint" = "Choose WhatsApp, then the customer, to share the message and receipt file.";
+"POS_History_WhatsAppShareHint" = "Open WhatsApp with pre-filled message and receipt image copied ready to paste.";
 "POS_History_ReceiptMessage" = "Hello,\nYour Pure Pets transaction receipt %@ is attached. 🐾\nThank you for choosing us.";
 "POS_History_NoCustomerPhone" = "No valid phone number is saved for this transaction";
 "POS_History_CallNoPhone" = "Call · No number";

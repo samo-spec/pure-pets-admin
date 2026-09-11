@@ -5632,8 +5632,11 @@ public struct PPInventoryItemDetailView: View {
                             .foregroundStyle(AdminSurface.secondaryText)
                     }
 
-                    Menu {
-                        livePetUnitActions(unit)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            activeCommandUnit = unit
+                        }
                     } label: {
                         HStack(spacing: 2.5) {
                             Circle().fill(AdminSurface.primary).frame(width: 3.5, height: 3.5)
@@ -5644,6 +5647,7 @@ public struct PPInventoryItemDetailView: View {
                         .background(AdminSurface.primary.opacity(0.12), in: Circle())
                         .overlay(Circle().strokeBorder(AdminSurface.primary.opacity(0.24), lineWidth: 0.75))
                     }
+                    .buttonStyle(CatalogPressStyle())
                     .disabled(liveModel.isMutating)
                     .accessibilityLabel(String(
                         format: Language.get("LivePetDossier_UnitActionsAccessibility", alter: "إجراءات الحيوان %@"),
@@ -5683,95 +5687,18 @@ public struct PPInventoryItemDetailView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(statusColor.opacity(0.25), lineWidth: 0.75)
         )
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .onTapGesture {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 activeCommandUnit = unit
             }
         }
-        .contextMenu {
-            livePetUnitActions(unit)
-        }
-    }
-
-    private func selectUnitAction(_ op: PPLivePetOperationContext) {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            liveModel.operation = op
-        }
-    }
-
-    private func livePetMenuActionLabel(title: String, systemImage: String) -> some View {
-        Label {
-            Text(title)
-                .font(PPBrandFont.bold(size: 16))
-        } icon: {
-            Image(systemName: systemImage)
-        }
-    }
-
-    @ViewBuilder
-    private func livePetUnitActions(_ unit: PPLivePetInventoryUnit) -> some View {
-        if unit.status == "AVAILABLE" {
-            Button { selectUnitAction(.reserve(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Reserve_Action", alter: "حجز لعميل"), systemImage: "calendar.badge.plus")
+        .onLongPressGesture(minimumDuration: 0.35) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                activeCommandUnit = unit
             }
-            .disabled(!liveModel.canSell)
-            Button { selectUnitAction(.transfer(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button { selectUnitAction(.quarantine(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Quarantine_Action", alter: "إدخال الحجر"), systemImage: "cross.case")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button { selectUnitAction(.price(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { selectUnitAction(.remove(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Remove_Action", alter: "إزالة من المخزون"), systemImage: "minus.circle")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
-            }
-            .disabled(!liveModel.canManageStock)
-        } else if unit.status == "RESERVED" {
-            if let reservation = liveModel.reservation(for: unit) {
-                Button { selectUnitAction(.reservation(reservation)) } label: {
-                    livePetMenuActionLabel(title: Language.get("LivePet_Manage_Reservation", alter: "إدارة الحجز"), systemImage: "creditcard")
-                }
-            } else {
-                Button { Task { await liveModel.load() } } label: {
-                    livePetMenuActionLabel(title: Language.get("Refresh", alter: "تحديث"), systemImage: "arrow.clockwise")
-                }
-            }
-            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة وإلغاء الحجز"), systemImage: "heart.slash")
-            }
-            .disabled(!liveModel.canManageStock)
-        } else if unit.status == "QUARANTINED" {
-            Button { selectUnitAction(.releaseQuarantine(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Release_Quarantine_Action", alter: "إخراج من الحجر"), systemImage: "checkmark.shield")
-            }
-            .disabled(!liveModel.canReleaseQuarantine)
-            Button { selectUnitAction(.transfer(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Transfer_Action", alter: "نقل إلى فرع"), systemImage: "arrow.left.arrow.right")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button { selectUnitAction(.price(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Edit_Price_Action", alter: "تعديل سعر البيع"), systemImage: "tag")
-            }
-            .disabled(!liveModel.canManageStock)
-            Button(role: .destructive) { selectUnitAction(.mortality(unit)) } label: {
-                livePetMenuActionLabel(title: Language.get("LivePet_Mortality_Action", alter: "تسجيل وفاة"), systemImage: "heart.slash")
-            }
-            .disabled(!liveModel.canManageStock)
-        } else {
-            Text(Language.get("LivePet_Terminal_No_Actions", alter: "هذه حالة نهائية للعرض فقط"))
-                .font(Font.custom("Beiruti-Bold", size: 14))
         }
     }
 

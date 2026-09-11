@@ -129,65 +129,72 @@ enum POSReceiptWhatsAppSender {
         }
     }
 
-    static func sendReceipt(for receipt: PPPOSReceipt) {
+    @discardableResult
+    static func sendReceipt(for receipt: PPPOSReceipt, onError: ((String) -> Void)? = nil) -> Bool {
         let completed = POSCompletedReceipt(receipt: receipt)
-        sendReceipt(for: completed)
+        return sendReceipt(for: completed, onError: onError)
     }
 
-    static func sendReceipt(for receipt: POSCompletedReceipt) {
+    @discardableResult
+    static func sendReceipt(for receipt: POSCompletedReceipt, onError: ((String) -> Void)? = nil) -> Bool {
         let message = buildReceiptMessage(for: receipt)
 
-        // 1. Copy PDF binary data and high-res rendered image to UIPasteboard
-        // NOTE: We deliberately do NOT put plain text in the pasteboard so WhatsApp exclusively pastes the high-res receipt image directly
-        var pasteboardDict: [String: Any] = [:]
-
-        if let pdfData = try? POSReceiptPDFExporter.pdfData(for: receipt) {
-            pasteboardDict["com.adobe.pdf"] = pdfData
-            if let image = POSReceiptPDFExporter.renderPDFPageToImage(pdfData: pdfData) {
-                if let pngData = image.pngData() {
-                    pasteboardDict["public.png"] = pngData
-                }
-                UIPasteboard.general.image = image
-            }
-        }
-
-        if !pasteboardDict.isEmpty {
-            UIPasteboard.general.setItems([pasteboardDict], options: [:])
+        // 1. Render high-res receipt image and place directly on UIPasteboard
+        // UIPasteboard.general.image automatically populates standard image representations (PNG/JPEG)
+        // and sets hasImages = true while clearing text/documents, so WhatsApp exclusively prompts the image for pasting directly.
+        if let pdfData = try? POSReceiptPDFExporter.pdfData(for: receipt),
+           let image = POSReceiptPDFExporter.renderPDFPageToImage(pdfData: pdfData) {
+            UIPasteboard.general.image = image
         }
 
         // 2. Feedback
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
 
-        // 3. Format Phone Number
-        var cleanPhone = receipt.customerPhone.filter { $0.isNumber }
+        // 3. Format & Normalize Phone Number to ASCII digits (handling Arabic/Persian numerals & Qatar prefix)
+        var cleanPhone = receipt.customerPhone.compactMap { character -> String? in
+            guard let digit = character.wholeNumberValue else { return nil }
+            return String(digit)
+        }.joined()
+        if cleanPhone.hasPrefix("00") {
+            cleanPhone.removeFirst(2)
+        }
+        if cleanPhone.hasPrefix("0") && cleanPhone.count == 9 {
+            cleanPhone.removeFirst()
+        }
         if !cleanPhone.hasPrefix("974") && cleanPhone.count == 8 {
             cleanPhone = "974" + cleanPhone
         }
+        if cleanPhone.count < 8 {
+            cleanPhone = ""
+        }
 
-        // 4. Safely encode message for URL query (escaping + & # properly)
+        // 4. Safely encode message for URL query (escaping +, &, #, =)
         var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "+&#")
+        allowed.remove(charactersIn: "+&#=")
         let encodedText = message.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
 
         // 5. Open direct WhatsApp chat with the customer
+        let nativeURL: URL?
+        let webURL: URL?
+
         if !cleanPhone.isEmpty {
-            let nativeAppURL = URL(string: "whatsapp://send?phone=\(cleanPhone)&text=\(encodedText)")
-            let webURL = URL(string: "https://wa.me/\(cleanPhone)?text=\(encodedText)")
-
-            if let nativeAppURL, UIApplication.shared.canOpenURL(nativeAppURL) {
-                UIApplication.shared.open(nativeAppURL)
-            } else if let webURL, UIApplication.shared.canOpenURL(webURL) {
-                UIApplication.shared.open(webURL)
-            }
+            nativeURL = URL(string: "whatsapp://send?phone=\(cleanPhone)&text=\(encodedText)")
+            webURL = URL(string: "https://wa.me/\(cleanPhone)?text=\(encodedText)")
         } else {
-            let nativeAppURL = URL(string: "whatsapp://send?text=\(encodedText)")
-            let webURL = URL(string: "https://api.whatsapp.com/send?text=\(encodedText)")
+            nativeURL = URL(string: "whatsapp://send?text=\(encodedText)")
+            webURL = URL(string: "https://api.whatsapp.com/send?text=\(encodedText)")
+        }
 
-            if let nativeAppURL, UIApplication.shared.canOpenURL(nativeAppURL) {
-                UIApplication.shared.open(nativeAppURL)
-            } else if let webURL, UIApplication.shared.canOpenURL(webURL) {
-                UIApplication.shared.open(webURL)
-            }
+        if let nativeURL, UIApplication.shared.canOpenURL(nativeURL) {
+            UIApplication.shared.open(nativeURL, options: [:], completionHandler: nil)
+            return true
+        } else if let webURL, UIApplication.shared.canOpenURL(webURL) {
+            UIApplication.shared.open(webURL, options: [:], completionHandler: nil)
+            return true
+        } else {
+            let errorMsg = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
+            onError?(errorMsg)
+            return false
         }
     }
 }
@@ -1572,7 +1579,7 @@ private struct POSTransactionCard: View {
             .buttonStyle(.plain)
             .disabled(isPreparingReceipt || receiptShare != nil)
             .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
-            .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "اختر واتساب ثم العميل لمشاركة الرسالة وملف الإيصال."))
+            .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
 
             Button(action: callCustomer) {
                 Label(
@@ -1626,21 +1633,25 @@ private struct POSTransactionCard: View {
     }
 
     private func shareReceipt() {
-        guard !isPreparingReceipt, receiptShare == nil else { return }
-        guard let whatsAppURL = URL(string: "whatsapp://send"),
-              UIApplication.shared.canOpenURL(whatsAppURL) else {
-            feedbackMessage = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
-            return
-        }
+        guard !isPreparingReceipt else { return }
         shareFailed = false
         isPreparingReceipt = true
         Task { @MainActor in
             await Task.yield()
             defer { isPreparingReceipt = false }
-            do {
-                receiptShare = try POSHistoryReceiptShare(receipt: POSCompletedReceipt(receipt: receipt))
-            } catch {
-                feedbackMessage = Language.get("POS_Receipt_ExportFailed", alter: "تعذر إنشاء ملف الإيصال. حاول مرة أخرى.")
+            let completed = POSCompletedReceipt(receipt: receipt)
+            let success = POSReceiptWhatsAppSender.sendReceipt(for: completed) { errorMsg in
+                feedbackMessage = errorMsg
+            }
+            if !success {
+                // If direct WhatsApp launch failed, fallback to native share sheet
+                do {
+                    receiptShare = try POSHistoryReceiptShare(receipt: completed)
+                } catch {
+                    if feedbackMessage == nil {
+                        feedbackMessage = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
+                    }
+                }
             }
         }
     }
@@ -1727,6 +1738,10 @@ struct POSTransactionDossierSheet: View {
     let onCopied: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @State private var isPreparingWhatsApp = false
+    @State private var receiptShare: POSHistoryReceiptShare?
+    @State private var feedbackMessage: String?
+
     var body: some View {
         ZStack {
             AdminSurface.background.ignoresSafeArea()
@@ -1769,6 +1784,42 @@ struct POSTransactionDossierSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(item: $receiptShare) { share in
+            POSHistoryReceiptShareSheet(share: share) {}
+        }
+        .alert(
+            Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
+            isPresented: Binding(
+                get: { feedbackMessage != nil },
+                set: { if !$0 { feedbackMessage = nil } }
+            )
+        ) {
+            Button(Language.get("OK", alter: "موافق"), role: .cancel) {}
+        } message: {
+            Text(feedbackMessage ?? "")
+        }
+    }
+
+    private func sendWhatsAppReceipt() {
+        guard !isPreparingWhatsApp else { return }
+        isPreparingWhatsApp = true
+        Task { @MainActor in
+            await Task.yield()
+            defer { isPreparingWhatsApp = false }
+            let completed = POSCompletedReceipt(receipt: receipt)
+            let success = POSReceiptWhatsAppSender.sendReceipt(for: completed) { errorMsg in
+                feedbackMessage = errorMsg
+            }
+            if !success {
+                do {
+                    receiptShare = try POSHistoryReceiptShare(receipt: completed)
+                } catch {
+                    if feedbackMessage == nil {
+                        feedbackMessage = Language.get("POS_History_WhatsAppUnavailable", alter: "ثبّت واتساب على هذا الجهاز لمشاركة الإيصال.")
+                    }
+                }
+            }
+        }
     }
 
     private var isCancelled: Bool {
@@ -1941,23 +1992,28 @@ struct POSTransactionDossierSheet: View {
                         }
                         .buttonStyle(.plain)
 
-                        Button {
-                            POSReceiptWhatsAppSender.sendReceipt(for: receipt)
-                        } label: {
+                        Button(action: sendWhatsAppReceipt) {
                             ZStack {
                                 Circle()
                                     .fill(POSReceiptWhatsAppSender.brandColor)
                                     .frame(width: 30, height: 30)
-                                Image("whatsapp")
-                                    .renderingMode(.template)
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 17, height: 17)
-                                    .foregroundColor(.white)
+                                if isPreparingWhatsApp {
+                                    ProgressView().tint(.white)
+                                        .scaleEffect(0.7)
+                                } else {
+                                    Image("whatsapp")
+                                        .renderingMode(.template)
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 17, height: 17)
+                                        .foregroundColor(.white)
+                                }
                             }
                         }
                         .buttonStyle(.plain)
+                        .disabled(isPreparingWhatsApp)
                         .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                        .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
                     }
                 }
             }
@@ -2738,133 +2794,215 @@ struct TactileSlideToVoidControl: View {
     let onConfirm: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
     @State private var isArmed: Bool = false
+    @State private var chevronPulse: CGFloat = 0
+
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.colorScheme) private var colorScheme
 
     private let thumbSize: CGFloat = 46
     private let trackHeight: CGFloat = 56
+    private let horizontalPadding: CGFloat = 5
 
     var body: some View {
         GeometryReader { proxy in
             let totalWidth = proxy.size.width
-            let maxSlide = max(10, totalWidth - thumbSize - 8)
-            let isRTL = layoutDirection == .rightToLeft
-            let progress = max(0, min(1, abs(dragOffset) / maxSlide))
+            let maxSlide = max(10, totalWidth - thumbSize - (horizontalPadding * 2))
+            let isRTL = (layoutDirection == .rightToLeft) || Language.isRTL()
+            let progress = min(1.0, max(0.0, dragOffset / maxSlide))
 
-            ZStack(alignment: isRTL ? .trailing : .leading) {
-                // Background Track
+            ZStack(alignment: .leading) {
+                // 1. Background Track
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(uiColor: .ppElevatedSurface))
+                    .fill(
+                        colorScheme == .dark
+                            ? Color(white: 0.12)
+                            : Color(uiColor: .ppElevatedSurface)
+                    )
                     .overlay(
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(
                                 isEnabled
-                                    ? Color(uiColor: .systemRed).opacity(0.3 + 0.4 * Double(progress))
+                                    ? Color(uiColor: .systemRed).opacity(isArmed ? 0.65 : (0.25 + 0.35 * Double(progress)))
                                     : Color(uiColor: .ppSurfaceBorder),
-                                lineWidth: 1.2
+                                lineWidth: isArmed ? 1.5 : 1.2
                             )
                     )
 
-                // Fill progress
-                if isEnabled && progress > 0 {
+                // 2. Active Illuminated Progress Fill (Follows Thumb from leading edge)
+                if isEnabled && (dragOffset > 0 || isSubmitting) {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
                                     Color(uiColor: .systemRed).opacity(0.35),
-                                    Color(uiColor: .systemRed).opacity(0.85)
+                                    Color(uiColor: .systemRed).opacity(isArmed ? 0.95 : 0.85)
                                 ],
-                                startPoint: isRTL ? .trailing : .leading,
-                                endPoint: isRTL ? .leading : .trailing
+                                startPoint: .leading,
+                                endPoint: .trailing
                             )
                         )
-                        .frame(width: max(thumbSize + 8, (progress * maxSlide) + thumbSize + 4))
+                        .frame(width: isSubmitting ? totalWidth : max(thumbSize + (horizontalPadding * 2), dragOffset + thumbSize + (horizontalPadding * 2)))
                 }
 
-                // Centered Prompt or In-Flight Indicator
-                HStack(spacing: 8) {
+                // 3. Center Guidance Prompt & Directional Chevrons
+                HStack {
+                    Spacer(minLength: thumbSize + 12)
+
                     if isSubmitting {
-                        ProgressView()
-                            .tint(.white)
-                        Text(Language.get("POS_Void_Submitting", alter: "جاري إبطال المعاملة واسترداد المخزون..."))
-                            .font(AdminType.captionBold)
-                            .foregroundColor(.white)
-                    } else if !isEnabled {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(AdminSurface.secondaryText)
-                        Text(Language.get("POS_Cancel_Reason_Placeholder", alter: "اكتب سبب إبطال هذه المعاملة للتفعيل..."))
-                            .font(AdminType.caption)
-                            .foregroundColor(AdminSurface.secondaryText)
-                    } else {
-                        Image(systemName: isRTL ? "chevron.left.2" : "chevron.right.2")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(progress > 0.4 ? .white : Color(uiColor: .systemRed))
-                        Text(Language.get("POS_Void_Slide_To_Confirm", alter: "اسحب لإبطال المعاملة واسترداد المخزون"))
-                            .font(AdminType.headline)
-                            .foregroundColor(progress > 0.4 ? .white : AdminSurface.primaryText)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .opacity(isSubmitting ? 1.0 : (1.0 - Double(progress * 0.7)))
-
-                // Draggable Thumb Knob
-                if !isSubmitting {
-                    HStack {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    isEnabled
-                                        ? Color(uiColor: .systemRed)
-                                        : Color.gray.opacity(0.35)
-                                )
-                                .shadow(
-                                    color: isEnabled ? Color(uiColor: .systemRed).opacity(0.35) : .clear,
-                                    radius: 6,
-                                    y: 2
-                                )
-
-                            Image(systemName: isEnabled ? "xmark.octagon.fill" : "lock.fill")
-                                .font(.system(size: 18, weight: .bold))
+                        HStack(spacing: 8) {
+                            ProgressView()
+                                .tint(.white)
+                            Text(Language.get("POS_Void_Submitting", alter: "جاري إبطال المعاملة واسترداد المخزون..."))
+                                .font(AdminType.subheadlineBold)
                                 .foregroundColor(.white)
                         }
-                        .frame(width: thumbSize, height: thumbSize)
-                        .offset(x: isRTL ? -dragOffset : dragOffset)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    guard isEnabled else { return }
-                                    let raw = isRTL ? -value.translation.width : value.translation.width
-                                    let clamped = max(0, min(maxSlide, raw))
-                                    dragOffset = clamped
+                    } else if !isEnabled {
+                        HStack(spacing: 8) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(AdminSurface.secondaryText)
+                            Text(Language.get("POS_Cancel_Reason_Placeholder", alter: "اكتب سبب إبطال هذه المعاملة للتفعيل..."))
+                                .font(AdminType.caption)
+                                .foregroundColor(AdminSurface.secondaryText)
+                        }
+                    } else {
+                        HStack(spacing: 8) {
+                            Text(Language.get("POS_Void_Slide_To_Confirm", alter: "اسحب لإبطال المعاملة واسترداد المخزون"))
+                                .font(AdminType.subheadlineBold)
+                                .foregroundColor(progress > 0.45 ? .white : AdminSurface.primaryText)
 
-                                    if clamped >= maxSlide * 0.82 && !isArmed {
-                                        isArmed = true
-                                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                                    } else if clamped < maxSlide * 0.82 && isArmed {
+                            Image(systemName: isRTL ? "chevron.left.2" : "chevron.right.2")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(progress > 0.45 ? .white : Color(uiColor: .systemRed))
+                                .flipsForRightToLeftLayoutDirection(false)
+                                .offset(x: isRTL ? -chevronPulse : chevronPulse)
+                        }
+                    }
+
+                    Spacer(minLength: thumbSize + 12)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .opacity(isSubmitting ? 1.0 : max(0.0, 1.0 - (progress * 2.2)))
+
+                // 4. Kinetic Tactile Draggable Thumb Knob
+                if !isSubmitting {
+                    ZStack {
+                        // Ambient Glow Ring
+                        if isDragging || isArmed {
+                            Circle()
+                                .fill(Color(uiColor: .systemRed).opacity(isArmed ? 0.35 : 0.20))
+                                .frame(width: thumbSize + 10, height: thumbSize + 10)
+                        }
+
+                        // Knob Core
+                        Circle()
+                            .fill(
+                                isEnabled
+                                    ? LinearGradient(
+                                        colors: [
+                                            Color(uiColor: .systemRed),
+                                            Color(uiColor: .systemRed).opacity(0.88)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                    : LinearGradient(
+                                        colors: [
+                                            Color.gray.opacity(0.35),
+                                            Color.gray.opacity(0.25)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                            )
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(
+                                        isEnabled ? Color.white.opacity(0.4) : Color.clear,
+                                        lineWidth: 1.0
+                                    )
+                            )
+                            .shadow(
+                                color: isEnabled ? Color(uiColor: .systemRed).opacity(isDragging ? 0.45 : 0.25) : .clear,
+                                radius: isDragging ? 8 : 4,
+                                y: 2
+                            )
+
+                        // Glyph Icon
+                        if !isEnabled {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white.opacity(0.85))
+                        } else if isArmed {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 18, weight: .black))
+                                .foregroundColor(.white)
+                        } else if isDragging {
+                            Image(systemName: isRTL ? "arrow.left" : "arrow.right")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        } else {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .frame(width: thumbSize, height: thumbSize)
+                    .scaleEffect(isArmed ? 1.12 : (isDragging ? 1.06 : 1.0))
+                    .animation(.spring(response: 0.24, dampingFraction: 0.75), value: isDragging)
+                    .animation(.spring(response: 0.24, dampingFraction: 0.75), value: isArmed)
+                    .padding(.leading, horizontalPadding)
+                    .offset(x: isRTL ? -dragOffset : dragOffset)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                guard isEnabled && !isSubmitting else { return }
+                                if !isDragging {
+                                    isDragging = true
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                let rawDelta = isRTL ? -value.translation.width : value.translation.width
+                                let clamped = min(maxSlide, max(0, rawDelta))
+                                dragOffset = clamped
+
+                                if clamped >= maxSlide * 0.80 && !isArmed {
+                                    isArmed = true
+                                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                } else if clamped < maxSlide * 0.80 && isArmed {
+                                    isArmed = false
+                                }
+                            }
+                            .onEnded { value in
+                                guard isEnabled && !isSubmitting else { return }
+                                isDragging = false
+                                let rawDelta = isRTL ? -value.translation.width : value.translation.width
+                                if rawDelta >= maxSlide * 0.80 {
+                                    withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                                        dragOffset = maxSlide
+                                    }
+                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                    onConfirm()
+                                } else {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.72)) {
+                                        dragOffset = 0
                                         isArmed = false
                                     }
                                 }
-                                .onEnded { value in
-                                    guard isEnabled else { return }
-                                    let raw = isRTL ? -value.translation.width : value.translation.width
-                                    if raw >= maxSlide * 0.82 {
-                                        dragOffset = maxSlide
-                                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                        onConfirm()
-                                    } else {
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
-                                            dragOffset = 0
-                                            isArmed = false
-                                        }
-                                    }
-                                }
-                        )
-                    }
-                    .padding(.horizontal, 4)
+                            }
+                    )
                 }
             }
             .frame(height: trackHeight)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    chevronPulse = 4.0
+                }
+            }
         }
         .frame(height: trackHeight)
     }

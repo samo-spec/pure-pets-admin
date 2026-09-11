@@ -196,6 +196,7 @@ struct POSCompletedReceiptSheet: View {
     @State private var feedbackMessage: String?
     @State private var copiedLabel: String?
     @State private var copiedToastTask: Task<Void, Never>?
+    @State private var isPreparingWhatsApp = false
 
     var body: some View {
         ZStack {
@@ -602,23 +603,28 @@ struct POSCompletedReceiptSheet: View {
                         monospaced: true
                     )
 
-                    Button {
-                        POSReceiptWhatsAppSender.sendReceipt(for: receipt)
-                    } label: {
+                    Button(action: sendWhatsAppReceipt) {
                         ZStack {
                             Circle()
                                 .fill(POSReceiptWhatsAppSender.brandColor)
                                 .frame(width: 26, height: 26)
-                            Image("whatsapp")
-                                .renderingMode(.template)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 14, height: 14)
-                                .foregroundColor(.white)
+                            if isPreparingWhatsApp {
+                                ProgressView().tint(.white)
+                                    .scaleEffect(0.65)
+                            } else {
+                                Image("whatsapp")
+                                    .renderingMode(.template)
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 14, height: 14)
+                                    .foregroundColor(.white)
+                            }
                         }
                     }
                     .buttonStyle(POSWhatsAppPressButtonStyle())
+                    .disabled(isPreparingWhatsApp)
                     .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+                    .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
                 }
             }
             if !receipt.note.isEmpty {
@@ -756,24 +762,43 @@ struct POSCompletedReceiptSheet: View {
     }
 
     private var whatsAppActionButton: some View {
-        Button {
-            POSReceiptWhatsAppSender.sendReceipt(for: receipt)
-        } label: {
+        Button(action: sendWhatsAppReceipt) {
             ZStack {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
                     .fill(POSReceiptWhatsAppSender.brandColor)
                     .frame(width: 48, height: 48)
                     .shadow(color: POSReceiptWhatsAppSender.brandColor.opacity(0.32), radius: 6, x: 0, y: 3)
-                Image("whatsapp")
-                    .renderingMode(.template)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 25, height: 25)
-                    .foregroundColor(.white)
+                if isPreparingWhatsApp {
+                    ProgressView().tint(.white)
+                } else {
+                    Image("whatsapp")
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 25, height: 25)
+                        .foregroundColor(.white)
+                }
             }
         }
         .buttonStyle(POSWhatsAppPressButtonStyle())
+        .disabled(isPreparingWhatsApp)
         .accessibilityLabel(Language.get("POS_Action_WhatsAppReceipt", alter: "إرسال الإيصال عبر واتساب"))
+        .accessibilityHint(Language.get("POS_History_WhatsAppShareHint", alter: "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها."))
+    }
+
+    private func sendWhatsAppReceipt() {
+        guard !isPreparingWhatsApp else { return }
+        isPreparingWhatsApp = true
+        Task { @MainActor in
+            await Task.yield()
+            defer { isPreparingWhatsApp = false }
+            let success = POSReceiptWhatsAppSender.sendReceipt(for: receipt) { errorMsg in
+                feedbackMessage = errorMsg
+            }
+            if !success {
+                shareReceipt()
+            }
+        }
     }
 
     private func receiptActionButton(

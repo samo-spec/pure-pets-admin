@@ -6295,7 +6295,7 @@
 "POS_GrandTotal" = "الإجمالي النهائي";
 "POS_Action_PrintReceipt" = "عرض وطباعة الإيصال";
 "POS_Action_WhatsAppReceipt" = "إرسال الإيصال عبر واتساب";
-"POS_History_WhatsAppShareHint" = "اختر واتساب ثم العميل لمشاركة الرسالة وملف الإيصال.";
+"POS_History_WhatsAppShareHint" = "فتح واتساب مع تجهيز الرسالة ونسخ صورة الفاتورة للصقها فوراً وإرسالها.";
 "POS_History_ReceiptMessage" = "مرحباً،\nمرفق إيصال معاملتكم رقم %@ من بيور بتس 🐾\nشكراً لتعاملكم معنا.";
 "POS_History_NoCustomerPhone" = "لا يوجد رقم هاتف صالح لهذه المعاملة";
 "POS_History_CallNoPhone" = "اتصال · لا يوجد رقم";

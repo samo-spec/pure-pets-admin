@@ -443,286 +443,10 @@
 @end
 
 
-// ============================================================================================== //
-// MARK: - Category-Defining Context Menu & Action Title Typography Swizzle (Beiruti Brand Font)
-// ============================================================================================== //
-
-static void PPSwizzleInstanceMethod(Class cls, SEL origSel, SEL swizzledSel) {
-    if (!cls) return;
-    Method origMethod = class_getInstanceMethod(cls, origSel);
-    Method swizzMethod = class_getInstanceMethod(cls, swizzledSel);
-    if (!origMethod || !swizzMethod) return;
-
-    BOOL didAdd = class_addMethod(cls, origSel, method_getImplementation(swizzMethod), method_getTypeEncoding(swizzMethod));
-    if (didAdd) {
-        class_replaceMethod(cls, swizzledSel, method_getImplementation(origMethod), method_getTypeEncoding(origMethod));
-    } else {
-        method_exchangeImplementations(origMethod, swizzMethod);
-    }
-}
-
-static BOOL PPIsViewInsideContextMenu(UIView *view) {
-    if (!view) return NO;
-
-    NSString *selfCls = NSStringFromClass([view class]);
-    if ([selfCls containsString:@"ContextMenu"] ||
-        [selfCls containsString:@"UIActionSheet"] ||
-        [selfCls containsString:@"_UIMenu"] ||
-        [selfCls containsString:@"_UIAlertControllerView"] ||
-        [selfCls containsString:@"_UIInterfaceAction"] ||
-        [selfCls containsString:@"_UICutoutShadowView"] ||
-        [selfCls containsString:@"Popover"] ||
-        [selfCls containsString:@"Platter"]) {
-        return YES;
-    }
-
-    UIView *v = view.superview;
-    while (v) {
-        NSString *clsName = NSStringFromClass([v class]);
-        if ([clsName containsString:@"ContextMenu"] ||
-            [clsName containsString:@"UIActionSheet"] ||
-            [clsName containsString:@"_UIMenu"] ||
-            [clsName containsString:@"_UIAlertControllerView"] ||
-            [clsName containsString:@"_UIInterfaceAction"] ||
-            [clsName containsString:@"_UICutoutShadowView"] ||
-            [clsName containsString:@"Popover"] ||
-            [clsName containsString:@"Platter"]) {
-            return YES;
-        }
-        v = v.superview;
-    }
-
-    if (view.window) {
-        NSString *winCls = NSStringFromClass([view.window class]);
-        if ([winCls containsString:@"ContextMenu"] ||
-            [winCls containsString:@"_UIPopoverView"]) {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-static void PPApplyBrandFontToLabel(UILabel *label) {
-    if (!label) return;
-    [Styling registerBrandFontsIfNeeded];
-
-    CGFloat ptSize = label.font.pointSize;
-    if (ptSize <= 0.0) {
-        ptSize = 16.0;
-    }
-
-    UIFont *brandFont = nil;
-    if (ptSize <= 13.0) {
-        brandFont = [Styling fontMedium:ptSize] ?: [UIFont fontWithName:@"Beiruti-Medium" size:ptSize];
-    } else {
-        brandFont = [Styling fontBold:ptSize] ?: [UIFont fontWithName:@"Beiruti-Bold" size:ptSize];
-    }
-
-    if (!brandFont) return;
-
-    if (![label.font.fontName containsString:@"Beiruti"]) {
-        label.font = brandFont;
-    }
-
-    if (label.attributedText.length > 0) {
-        __block BOOL needsFontUpdate = NO;
-        [label.attributedText enumerateAttribute:NSFontAttributeName
-                                         inRange:NSMakeRange(0, label.attributedText.length)
-                                         options:0
-                                      usingBlock:^(id value, NSRange range, BOOL *stop) {
-            UIFont *f = (UIFont *)value;
-            if (!f || ![f.fontName containsString:@"Beiruti"]) {
-                needsFontUpdate = YES;
-                *stop = YES;
-            }
-        }];
-
-        if (needsFontUpdate) {
-            NSMutableAttributedString *mattr = [label.attributedText mutableCopy];
-            [mattr enumerateAttribute:NSFontAttributeName
-                              inRange:NSMakeRange(0, mattr.length)
-                              options:0
-                           usingBlock:^(id value, NSRange range, BOOL *stop) {
-                UIFont *orig = (UIFont *)value;
-                CGFloat currentPt = orig ? orig.pointSize : ptSize;
-                UIFont *bf = (currentPt <= 13.0)
-                    ? ([Styling fontMedium:currentPt] ?: [UIFont fontWithName:@"Beiruti-Medium" size:currentPt])
-                    : ([Styling fontBold:currentPt] ?: [UIFont fontWithName:@"Beiruti-Bold" size:currentPt]);
-                if (bf) {
-                    [mattr addAttribute:NSFontAttributeName value:bf range:range];
-                }
-            }];
-            label.attributedText = mattr;
-        }
-    }
-}
-
-static void PPApplyBrandFontRecursively(UIView *view) {
-    if ([view isKindOfClass:[UILabel class]]) {
-        PPApplyBrandFontToLabel((UILabel *)view);
-    }
-    for (UIView *sub in view.subviews) {
-        PPApplyBrandFontRecursively(sub);
-    }
-}
-
-@interface UILabel (PPContextMenuBrandFont)
-@end
-
-@implementation UILabel (PPContextMenuBrandFont)
-
-+ (void)load {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        PPSwizzleInstanceMethod(self, @selector(layoutSubviews), @selector(pp_contextMenu_layoutSubviews));
-        PPSwizzleInstanceMethod(self, @selector(didMoveToSuperview), @selector(pp_contextMenu_didMoveToSuperview));
-        PPSwizzleInstanceMethod(self, @selector(didMoveToWindow), @selector(pp_contextMenu_didMoveToWindow));
-        PPSwizzleInstanceMethod(self, @selector(setFont:), @selector(pp_contextMenu_setFont:));
-        PPSwizzleInstanceMethod(self, @selector(setAttributedText:), @selector(pp_contextMenu_setAttributedText:));
-        PPSwizzleInstanceMethod(self, @selector(setText:), @selector(pp_contextMenu_setText:));
-        PPSwizzleInstanceMethod(self, @selector(drawTextInRect:), @selector(pp_contextMenu_drawTextInRect:));
-        PPSwizzleInstanceMethod(self, @selector(sizeThatFits:), @selector(pp_contextMenu_sizeThatFits:));
-        PPSwizzleInstanceMethod(self, @selector(intrinsicContentSize), @selector(pp_contextMenu_intrinsicContentSize));
-    });
-}
-
-- (void)pp_contextMenu_setFont:(UIFont *)font {
-    if (PPIsViewInsideContextMenu(self)) {
-        [Styling registerBrandFontsIfNeeded];
-        CGFloat ptSize = font.pointSize > 0 ? font.pointSize : 16.0;
-        UIFont *brandFont = (ptSize <= 13.0)
-            ? ([Styling fontMedium:ptSize] ?: [UIFont fontWithName:@"Beiruti-Medium" size:ptSize])
-            : ([Styling fontBold:ptSize] ?: [UIFont fontWithName:@"Beiruti-Bold" size:ptSize]);
-        if (brandFont) {
-            [self pp_contextMenu_setFont:brandFont];
-            return;
-        }
-    }
-    [self pp_contextMenu_setFont:font];
-}
-
-- (void)pp_contextMenu_setAttributedText:(NSAttributedString *)attributedText {
-    if (attributedText.length > 0 && PPIsViewInsideContextMenu(self)) {
-        [Styling registerBrandFontsIfNeeded];
-        NSMutableAttributedString *m = [attributedText mutableCopy];
-        CGFloat defaultPt = self.font.pointSize > 0 ? self.font.pointSize : 16.0;
-
-        [m enumerateAttribute:NSFontAttributeName
-                      inRange:NSMakeRange(0, m.length)
-                      options:0
-                   usingBlock:^(id value, NSRange range, BOOL *stop) {
-            UIFont *orig = (UIFont *)value;
-            CGFloat pt = orig ? orig.pointSize : defaultPt;
-            UIFont *bf = (pt <= 13.0)
-                ? ([Styling fontMedium:pt] ?: [UIFont fontWithName:@"Beiruti-Medium" size:pt])
-                : ([Styling fontBold:pt] ?: [UIFont fontWithName:@"Beiruti-Bold" size:pt]);
-            if (bf) {
-                [m addAttribute:NSFontAttributeName value:bf range:range];
-            }
-        }];
-        [self pp_contextMenu_setAttributedText:m];
-        return;
-    }
-    [self pp_contextMenu_setAttributedText:attributedText];
-}
-
-- (void)pp_contextMenu_setText:(NSString *)text {
-    [self pp_contextMenu_setText:text];
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-}
-
-- (void)pp_contextMenu_layoutSubviews {
-    [self pp_contextMenu_layoutSubviews];
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-}
-
-- (void)pp_contextMenu_didMoveToSuperview {
-    [self pp_contextMenu_didMoveToSuperview];
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-}
-
-- (void)pp_contextMenu_didMoveToWindow {
-    [self pp_contextMenu_didMoveToWindow];
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-}
-
-- (void)pp_contextMenu_drawTextInRect:(CGRect)rect {
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-    [self pp_contextMenu_drawTextInRect:rect];
-}
-
-- (CGSize)pp_contextMenu_sizeThatFits:(CGSize)size {
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-    return [self pp_contextMenu_sizeThatFits:size];
-}
-
-- (CGSize)pp_contextMenu_intrinsicContentSize {
-    if (PPIsViewInsideContextMenu(self)) {
-        PPApplyBrandFontToLabel(self);
-    }
-    return [self pp_contextMenu_intrinsicContentSize];
-}
-
-@end
 
 
-// ============================================================================================== //
-// MARK: - Context Menu Cell Container Hook
-// ============================================================================================== //
 
-@interface UIView (PPContextMenuCellHook)
-@end
-
-@implementation UIView (PPContextMenuCellHook)
-
-+ (void)load {
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        NSArray<NSString *> *targetClasses = @[
-            @"_UIContextMenuCell",
-            @"_UIContextMenuActionView",
-            @"_UIContextMenuActionsListView",
-            @"_UIContextMenuView",
-            @"_UIContextMenuCellContentView",
-            @"UIListContentView",
-            @"_UIListContentView",
-            @"_UIContextMenuPlatterView",
-            @"_UIContextMenuContainerView"
-        ];
-
-        for (NSString *className in targetClasses) {
-            Class cls = NSClassFromString(className);
-            if (cls) {
-                PPSwizzleInstanceMethod(cls, @selector(layoutSubviews), @selector(pp_contextMenuContainer_layoutSubviews));
-            }
-        }
-    });
-}
-
-- (void)pp_contextMenuContainer_layoutSubviews {
-    [self pp_contextMenuContainer_layoutSubviews];
-    PPApplyBrandFontRecursively(self);
-}
-
-@end
-
-
-// ============================================================================================== //
-// MARK: - UIAction Title Brand Font
-// ============================================================================================== //
-
+// =========================================  UIAction Swizzle  ===========================================//
 @interface UIAction (PPMenuActionTitleFont)
 @end
 
@@ -736,33 +460,7 @@ static void PPApplyBrandFontRecursively(UIView *view) {
         if (originalMethod && swizzledMethod) {
             method_exchangeImplementations(originalMethod, swizzledMethod);
         }
-
-        PPSwizzleInstanceMethod(self, @selector(setTitle:), @selector(pp_purepets_admin_setTitle:));
     });
-}
-
-+ (void)pp_applyBrandFontToAction:(UIAction *)action title:(NSString *)title {
-    if (!action || title.length == 0) return;
-    [Styling registerBrandFontsIfNeeded];
-    UIFont *font = [Styling fontBold:16] ?: [UIFont fontWithName:@"Beiruti-Bold" size:16];
-    if (!font) return;
-
-    NSAttributedString *attributedTitle = [[NSAttributedString alloc] initWithString:title
-                                                                           attributes:@{
-        NSFontAttributeName: font
-    }];
-
-    if ([action respondsToSelector:@selector(setAttributedTitle:)]) {
-        [(id)action performSelector:@selector(setAttributedTitle:) withObject:attributedTitle];
-    }
-    @try {
-        [action setValue:attributedTitle forKey:@"attributedTitle"];
-    } @catch (__unused NSException *exception) {
-    }
-    @try {
-        [action setValue:attributedTitle forKey:@"_attributedTitle"];
-    } @catch (__unused NSException *exception) {
-    }
 }
 
 + (instancetype)pp_purepets_admin_actionWithTitle:(NSString *)title
@@ -774,13 +472,18 @@ static void PPApplyBrandFontRecursively(UIView *view) {
                                                          image:image
                                                     identifier:identifier
                                                        handler:handler];
-    [self pp_applyBrandFontToAction:action title:title];
+    if (title.length > 0) {
+        UIFont *font = [Styling fontMedium:15] ?: [UIFont systemFontOfSize:15 weight:UIFontWeightMedium];
+        NSAttributedString *attributedTitle = [[NSAttributedString alloc] initWithString:title
+                                                                               attributes:@{
+            NSFontAttributeName: font
+        }];
+        @try {
+            [action setValue:attributedTitle forKey:@"attributedTitle"];
+        } @catch (__unused NSException *exception) {
+        }
+    }
     return action;
-}
-
-- (void)pp_purepets_admin_setTitle:(NSString *)title {
-    [self pp_purepets_admin_setTitle:title];
-    [UIAction pp_applyBrandFontToAction:self title:title];
 }
 
 @end
