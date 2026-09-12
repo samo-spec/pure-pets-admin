@@ -159,147 +159,72 @@ public final class PPInventoryLotService: ObservableObject {
         do {
             let result = try await functions.httpsCallable("listBranchInventoryLots").call(["payload": payload])
 
-            if let dict = result.data as? [String: Any],
-               let lotsRaw = dict["lots"] as? [[String: Any]] {
-                let parsedLots = lotsRaw.compactMap { lotDict -> PPInventoryLot? in
-                    guard let id = lotDict["id"] as? String,
-                          let lotNumber = lotDict["lotNumber"] as? String else {
-                        return nil
-                    }
+            guard let dict = result.data as? [String: Any],
+                  let lotsRaw = dict["lots"] as? [[String: Any]] else {
+                throw NSError(
+                    domain: "PPInventoryLotService",
+                    code: -1,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get("Inventory_Lot_Invalid_Response", alter: "استجابة غير صالحة من الخادم")]
+                )
+            }
 
-                    var expDate: Date? = nil
-                    if let expStr = lotDict["expiryDate"] as? String {
-                        let isoFormatter = ISO8601DateFormatter()
-                        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                        expDate = isoFormatter.date(from: expStr) ?? ISO8601DateFormatter().date(from: expStr)
-                    }
-
-                    return PPInventoryLot(
-                        id: id,
-                        lotId: (lotDict["lotId"] as? String) ?? id,
-                        lotNumber: lotNumber,
-                        productId: (lotDict["productId"] as? String) ?? productId,
-                        productName: (lotDict["productName"] as? String) ?? "",
-                        branchId: (lotDict["branchId"] as? String) ?? resolvedBranch,
-                        initialQuantity: (lotDict["initialQuantity"] as? Int) ?? 0,
-                        availableQuantity: (lotDict["availableQuantity"] as? Int) ?? 0,
-                        reservedQuantity: (lotDict["reservedQuantity"] as? Int) ?? 0,
-                        onHandQuantity: lotDict["onHandQuantity"] as? Int,
-                        costPrice: (lotDict["costPrice"] as? Double) ?? 0.0,
-                        expiryDate: expDate,
-                        status: (lotDict["status"] as? String) ?? "active",
-                        supplier: (lotDict["supplier"] as? String) ?? "",
-                        notes: (lotDict["notes"] as? String) ?? ""
-                    )
+            let parsedLots = lotsRaw.compactMap { lotDict -> PPInventoryLot? in
+                guard let id = lotDict["id"] as? String,
+                      let lotNumber = lotDict["lotNumber"] as? String else {
+                    return nil
                 }
 
-                lotsByProduct[productId] = parsedLots
-                return parsedLots
-            }
-        } catch {
-            let nsError = error as NSError
-            if nsError.domain == FunctionsErrorDomain {
-                // If backend explicitly rejected with Functions error (permission-denied, unauthenticated, invalid-argument),
-                // fail closed and never attempt direct Firestore query bypass.
-                throw error
-            }
-            #if DEBUG
-            print("[PPInventoryLotService] Cloud function listBranchInventoryLots network failure: \(error.localizedDescription). Falling back to direct Firestore read.")
-            #endif
-        }
+                var expDate: Date? = nil
+                if let expStr = lotDict["expiryDate"] as? String {
+                    let isoFormatter = ISO8601DateFormatter()
+                    isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+                    expDate = isoFormatter.date(from: expStr) ?? ISO8601DateFormatter().date(from: expStr)
+                }
 
-        // 2. Direct Firestore fallback query
-        return try await fetchLotsFromFirestore(
-            branchId: resolvedBranch,
-            productId: productId,
-            includeDepleted: includeDepleted,
-            includeExpired: includeExpired
-        )
+                return PPInventoryLot(
+                    id: id,
+                    lotId: (lotDict["lotId"] as? String) ?? id,
+                    lotNumber: lotNumber,
+                    productId: (lotDict["productId"] as? String) ?? productId,
+                    productName: (lotDict["productName"] as? String) ?? "",
+                    branchId: (lotDict["branchId"] as? String) ?? resolvedBranch,
+                    initialQuantity: (lotDict["initialQuantity"] as? Int) ?? 0,
+                    availableQuantity: (lotDict["availableQuantity"] as? Int) ?? 0,
+                    reservedQuantity: (lotDict["reservedQuantity"] as? Int) ?? 0,
+                    onHandQuantity: lotDict["onHandQuantity"] as? Int,
+                    costPrice: (lotDict["costPrice"] as? Double) ?? 0.0,
+                    expiryDate: expDate,
+                    status: (lotDict["status"] as? String) ?? "active",
+                    supplier: (lotDict["supplier"] as? String) ?? "",
+                    notes: (lotDict["notes"] as? String) ?? ""
+                )
+            }
+
+            lotsByProduct[productId] = parsedLots
+            return parsedLots
+        } catch {
+            // Lot records contain cost, supplier and expiry data. A callable
+            // failure must not turn into a direct Firestore query that could
+            // bypass the server's permission and branch-scope filtering.
+            throw error
+        }
     }
 
-    /// Direct Firestore query fallback for inventory lots
+    /// Legacy compatibility entry point. It intentionally routes through the
+    /// callable instead of retaining a direct Firestore fallback.
+    @available(*, deprecated, message: "Use fetchLots(branchId:productId:includeDepleted:includeExpired:)")
     public func fetchLotsFromFirestore(
         branchId: String,
         productId: String,
         includeDepleted: Bool = false,
         includeExpired: Bool = false
     ) async throws -> [PPInventoryLot] {
-        let db = Firestore.firestore()
-
-        let snap: QuerySnapshot
-        do {
-            snap = try await db.collection("inventoryLots")
-                .whereField("productId", isEqualTo: productId)
-                .getDocuments()
-        } catch {
-            #if DEBUG
-            print("[PPInventoryLotService] Firestore query error: \(error.localizedDescription)")
-            #endif
-            throw error
-        }
-
-        let now = Date()
-        let staff = PPStaffAuth.shared().cachedCurrentStaff
-        let canViewCosts = (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
-        var parsedLots: [PPInventoryLot] = []
-
-        for doc in snap.documents {
-            let data = doc.data()
-            let id = doc.documentID
-            guard let lotNumber = data["lotNumber"] as? String else { continue }
-            let docBranchId = (data["branchId"] as? String) ?? ""
-
-            // Filter by branch if specific branch is requested
-            if !branchId.isEmpty && branchId != "all_branches" && !docBranchId.isEmpty && docBranchId != branchId {
-                continue
-            }
-
-            var expDate: Date? = nil
-            if let ts = data["expiryDate"] as? Timestamp {
-                expDate = ts.dateValue()
-            } else if let expStr = data["expiryDate"] as? String {
-                let isoFormatter = ISO8601DateFormatter()
-                isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                expDate = isoFormatter.date(from: expStr) ?? ISO8601DateFormatter().date(from: expStr)
-            }
-
-            let isExpired = expDate.map { $0 <= now } ?? false
-            let avail = (data["availableQuantity"] as? Int) ?? 0
-            let isDepleted = avail <= 0 || (data["status"] as? String) == "depleted"
-
-            if !includeDepleted && isDepleted { continue }
-            if !includeExpired && isExpired { continue }
-
-            let lot = PPInventoryLot(
-                id: id,
-                lotId: (data["lotId"] as? String) ?? id,
-                lotNumber: lotNumber,
-                productId: (data["productId"] as? String) ?? productId,
-                productName: (data["productName"] as? String) ?? "",
-                branchId: docBranchId.isEmpty ? branchId : docBranchId,
-                initialQuantity: (data["initialQuantity"] as? Int) ?? 0,
-                availableQuantity: avail,
-                reservedQuantity: (data["reservedQuantity"] as? Int) ?? 0,
-                onHandQuantity: data["onHandQuantity"] as? Int,
-                costPrice: canViewCosts ? ((data["costPrice"] as? Double) ?? 0.0) : 0.0,
-                expiryDate: expDate,
-                status: isExpired ? "expired" : ((data["status"] as? String) ?? "active"),
-                supplier: canViewCosts ? ((data["supplier"] as? String) ?? "") : "",
-                notes: (data["notes"] as? String) ?? "",
-                createdAt: (data["createdAt"] as? Timestamp)?.dateValue()
-            )
-            parsedLots.append(lot)
-        }
-
-        // FEFO sorting: earliest expiry first
-        parsedLots.sort { a, b in
-            guard let aExp = a.expiryDate else { return false }
-            guard let bExp = b.expiryDate else { return true }
-            return aExp < bExp
-        }
-
-        lotsByProduct[productId] = parsedLots
-        return parsedLots
+        try await fetchLots(
+            branchId: branchId,
+            productId: productId,
+            includeDepleted: includeDepleted,
+            includeExpired: includeExpired
+        )
     }
 
     /// Creates a new lot record for the branch and product.

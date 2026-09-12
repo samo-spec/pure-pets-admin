@@ -3002,164 +3002,107 @@ private struct CommandPOSHeroExpressCardiPhone: View {
     @Environment(\.colorScheme) private var colorScheme
     private let accent = Color(red: 0.05, green: 0.72, blue: 0.51)
 
-    private var activeStaffName: String {
-        let name = BranchContextStore.shared.currentStaff?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return !name.isEmpty ? name : Language.get("AdminPOS_ActiveCashier", alter: "الكاشير")
-    }
-
     var body: some View {
-        VStack(spacing: 0) {
-            // Top Telemetry Header
-            HStack(spacing: 6) {
-                // Live Radar Badge
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 6, height: 6)
-                    Text(Language.get("AdminQuickActions_POS_Live", alter: "مباشر"))
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(accent)
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 0) {
+                // Top Telemetry Header
+                HStack(spacing: 6) {
+                    // Live Radar Badge
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 6, height: 6)
+                        Text(Language.get("AdminQuickActions_POS_Live", alter: "مباشر"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(accent)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(accent.opacity(colorScheme == .dark ? 0.20 : 0.09), in: Capsule(style: .continuous))
+
+                    Spacer(minLength: 4)
+
+                    // Customer Ready Beacon
+                    HStack(spacing: 3) {
+                        Image(systemName: "bolt.fill")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
+                        Text(Language.get("AdminPOS_ReadyForCustomers", alter: "جاهز لاستقبال العملاء"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminCommandInk.secondary)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3.5)
+                    .background(Color(red: 1.0, green: 0.78, blue: 0.17).opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule(style: .continuous))
                 }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
-                .background(accent.opacity(colorScheme == .dark ? 0.20 : 0.09), in: Capsule(style: .continuous))
+                .padding(.horizontal, 14)
+                .padding(.top, 13)
 
-                // Cashier Identity Pill
-                HStack(spacing: 3) {
-                    Image(systemName: "person.badge.shield.checkmark.fill")
-                        .font(.system(size: 8))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                    Text(activeStaffName)
-                        .font(AdminType.caption2Bold)
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
-                .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule(style: .continuous))
-
-                Spacer(minLength: 4)
-
-                // QIB Payment Ready Beacon
-                HStack(spacing: 3) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
-                    Text(Language.get("AdminPOS_QIBReady", alter: "QIB جاهز للدفع"))
-                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3.5)
-                .background(Color(red: 1.0, green: 0.78, blue: 0.17).opacity(colorScheme == .dark ? 0.15 : 0.08), in: Capsule(style: .continuous))
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 13)
-
-            // Center Hero Chamber: Laser Scanner Reticle + Dynamic Content
-            HStack(alignment: .center, spacing: 14) {
-                // Optical Viewfinder Reticle with Laser Beam
-                ZStack {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    accent.opacity(colorScheme == .dark ? 0.24 : 0.12),
-                                    accent.opacity(colorScheme == .dark ? 0.08 : 0.03)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-
-                    Image(systemName: "barcode.viewfinder")
-                        .font(.system(size: 28, weight: .semibold))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(accent)
-                        .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.25), radius: 5, y: 1.5)
-
-                    // Animated Laser Scan Sweep
-                    if !reduceMotion {
-                        Rectangle()
+                // Center Hero Chamber: Laser Scanner Reticle + Dynamic Content
+                HStack(alignment: .center, spacing: 14) {
+                    // Optical Viewfinder Reticle with Laser Beam
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(
                                 LinearGradient(
-                                    colors: [.clear, accent.opacity(0.85), .clear],
-                                    startPoint: .top,
-                                    endPoint: .bottom
+                                    colors: [
+                                        accent.opacity(colorScheme == .dark ? 0.24 : 0.12),
+                                        accent.opacity(colorScheme == .dark ? 0.08 : 0.03)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
                                 )
                             )
-                            .frame(height: 2.2)
-                            .offset(y: (scannerSweep - 0.5) * 32)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                        Image(systemName: "barcode.viewfinder")
+                            .font(.system(size: 28, weight: .semibold))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(accent)
+                            .shadow(color: accent.opacity(colorScheme == .dark ? 0.45 : 0.25), radius: 5, y: 1.5)
+
+                        // Animated Laser Scan Sweep
+                        if !reduceMotion {
+                            Rectangle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [.clear, accent.opacity(0.85), .clear],
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                                .frame(height: 2.2)
+                                .offset(y: (scannerSweep - 0.5) * 32)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
                     }
-                }
-                .frame(width: 60, height: 60)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .strokeBorder(accent.opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 0.9)
-                )
+                    .frame(width: 60, height: 60)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(accent.opacity(colorScheme == .dark ? 0.35 : 0.18), lineWidth: 0.9)
+                    )
 
-                // Title & Subtitle Hierarchy
-                VStack(alignment: .leading, spacing: 3.5) {
-                    Text(Language.get("AdminPOS_TerminalTitle", alter: "نقطة بيع سريعة"))
-                        .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
-                        .foregroundStyle(AdminSurface.primaryText)
-                        .lineLimit(1)
+                    // Title & Subtitle Hierarchy
+                    VStack(alignment: .leading, spacing: 3.5) {
+                        Text(Language.get("AdminPOS_TerminalTitle", alter: "نقطة بيع سريعة"))
+                            .font(Font.custom("Beiruti-Bold", size: 17, relativeTo: .headline))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(1)
 
-                    Text(Language.get("AdminPOS_TerminalSubtitle", alter: "مسح باركود • بيع فوري • دفع مباشر"))
-                        .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .subheadline))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                        .lineLimit(1)
-
-                    // Tender Acceptance Pills
-                    HStack(spacing: 5) {
-                        HStack(spacing: 2.5) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
-                            Text("QIB TAP")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-
-                        HStack(spacing: 2.5) {
-                            Image(systemName: "creditcard.fill")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(Color(red: 0.14, green: 0.54, blue: 0.98))
-                            Text("MADA / VISA")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-
-                        HStack(spacing: 2.5) {
-                            Image(systemName: "banknote.fill")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                            Text("CASH")
-                                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
+                        Text(Language.get("AdminPOS_TerminalSubtitle", alter: "مسح باركود • بيع فوري • دفع مباشر"))
+                            .font(Font.custom("Beiruti-Regular", size: 12, relativeTo: .subheadline))
+                            .foregroundStyle(AdminCommandInk.secondary)
+                            .lineLimit(1)
                     }
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .padding(.top, 1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 11)
-            .padding(.bottom, 12)
+                .padding(.horizontal, 14)
+                .padding(.top, 11)
+                .padding(.bottom, 12)
 
-            // Primary Tactile Action Launch Bar
-            Button(action: {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                action()
-            }) {
+                // Primary Tactile Action Launch Bar
                 HStack(spacing: 6) {
                     Image(systemName: "barcode.viewfinder")
                         .font(.system(size: 13, weight: .bold))
@@ -3195,36 +3138,37 @@ private struct CommandPOSHeroExpressCardiPhone: View {
                         .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.75)
                 )
                 .shadow(color: accent.opacity(colorScheme == .dark ? 0.35 : 0.20), radius: 6, y: 2.5)
+                .padding(.horizontal, 13)
+                .padding(.bottom, 13)
             }
-            .buttonStyle(CommandPOSCardPressStyle())
-            .padding(.horizontal, 13)
-            .padding(.bottom, 13)
-        }
-        .frame(maxWidth: .infinity)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+            .frame(maxWidth: .infinity)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
 
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                accent.opacity(colorScheme == .dark ? 0.06 : 0.025),
-                                accent.opacity(colorScheme == .dark ? 0.015 : 0.005)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    accent.opacity(colorScheme == .dark ? 0.06 : 0.025),
+                                    accent.opacity(colorScheme == .dark ? 0.015 : 0.005)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
-                    )
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.15), lineWidth: 0.85)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: accent.opacity(colorScheme == .dark ? 0.22 : 0.07), radius: 9, y: 3.5)
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.15), lineWidth: 0.85)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: accent.opacity(colorScheme == .dark ? 0.22 : 0.07), radius: 9, y: 3.5)
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(CommandPOSCardPressStyle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Language.get("AdminPOS_TerminalTitle", alter: "نقطة بيع سريعة") + ", " + currentBranchName)
         .accessibilityHint(Language.get("AdminPOS_StartFastCheckout", alter: "ابدأ عملية بيع سريعة"))
@@ -3290,7 +3234,7 @@ private struct CommandPOSShiftLedgerRibboniPhone: View {
             if telemetryStore.state == .loading {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(Color.primary.opacity(0.08))
-                    .frame(width: 80, height: 18)
+                    .frame(width: 70, height: 18)
                     .overlay(CommandPOSShimmerMask())
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
@@ -3318,11 +3262,11 @@ private struct CommandPOSShiftLedgerRibboniPhone: View {
                     .overlay(CommandPOSShimmerMask())
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
-                HStack(spacing: 2) {
+                HStack(spacing: 3) {
                     Text("\(telemetryStore.todayReceiptsCount)")
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
                         .foregroundStyle(accent)
-                    Text(Language.get("AdminPOS_TransactionsCount", alter: "عملية"))
+                    Text(Language.isRTL() ? "عملية" : "orders")
                         .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
@@ -3345,19 +3289,24 @@ private struct CommandPOSShiftLedgerRibboniPhone: View {
                     .overlay(CommandPOSShimmerMask())
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else if telemetryStore.todayReceiptsCount == 0 {
-                Text(Language.get("AdminPOS_NewShift", alter: "وردية جديدة"))
-                    .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .caption))
+                Text(Language.get("AdminPOS_NewShift", alter: "وردية جديدة جاهزة للبدء"))
+                    .font(Font.custom("Beiruti-Medium", size: 12, relativeTo: .caption1))
                     .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
                     .lineLimit(1)
-            } else {
+            } else if telemetryStore.refundsCount > 0 {
                 HStack(spacing: 2) {
                     Text("\(telemetryStore.refundsCount)")
                         .font(Font.custom("Beiruti-Bold", size: 15, relativeTo: .subheadline))
-                        .foregroundStyle(telemetryStore.refundsCount > 0 ? Color(red: 0.95, green: 0.40, blue: 0.40) : AdminSurface.primaryText)
+                        .foregroundStyle(Color(red: 0.95, green: 0.40, blue: 0.40))
                     Text(Language.isRTL() ? "مرتجع" : "refunds")
                         .font(Font.custom("Beiruti-Regular", size: 10, relativeTo: .caption2))
                         .foregroundStyle(AdminCommandInk.secondary)
                 }
+            } else {
+                Text(Language.get("AdminPOS_NoRefunds", alter: "لا يوجد"))
+                    .font(Font.custom("Beiruti-Medium", size: 13, relativeTo: .caption))
+                    .foregroundStyle(AdminCommandInk.secondary)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -3384,76 +3333,77 @@ private struct CommandPOSShiftLedgerRibboniPhone: View {
     }
 
     private var actionButton: some View {
-        Button(action: {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            action()
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: "doc.text.magnifyingglass")
-                    .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(accent)
+        HStack(spacing: 6) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(accent)
 
-                Text(Language.get("AdminPOS_OpenLedgerAndInvoices", alter: "عرض سجل الفواتير والإيصالات"))
-                    .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption))
-                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
-                    .lineLimit(1)
+            Text(Language.get("AdminPOS_OpenLedgerAndInvoices", alter: "عرض سجل الفواتير والإيصالات"))
+                .font(Font.custom("Beiruti-Bold", size: 13, relativeTo: .caption1))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.92) : AdminSurface.primaryText)
+                .lineLimit(1)
 
-                Spacer()
+            Spacer()
 
-                Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
-                    .font(.system(size: 9.5, weight: .bold))
-                    .foregroundStyle(accent)
-                    .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
-            }
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.16), lineWidth: 0.75)
-            )
-            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.03), radius: 3, y: 1)
+            Image(systemName: Language.isRTL() ? "arrow.left" : "arrow.right")
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundStyle(accent)
+                .offset(x: (Language.isRTL() ? -1 : 1) * arrowNudge)
         }
-        .buttonStyle(CommandPOSCardPressStyle())
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity)
+        .frame(height: 36)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.28 : 0.16), lineWidth: 0.75)
+        )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.15 : 0.03), radius: 3, y: 1)
         .padding(.horizontal, 12)
         .padding(.bottom, 11)
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            headerBar
-            telemetryGrid
-            actionButton
-        }
-        .frame(maxWidth: .infinity)
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
-
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                accent.opacity(colorScheme == .dark ? 0.05 : 0.02),
-                                accent.opacity(colorScheme == .dark ? 0.01 : 0.003)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+        Button(action: {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        }) {
+            VStack(spacing: 0) {
+                headerBar
+                telemetryGrid
+                actionButton
             }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(accent.opacity(colorScheme == .dark ? 0.26 : 0.14), lineWidth: 0.8)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: accent.opacity(colorScheme == .dark ? 0.18 : 0.05), radius: 7, y: 2.5)
+            .frame(maxWidth: .infinity)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(colorScheme == .dark ? Color(white: 0.12) : Color.white)
+
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    accent.opacity(colorScheme == .dark ? 0.05 : 0.02),
+                                    accent.opacity(colorScheme == .dark ? 0.01 : 0.003)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(accent.opacity(colorScheme == .dark ? 0.26 : 0.14), lineWidth: 0.8)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: accent.opacity(colorScheme == .dark ? 0.18 : 0.05), radius: 7, y: 2.5)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(CommandPOSCardPressStyle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Language.get("AdminPOS_HistoryTitle", alter: "سجل مبيعات الكاشير") + ", " + formattedTodaySales)
         .accessibilityHint(Language.get("AdminPOS_OpenLedgerAndInvoices", alter: "عرض سجل الفواتير والإيصالات"))
@@ -3564,18 +3514,6 @@ private struct CommandPOSFastSellConsoleiPad: View {
                 .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule())
 
                 Spacer()
-
-                HStack(spacing: 4) {
-                    Image(systemName: "bolt.fill")
-                        .font(.system(size: 8.5, weight: .bold))
-                        .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
-                    Text("FAST-SELL ENGINE")
-                        .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        .foregroundStyle(AdminCommandInk.secondary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.04), in: Capsule())
             }
 
             // Center Body: Optical Reticle + Details
@@ -3625,59 +3563,10 @@ private struct CommandPOSFastSellConsoleiPad: View {
                         .foregroundStyle(AdminSurface.primaryText)
                         .lineLimit(1)
 
-                    Text(Language.get("AdminPOS_TerminalSubtitle_iPad", alter: "مسح فوري للباركود • سلة مشتريات ذكية • إصدار فوري للفاتورة الضريبية"))
+                    Text(Language.get("AdminPOS_TerminalSubtitle_Clean", alter: "إتمام عمليات البيع الفوري ومسح الباركود"))
                         .font(Font.custom("Beiruti-Regular", size: 13, relativeTo: .subheadline))
                         .foregroundStyle(AdminCommandInk.secondary)
                         .lineLimit(2)
-
-                    // Tender Badges Horizon
-                    HStack(spacing: 6) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "bolt.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Color(red: 1.0, green: 0.78, blue: 0.17))
-                            Text("QIB TAP")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "creditcard.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Color(red: 0.14, green: 0.54, blue: 0.98))
-                            Text("MADA / VISA")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "banknote.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Color(red: 0.06, green: 0.78, blue: 0.56))
-                            Text("CASH")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-
-                        HStack(spacing: 3) {
-                            Image(systemName: "message.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(Color(red: 0.15, green: 0.83, blue: 0.40))
-                            Text("WA RECEIPT")
-                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
-                        }
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2.5)
-                        .background(Color.primary.opacity(0.04), in: Capsule())
-                    }
-                    .foregroundStyle(AdminCommandInk.secondary)
-                    .padding(.top, 2)
                 }
             }
 
@@ -3771,6 +3660,11 @@ private struct CommandPOSFastSellConsoleiPad: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        }
         .hoverEffect(.lift)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Language.get("AdminPOS_TerminalTitle_iPad", alter: "نقطة البيع السريعة الفورية"))
@@ -3810,17 +3704,18 @@ private struct CommandPOSHistoryConsoleiPad: View {
 
             Spacer()
 
-            HStack(spacing: 4) {
-                Image(systemName: "shield.checkerboard")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .foregroundStyle(accent)
-                Text("AUDIT READY")
-                    .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+            // Shift status indicator
+            HStack(spacing: 3.5) {
+                Circle()
+                    .fill(telemetryStore.todayReceiptsCount > 0 ? Color(red: 0.05, green: 0.72, blue: 0.51) : accent)
+                    .frame(width: 5.5, height: 5.5)
+                Text(telemetryStore.todayReceiptsCount > 0 ? Language.get("AdminPOS_ShiftActive", alter: "وردية نشطة") : Language.get("AdminPOS_ShiftReady", alter: "وردية جاهزة"))
+                    .font(AdminType.caption2Medium)
                     .foregroundStyle(AdminCommandInk.secondary)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(Color.primary.opacity(0.04), in: Capsule())
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.04), in: Capsule(style: .continuous))
         }
     }
 
@@ -3998,6 +3893,11 @@ private struct CommandPOSHistoryConsoleiPad: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(accent.opacity(colorScheme == .dark ? 0.32 : 0.16), lineWidth: 0.8)
         )
+        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .onTapGesture {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            action()
+        }
         .hoverEffect(.lift)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Language.get("AdminPOS_HistoryTitle_iPad", alter: "سجل فواتير الكاشير واليومية") + ", " + formattedTodaySales)

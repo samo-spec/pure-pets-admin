@@ -230,6 +230,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _active = YES;
         _quantity = 0;
         _noStock = YES;
+        _revision = 0;
         _searchTitle = @"";
     }
     return self;
@@ -305,6 +306,21 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         dict[@"size"] = self.size;
     } else {
         dict[@"size"] = [NSNull null];
+    }
+    if (self.dimensionWidth) {
+        dict[@"dimensionWidth"] = self.dimensionWidth;
+    } else {
+        dict[@"dimensionWidth"] = [NSNull null];
+    }
+    if (self.dimensionHeight) {
+        dict[@"dimensionHeight"] = self.dimensionHeight;
+    } else {
+        dict[@"dimensionHeight"] = [NSNull null];
+    }
+    if (self.dimensionUnit.length > 0) {
+        dict[@"dimensionUnit"] = self.dimensionUnit;
+    } else {
+        dict[@"dimensionUnit"] = [NSNull null];
     }
 
     // Images
@@ -514,6 +530,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
         _accessoryID = docID ?: @"";
         _name = PPAccessoryStringValueForKeys(dict, (@[@"name", @"title"]));
         _nameEn = PPAccessoryStringValueForKeys(dict, (@[@"nameEn", @"name_en", @"titleEn", @"title_en"]));
+        _revision = [PPAccessoryNumberValueForKeys(dict, (@[@"revision"])) integerValue];
         _sku = PPAccessoryStringValueForKeys(dict, (@[@"sku", @"SKU", @"itemSku"]));
         _barcode = PPAccessoryStringValueForKeys(dict, (@[@"barcode", @"Barcode", @"barCode", @"upc", @"ean"]));
         _costPrice = PPAccessoryNumberValueForKeys(dict, (@[@"costPrice", @"cost_price", @"cost"]));
@@ -564,6 +581,21 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
             @"size",
             @"itemSize",
             @"accessorySize"
+        ]));
+        _dimensionWidth = PPAccessoryNumberValueForKeys(dict, (@[
+            @"dimensionWidth",
+            @"dimensionsWidth",
+            @"width"
+        ]));
+        _dimensionHeight = PPAccessoryNumberValueForKeys(dict, (@[
+            @"dimensionHeight",
+            @"dimensionsHeight",
+            @"height"
+        ]));
+        _dimensionUnit = PPAccessoryStringValueForKeys(dict, (@[
+            @"dimensionUnit",
+            @"dimensionsUnit",
+            @"sizeUnit"
         ]));
         _imageURLsArray = PPAccessoryStringArray(dict[@"imageURLsArray"]);
         _imageMeta = PPAccessoryDictionaryArray(dict[@"imageMeta"]);
@@ -800,6 +832,7 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.accessoryID = [source.accessoryID copy];
     copy.name = [source.name copy];
     copy.nameEn = [source.nameEn copy];
+    copy.revision = source.revision;
     copy.sku = [source.sku copy];
     copy.barcode = [source.barcode copy];
     copy.costPrice = [source.costPrice copy];
@@ -812,6 +845,9 @@ static NSArray<NSDictionary *> *PPImageItemsPayload(NSArray<NSString *> *urls, N
     copy.weight = [source.weight copy];
     copy.weightUnit = [source.weightUnit copy];
     copy.size = [source.size copy];
+    copy.dimensionWidth = [source.dimensionWidth copy];
+    copy.dimensionHeight = [source.dimensionHeight copy];
+    copy.dimensionUnit = [source.dimensionUnit copy];
     copy.desc = [source.desc copy];
     copy.descEn = [source.descEn copy];
     copy.blurHash = [source.blurHash copy];

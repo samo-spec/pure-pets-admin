@@ -190,6 +190,44 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     }
     return self;
 }
+
+- (BOOL)hasIndividuallyTrackedLivePets {
+    for (PPPOSCartItem *item in self.items) {
+        if ([item.inventoryMode isEqualToString:@"INDIVIDUAL_TRACKED"] || item.unitIDs.count > 0) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)hasGenericMerchandise {
+    for (PPPOSCartItem *item in self.items) {
+        if (![item.inventoryMode isEqualToString:@"INDIVIDUAL_TRACKED"] && item.unitIDs.count == 0) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (NSArray<PPPOSCartItem *> *)livePetCartItems {
+    NSMutableArray *res = [NSMutableArray array];
+    for (PPPOSCartItem *item in self.items) {
+        if ([item.inventoryMode isEqualToString:@"INDIVIDUAL_TRACKED"] || item.unitIDs.count > 0) {
+            [res addObject:item];
+        }
+    }
+    return res.copy;
+}
+
+- (NSArray<PPPOSCartItem *> *)genericCartItems {
+    NSMutableArray *res = [NSMutableArray array];
+    for (PPPOSCartItem *item in self.items) {
+        if (![item.inventoryMode isEqualToString:@"INDIVIDUAL_TRACKED"] && item.unitIDs.count == 0) {
+            [res addObject:item];
+        }
+    }
+    return res.copy;
+}
 @end
 
 #pragma mark - PPPOSLogEntry Implementation
@@ -1131,22 +1169,42 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                    reason:(NSString *)reason
                  currency:(nullable NSString *)currency
                completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
+    [self refundTransaction:transactionId
+                refundAmount:refundAmount
+                 refundItems:refundItems
+                      reason:reason
+                    currency:currency
+                   commandID:nil
+                  completion:^(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error) {
+        if (completion) completion(success, error);
+    }];
+}
+
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+                commandID:(nullable NSString *)commandID
+               completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion {
     NSString *trimmedID = [transactionId stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *trimmedReason = [reason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedID.length == 0) {
-        if (completion) completion(NO, PPPOSServiceError(400, @"transactionId is required."));
+        if (completion) completion(NO, nil, PPPOSServiceError(400, @"transactionId is required."));
         return;
     }
     if (trimmedReason.length < 3) {
-        if (completion) completion(NO, PPPOSServiceError(400, @"A refund reason (at least 3 characters) is required."));
+        if (completion) completion(NO, nil, PPPOSServiceError(400, @"A refund reason (at least 3 characters) is required."));
         return;
     }
 
-    NSString *commandId = [NSString stringWithFormat:@"pos-refund-%@", [NSUUID UUID].UUIDString];
+    NSString *resolvedCommandId = (commandID.length > 0)
+        ? [commandID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet]
+        : [NSString stringWithFormat:@"pos-refund-%@", [NSUUID UUID].UUIDString];
     NSMutableDictionary *payload = [NSMutableDictionary dictionary];
     payload[@"action"] = @"refund";
     payload[@"transactionId"] = trimmedID;
-    payload[@"commandId"] = commandId;
+    payload[@"commandId"] = resolvedCommandId;
     payload[@"reason"] = trimmedReason;
     payload[@"currency"] = (currency.length > 0 ? currency.uppercaseString : @"QAR");
     payload[@"refundAmount"] = @(refundAmount);
@@ -1173,12 +1231,12 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                     payload:payload
                  completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         if (error) {
-            if (completion) completion(NO, error);
+            if (completion) completion(NO, nil, error);
             return;
         }
         NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
         BOOL ok = [resp[@"ok"] boolValue];
-        if (completion) completion(ok, nil);
+        if (completion) completion(ok, resolvedCommandId, nil);
     }];
 }
 

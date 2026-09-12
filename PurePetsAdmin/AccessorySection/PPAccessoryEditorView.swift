@@ -97,7 +97,9 @@ private struct PPLivePetMutationRecovery: Codable {
     let commandID: String?
     let payloadData: Data
     let catalogValuesData: Data
+    let catalogCommandID: String?
     var acceptedProductID: String?
+    var acceptedRevision: Int?
     var successMessage: String
     let oldImageURLs: [String]
 }
@@ -107,7 +109,7 @@ private struct PPLivePetMutationRecovery: Codable {
 /// Bytes are normalized before hashing so retries keep one immutable Storage
 /// object path. The remote URL is retained only after Storage confirms it; it is
 /// then serialized into the existing live-unit `mediaURLs` contract.
-private struct PPLivePetUnitPhotoDraft {
+struct PPLivePetUnitPhotoDraft {
     let image: UIImage
     let encodedData: Data
     let contentSHA256: String
@@ -115,11 +117,176 @@ private struct PPLivePetUnitPhotoDraft {
     var uploadedURL: String?
 }
 
-private struct PPLivePetUnitPhotoMetadataSnapshot: Sendable {
+struct PPLivePetUnitPhotoMetadataSnapshot: Sendable {
     let contentType: String?
     let size: Int64
     let customMetadata: [String: String]
 }
+
+struct PPLivePetUnitPhotoStorageService {
+    static func prepareLivePetUnitPhoto(_ source: UIImage) -> PPLivePetUnitPhotoDraft? {
+        guard source.size.width > 0, source.size.height > 0 else { return nil }
+
+        let longestEdge = max(source.size.width, source.size.height)
+        let scale = min(1, 1_800 / longestEdge)
+        let targetSize = CGSize(
+            width: max(1, (source.size.width * scale).rounded()),
+            height: max(1, (source.size.height * scale).rounded())
+        )
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
+        let normalized = renderer.image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(origin: .zero, size: targetSize))
+            source.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+
+        let maximumBytes = 10 * 1_024 * 1_024
+        let encoded = [0.82, 0.72, 0.62, 0.52]
+            .compactMap { normalized.jpegData(compressionQuality: $0) }
+            .first { !$0.isEmpty && $0.count < maximumBytes }
+        guard let encoded else { return nil }
+
+        let digest = SHA256.hash(data: encoded)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return PPLivePetUnitPhotoDraft(
+            image: normalized,
+            encodedData: encoded,
+            contentSHA256: digest,
+            objectWasUploaded: false,
+            uploadedURL: nil
+        )
+    }
+
+    static func upload(
+        photo: inout PPLivePetUnitPhotoDraft,
+        unitID: String,
+        commandID: String,
+        actorUID: String
+    ) async throws -> String {
+        if let uploadedURL = photo.uploadedURL, !uploadedURL.isEmpty {
+            return uploadedURL
+        }
+
+        let objectName = "\(photo.contentSHA256)_identity.jpg"
+        let reference = Storage.storage().reference()
+            .child("live-pet-units")
+            .child(actorUID)
+            .child(commandID)
+            .child(unitID)
+            .child(objectName)
+        let expectedMetadata: [String: String] = [
+            "uploaded_by": actorUID,
+            "media_type": "image",
+            "media_scope": "live_pet_unit_internal",
+            "command_id": commandID,
+            "draft_unit_id": unitID,
+            "content_sha256": photo.contentSHA256,
+        ]
+
+        if let existingMetadata = try await livePetUnitPhotoMetadata(for: reference) {
+            guard existingMetadata.contentType == "image/jpeg",
+                  existingMetadata.size == Int64(photo.encodedData.count),
+                  expectedMetadata.allSatisfy({ existingMetadata.customMetadata[$0.key] == $0.value }) else {
+                throw livePetUnitPhotoError(
+                    code: 3,
+                    key: "LivePetIntake_UnitPhotoStagedConflict",
+                    fallback: "تعارضت الصورة المجهزة مع ملف موجود. اختر الصورة مجدداً وحاول مرة أخرى."
+                )
+            }
+            photo.objectWasUploaded = true
+        } else {
+            let metadata = StorageMetadata()
+            metadata.contentType = "image/jpeg"
+            metadata.customMetadata = expectedMetadata
+            try await putLivePetUnitPhoto(photo.encodedData, metadata: metadata, at: reference)
+            photo.objectWasUploaded = true
+        }
+
+        let downloadURL = try await livePetUnitPhotoDownloadURL(for: reference)
+        photo.uploadedURL = downloadURL.absoluteString
+        return downloadURL.absoluteString
+    }
+
+    static func livePetUnitPhotoMetadata(
+        for reference: StorageReference
+    ) async throws -> PPLivePetUnitPhotoMetadataSnapshot? {
+        do {
+            return try await withCheckedThrowingContinuation { continuation in
+                reference.getMetadata { metadata, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else if let metadata {
+                        continuation.resume(returning: PPLivePetUnitPhotoMetadataSnapshot(
+                            contentType: metadata.contentType,
+                            size: metadata.size,
+                            customMetadata: metadata.customMetadata ?? [:]
+                        ))
+                    } else {
+                        continuation.resume(throwing: self.livePetUnitPhotoError(
+                            code: 4,
+                            key: "LivePetIntake_UnitPhotoUploadFailed",
+                            fallback: "تعذر التحقق من صورة الحيوان المرفوعة. حاول مرة أخرى."
+                        ))
+                    }
+                }
+            }
+        } catch {
+            let nsError = error as NSError
+            if nsError.domain == StorageErrorDomain,
+               nsError.code == StorageErrorCode.objectNotFound.rawValue {
+                return nil
+            }
+            throw error
+        }
+    }
+
+    static func putLivePetUnitPhoto(
+        _ data: Data,
+        metadata: StorageMetadata,
+        at reference: StorageReference
+    ) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            reference.putData(data, metadata: metadata) { _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume(returning: ())
+                }
+            }
+        }
+    }
+
+    static func livePetUnitPhotoDownloadURL(for reference: StorageReference) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            reference.downloadURL { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let url {
+                    continuation.resume(returning: url)
+                } else {
+                    continuation.resume(throwing: self.livePetUnitPhotoError(
+                        code: 5,
+                        key: "LivePetIntake_UnitPhotoUploadFailed",
+                        fallback: "تعذر إكمال رفع صورة الحيوان. حاول مرة أخرى."
+                    ))
+                }
+            }
+        }
+    }
+
+    static func livePetUnitPhotoError(code: Int, key: String, fallback: String) -> NSError {
+        NSError(
+            domain: "PPAdmin.LivePetUnitPhoto",
+            code: code,
+            userInfo: [NSLocalizedDescriptionKey: Language.get(key, alter: fallback)]
+        )
+    }
+}
+
 
 // MARK: - Unified Quantity Group Draft
 
@@ -163,6 +330,69 @@ struct PPQuantityGroupDraft: Identifiable, Equatable, Sendable {
             return Language.get("Unit_Single_Piece", alter: "1 قطعة").normalizedEnglishDigits
         }
         return String(format: Language.get("Unit_Multiple_Pieces_Format", alter: "%@ قطع"), unitsPerGroup.englishDigits).normalizedEnglishDigits
+    }
+}
+
+// MARK: - Category-Defining Physical Specification Archetypes
+
+enum PPPhysicalSpecMode: String, CaseIterable, Identifiable, Sendable {
+    case none = "none"
+    case dimensions = "dimensions"      // Cages, enclosures, carriers, beds (W × H)
+    case standardSize = "standardSize"  // Wearable apparel, collars, harnesses (XXS–3XL, Free Size)
+    case weightVolume = "weightVolume"  // Litter, shampoos, bulk food, liquids (kg, g, L, ml)
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none:
+            return Language.get("PhysicalSpec_None_Title", alter: "بدون مواصفة")
+        case .dimensions:
+            return Language.get("PhysicalSpec_Dimensions_Title", alter: "الأبعاد (العرض × الارتفاع)")
+        case .standardSize:
+            return Language.get("PhysicalSpec_ApparelSize_Title", alter: "المقاس المعياري")
+        case .weightVolume:
+            return Language.get("PhysicalSpec_Weight_Title", alter: "الوزن أو السعة")
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .none:
+            return Language.get("PhysicalSpec_None_Title", alter: "بدون")
+        case .dimensions:
+            return Language.get("Dimensions_Short", alter: "الأبعاد W×H")
+        case .standardSize:
+            return Language.get("CatalogIntake_SizeLabel", alter: "المقاس")
+        case .weightVolume:
+            return Language.get("CatalogIntake_WeightLabel", alter: "الوزن/السعة")
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .none:
+            return Language.get("PhysicalSpec_None_Subtitle", alter: "منتج بدون أبعاد أو أحجام محددة")
+        case .dimensions:
+            return Language.get("PhysicalSpec_Dimensions_Subtitle", alter: "للأقفاص، النواقل، والبيوت")
+        case .standardSize:
+            return Language.get("PhysicalSpec_ApparelSize_Subtitle", alter: "للملابس، الياقات، والأحزمة")
+        case .weightVolume:
+            return Language.get("PhysicalSpec_Weight_Subtitle", alter: "للرمل، الشامبو، والمستحضرات")
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .none:
+            return "slash.circle"
+        case .dimensions:
+            return "square.resize"
+        case .standardSize:
+            return "tshirt.fill"
+        case .weightVolume:
+            return "scalemass.fill"
+        }
     }
 }
 
@@ -334,6 +564,12 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     @Published var barcode: String = "" { didSet { updateUnsavedChanges() } }
     @Published var quantity: Int = 1 { didSet { updateUnsavedChanges() } }
     @Published var condition: AccessConditions = .new { didSet { updateUnsavedChanges() } }
+
+    // Category-Defining Physical Specification Engine
+    @Published var physicalSpecMode: PPPhysicalSpecMode = .none { didSet { updateUnsavedChanges() } }
+    @Published var dimensionWidthText: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var dimensionHeightText: String = "" { didSet { updateUnsavedChanges() } }
+    @Published var dimensionUnit: String = "cm" { didSet { updateUnsavedChanges() } }
     @Published var size: String = "" { didSet { updateUnsavedChanges() } }
     @Published var weightText: String = "" { didSet { updateUnsavedChanges() } }
     @Published var weightUnit: String = "kg" { didSet { updateUnsavedChanges() } }
@@ -388,6 +624,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     private var isPopulatingInitialValues: Bool = true
     private var isApplyingCategoryHydration: Bool = false
     private var didScheduleSuccessfulDismissal: Bool = false
+    private var standardSaveCommandID: String? = nil
     private var liveCreateCommandID = PPLivePetInventoryService.commandID("catalog-create")
     private var pendingCatalogSyncSuccessMessage: String? = nil
     private var livePetRecovery: PPLivePetMutationRecovery? = nil
@@ -489,8 +726,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             hasExpiryDate = false
         }
 
-        hydrateWeight(from: acc)
-        size = acc.size ?? ""
+        hydratePhysicalSpecs(from: acc)
 
         selectedStoreID = (acc.storeID ?? "").isEmpty == false ? acc.storeID! : "main_store"
         selectedStoreName = (acc.storeName ?? "").isEmpty == false ? acc.storeName! : Language.get("Main Store", alter: "المتجر الرئيسي")
@@ -594,6 +830,94 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             $0.caseInsensitiveCompare(rawUnit) == .orderedSame
         }
         return (amount, unit)
+    }
+
+    private func hydratePhysicalSpecs(from accessory: PetAccessory) {
+        if isFood {
+            physicalSpecMode = .weightVolume
+            hydrateWeight(from: accessory)
+            dimensionWidthText = ""
+            dimensionHeightText = ""
+            size = ""
+            return
+        }
+
+        // 1. Direct dimension properties from accessory
+        if let w = accessory.dimensionWidth?.doubleValue, let h = accessory.dimensionHeight?.doubleValue, w > 0 || h > 0 {
+            physicalSpecMode = .dimensions
+            dimensionWidthText = w > 0 ? canonicalDecimalText(w, maximumFractionDigits: 2) : ""
+            dimensionHeightText = h > 0 ? canonicalDecimalText(h, maximumFractionDigits: 2) : ""
+            let u = (accessory.dimensionUnit ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            dimensionUnit = u.isEmpty ? "cm" : u
+            size = ""
+            weightText = ""
+            return
+        }
+
+        // 2. Dimensions pattern in size string (e.g. "60 × 40 cm", "80x50 cm", "100 * 60 سم", etc.)
+        if let rawSize = accessory.size, let parsed = parseDimensionsPattern(rawSize) {
+            physicalSpecMode = .dimensions
+            dimensionWidthText = parsed.width
+            dimensionHeightText = parsed.height
+            dimensionUnit = parsed.unit
+            size = ""
+            weightText = ""
+            return
+        }
+
+        // 3. Weight/Volume present
+        let trimmedWeight = (accessory.weightText ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedWeight.isEmpty || (accessory.weight?.doubleValue ?? 0) > 0 {
+            physicalSpecMode = .weightVolume
+            hydrateWeight(from: accessory)
+            size = ""
+            dimensionWidthText = ""
+            dimensionHeightText = ""
+            return
+        }
+
+        // 4. Standard apparel size present
+        let trimmedSize = (accessory.size ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSize.isEmpty {
+            physicalSpecMode = .standardSize
+            size = trimmedSize
+            dimensionWidthText = ""
+            dimensionHeightText = ""
+            weightText = ""
+            return
+        }
+
+        // 5. Unspecified
+        physicalSpecMode = .none
+        size = ""
+        dimensionWidthText = ""
+        dimensionHeightText = ""
+        weightText = ""
+    }
+
+    private func parseDimensionsPattern(_ text: String) -> (width: String, height: String, unit: String)? {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "×", with: "x")
+            .replacingOccurrences(of: "*", with: "x")
+            .replacingOccurrences(of: "X", with: "x")
+        let pattern = #"^\s*([0-9]+(?:[\.,][0-9]+)?)\s*x\s*([0-9]+(?:[\.,][0-9]+)?)\s*(cm|m|in|mm|سم|متر|بوصة|ملم)?\s*$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: clean, range: NSRange(location: 0, length: clean.utf16.count)) else {
+            return nil
+        }
+        guard let wRange = Range(match.range(at: 1), in: clean),
+              let hRange = Range(match.range(at: 2), in: clean) else { return nil }
+        let w = String(clean[wRange]).replacingOccurrences(of: ",", with: ".").normalizedEnglishDigits
+        let h = String(clean[hRange]).replacingOccurrences(of: ",", with: ".").normalizedEnglishDigits
+        var unit = "cm"
+        if match.range(at: 3).location != NSNotFound, let uRange = Range(match.range(at: 3), in: clean) {
+            let u = String(clean[uRange]).lowercased()
+            if u == "m" || u == "متر" || u == "م" { unit = "m" }
+            else if u == "in" || u == "بوصة" { unit = "in" }
+            else if u == "mm" || u == "ملم" { unit = "mm" }
+            else { unit = "cm" }
+        }
+        return (w, h, unit)
     }
 
     private func finishInitialHydration() {
@@ -1572,6 +1896,16 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         isValidOptionalDecimal(weightText, maximum: 999_999_999.999, maximumFractionDigits: 3)
     }
 
+    func isValidDimensionsInput() -> Bool {
+        guard physicalSpecMode == .dimensions else { return true }
+        let trimmedW = dimensionWidthText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedH = dimensionHeightText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedW.isEmpty && trimmedH.isEmpty { return true }
+        if !isValidOptionalDecimal(dimensionWidthText, maximum: 99_999.99, maximumFractionDigits: 2) { return false }
+        if !isValidOptionalDecimal(dimensionHeightText, maximum: 99_999.99, maximumFractionDigits: 2) { return false }
+        return true
+    }
+
     var calculatedFinalPrice: Double {
         guard basePrice > 0 else { return 0.0 }
         var finalVal = basePrice
@@ -1772,40 +2106,7 @@ final class PPAccessoryEditorViewModel: ObservableObject {
     }
 
     private static func prepareLivePetUnitPhoto(_ source: UIImage) -> PPLivePetUnitPhotoDraft? {
-        guard source.size.width > 0, source.size.height > 0 else { return nil }
-
-        let longestEdge = max(source.size.width, source.size.height)
-        let scale = min(1, 1_800 / longestEdge)
-        let targetSize = CGSize(
-            width: max(1, (source.size.width * scale).rounded()),
-            height: max(1, (source.size.height * scale).rounded())
-        )
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        let renderer = UIGraphicsImageRenderer(size: targetSize, format: format)
-        let normalized = renderer.image { context in
-            UIColor.white.setFill()
-            context.fill(CGRect(origin: .zero, size: targetSize))
-            source.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-
-        let maximumBytes = 10 * 1_024 * 1_024
-        let encoded = [0.82, 0.72, 0.62, 0.52]
-            .compactMap { normalized.jpegData(compressionQuality: $0) }
-            .first { !$0.isEmpty && $0.count < maximumBytes }
-        guard let encoded else { return nil }
-
-        let digest = SHA256.hash(data: encoded)
-            .map { String(format: "%02x", $0) }
-            .joined()
-        return PPLivePetUnitPhotoDraft(
-            image: normalized,
-            encodedData: encoded,
-            contentSHA256: digest,
-            objectWasUploaded: false,
-            uploadedURL: nil
-        )
+        PPLivePetUnitPhotoStorageService.prepareLivePetUnitPhoto(source)
     }
 
     private func uploadLivePetUnitPhotosIfNeeded() async throws -> [String: [String]] {
@@ -1965,6 +2266,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         hasUnsavedChanges = true
         errorMessage = nil
         submissionFailureKind = nil
+        if !isSubmitting && !isLivePet {
+            standardSaveCommandID = nil
+        }
     }
 
     // MARK: - Validation
@@ -1988,11 +2292,36 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 return (false, Language.get("Please select pet species.", alter: "يرجى اختيار النوع والفئة الرئيسية للحيوان."))
             }
         }
-        if !isValidWeightInput() {
+        if physicalSpecMode == .dimensions && !isValidDimensionsInput() {
+            return (false, Language.get(
+                "CatalogIntake_ValidationDimensions",
+                alter: "أدخل أبعاداً صالحة (العرض والارتفاع) وبحد أقصى منزلتين عشريتين."
+            ))
+        }
+        if (physicalSpecMode == .weightVolume || !weightText.isEmpty) && !isValidWeightInput() {
             return (false, Language.get(
                 "CatalogIntake_ValidationWeight",
                 alter: "أدخل وزناً أو حجماً صالحاً وبحد أقصى ثلاث منازل عشرية."
             ))
+        }
+        if !isLivePet {
+            let normalizedCost = costPriceText
+                .replacingOccurrences(of: ",", with: ".")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !normalizedCost.isEmpty {
+                guard let value = Double(normalizedCost), value >= 0, value <= 999_999_999.99,
+                      abs(value * 100 - (value * 100).rounded()) < 0.000_001 else {
+                    return (false, Language.get(
+                        "CatalogIntake_ValidationCost",
+                        alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين."
+                    ))
+                }
+            } else if editingAccessory == nil, quantity > 0, canViewStockCosts {
+                return (false, Language.get(
+                    "CatalogIntake_CostRequiredForOpeningStock",
+                    alter: "أدخل تكلفة الاستلام للمخزون الافتتاحي، أو أنشئ الصنف بكمية صفر."
+                ))
+            }
         }
         if (!isLivePet || liveInventoryMode == .quantity) && !isValidDiscountPercentInput() {
             let key = isLivePet ? "LivePetIntake_ValidationDiscountPercent" : "CatalogIntake_ValidationDiscountPercent"
@@ -2077,6 +2406,25 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 guard let value = Double(clean), value >= 0, value <= 999_999_999.99,
                       abs(value * 100 - (value * 100).rounded()) < 0.000_001 else {
                     return (false, Language.get("LivePet_Validation_UnitCost", alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين."))
+                }
+            }
+        }
+        if editingAccessory == nil {
+            let requestedOpeningQuantity = isLivePet && liveInventoryMode == .individual
+                ? livePetUnits.count
+                : quantity
+            if requestedOpeningQuantity > 0 {
+                let activeBranchID = BranchContextStore.shared.activeBranch?.branchID
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let selectedBranchID = selectedStoreID.trimmingCharacters(in: .whitespacesAndNewlines)
+                let resolvedBranchID = (!selectedBranchID.isEmpty && selectedBranchID != "main_store")
+                    ? selectedBranchID
+                    : activeBranchID
+                if resolvedBranchID.isEmpty || resolvedBranchID == "main_store" {
+                    return (false, Language.get(
+                        "Inventory_SpecificBranchRequired",
+                        alter: "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف."
+                    ))
                 }
             }
         }
@@ -2178,20 +2526,79 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             accessory.storeName = selectedStoreName.isEmpty ? Language.get("Main Store", alter: "المتجر الرئيسي") : selectedStoreName
         }
 
-        let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if normalizedWeight.isEmpty {
+        switch physicalSpecMode {
+        case .dimensions:
             accessory.weight = nil
             accessory.weightUnit = nil
             accessory.weightText = nil
-        } else if let weightValue = decimalValue(normalizedWeight) {
-            let canonicalWeight = canonicalDecimalText(weightValue, maximumFractionDigits: 3)
-            accessory.weight = NSNumber(value: weightValue)
-            accessory.weightUnit = weightUnit
-            accessory.weightText = "\(canonicalWeight) \(weightUnit)"
+
+            let cleanW = dimensionWidthText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanH = dimensionHeightText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let valW = decimalValue(cleanW)
+            let valH = decimalValue(cleanH)
+
+            if let w = valW, let h = valH, w > 0 || h > 0 {
+                let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
+                let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
+                accessory.dimensionWidth = NSNumber(value: w)
+                accessory.dimensionHeight = NSNumber(value: h)
+                accessory.dimensionUnit = dimensionUnit
+                accessory.size = "\(canonicalW) × \(canonicalH) \(dimensionUnit)"
+            } else if let w = valW, w > 0 {
+                let canonicalW = canonicalDecimalText(w, maximumFractionDigits: 2)
+                accessory.dimensionWidth = NSNumber(value: w)
+                accessory.dimensionHeight = nil
+                accessory.dimensionUnit = dimensionUnit
+                accessory.size = "\(canonicalW) \(dimensionUnit)"
+            } else if let h = valH, h > 0 {
+                let canonicalH = canonicalDecimalText(h, maximumFractionDigits: 2)
+                accessory.dimensionWidth = nil
+                accessory.dimensionHeight = NSNumber(value: h)
+                accessory.dimensionUnit = dimensionUnit
+                accessory.size = "\(canonicalH) \(dimensionUnit)"
+            } else {
+                accessory.dimensionWidth = nil
+                accessory.dimensionHeight = nil
+                accessory.dimensionUnit = nil
+                accessory.size = nil
+            }
+
+        case .standardSize:
+            accessory.dimensionWidth = nil
+            accessory.dimensionHeight = nil
+            accessory.dimensionUnit = nil
+            accessory.weight = nil
+            accessory.weightUnit = nil
+            accessory.weightText = nil
+            let trimmedSize = size.trimmingCharacters(in: .whitespacesAndNewlines)
+            accessory.size = trimmedSize.isEmpty ? nil : trimmedSize
+
+        case .weightVolume:
+            accessory.dimensionWidth = nil
+            accessory.dimensionHeight = nil
+            accessory.dimensionUnit = nil
+            accessory.size = nil
+            let normalizedWeight = weightText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if normalizedWeight.isEmpty {
+                accessory.weight = nil
+                accessory.weightUnit = nil
+                accessory.weightText = nil
+            } else if let weightValue = decimalValue(normalizedWeight) {
+                let canonicalWeight = canonicalDecimalText(weightValue, maximumFractionDigits: 3)
+                accessory.weight = NSNumber(value: weightValue)
+                accessory.weightUnit = weightUnit
+                accessory.weightText = "\(canonicalWeight) \(weightUnit)"
+            }
+
+        case .none:
+            accessory.dimensionWidth = nil
+            accessory.dimensionHeight = nil
+            accessory.dimensionUnit = nil
+            accessory.size = nil
+            accessory.weight = nil
+            accessory.weightUnit = nil
+            accessory.weightText = nil
         }
-        
-        let trimmedSize = size.trimmingCharacters(in: .whitespacesAndNewlines)
-        accessory.size = trimmedSize.isEmpty ? nil : trimmedSize
         
         accessory.expiryDate = (isFood && hasExpiryDate) ? expiryDate : nil
         accessory.active = !isDraft
@@ -2423,11 +2830,25 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         }()
 
         let commercePayload = buildCommercePayload()
+        let commandID: String = {
+            if let existing = standardSaveCommandID, !existing.isEmpty {
+                return existing
+            }
+            let action = accessory.accessoryID.isEmpty ? "create" : "update"
+            let generated = PPInventoryCommandService.shared.generateCommandId(
+                action: action,
+                targetId: accessory.accessoryID.isEmpty ? "new" : accessory.accessoryID
+            )
+            standardSaveCommandID = generated
+            return generated
+        }()
 
         PPInventoryCommandService.shared.saveProduct(
             accessory: accessory,
             branchId: resolvedBranchId,
-            commerce: commercePayload
+            commerce: commercePayload,
+            expectedRevision: accessory.revision > 0 ? accessory.revision : nil,
+            commandId: commandID
         ) { [weak self] cmdResult, error in
             DispatchQueue.main.async {
                 guard let self = self else { return }
@@ -2439,26 +2860,66 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     return
                 }
 
-                if let res = cmdResult, let pid = res.productId {
-                    accessory.accessoryID = pid
+                guard let result = cmdResult,
+                      let productID = result.productId,
+                      !productID.isEmpty else {
+                    self.isSubmitting = false
+                    self.errorMessage = Language.get(
+                        "Inventory_InvalidCommandResponse",
+                        alter: "تعذر التحقق من استجابة خدمة المخزون."
+                    )
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    return
                 }
 
-                self.commitSavedAccessory(accessory)
-
-                // Clean up removed old images from Storage (best-effort)
-                let newSet = Set(accessory.imageURLsArray ?? [])
-                for oldURL in oldImageURLs {
-                    if !oldURL.isEmpty && !newSet.contains(oldURL) {
-                        if let ref = try? Storage.storage().reference(forURL: oldURL) {
-                            ref.delete { _ in }
+                PPInventoryCommandService.shared.readBackProduct(
+                    productId: productID,
+                    minimumRevision: result.revision
+                ) { [weak self] authoritativeAccessory, readbackError in
+                    DispatchQueue.main.async {
+                        guard let self else { return }
+                        if let readbackError {
+                            self.isSubmitting = false
+                            self.errorMessage = String(
+                                format: Language.get(
+                                    "Inventory_CommandAcceptedReadbackPending_Format",
+                                    alter: "اعتمد الخادم الحفظ، لكن تعذر تأكيد النسخة النهائية. أعد المحاولة دون تعديل البيانات. التفاصيل: %@"
+                                ),
+                                readbackError.localizedDescription
+                            )
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                            return
                         }
+                        guard let confirmed = authoritativeAccessory else {
+                            self.isSubmitting = false
+                            self.errorMessage = Language.get(
+                                "Inventory_ReadbackMissing",
+                                alter: "اعتمد الخادم العملية، لكن تعذر العثور على الصنف عند التحقق النهائي. أعد المحاولة دون تغيير البيانات."
+                            )
+                            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                            return
+                        }
+
+                        accessory.accessoryID = confirmed.accessoryID
+                        accessory.revision = confirmed.revision
+                        self.commitSavedAccessory(confirmed)
+                        self.standardSaveCommandID = nil
+
+                        // Media cleanup is safe only after authoritative readback
+                        // proves which URLs the committed catalog retained.
+                        let retainedURLs = Set(confirmed.imageURLsArray ?? [])
+                        for oldURL in oldImageURLs where !oldURL.isEmpty && !retainedURLs.contains(oldURL) {
+                            if let ref = try? Storage.storage().reference(forURL: oldURL) {
+                                ref.delete { _ in }
+                            }
+                        }
+
+                        let message = (self.editingAccessory != nil)
+                            ? Language.get("Your changes were saved successfully.", alter: "تم حفظ التعديلات بنجاح")
+                            : Language.get("Accessory has been created.", alter: "تمت إضافة الصنف بنجاح")
+                        self.completeSuccessfulSave(message: message)
                     }
                 }
-
-                let message = (self.editingAccessory != nil)
-                    ? Language.get("Your changes were saved successfully.", alter: "تم حفظ التعديلات بنجاح")
-                    : Language.get("Accessory has been created.", alter: "تمت إضافة الصنف بنجاح")
-                self.completeSuccessfulSave(message: message)
             }
         }
     }
@@ -2482,6 +2943,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.weight = saved.weight
         original.weightUnit = saved.weightUnit
         original.size = saved.size
+        original.dimensionWidth = saved.dimensionWidth
+        original.dimensionHeight = saved.dimensionHeight
+        original.dimensionUnit = saved.dimensionUnit
         original.imageURLsArray = saved.imageURLsArray
         original.imageMeta = saved.imageMeta
         original.petMainCategoryID = saved.petMainCategoryID
@@ -2500,6 +2964,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         original.active = saved.active
         original.isNew = saved.isNew
         original.hasOffer = saved.hasOffer
+        original.showInAppMarket = saved.showInAppMarket
+        original.relatedAccessories = saved.relatedAccessories
+        original.revision = saved.revision
     }
 
     private func commitConfirmedLivePetForm(retainedURLs: [String]) {
@@ -2602,34 +3069,21 @@ final class PPAccessoryEditorViewModel: ObservableObject {
         pendingSavedAccessoryDraft = accessory
 
         let productID = editingAccessory?.accessoryID ?? ""
-        let actorUID = Auth.auth().currentUser?.uid ?? ""
         var catalogValues: [String: Any] = [
             "name": accessory.name ?? "",
             "nameEn": accessory.nameEn ?? "",
-            "name_en": accessory.nameEn ?? "",
             "desc": accessory.desc ?? "",
             "descEn": accessory.descEn ?? "",
-            "desc_en": accessory.descEn ?? "",
-            "ownerID": accessory.ownerID,
-            "storeID": accessory.storeID ?? "",
-            "storeName": accessory.storeName ?? "",
             "petMainCategoryID": accessory.petMainCategoryID,
             "petSubCategoryID": accessory.petSubCategoryID,
-            "accessKindType": 3,
-            "product_type": "live",
             "category": "Live Pets",
             "imageURLsArray": resolvedImageURLs,
             "active": accessory.active,
             "showInAppMarket": !isDraft,
             "isNew": true,
-            "updatedBy": actorUID,
         ]
-        if let primaryImageURL = resolvedImageURLs.first {
-            catalogValues["imageUrl"] = primaryImageURL
-            catalogValues["image"] = primaryImageURL
-            catalogValues["images"] = resolvedImageURLs
-        }
         if liveInventoryMode == .quantity {
+            catalogValues["price"] = basePrice
             catalogValues["discountPercent"] = accessory.discountPercent ?? NSNull()
             catalogValues["discountAmount"] = accessory.discountAmount ?? NSNull()
             catalogValues["hasOffer"] = accessory.hasOffer
@@ -2674,11 +3128,8 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             mutationPayload = [
                 "name": accessory.name ?? "",
                 "nameEn": accessory.nameEn ?? "",
-                "name_en": accessory.nameEn ?? "",
                 "desc": accessory.desc ?? "",
                 "descEn": accessory.descEn ?? "",
-                "desc_en": accessory.descEn ?? "",
-                "ownerID": accessory.ownerID,
                 "storeID": accessory.storeID ?? "",
                 "price": basePrice,
                 "sellPrice": basePrice,
@@ -2696,17 +3147,14 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                 "product_type": "live",
                 "category": "Live Pets",
                 "inventoryMode": liveInventoryMode.rawValue,
-                "costPrice": liveInventoryMode == .quantity ? groupCost : 0,
                 "supplier": liveSupplier.trimmingCharacters(in: .whitespacesAndNewlines),
                 "arrivalDate": ISO8601DateFormatter().string(from: liveArrivalDate),
                 "notes": liveIntakeNotes.trimmingCharacters(in: .whitespacesAndNewlines),
                 "reorderLevel": 5,
                 "units": liveInventoryMode == .individual ? unitPayloads : [],
             ]
-            if let primaryImageURL = resolvedImageURLs.first {
-                mutationPayload["imageUrl"] = primaryImageURL
-                mutationPayload["image"] = primaryImageURL
-                mutationPayload["images"] = resolvedImageURLs
+            if liveInventoryMode == .quantity && canViewStockCosts {
+                mutationPayload["costPrice"] = groupCost
             }
             if liveInventoryMode == .individual {
                 mutationPayload["standardSellingPrice"] = basePrice
@@ -2717,13 +3165,13 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             mutationCommandID = PPLivePetInventoryService.commandID("standard-selling-price")
             mutationPayload = ["standardSellingPrice": basePrice]
         } else {
-            action = "update"
+            action = "adjust"
             mutationProductID = productID
-            mutationCommandID = nil
+            mutationCommandID = PPLivePetInventoryService.commandID("group-adjustment")
             mutationPayload = [
-                "quantity": max(0, quantity),
-                "price": basePrice,
-                "finalPrice": calculatedFinalPrice,
+                "adjustmentType": "manual",
+                "targetQuantity": max(0, quantity),
+                "reason": "catalog_editor_quantity_confirmation",
             ]
         }
 
@@ -2778,7 +3226,9 @@ final class PPAccessoryEditorViewModel: ObservableObject {
             commandID: commandID,
             payloadData: try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]),
             catalogValuesData: try JSONSerialization.data(withJSONObject: catalogValues, options: [.sortedKeys]),
+            catalogCommandID: PPLivePetInventoryService.commandID("catalog-metadata"),
             acceptedProductID: nil,
+            acceptedRevision: nil,
             successMessage: successMessage,
             oldImageURLs: oldImageURLs
         )
@@ -2920,25 +3370,33 @@ final class PPAccessoryEditorViewModel: ObservableObject {
                     throw PPLivePetServiceError.invalidResponse
                 }
                 recovery.acceptedProductID = acceptedProductID
+                let acceptedRevision = PPLivePetInventoryService.integer(response["revision"])
+                recovery.acceptedRevision = acceptedRevision > 0 ? acceptedRevision : nil
                 try persistLivePetRecovery(recovery)
             }
 
             guard let acceptedProductID = recovery.acceptedProductID, !acceptedProductID.isEmpty else {
                 throw PPLivePetServiceError.invalidResponse
             }
-            var catalogValues = try dictionary(from: recovery.catalogValuesData)
-            catalogValues["updatedAt"] = FieldValue.serverTimestamp()
-            try await PPLivePetInventoryService.updateCatalogPresentation(
+            let catalogValues = try dictionary(from: recovery.catalogValuesData)
+            let catalogResponse = try await PPLivePetInventoryService.updateCatalogPresentation(
                 productID: acceptedProductID,
-                values: catalogValues
+                values: catalogValues,
+                commandID: recovery.catalogCommandID ?? "\(recovery.commandID ?? acceptedProductID)-catalog",
+                expectedRevision: recovery.acceptedRevision
+            )
+            let confirmedRevision = PPLivePetInventoryService.integer(catalogResponse["revision"])
+            let confirmedProduct = try await PPLivePetInventoryService.readProduct(
+                productID: acceptedProductID,
+                minimumRevision: confirmedRevision
             )
 
-            let retainedURLs = catalogValues["imageURLsArray"] as? [String] ?? []
+            let retainedURLs = confirmedProduct.imageURLsArray ?? []
             let confirmedSuccessMessage = recovery.successMessage
             clearLivePetRecovery()
             cleanupRemovedImages(oldImageURLs: recovery.oldImageURLs, retainedURLs: retainedURLs)
-            if let confirmedDraft = pendingSavedAccessoryDraft {
-                commitSavedAccessory(confirmedDraft)
+            if editingAccessory != nil {
+                commitSavedAccessory(confirmedProduct)
             } else {
                 commitConfirmedLivePetForm(retainedURLs: retainedURLs)
             }
@@ -5032,25 +5490,27 @@ struct PPAccessoryEditorScreen: View {
                 isFood: viewModel.isFood
             )
 
-            if !viewModel.isFood {
-                PPAccessorySizeSelector(
-                    size: $viewModel.size
-                )
-            }
-
-            PPAccessoryUnifiedMeasureChamber(
-                weightText: $viewModel.weightText,
-                weightUnit: $viewModel.weightUnit,
-                onFocusChanged: { focused in
-                    if focused { focusedField = .weight }
-                    else if focusedField == .weight { focusedField = nil }
-                }
-            )
-
             if viewModel.isFood {
+                PPAccessoryUnifiedMeasureChamber(
+                    weightText: $viewModel.weightText,
+                    weightUnit: $viewModel.weightUnit,
+                    onFocusChanged: { focused in
+                        if focused { focusedField = .weight }
+                        else if focusedField == .weight { focusedField = nil }
+                    }
+                )
+
                 PPAccessoryExpirySentinel(
                     hasExpiryDate: $viewModel.hasExpiryDate,
                     expiryDate: $viewModel.expiryDate
+                )
+            } else {
+                PPPhysicalSpecOrchestrator(
+                    viewModel: viewModel,
+                    onFocusChanged: { focused in
+                        if focused { focusedField = .weight }
+                        else if focusedField == .weight { focusedField = nil }
+                    }
                 )
             }
         }
@@ -7776,6 +8236,24 @@ private struct PPUIKitDismissalGuard: UIViewControllerRepresentable {
     }
 }
 
+/// Derived, per-animal completeness. Mirrors the required-field set that
+/// `validate()` and the Infra unit validator already enforce; it does not
+/// add or relax a rule. Gender is deliberately *not* required, because the
+/// server contract defaults an unsent gender to `UNSPECIFIED`.
+struct PPUnitReadiness {
+    let satisfied: Int
+    let required: Int
+    let missingLabels: [String]
+    let isDuplicateIdentity: Bool
+    let isUntouched: Bool
+    let genderRecorded: Bool
+    let statusSummary: String
+    let tint: Color
+
+    var isSubmittable: Bool { satisfied == required && !isDuplicateIdentity }
+    var progress: Double { required == 0 ? 1 : Double(satisfied) / Double(required) }
+}
+
 private struct PPLivePetIntakeJourney: View {
     @ObservedObject var viewModel: PPAccessoryEditorViewModel
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -9150,24 +9628,6 @@ private struct PPLivePetIntakeJourney: View {
     }
 
     // MARK: Readiness model
-
-    /// Derived, per-animal completeness. Mirrors the required-field set that
-    /// `validate()` and the Infra unit validator already enforce; it does not
-    /// add or relax a rule. Gender is deliberately *not* required, because the
-    /// server contract defaults an unsent gender to `UNSPECIFIED`.
-    private struct PPUnitReadiness {
-        let satisfied: Int
-        let required: Int
-        let missingLabels: [String]
-        let isDuplicateIdentity: Bool
-        let isUntouched: Bool
-        let genderRecorded: Bool
-        let statusSummary: String
-        let tint: Color
-
-        var isSubmittable: Bool { satisfied == required && !isDuplicateIdentity }
-        var progress: Double { required == 0 ? 1 : Double(satisfied) / Double(required) }
-    }
 
     private func unitReadiness(for unit: PPLivePetUnitDraft) -> PPUnitReadiness {
         let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -12315,7 +12775,7 @@ private struct PPLivePetChoiceSheet: View {
     }
 }
 
-private struct PPLivePetPreviewMedia: Identifiable {
+struct PPLivePetPreviewMedia: Identifiable {
     enum Source {
         case local(UIImage)
         case remote(URL)
@@ -12325,7 +12785,7 @@ private struct PPLivePetPreviewMedia: Identifiable {
     let source: Source
 }
 
-private struct PPLivePetMediaPreview: View {
+struct PPLivePetMediaPreview: View {
     let media: PPLivePetPreviewMedia
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
@@ -12429,7 +12889,7 @@ private struct PPLivePetMediaPreview: View {
     }
 }
 
-private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
+struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
     let maxSelection: Int
     let onPicked: ([UIImage], Int) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -12520,7 +12980,7 @@ private struct PPLivePetPhotoPicker: UIViewControllerRepresentable {
     }
 }
 
-private struct PPLivePetCameraPicker: UIViewControllerRepresentable {
+struct PPLivePetCameraPicker: UIViewControllerRepresentable {
     let onPicked: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -12565,7 +13025,7 @@ private struct PPLivePetCameraPicker: UIViewControllerRepresentable {
     }
 }
 
-private struct PPLivePetPressStyle: ButtonStyle {
+struct PPLivePetPressStyle: ButtonStyle {
     let reduceMotion: Bool
 
     func makeBody(configuration: Configuration) -> some View {
@@ -13370,6 +13830,1043 @@ private struct PPAccessoryUnifiedMeasureChamber: View {
         case "l": return Language.get("Unit_Liter", alter: "لتر")
         case "ml": return Language.get("Unit_Milliliter", alter: "مليلتر")
         default: return unit
+        }
+    }
+}
+
+// MARK: - Category-Defining 2D Architectural Blueprint Patterns & Presets
+
+private struct PPDimensionsGridPattern: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let step: CGFloat = 16
+        for x in stride(from: 0, through: rect.width, by: step) {
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: rect.height))
+        }
+        for y in stride(from: 0, through: rect.height, by: step) {
+            path.move(to: CGPoint(x: 0, y: y))
+            path.addLine(to: CGPoint(x: rect.width, y: y))
+        }
+        return path
+    }
+}
+
+private struct PPCageMeshPattern: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let stepX: CGFloat = 12
+        for x in stride(from: stepX, to: rect.width, by: stepX) {
+            path.move(to: CGPoint(x: x, y: 0))
+            path.addLine(to: CGPoint(x: x, y: rect.height))
+        }
+        let stepY: CGFloat = 12
+        for y in stride(from: stepY, to: rect.height, by: stepY) {
+            path.move(to: CGPoint(x: 0, y: y))
+            path.addLine(to: CGPoint(x: rect.width, y: y))
+        }
+        return path
+    }
+}
+
+private struct PPCageDimensionPreset: Identifiable {
+    let id: String
+    let width: Double
+    let height: Double
+    let unit: String
+    let label: String
+    let targetPet: String
+}
+
+// MARK: - Category-Defining 2D Architectural Blueprint Canvas
+
+private struct PPDimensionsBlueprintCanvas: View {
+    let width: Double
+    let height: Double
+    let unit: String
+    let isIPad: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var hasDimensions: Bool {
+        width > 0 || height > 0
+    }
+
+    private var clampedAspectRatio: CGFloat {
+        guard height > 0 else { return 1.4 }
+        let rawRatio = CGFloat(width / height)
+        return max(0.40, min(2.5, rawRatio))
+    }
+
+    private var displayUnitLocalized: String {
+        switch unit.lowercased() {
+        case "cm": return Language.get("PhysicalSpec_Unit_cm", alter: "سم")
+        case "m": return Language.get("PhysicalSpec_Unit_m", alter: "م")
+        case "in": return Language.get("PhysicalSpec_Unit_in", alter: "بوصة")
+        case "mm": return Language.get("PhysicalSpec_Unit_mm", alter: "ملم")
+        default: return unit
+        }
+    }
+
+    private var areaTelemetryFormatted: String? {
+        guard width > 0, height > 0 else { return nil }
+        let area = width * height
+        let isArabic = Language.isRTL()
+        let areaStr = String(format: "%.1f", area).replacingOccurrences(of: ".0", with: "")
+
+        switch unit.lowercased() {
+        case "cm":
+            let sqm = area / 10000.0
+            let sqmStr = String(format: "%.2f", sqm).replacingOccurrences(of: ".00", with: "")
+            let unitS = isArabic ? "سم²" : "cm²"
+            let unitM = isArabic ? "م²" : "m²"
+            return "\(areaStr) \(unitS) (\(sqmStr) \(unitM))".normalizedEnglishDigits
+        case "m":
+            let unitM = isArabic ? "م²" : "m²"
+            return "\(areaStr) \(unitM)".normalizedEnglishDigits
+        case "in":
+            let sqft = area / 144.0
+            let sqftStr = String(format: "%.2f", sqft).replacingOccurrences(of: ".00", with: "")
+            let unitIn = isArabic ? "بوصة²" : "in²"
+            let unitFt = isArabic ? "قدم²" : "sq ft"
+            return "\(areaStr) \(unitIn) (\(sqftStr) \(unitFt))".normalizedEnglishDigits
+        case "mm":
+            let sqcm = area / 100.0
+            let sqcmStr = String(format: "%.1f", sqcm).replacingOccurrences(of: ".0", with: "")
+            let unitMm = isArabic ? "ملم²" : "mm²"
+            let unitCm = isArabic ? "سم²" : "cm²"
+            return "\(areaStr) \(unitMm) (\(sqcmStr) \(unitCm))".normalizedEnglishDigits
+        default:
+            return "\(areaStr) \(unit)²".normalizedEnglishDigits
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                // Blueprint Ambient Background Canvas
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        colorScheme == .dark
+                            ? Color(red: 0.08, green: 0.12, blue: 0.20)
+                            : Color(red: 0.94, green: 0.96, blue: 0.99)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .strokeBorder(
+                                Color(red: 0.25, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.35 : 0.22),
+                                lineWidth: 1.0
+                            )
+                    )
+
+                // Architectural Gridlines
+                PPDimensionsGridPattern()
+                    .stroke(
+                        Color(red: 0.30, green: 0.55, blue: 0.95).opacity(colorScheme == .dark ? 0.10 : 0.06),
+                        lineWidth: 0.5
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                if hasDimensions {
+                    // Active Dimensioned Wireframe Box
+                    GeometryReader { geo in
+                        let maxW = geo.size.width - 70
+                        let maxH = geo.size.height - 56
+                        let boxAspect = clampedAspectRatio
+
+                        let boxW: CGFloat = (boxAspect >= 1.0)
+                            ? min(maxW, maxH * boxAspect)
+                            : min(maxW, maxH * boxAspect)
+                        let boxH: CGFloat = max(24, boxW / boxAspect)
+
+                        ZStack {
+                            // Proportional Wireframe Box
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.18 : 0.10))
+                                .frame(width: max(30, boxW), height: max(24, boxH))
+                                .overlay(
+                                    PPCageMeshPattern()
+                                        .stroke(
+                                            Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.25),
+                                            lineWidth: 0.75
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(
+                                            Color(red: 0.20, green: 0.50, blue: 0.95),
+                                            lineWidth: 1.5
+                                        )
+                                )
+                                .overlay(
+                                    VStack(spacing: 2) {
+                                        Image(systemName: "cube.transparent")
+                                            .font(.system(size: min(20, max(12, boxH * 0.35)), weight: .semibold))
+                                            .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                                    }
+                                )
+
+                            // Dimension Annotation Line: Top (Width)
+                            VStack(spacing: 2) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.left")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("\(String(format: "%g", width).normalizedEnglishDigits) \(displayUnitLocalized)")
+                                        .font(PPBrandFont.bold(size: 11))
+                                        .lineLimit(1)
+                                    Image(systemName: "arrow.right")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    Capsule()
+                                        .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
+                                        .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
+                                )
+                            }
+                            .offset(y: -(max(24, boxH) / 2) - 16)
+
+                            // Dimension Annotation Line: Trailing (Height)
+                            HStack(spacing: 2) {
+                                VStack(spacing: 3) {
+                                    Image(systemName: "arrow.up")
+                                        .font(.system(size: 8, weight: .bold))
+                                    Text("\(String(format: "%g", height).normalizedEnglishDigits)")
+                                        .font(PPBrandFont.bold(size: 10.5))
+                                        .lineLimit(1)
+                                    Text(displayUnitLocalized)
+                                        .font(PPBrandFont.medium(size: 9))
+                                        .lineLimit(1)
+                                    Image(systemName: "arrow.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                        .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
+                                        .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
+                                )
+                            }
+                            .offset(x: (max(30, boxW) / 2) + 26)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: boxAspect)
+                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: width)
+                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: height)
+                    }
+                } else {
+                    // Empty / Prompt State
+                    VStack(spacing: 6) {
+                        Image(systemName: "ruler")
+                            .font(.system(size: 24, weight: .light))
+                            .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.95).opacity(0.75))
+
+                        Text(Language.get("PhysicalSpec_LiveBlueprint", alter: "مخطط هندسي حي للأقفاص والنواقل"))
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(Language.get("PhysicalSpec_BlueprintPrompt", alter: "أدخل العرض والارتفاع لرسم المخطط وتحديد التناسب تلقائياً"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 16)
+                    }
+                    .padding(.vertical, 16)
+                }
+            }
+            .frame(height: isIPad ? 220 : 160)
+
+            // Footprint Area Telemetry Badge
+            if let areaBadge = areaTelemetryFormatted {
+                HStack(spacing: 5) {
+                    Image(systemName: "square.dashed")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+
+                    Text(Language.get("PhysicalSpec_Area", alter: "المساحة التقريبية:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(areaBadge)
+                        .font(PPBrandFont.bold(size: 12))
+                        .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.20 : 0.08))
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.30), lineWidth: 0.75)
+                )
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+}
+
+// MARK: - Category-Defining Dimensions Measurement Chamber
+
+private struct PPDimensionsMeasureChamber: View {
+    @Binding var widthText: String
+    @Binding var heightText: String
+    @Binding var unit: String
+    let isIPad: Bool
+
+    @FocusState private var isWidthFocused: Bool
+    @FocusState private var isHeightFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let availableUnits: [String] = ["cm", "m", "in", "mm"]
+
+    private var parsedWidth: Double {
+        Double(widthText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private var parsedHeight: Double {
+        Double(heightText.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+    }
+
+    private let cagePresets: [PPCageDimensionPreset] = [
+        PPCageDimensionPreset(id: "small", width: 40, height: 30, unit: "cm", label: "40 × 30", targetPet: Language.get("Pet_BirdsHamsters", alter: "طيور وقوارض")),
+        PPCageDimensionPreset(id: "med", width: 60, height: 40, unit: "cm", label: "60 × 40", targetPet: Language.get("Pet_CatsRabbits", alter: "قطط وأرانب")),
+        PPCageDimensionPreset(id: "large", width: 80, height: 50, unit: "cm", label: "80 × 50", targetPet: Language.get("Pet_SmallDogs", alter: "كلاب صغيرة")),
+        PPCageDimensionPreset(id: "xlarge", width: 100, height: 70, unit: "cm", label: "100 × 70", targetPet: Language.get("Pet_MedDogs", alter: "كلاب متوسطة")),
+        PPCageDimensionPreset(id: "jumbo", width: 120, height: 80, unit: "cm", label: "120 × 80", targetPet: Language.get("Pet_AviaryLarge", alter: "أقفاص كبيرة"))
+    ]
+
+    private func swapDimensions() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+            let temp = widthText
+            widthText = heightText
+            heightText = temp
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Live 2D Architectural Blueprint Canvas
+            PPDimensionsBlueprintCanvas(
+                width: parsedWidth,
+                height: parsedHeight,
+                unit: unit,
+                isIPad: isIPad
+            )
+
+            // Dual Precision Sculpted Input Fields + Central Swap Button
+            HStack(spacing: 8) {
+                // Width Input Field
+                dimensionInputField(
+                    title: Language.get("PhysicalSpec_Width", alter: "العرض"),
+                    icon: "arrow.left.and.right",
+                    text: $widthText,
+                    isFocused: $isWidthFocused
+                )
+
+                // Tactical Swap Affordance (⇄)
+                Button {
+                    swapDimensions()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(AdminSurface.control)
+                            .frame(width: 38, height: 38)
+                            .overlay(
+                                Circle()
+                                    .strokeBorder(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.35), lineWidth: 1.0)
+                            )
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                    }
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                .accessibilityLabel(Language.get("PhysicalSpec_Swap", alter: "تبديل العرض والارتفاع"))
+
+                // Height Input Field
+                dimensionInputField(
+                    title: Language.get("PhysicalSpec_Height", alter: "الارتفاع"),
+                    icon: "arrow.up.and.down",
+                    text: $heightText,
+                    isFocused: $isHeightFocused
+                )
+            }
+
+            // Unit Selector Dock (cm, m, in, mm)
+            HStack(spacing: 6) {
+                Text(Language.get("Unit", alter: "الوحدة:"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                HStack(spacing: 4) {
+                    ForEach(availableUnits, id: \.self) { u in
+                        let isSelected = unit.lowercased() == u.lowercased()
+                        Button {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.20, dampingFraction: 0.80)) {
+                                unit = u
+                            }
+                        } label: {
+                            Text(localizedUnitName(u))
+                                .font(PPBrandFont.bold(size: 12))
+                                .foregroundStyle(
+                                    isSelected
+                                        ? (colorScheme == .dark ? Color.white : Color(red: 0.15, green: 0.45, blue: 0.95))
+                                        : AdminSurface.primaryText.opacity(0.80)
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            isSelected
+                                                ? Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.35 : 0.15)
+                                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                        )
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .strokeBorder(
+                                            isSelected ? Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.60) : Color.clear,
+                                            lineWidth: 0.9
+                                        )
+                                )
+                        }
+                        .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                    }
+                }
+            }
+
+            // Cage & Enclosure Quick Presets Runway
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Language.get("PhysicalSpec_Presets_Cages", alter: "مقاسات شائعة للأقفاص والنواقل:"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(cagePresets) { preset in
+                            let isCurrentMatch = abs(parsedWidth - preset.width) < 0.01 && abs(parsedHeight - preset.height) < 0.01 && unit.caseInsensitiveCompare(preset.unit) == .orderedSame
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.78)) {
+                                    widthText = String(format: "%g", preset.width)
+                                    heightText = String(format: "%g", preset.height)
+                                    unit = preset.unit
+                                }
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 3) {
+                                        Text(verbatim: preset.label.normalizedEnglishDigits)
+                                            .font(PPBrandFont.bold(size: 12))
+                                        Text(localizedUnitName(preset.unit))
+                                            .font(PPBrandFont.medium(size: 10))
+                                    }
+                                    .foregroundStyle(
+                                        isCurrentMatch
+                                            ? (colorScheme == .dark ? Color.white : Color(red: 0.15, green: 0.45, blue: 0.95))
+                                            : AdminSurface.primaryText.opacity(0.85)
+                                    )
+
+                                    Text(preset.targetPet)
+                                        .font(AdminType.caption2)
+                                        .foregroundStyle(
+                                            isCurrentMatch
+                                                ? Color(red: 0.20, green: 0.50, blue: 0.95)
+                                                : AdminSurface.secondaryText
+                                        )
+                                        .lineLimit(1)
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(
+                                            isCurrentMatch
+                                                ? Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.30 : 0.12)
+                                                : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                        )
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(
+                                            isCurrentMatch ? Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.60) : Color.clear,
+                                            lineWidth: 1.0
+                                        )
+                                )
+                            }
+                            .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+    }
+
+    private func dimensionInputField(
+        title: String,
+        icon: String,
+        text: Binding<String>,
+        isFocused: FocusState<Bool>.Binding
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                Text(title)
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+            }
+
+            HStack(spacing: 6) {
+                TextField("0.0", text: text)
+                    .font(PPBrandFont.bold(size: 17))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .keyboardType(.decimalPad)
+                    .focused(isFocused)
+                    .onChange(of: text.wrappedValue) { val in
+                        let clean = val.normalizedEnglishDigits(allowsDecimal: true)
+                        if clean != val {
+                            text.wrappedValue = clean
+                        }
+                    }
+
+                if !text.wrappedValue.isEmpty {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        text.wrappedValue = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(AdminSurface.secondaryText.opacity(0.70))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 44)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(AdminSurface.control)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(
+                        isFocused.wrappedValue
+                            ? Color(red: 0.20, green: 0.50, blue: 0.95)
+                            : AdminSurface.hairline.opacity(0.85),
+                        lineWidth: isFocused.wrappedValue ? 1.5 : 0.75
+                    )
+            )
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func localizedUnitName(_ u: String) -> String {
+        switch u.lowercased() {
+        case "cm": return Language.get("PhysicalSpec_Unit_cm", alter: "سم")
+        case "m": return Language.get("PhysicalSpec_Unit_m", alter: "م")
+        case "in": return Language.get("PhysicalSpec_Unit_in", alter: "بوصة")
+        case "mm": return Language.get("PhysicalSpec_Unit_mm", alter: "ملم")
+        default: return u
+        }
+    }
+}
+
+// MARK: - Category-Defining Physical Specification Segmented Switcher (iPhone)
+
+private struct PPPhysicalSpecSegmentedDeck: View {
+    @Binding var selectedMode: PPPhysicalSpecMode
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let selectableModes: [PPPhysicalSpecMode] = [
+        .dimensions, .standardSize, .weightVolume
+    ]
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(selectableModes) { mode in
+                let isSelected = selectedMode == mode
+                Button {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        if selectedMode == mode {
+                            selectedMode = .none
+                        } else {
+                            selectedMode = mode
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: mode.symbol)
+                            .font(.system(size: 11.5, weight: .bold))
+
+                        Text(mode.shortTitle)
+                            .font(PPBrandFont.bold(size: 12))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
+                    }
+                    .foregroundStyle(
+                        isSelected
+                            ? (colorScheme == .dark ? Color.white : AdminSurface.primary)
+                            : AdminSurface.secondaryText
+                    )
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(
+                                isSelected
+                                    ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.14)
+                                    : Color.clear
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .strokeBorder(
+                                isSelected ? AdminSurface.primary.opacity(0.60) : Color.clear,
+                                lineWidth: 1.0
+                            )
+                    )
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                .accessibilityLabel(mode.title)
+                .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.hairline.opacity(0.70), lineWidth: 0.75)
+        )
+    }
+}
+
+// MARK: - Category-Defining Physical Specification Zero / Prompt State
+
+private struct PPPhysicalSpecZeroStateCard: View {
+    let onSelectMode: (PPPhysicalSpecMode) -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let quickModes: [PPPhysicalSpecMode] = [
+        .dimensions, .standardSize, .weightVolume
+    ]
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+
+                Text(Language.get("PhysicalSpec_Subtitle", alter: "اختر نمط قياس واحداً للمنتج أو اتركه بدون تحديد"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: 8) {
+                ForEach(quickModes) { mode in
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        onSelectMode(mode)
+                    } label: {
+                        VStack(spacing: 6) {
+                            Image(systemName: mode.symbol)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(AdminSurface.primary)
+
+                            Text(mode.shortTitle)
+                                .font(PPBrandFont.bold(size: 11.5))
+                                .foregroundStyle(AdminSurface.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(AdminSurface.control)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AdminSurface.hairline.opacity(0.75), lineWidth: 0.75)
+                        )
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                    .accessibilityLabel(mode.title)
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.015))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.hairline.opacity(0.40), lineWidth: 0.75)
+        )
+    }
+}
+
+// MARK: - Dedicated Native iPhone Physical Specification Studio
+
+private struct PPiPhonePhysicalSpecStudio: View {
+    @ObservedObject var viewModel: PPAccessoryEditorViewModel
+    var onFocusChanged: ((Bool) -> Void)? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var activeModeBadgeText: String? {
+        switch viewModel.physicalSpecMode {
+        case .none: return nil
+        case .dimensions: return Language.get("Dimensions_Short", alter: "الأبعاد W×H")
+        case .standardSize: return Language.get("CatalogIntake_SizeLabel", alter: "المقاس")
+        case .weightVolume: return Language.get("CatalogIntake_WeightLabel", alter: "الوزن/السعة")
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header: Title + Optional Tag + Active Mode Tag + Clear Button
+            HStack(alignment: .center, spacing: 6) {
+                Image(systemName: viewModel.physicalSpecMode.symbol)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 20)
+
+                Text(Language.get("PhysicalSpec_Title", alter: "المواصفات الفيزيائية للصنف"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+
+                Text(Language.get("CatalogIntake_Optional", alter: "(اختياري)"))
+                    .font(AdminType.caption2)
+                    .foregroundStyle(AdminSurface.secondaryText)
+
+                Spacer(minLength: 4)
+
+                // Active Mode Tag with Quick Clear
+                if let badgeText = activeModeBadgeText {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Text(verbatim: badgeText)
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primary)
+
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+                                viewModel.physicalSpecMode = .none
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .padding(2)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Language.get("Clear", alter: "مسح"))
+                    }
+                    .padding(.leading, 8)
+                    .padding(.trailing, 6)
+                    .padding(.vertical, 3)
+                    .background(AdminSurface.primary.opacity(colorScheme == .dark ? 0.20 : 0.08), in: Capsule())
+                    .overlay(Capsule().strokeBorder(AdminSurface.primary.opacity(0.30), lineWidth: 0.75))
+                    .transition(.scale.combined(with: .opacity))
+                }
+            }
+
+            // 3-Mode Tactile Sliding Segmented Deck
+            PPPhysicalSpecSegmentedDeck(
+                selectedMode: $viewModel.physicalSpecMode
+            )
+
+            // Active Chamber Studio
+            Group {
+                switch viewModel.physicalSpecMode {
+                case .dimensions:
+                    PPDimensionsMeasureChamber(
+                        widthText: $viewModel.dimensionWidthText,
+                        heightText: $viewModel.dimensionHeightText,
+                        unit: $viewModel.dimensionUnit,
+                        isIPad: false
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .standardSize:
+                    PPAccessorySizeSelector(
+                        size: $viewModel.size
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .weightVolume:
+                    PPAccessoryUnifiedMeasureChamber(
+                        weightText: $viewModel.weightText,
+                        weightUnit: $viewModel.weightUnit,
+                        onFocusChanged: onFocusChanged
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .none:
+                    PPPhysicalSpecZeroStateCard(
+                        onSelectMode: { mode in
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                                viewModel.physicalSpecMode = mode
+                            }
+                        }
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Dedicated Native iPad Physical Specification Studio
+
+private struct PPiPadPhysicalSpecStudio: View {
+    @ObservedObject var viewModel: PPAccessoryEditorViewModel
+    var onFocusChanged: ((Bool) -> Void)? = nil
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private let selectableModes: [PPPhysicalSpecMode] = [
+        .dimensions, .standardSize, .weightVolume
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // Header with Large Title + Keyboard Shortcuts Telemetry + Clear Affordance
+            HStack(alignment: .center, spacing: 8) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(Language.get("PhysicalSpec_Title", alter: "المواصفات الفيزيائية للصنف"))
+                            .font(PPBrandFont.bold(size: 17))
+                            .foregroundStyle(AdminSurface.primaryText)
+
+                        Text(Language.get("CatalogIntake_Optional", alter: "(اختياري)"))
+                            .font(AdminType.caption)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+
+                    Text(Language.get("PhysicalSpec_Subtitle", alter: "اختر نمط قياس واحداً للمنتج أو اتركه بدون تحديد"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+
+                Spacer()
+
+                if viewModel.physicalSpecMode != .none {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.24, dampingFraction: 0.78)) {
+                            viewModel.physicalSpecMode = .none
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 12))
+                            Text(Language.get("PhysicalSpec_Clear", alter: "مسح التحديد"))
+                                .font(AdminType.caption2Bold)
+                        }
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(AdminSurface.control, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                }
+            }
+
+            // Widescreen 3-Card Tactical Archetype Deck
+            HStack(spacing: 12) {
+                ForEach(selectableModes) { mode in
+                    let isSelected = viewModel.physicalSpecMode == mode
+                    Button {
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                            if viewModel.physicalSpecMode == mode {
+                                viewModel.physicalSpecMode = .none
+                            } else {
+                                viewModel.physicalSpecMode = mode
+                            }
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 10) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(
+                                        isSelected
+                                            ? AdminSurface.primary.opacity(0.20)
+                                            : (colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+                                    )
+                                    .frame(width: 36, height: 36)
+
+                                Image(systemName: mode.symbol)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(
+                                        isSelected ? AdminSurface.primary : AdminSurface.secondaryText
+                                    )
+                            }
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 4) {
+                                    Text(mode.title)
+                                        .font(PPBrandFont.bold(size: 13.5))
+                                        .foregroundStyle(
+                                            isSelected ? AdminSurface.primaryText : AdminSurface.primaryText.opacity(0.85)
+                                        )
+                                        .lineLimit(1)
+
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(AdminSurface.primary)
+                                    }
+                                }
+
+                                Text(mode.subtitle)
+                                    .font(AdminType.caption2)
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(
+                                    isSelected
+                                        ? AdminSurface.primary.opacity(colorScheme == .dark ? 0.22 : 0.08)
+                                        : AdminSurface.control
+                                )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(
+                                    isSelected
+                                        ? AdminSurface.primary.opacity(0.75)
+                                        : AdminSurface.hairline.opacity(0.70),
+                                    lineWidth: isSelected ? 1.5 : 0.75
+                                )
+                        )
+                        .shadow(
+                            color: isSelected ? AdminSurface.primary.opacity(0.12) : Color.clear,
+                            radius: 8,
+                            x: 0,
+                            y: 2
+                        )
+                    }
+                    .buttonStyle(PPLivePetPressStyle(reduceMotion: reduceMotion))
+                    .hoverEffect(.lift)
+                    .accessibilityLabel(mode.title)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+                }
+            }
+
+            // Widescreen Active Content Stage
+            Group {
+                switch viewModel.physicalSpecMode {
+                case .dimensions:
+                    PPDimensionsMeasureChamber(
+                        widthText: $viewModel.dimensionWidthText,
+                        heightText: $viewModel.dimensionHeightText,
+                        unit: $viewModel.dimensionUnit,
+                        isIPad: true
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .standardSize:
+                    PPAccessorySizeSelector(
+                        size: $viewModel.size
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .weightVolume:
+                    PPAccessoryUnifiedMeasureChamber(
+                        weightText: $viewModel.weightText,
+                        weightUnit: $viewModel.weightUnit,
+                        onFocusChanged: onFocusChanged
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
+
+                case .none:
+                    PPPhysicalSpecZeroStateCard(
+                        onSelectMode: { mode in
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                                viewModel.physicalSpecMode = mode
+                            }
+                        }
+                    )
+                    .transition(reduceMotion ? .opacity : .opacity)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Category-Defining Physical Specification Orchestrator
+
+private struct PPPhysicalSpecOrchestrator: View {
+    @ObservedObject var viewModel: PPAccessoryEditorViewModel
+    var onFocusChanged: ((Bool) -> Void)? = nil
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var isIPad: Bool {
+        horizontalSizeClass == .regular || UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    var body: some View {
+        Group {
+            if isIPad {
+                PPiPadPhysicalSpecStudio(
+                    viewModel: viewModel,
+                    onFocusChanged: onFocusChanged
+                )
+            } else {
+                PPiPhonePhysicalSpecStudio(
+                    viewModel: viewModel,
+                    onFocusChanged: onFocusChanged
+                )
+            }
         }
     }
 }
@@ -14342,28 +15839,30 @@ private struct PPAccessoryFoodIntakeJourney: View {
                     isFood: viewModel.isFood
                 )
 
-                // Category-Defining Item Size Selector Chamber
-                if !viewModel.isFood {
-                    PPAccessorySizeSelector(
-                        size: $viewModel.size
-                    )
-                }
-
-                // Unified Physical Measurement Chamber
-                PPAccessoryUnifiedMeasureChamber(
-                    weightText: $viewModel.weightText,
-                    weightUnit: $viewModel.weightUnit,
-                    onFocusChanged: { focused in
-                        if focused { focusedField = .weight }
-                        else if focusedField == .weight { focusedField = nil }
-                    }
-                )
-
-                // Expiry Date Sentinel (if food)
                 if viewModel.isFood {
+                    // Unified Physical Measurement Chamber (Food uses weight or volume)
+                    PPAccessoryUnifiedMeasureChamber(
+                        weightText: $viewModel.weightText,
+                        weightUnit: $viewModel.weightUnit,
+                        onFocusChanged: { focused in
+                            if focused { focusedField = .weight }
+                            else if focusedField == .weight { focusedField = nil }
+                        }
+                    )
+
+                    // Expiry Date Sentinel (if food)
                     PPAccessoryExpirySentinel(
                         hasExpiryDate: $viewModel.hasExpiryDate,
                         expiryDate: $viewModel.expiryDate
+                    )
+                } else {
+                    // Category-Defining Physical Specification Studio (Exclusive: Dimensions W×H vs Size vs Weight)
+                    PPPhysicalSpecOrchestrator(
+                        viewModel: viewModel,
+                        onFocusChanged: { focused in
+                            if focused { focusedField = .weight }
+                            else if focusedField == .weight { focusedField = nil }
+                        }
                     )
                 }
             }

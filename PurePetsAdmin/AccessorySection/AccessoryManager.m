@@ -16,6 +16,7 @@ static NSString * const kFieldQuantity = @"quantity";
 static NSString * const kFieldNoStock = @"noStock";
 static NSString * const kFieldActive = @"active";
 static NSString * const kFieldUpdatedAt = @"updatedAt";
+static NSInteger const kInventoryLivePageLimit = 100;
 
 static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     return [NSError errorWithDomain:@"pp.accessory.manager"
@@ -116,6 +117,104 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
     });
 }
 
+- (NSString *)_commandIDForAction:(NSString *)action productID:(NSString *)productID {
+    NSString *safeAction = action.length > 0 ? action : @"inventory";
+    NSString *safeProductID = productID.length > 0 ? productID : @"new";
+    return [NSString stringWithFormat:@"admin-ios-%@-%@-%@", safeAction, safeProductID, [NSUUID UUID].UUIDString.lowercaseString];
+}
+
+- (void)_callInventoryAction:(NSString *)action
+                   productID:(NSString * _Nullable)productID
+                      payload:(NSDictionary *)payload
+                   completion:(AccessoryVoidBlock)completion {
+    NSString *commandID = [self _commandIDForAction:action productID:productID ?: @"new"];
+    NSMutableDictionary *request = [@{
+        @"contractVersion": @2,
+        @"action": action,
+        @"commandId": commandID,
+        @"payload": payload ?: @{}
+    } mutableCopy];
+    if (productID.length > 0) {
+        request[@"productId"] = productID;
+    }
+    [[[FIRFunctions functions] HTTPSCallableWithName:@"validateInventoryChange"]
+     callWithObject:request
+     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+        if (error) {
+            if (completion) completion(error);
+            return;
+        }
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        BOOL valid = [response[@"ok"] boolValue] && [response[@"commandId"] isEqualToString:commandID];
+        if (completion) {
+            completion(valid ? nil : PPAccessoryError(502, @"Inventory service returned an invalid command response."));
+        }
+    }];
+}
+
+- (void)_loadCanonicalBranchForProductID:(NSString *)productID
+                              completion:(void (^)(NSString * _Nullable branchID, NSError * _Nullable error))completion {
+    [[[self col] documentWithPath:productID] getDocumentWithCompletion:^(FIRDocumentSnapshot * _Nullable snapshot, NSError * _Nullable error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        if (!snapshot.exists) {
+            completion(nil, PPAccessoryError(404, @"Inventory item was not found."));
+            return;
+        }
+        NSDictionary *data = snapshot.data ?: @{};
+        NSString *branchID = [data[@"storeID"] isKindOfClass:NSString.class] ? data[@"storeID"] : nil;
+        if (branchID.length == 0 && [data[@"branchID"] isKindOfClass:NSString.class]) {
+            branchID = data[@"branchID"];
+        }
+        branchID = [branchID stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (branchID.length == 0 || [branchID isEqualToString:@"main_store"]) {
+            completion(nil, PPAccessoryError(412, @"A specific authoritative branch is required for stock adjustment."));
+            return;
+        }
+        completion(branchID, nil);
+    }];
+}
+
+- (void)_adjustProductID:(NSString *)productID
+              newQuantity:(NSNumber * _Nullable)newQuantity
+                     delta:(NSNumber * _Nullable)delta
+                    reason:(NSString *)reason
+                completion:(AccessoryVoidBlock)completion {
+    [self _loadCanonicalBranchForProductID:productID completion:^(NSString * _Nullable branchID, NSError * _Nullable error) {
+        if (error || branchID.length == 0) {
+            if (completion) completion(error ?: PPAccessoryError(412, @"A specific authoritative branch is required."));
+            return;
+        }
+        NSString *commandID = [self _commandIDForAction:@"adjust" productID:productID];
+        NSMutableDictionary *payload = [@{
+            @"productId": productID,
+            @"branchId": branchID,
+            @"commandId": commandID,
+            @"type": @"adjustment",
+            @"reason": reason.length > 0 ? reason : @"manual_adjustment",
+            @"referenceId": @"legacy_accessory_manager"
+        } mutableCopy];
+        if (newQuantity) payload[@"newQuantity"] = newQuantity;
+        if (delta) payload[@"delta"] = delta;
+        NSDictionary *request = @{ @"contractVersion": @2, @"payload": payload };
+        [[[FIRFunctions functions] HTTPSCallableWithName:@"adjustBranchStock"]
+         callWithObject:request
+         completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable callError) {
+            if (callError) {
+                if (completion) completion(callError);
+                return;
+            }
+            NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+            BOOL valid = [response[@"ok"] boolValue] && [response[@"commandId"] isEqualToString:commandID];
+            if (completion) {
+                completion(valid ? nil : PPAccessoryError(502, @"Stock service returned an invalid command response."));
+            }
+        }];
+    }];
+}
+
 #pragma mark - READ
 
 - (void)fetchAllAccessories:(AccessoryArrayBlock)completion {
@@ -160,7 +259,8 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
 }
 
 - (id<FIRListenerRegistration>)observeAccessoriesOfKind:(AccessKindType)kind callback:(AccessoryArrayBlock)onChange {
-    return [[self _queryForKind:kind] addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
+    FIRQuery *boundedQuery = [[self _queryForKind:kind] queryLimitedTo:kInventoryLivePageLimit];
+    return [boundedQuery addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
         if (!onChange) return;
         onChange(error ? nil : [self _mapDocs:snap.documents], error);
     }];
@@ -238,7 +338,7 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
 - (id<FIRListenerRegistration>)observeAccessoriesForStoreID:(NSString *)storeID
                                                         kind:(AccessKindType)kind
                                                     callback:(AccessoryArrayBlock)onChange {
-    return [[self _queryForStoreID:storeID kind:kind]
+    return [[[self _queryForStoreID:storeID kind:kind] queryLimitedTo:kInventoryLivePageLimit]
             addSnapshotListener:^(FIRQuerySnapshot * _Nullable snap, NSError * _Nullable error) {
         if (!onChange) return;
         onChange(error ? nil : [self _mapDocs:snap.documents], error);
@@ -261,12 +361,6 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    if (model.ownerID.length == 0) {
-        model.ownerID = [FIRAuth auth].currentUser.uid ?: @"";
-    }
-    if (model.storeID.length == 0) {
-        model.storeID = model.ownerID ?: @"";
-    }
     if (model.accessKindType == AccessTypeFood) {
         model.condition = AccessConditionsNew;
     }
@@ -274,32 +368,72 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
 
     BOOL isUpdate = model.accessoryID.length > 0;
     NSString *action = isUpdate ? @"update" : @"create";
-    NSMutableDictionary *payload = [[model toFirestoreDictionary] mutableCopy];
-    // Public catalog document never holds client-supplied cost
-    [payload removeObjectForKey:@"costPrice"];
-    [payload removeObjectForKey:@"buyPrice"];
+    NSMutableDictionary *payload = [@{
+        @"name": model.name ?: @"",
+        @"nameEn": model.nameEn ?: @"",
+        @"desc": model.desc ?: @"",
+        @"descEn": model.descEn ?: @"",
+        @"price": model.price ?: @0,
+        @"discountPercent": model.discountPercent ?: @0,
+        @"discountAmount": model.discountAmount ?: @0,
+        @"petMainCategoryID": @(model.petMainCategoryID),
+        @"petSubCategoryID": @(model.petSubCategoryID),
+        @"condition": @(model.condition),
+        @"imageURLsArray": model.imageURLsArray ?: @[],
+        @"isNew": @(model.isNew),
+        @"hasOffer": @(model.hasOffer),
+        @"showInAppMarket": @(model.showInAppMarket),
+        @"active": @(model.active)
+    } mutableCopy];
+    if (model.sku.length > 0) payload[@"sku"] = model.sku;
+    if (model.barcode.length > 0) payload[@"barcode"] = model.barcode;
+    if (model.category.length > 0) payload[@"category"] = model.category;
+    if (model.wholesalePrice) payload[@"wholesalePrice"] = model.wholesalePrice;
+    if (model.weight) payload[@"weight"] = model.weight;
+    if (model.weightUnit.length > 0) payload[@"weightUnit"] = model.weightUnit;
+    if (model.size.length > 0) payload[@"size"] = model.size;
+    if (model.expiryDate) payload[@"expiryDate"] = [NSISO8601DateFormatter stringFromDate:model.expiryDate timeZone:NSTimeZone.localTimeZone formatOptions:NSISO8601DateFormatWithInternetDateTime];
 
-    NSMutableDictionary *requestData = [@{
+    if (!isUpdate) {
+        payload[@"quantity"] = @(MAX(0, model.quantity));
+        payload[@"product_type"] = model.accessKindType == AccessTypeLivePets ? @"live" : @"normal";
+        payload[@"accessKindType"] = @(model.accessKindType);
+        NSString *branchID = model.resolvedBranchID;
+        if (branchID.length > 0 && ![branchID isEqualToString:@"main_store"]) {
+            payload[@"storeID"] = branchID;
+            payload[@"branchId"] = branchID;
+        }
+        if (model.costPrice) payload[@"costPrice"] = model.costPrice;
+    }
+
+    NSString *commandID = [self _commandIDForAction:action productID:isUpdate ? model.accessoryID : @"new"];
+    NSMutableDictionary *request = [@{
         @"contractVersion": @2,
         @"action": action,
+        @"commandId": commandID,
         @"payload": payload
     } mutableCopy];
     if (isUpdate) {
-        requestData[@"productId"] = model.accessoryID;
+        request[@"productId"] = model.accessoryID;
+        if (model.revision > 0) request[@"expectedRevision"] = @(model.revision);
     }
-
-    FIRFunctions *functions = [FIRFunctions functions];
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:requestData completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
+    [[[FIRFunctions functions] HTTPSCallableWithName:@"validateInventoryChange"]
+     callWithObject:request
+     completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
         if (error) {
-            NSLog(@"[AccessoryManager] validateInventoryChange %@ failed: %@", action, error.localizedDescription);
             if (completion) completion(error);
             return;
         }
-        if (!isUpdate && [result.data isKindOfClass:[NSDictionary class]]) {
-            NSString *newId = result.data[@"productId"];
-            if (newId.length) {
-                model.accessoryID = newId;
-            }
+        NSDictionary *response = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
+        if (![response[@"ok"] boolValue] || ![response[@"commandId"] isEqualToString:commandID]) {
+            if (completion) completion(PPAccessoryError(502, @"Inventory service returned an invalid command response."));
+            return;
+        }
+        if (!isUpdate && [response[@"productId"] isKindOfClass:NSString.class]) {
+            model.accessoryID = response[@"productId"];
+        }
+        if ([response[@"revision"] respondsToSelector:@selector(integerValue)]) {
+            model.revision = [response[@"revision"] integerValue];
         }
         if (completion) completion(nil);
     }];
@@ -311,22 +445,11 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSDictionary *payload = @{
-        @"contractVersion": @2,
-        @"action": @"update",
-        @"productId": docID,
-        @"payload": @{
-            @"quantity": @(qty),
-            @"noStock": @(qty <= 0)
-        }
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] updateQuantity via validateInventoryChange failed: %@", error.localizedDescription);
-        }
-        if (completion) completion(error);
-    }];
+    if (qty < 0) {
+        if (completion) completion(PPAccessoryError(400, @"Inventory quantity cannot be negative."));
+        return;
+    }
+    [self _adjustProductID:docID newQuantity:@(qty) delta:nil reason:@"legacy_absolute_count" completion:completion];
 }
 
 - (void)adjustQuantityBy:(NSInteger)delta forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -335,22 +458,7 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSDictionary *payload = @{
-        @"action": @"adjust",
-        @"productId": docID,
-        @"payload": @{
-            @"type": delta >= 0 ? @"stock_in" : @"stock_out",
-            @"quantity": @(ABS(delta)),
-            @"reason": @"manual_adjustment"
-        }
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] adjustQuantityBy via validateInventoryChange failed: %@", error.localizedDescription);
-        }
-        if (completion) completion(error);
-    }];
+    [self _adjustProductID:docID newQuantity:nil delta:@(delta) reason:@"legacy_relative_adjustment" completion:completion];
 }
 
 - (void)setNoStock:(BOOL)noStock forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -359,23 +467,14 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSMutableDictionary *updatePayload = [@{ @"noStock": @(noStock) } mutableCopy];
-    if (noStock) {
-        updatePayload[@"quantity"] = @0;
-    }
-    NSDictionary *payload = @{
-        @"contractVersion": @2,
-        @"action": @"update",
-        @"productId": docID,
-        @"payload": updatePayload
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] setNoStock via validateInventoryChange failed: %@", error.localizedDescription);
-        }
-        if (completion) completion(error);
-    }];
+    // Availability is derived by Infra from the committed branch quantity.
+    // A zero-delta command safely reconciles a legacy false toggle without
+    // allowing the client to author `noStock` independently.
+    [self _adjustProductID:docID
+               newQuantity:noStock ? @0 : nil
+                      delta:noStock ? nil : @0
+                     reason:noStock ? @"legacy_marked_no_stock" : @"legacy_reconcile_in_stock"
+                 completion:completion];
 }
 
 - (void)updatePrice:(NSNumber *)price forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -388,19 +487,7 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSDictionary *payload = @{
-        @"contractVersion": @2,
-        @"action": @"update",
-        @"productId": docID,
-        @"payload": @{ @"price": price }
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] updatePrice via validateInventoryChange failed: %@", error.localizedDescription);
-        }
-        if (completion) completion(error);
-    }];
+    [self _callInventoryAction:@"update" productID:docID payload:@{ @"price": price } completion:completion];
 }
 
 - (void)setActive:(BOOL)active forAccessoryID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -409,19 +496,7 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         return;
     }
 
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSDictionary *payload = @{
-        @"contractVersion": @2,
-        @"action": @"update",
-        @"productId": docID,
-        @"payload": @{ @"active": @(active) }
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] setActive via validateInventoryChange failed: %@", error.localizedDescription);
-        }
-        if (completion) completion(error);
-    }];
+    [self _callInventoryAction:@"update" productID:docID payload:@{ @"active": @(active) } completion:completion];
 }
 
 - (void)deleteAccessoryWithID:(NSString *)docID completion:(AccessoryVoidBlock)completion {
@@ -429,30 +504,37 @@ static NSError *PPAccessoryError(NSInteger code, NSString *message) {
         if (completion) completion(PPAccessoryError(400, @"Accessory id is missing."));
         return;
     }
-    // Zero physical deletions: route through authoritative validateInventoryChange Cloud Function for soft deletion.
-    FIRFunctions *functions = [FIRFunctions functions];
-    NSDictionary *payload = @{
-        @"action": @"delete",
-        @"productId": docID
-    };
-    [[functions HTTPSCallableWithName:@"validateInventoryChange"] callWithObject:payload completion:^(FIRHTTPSCallableResult * _Nullable result, NSError * _Nullable error) {
-        if (error) {
-            NSLog(@"[AccessoryManager] validateInventoryChange delete failed: %@", error.localizedDescription);
-            if (completion) completion(error);
-            return;
-        }
-        if (completion) completion(nil);
-    }];
+    [self _callInventoryAction:@"delete"
+                     productID:docID
+                        payload:@{ @"reason": @"legacy_admin_soft_delete" }
+                     completion:completion];
 }
 
 - (void)batchUpdateQuantities:(NSDictionary<NSString *,NSNumber *> *)idToQty completion:(AccessoryVoidBlock)completion {
-    FIRWriteBatch *batch = [self.db batch];
+    if (idToQty.count == 0) {
+        if (completion) completion(nil);
+        return;
+    }
+    dispatch_group_t group = dispatch_group_create();
+    dispatch_queue_t stateQueue = dispatch_queue_create("pp.accessory.manager.batch.state", DISPATCH_QUEUE_SERIAL);
+    __block NSError *firstError = nil;
     [idToQty enumerateKeysAndObjectsUsingBlock:^(NSString *docID, NSNumber *qtyNum, BOOL *stop) {
         if (docID.length == 0) return;
-        FIRDocumentReference *ref = [[self col] documentWithPath:docID];
-        [batch updateData:[self _inventoryPayloadForQuantity:qtyNum.integerValue] forDocument:ref];
+        dispatch_group_enter(group);
+        [self updateQuantity:qtyNum.integerValue forAccessoryID:docID completion:^(NSError * _Nullable error) {
+            if (error) {
+                dispatch_sync(stateQueue, ^{
+                    if (!firstError) firstError = error;
+                });
+            }
+            dispatch_group_leave(group);
+        }];
     }];
-    [batch commitWithCompletion:completion];
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        __block NSError *resultError = nil;
+        dispatch_sync(stateQueue, ^{ resultError = firstError; });
+        if (completion) completion(resultError);
+    });
 }
 
 #pragma mark - LIVE COUNT

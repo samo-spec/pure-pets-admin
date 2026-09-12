@@ -613,6 +613,7 @@ struct AdminPOSHistoryView: View {
     @State private var receiptForThermalPrint: POSCompletedReceipt? = nil
     @State private var receiptNoticeForPrint: String? = nil
     @State private var receiptForRefund: PPPOSReceipt? = nil
+    @State private var receiptForLivePetReturn: PPPOSReceipt? = nil
     @State private var receiptForCancel: PPPOSReceipt? = nil
     @State private var copyToastText: String? = nil
     @State private var isShowingFastSell: Bool = false
@@ -712,7 +713,11 @@ struct AdminPOSHistoryView: View {
                 onRefund: {
                     selectedDossierReceipt = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        receiptForRefund = receipt
+                        if receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise {
+                            receiptForLivePetReturn = receipt
+                        } else {
+                            receiptForRefund = receipt
+                        }
                     }
                 },
                 onCancel: {
@@ -726,7 +731,24 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Refund Studio Sheet
+        // Live Pet Return Coordinator Sheet
+        .sheet(item: $receiptForLivePetReturn) { receipt in
+            LivePetReturnCoordinatorView(
+                receipt: receipt,
+                onProceedToMerchandiseRefund: { mixedReceipt in
+                    receiptForLivePetReturn = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        receiptForRefund = mixedReceipt
+                    }
+                },
+                onComplete: { returnCase in
+                    receiptForLivePetReturn = nil
+                    viewModel.load(branchID: BranchContextStore.shared.activeBranch?.branchID)
+                    showToast(Language.get("LivePet_Confirm_SuccessTitle", alter: "تم تسجيل استرجاع الحيوان بنجاح"))
+                }
+            )
+        }
+        // Refund Studio Sheet (Generic Merchandise / Mixed)
         .sheet(item: $receiptForRefund) { receipt in
             POSRefundStudioSheet(
                 receipt: receipt,
@@ -2267,12 +2289,13 @@ struct POSTransactionDossierSheet: View {
                 }
                 .buttonStyle(.plain)
 
-                // Refund Button
+                // Refund / Live Pet Return Button
                 Button(action: onRefund) {
                     HStack(spacing: 6) {
-                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                        let routesToLivePetReturn = receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
+                        Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
                             .font(.system(size: 14, weight: .bold))
-                        Text(Language.get("POS_Action_Refund", alter: "استرداد"))
+                        Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
                             .font(AdminType.captionBold)
                     }
                     .foregroundColor(isCancelled || isFullyRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
@@ -2327,6 +2350,7 @@ struct POSRefundStudioSheet: View {
     @State private var itemConditions: [String: String] = [:]
     @State private var selectedReason: String = ""
     @State private var customReason: String = ""
+    @State private var isShowingLivePetCoordinator: Bool = false
 
     private struct ReturnConditionOption: Identifiable {
         let id: String
@@ -2415,6 +2439,11 @@ struct POSRefundStudioSheet: View {
                             AdminErrorBanner(message: error)
                         }
 
+                        // Live Pet Return Banner (Routing Layer)
+                        if receipt.hasIndividuallyTrackedLivePets {
+                            livePetRoutingNotice
+                        }
+
                         // Mode Selector: Full Refund vs Partial
                         HStack(spacing: 10) {
                             modeButton(
@@ -2493,6 +2522,17 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
+        .sheet(isPresented: $isShowingLivePetCoordinator) {
+            LivePetReturnCoordinatorView(
+                receipt: receipt,
+                onProceedToMerchandiseRefund: { _ in
+                    isShowingLivePetCoordinator = false
+                },
+                onComplete: { returnCase in
+                    isShowingLivePetCoordinator = false
+                }
+            )
+        }
         .onAppear {
             initializeQuantities()
         }
@@ -2515,12 +2555,54 @@ struct POSRefundStudioSheet: View {
 
     private func initializeQuantities() {
         for item in receipt.items {
+            let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
             let available = max(0, item.quantity - item.refundedQuantity)
-            itemQuantities[item.itemID] = isFullRefund ? available : 0
+            itemQuantities[item.itemID] = (isFullRefund && !isLivePet) ? available : 0
             if itemConditions[item.itemID] == nil {
                 itemConditions[item.itemID] = "sellable"
             }
         }
+    }
+
+    private var livePetRoutingNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "pawprint.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(AdminSurface.primary)
+
+                Text(Language.get("LivePet_MixedReceiptNoticeTitle", alter: "تحتوي الفاتورة على حيوانات أليفة محجلة"))
+                    .font(AdminType.captionBold)
+                    .foregroundColor(AdminSurface.primaryText)
+
+                Spacer()
+            }
+
+            Text(Language.get("LivePet_MixedReceiptNoticeSub", alter: "لاسترجاع الحيوانات الأليفة بدقة رقم الحجل وبروتوكول الفحص، يرجى استخدام استوديو الحيوانات الأليفة المخصص."))
+                .font(AdminType.caption)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            Button {
+                isShowingLivePetCoordinator = true
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.triangle.swap")
+                    Text(Language.get("LivePet_LaunchCoordinatorButton", alter: "الانتقال إلى استرجاع الحيوانات الأليفة"))
+                }
+                .font(AdminType.captionBold)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+                .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(AdminSurface.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AdminSurface.primary.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private var itemSelectionSection: some View {
@@ -2533,15 +2615,27 @@ struct POSRefundStudioSheet: View {
 
             VStack(spacing: 8) {
                 ForEach(receipt.items, id: \.itemID) { item in
+                    let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
                     let available = max(0, item.quantity - item.refundedQuantity)
-                    let currentQty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
+                    let currentQty = isFullRefund ? (isLivePet ? 0 : available) : (itemQuantities[item.itemID] ?? 0)
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.name)
-                                    .font(AdminType.body)
-                                    .foregroundColor(AdminSurface.primaryText)
+                                HStack(spacing: 6) {
+                                    Text(item.name)
+                                        .font(AdminType.body)
+                                        .foregroundColor(AdminSurface.primaryText)
+
+                                    if isLivePet {
+                                        Text(Language.get("LivePet_TrackedBadge", alter: "حيوان محجل"))
+                                            .font(AdminType.caption2Bold)
+                                            .foregroundColor(AdminSurface.primary)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 1)
+                                            .background(AdminSurface.primary.opacity(0.1), in: Capsule())
+                                    }
+                                }
 
                                 Text(verbatim: isFullRefund
                                     ? "\(item.price.englishDigits(decimals: 2)) \(Language.get("QAR", alter: "ر.ق")) • \(Language.get("Quantity", alter: "الكمية")): \(available.englishDigits)"
@@ -2552,7 +2646,23 @@ struct POSRefundStudioSheet: View {
 
                             Spacer()
 
-                            if isFullRefund {
+                            if isLivePet {
+                                Button {
+                                    isShowingLivePetCoordinator = true
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "pawprint.fill")
+                                            .font(.system(size: 11, weight: .bold))
+                                        Text(Language.get("LivePet_SelectExactRingTag", alter: "تحديد الحجل"))
+                                            .font(AdminType.caption2Bold)
+                                    }
+                                    .foregroundColor(AdminSurface.primary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            } else if isFullRefund {
                                 Text(verbatim: "\(available.englishDigits)")
                                     .font(AdminType.headline)
                                     .foregroundColor(Color(uiColor: .ppPrimary))
@@ -2593,8 +2703,8 @@ struct POSRefundStudioSheet: View {
                             }
                         }
 
-                        // Condition Selector Chips (Rendered when item has returned quantity)
-                        if currentQty > 0 {
+                        // Condition Selector Chips (Only rendered for merchandise items with returned quantity)
+                        if !isLivePet && currentQty > 0 {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(Language.get("pos_refund_condition_title", alter: "حالة المنتج المرتجع ومصير المخزون"))
                                     .font(AdminType.caption)
@@ -2703,12 +2813,23 @@ struct POSRefundStudioSheet: View {
 
     private var calculatedRefundAmount: Double {
         if isFullRefund {
-            return max(0.0, receipt.total - receipt.refundedAmount)
+            var sum: Double = 0
+            for item in receipt.items {
+                let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
+                if !isLivePet {
+                    let available = max(0, item.quantity - item.refundedQuantity)
+                    sum += Double(available) * item.price
+                }
+            }
+            return min(sum, max(0.0, receipt.total - receipt.refundedAmount))
         } else {
             var sum: Double = 0
             for item in receipt.items {
-                let qty = itemQuantities[item.itemID] ?? 0
-                sum += Double(qty) * item.price
+                let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
+                if !isLivePet {
+                    let qty = itemQuantities[item.itemID] ?? 0
+                    sum += Double(qty) * item.price
+                }
             }
             return min(sum, max(0.0, receipt.total - receipt.refundedAmount))
         }
@@ -2726,6 +2847,8 @@ struct POSRefundStudioSheet: View {
 
         var mapped: [[String: Any]] = []
         for item in receipt.items {
+            let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
+            guard !isLivePet else { continue }
             let available = max(0, item.quantity - item.refundedQuantity)
             let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
             if qty > 0 {
@@ -2767,6 +2890,8 @@ struct POSRefundStudioSheet: View {
                     receipt.status = "partially_refunded"
                 }
                 for item in receipt.items {
+                    let isLivePet = (item.inventoryMode?.uppercased() == "INDIVIDUAL_TRACKED") || !item.unitIDs.isEmpty
+                    guard !isLivePet else { continue }
                     let available = max(0, item.quantity - item.refundedQuantity)
                     let qty = isFullRefund ? available : (itemQuantities[item.itemID] ?? 0)
                     if qty > 0 {

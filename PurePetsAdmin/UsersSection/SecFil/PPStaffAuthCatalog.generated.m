@@ -9,7 +9,7 @@
 
 NSString * const PPStaffIAMPolicyVersion = @"2.0.0-draft.1";
 NSString * const PPStaffIAMSchemaVersion = @"2.0.0";
-NSString * const PPStaffIAMPolicySHA256 = @"9bc50f132f50ba66aece07207ec74236625ccb9be353e15f8cb770088fa5678a";
+NSString * const PPStaffIAMPolicySHA256 = @"8e25da097faf871ec0b034ccdf2cf230ce13a2ae99a14dbbccdcd25b8647acbd";
 
 #pragma mark - Role Definitions
 
@@ -169,6 +169,11 @@ NSString * const kStaffPermIamProjectionReconcile = @"iam.projection.reconcile";
 NSString * const kStaffPermIamPolicyRead = @"iam.policy.read";
 NSString * const kStaffPermIamPolicyUpdate = @"iam.policy.update";
 NSString * const kStaffPermIamRootAssign = @"iam.root.assign";
+NSString * const kStaffPermReturnsLivePetView = @"returns.live_pet.view";
+NSString * const kStaffPermReturnsLivePetCreate = @"returns.live_pet.create";
+NSString * const kStaffPermReturnsLivePetReceive = @"returns.live_pet.receive";
+NSString * const kStaffPermReturnsLivePetInspect = @"returns.live_pet.inspect";
+NSString * const kStaffPermReturnsLivePetClearForResale = @"returns.live_pet.clear_for_resale";
 
 #pragma mark - Catalog Accessor Implementations
 
@@ -340,6 +345,11 @@ NSArray<NSString *> * PPStaffAllPermissionKeys(void) {
             kStaffPermIamPolicyRead,
             kStaffPermIamPolicyUpdate,
             kStaffPermIamRootAssign,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
+            kStaffPermReturnsLivePetInspect,
+            kStaffPermReturnsLivePetClearForResale,
         ];
     });
     return keys;
@@ -623,6 +633,16 @@ NSArray<NSDictionary<NSString *, id> *> * PPStaffPermissionModules(void) {
                    @{ @"key": @"banners.view", @"labelEn": @"View banners", @"labelAr": @"عرض البنرات", @"riskTier": @"T0", @"protected": @NO },
                    @{ @"key": @"banners.manage", @"labelEn": @"Manage banners", @"labelAr": @"إدارة البنرات", @"riskTier": @"T1", @"protected": @NO },
                ] },
+            @{ @"key": @"returns",
+               @"labelEn": @"Live Pet Returns",
+               @"labelAr": @"مرتجعات الحيوانات الحية",
+               @"actions": @[
+                   @{ @"key": @"returns.live_pet.view", @"labelEn": @"View live pet return cases", @"labelAr": @"عرض حالات إرجاع الحيوانات الحية", @"riskTier": @"T0", @"protected": @NO },
+                   @{ @"key": @"returns.live_pet.create", @"labelEn": @"Create live pet return case", @"labelAr": @"إنشاء حالة إرجاع حيوان حي", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"returns.live_pet.receive", @"labelEn": @"Physically receive returned live pet", @"labelAr": @"استلام الحيوان الحي المرتجع فعلياً في الحجر", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"returns.live_pet.inspect", @"labelEn": @"Inspect returned live pet health and disposition", @"labelAr": @"فحص صحة الحيوان الحي المرتجع وتحديد مصيره", @"riskTier": @"T1", @"protected": @NO },
+                   @{ @"key": @"returns.live_pet.clear_for_resale", @"labelEn": @"Clear quarantined live pet for resale", @"labelAr": @"إخلاء طرف الحيوان الحي من الحجر لإعادة البيع", @"riskTier": @"T2", @"protected": @YES },
+               ] },
         ];
     });
     return modules;
@@ -820,6 +840,11 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermHotelMediaView,
             kStaffPermHotelBillingView,
             kStaffPermHotelReportsView,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
+            kStaffPermReturnsLivePetInspect,
+            kStaffPermReturnsLivePetClearForResale,
             kStaffPermBannersView,
             kStaffPermBannersManage,
             kStaffPermIamPolicyRead,
@@ -900,6 +925,11 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermHotelTransportManage,
             kStaffPermHotelNotificationsManage,
             kStaffPermHotelReportsView,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
+            kStaffPermReturnsLivePetInspect,
+            kStaffPermReturnsLivePetClearForResale,
             kStaffPermBannersView,
             kStaffPermBannersManage,
         ];
@@ -929,6 +959,11 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermReportsExport,
             kStaffPermBranchesView,
             kStaffPermSupportView,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
+            kStaffPermReturnsLivePetInspect,
+            kStaffPermReturnsLivePetClearForResale,
             kStaffPermNotificationsView,
             kStaffPermNotificationsInboxView,
         ];
@@ -943,6 +978,11 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermStockQuarantineRelease,
             kStaffPermStockCreate,
             kStaffPermStockDelete,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
+            kStaffPermReturnsLivePetInspect,
+            kStaffPermReturnsLivePetClearForResale,
             kStaffPermCategoriesView,
             kStaffPermCategoriesManage,
             kStaffPermReportsView,
@@ -994,6 +1034,9 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermPosView,
             kStaffPermPosSell,
             kStaffPermPosHistory,
+            kStaffPermReturnsLivePetView,
+            kStaffPermReturnsLivePetCreate,
+            kStaffPermReturnsLivePetReceive,
             kStaffPermStockView,
             kStaffPermPaymentsView,
             kStaffPermNotificationsView,
@@ -1069,6 +1112,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermCategoriesView,
             kStaffPermHomeControlView,
             kStaffPermHotelView,
+            kStaffPermReturnsLivePetView,
             kStaffPermBannersView,
         ];
     }
@@ -1140,6 +1184,7 @@ NSArray<NSString *> * PPStaffDefaultPermissionsForRole(PPStaffRole role) {
             kStaffPermHomeControlView,
             kStaffPermHotelView,
             kStaffPermHotelCareView,
+            kStaffPermReturnsLivePetView,
             kStaffPermBannersView,
             kStaffPermModerationView,
         ];

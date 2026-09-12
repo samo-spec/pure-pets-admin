@@ -8,8 +8,6 @@
 @property (nonatomic, strong) PPS *searchView;
 @property (nonatomic, strong) NSMutableArray<PetAccessory *> *accessories;
 @property (nonatomic, strong) NSMutableArray<PetAccessory *> *filteredAccessories;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *pendingQuantityDeltas;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, dispatch_block_t> *pendingQuantityDebounceBlocks;
 @end
 
 @implementation AccessoriesListViewController
@@ -53,8 +51,6 @@
 
     self.accessories = [NSMutableArray array];
     self.filteredAccessories = [NSMutableArray array];
-    self.pendingQuantityDeltas = [NSMutableDictionary dictionary];
-    self.pendingQuantityDebounceBlocks = [NSMutableDictionary dictionary];
 
     [self.tableView registerClass:[AccessoryCell class] forCellReuseIdentifier:@"AccessoryCell"];
     
@@ -82,9 +78,6 @@
 
 - (void)dealloc {
     [self.listener remove];
-    for (dispatch_block_t block in self.pendingQuantityDebounceBlocks.allValues) {
-        dispatch_block_cancel(block);
-    }
 }
 
 #pragma mark - Data
@@ -279,39 +272,37 @@
     if (!accessory || accessory.accessoryID.length == 0) return;
 
     NSString *docID = accessory.accessoryID;
-    NSInteger pending = [self.pendingQuantityDeltas[docID] integerValue] + delta;
-    self.pendingQuantityDeltas[docID] = @(pending);
+    NSInteger previousQuantity = accessory.quantity;
 
     // Optimistic local update so admin sees the running qty while tapping.
     accessory.quantity = MAX(0, accessory.quantity + delta);
     accessory.noStock = (accessory.quantity <= 0);
     [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
 
-    dispatch_block_t oldBlock = self.pendingQuantityDebounceBlocks[docID];
-    if (oldBlock) {
-        dispatch_block_cancel(oldBlock);
-    }
-
     __weak typeof(self) weakSelf = self;
-    dispatch_block_t flushBlock = dispatch_block_create(0, ^{
-        __strong typeof(weakSelf) self = weakSelf;
-        if (!self) return;
-
-        NSInteger batchedDelta = [self.pendingQuantityDeltas[docID] integerValue];
-        [self.pendingQuantityDeltas removeObjectForKey:docID];
-        [self.pendingQuantityDebounceBlocks removeObjectForKey:docID];
-        if (batchedDelta == 0) return;
-
-        [[AccessoryManager shared] adjustQuantityBy:batchedDelta forAccessoryID:docID completion:^(NSError * _Nullable error) {
+    // Commit each operator intent immediately through the compatibility
+    // facade. The facade invokes the authoritative adjustBranchStock
+    // callable, retains its command identity and never falls back to a
+    // direct Firestore write. This removes the old invisible debounce that
+    // could drop a pending delta on navigation or teardown.
+    [[AccessoryManager shared] adjustQuantityBy:delta forAccessoryID:docID completion:^(NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) self = weakSelf;
             if (error) {
+                if (self) {
+                    PetAccessory *current = [self accessoryAtIndexPath:indexPath];
+                    if (current && [current.accessoryID isEqualToString:docID]) {
+                        current.quantity = previousQuantity;
+                        current.noStock = (current.quantity <= 0);
+                        [self.tableView reloadRowsAtIndexPaths:@[indexPath] withRowAnimation:UITableViewRowAnimationNone];
+                    }
+                }
                 [PPHUD showError:kLang(@"Error") subtitle:error.localizedDescription ?: kLang(@"Something went wrong.")];
                 return;
             }
             [PPHUD showSuccess:kLang(@"Updated") subtitle:kLang(@"StockUpdated")];
-        }];
-    });
-    self.pendingQuantityDebounceBlocks[docID] = flushBlock;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.45 * NSEC_PER_SEC)), dispatch_get_main_queue(), flushBlock);
+        });
+    }];
 }
 
 - (void)deleteAccessoryAtIndexPath:(NSIndexPath *)indexPath {

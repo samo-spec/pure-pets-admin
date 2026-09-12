@@ -194,6 +194,14 @@ struct AdminContentItem: Identifiable, Hashable, Sendable {
         } else if collectionName == "serviceOffers" {
             kind = .service
         } else {
+            // Reject live pet inventory projections from user-content moderation queue
+            let isFromCatalog = (data["isFromCatalog"] as? Bool) ?? false
+            let sourceAccessoryId = (data["sourceAccessoryId"] as? String) ?? ""
+            let catalogItemId = (data["catalogItemId"] as? String) ?? ""
+            let isProjectionId = doc.documentID.hasPrefix("ad_live_") || doc.documentID.hasPrefix("ad_unit_") || doc.documentID.hasPrefix("live_pet_")
+            if isFromCatalog || !sourceAccessoryId.isEmpty || !catalogItemId.isEmpty || isProjectionId {
+                return nil
+            }
             kind = .petAd
         }
 

@@ -688,8 +688,14 @@ public final class PPBranchInventoryService: ObservableObject {
         referenceId: String = "",
         reason: String = "manual_adjustment",
         notes: String = "",
+        commandId suppliedCommandId: String? = nil,
+        expectedRevision: Int? = nil,
         completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
+        let normalizedCommandId = suppliedCommandId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let commandId = normalizedCommandId.isEmpty
+            ? "admin-ios-branch-adjust-\(productId)-\(UUID().uuidString.lowercased())"
+            : normalizedCommandId
         var payload: [String: Any] = [
             "productId": productId,
             "branchId": branchId,
@@ -697,7 +703,8 @@ public final class PPBranchInventoryService: ObservableObject {
             "referenceId": referenceId,
             "sessionId": BranchContextStore.shared.currentSessionId,
             "reason": reason,
-            "notes": notes
+            "notes": notes,
+            "commandId": commandId
         ]
         if let newQty = newQuantity {
             payload["newQuantity"] = newQty
@@ -705,14 +712,28 @@ public final class PPBranchInventoryService: ObservableObject {
         if let d = delta {
             payload["delta"] = d
         }
+        if let expectedRevision { payload["expectedRevision"] = expectedRevision }
 
         let callable = Functions.functions().httpsCallable("adjustBranchStock")
-        callable.call(["payload": payload]) { [weak self] result, error in
+        callable.call(["contractVersion": 2, "payload": payload]) { [weak self] result, error in
             if let error = error {
                 completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
+            guard data["ok"] as? Bool == true,
+                  data["commandId"] as? String == commandId else {
+                let responseError = NSError(
+                    domain: "pp.branch.inventory",
+                    code: 502,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get(
+                        "Inventory_InvalidAdjustmentResponse",
+                        alter: "تعذر التحقق من نتيجة تعديل المخزون."
+                    )]
+                )
+                completion?(.failure(responseError))
+                return
+            }
             Task { @MainActor [weak self] in
                 guard let self = self else {
                     completion?(.success(data))
@@ -738,25 +759,48 @@ public final class PPBranchInventoryService: ObservableObject {
         quantity: Int,
         reason: String = "branch_transfer",
         notes: String = "",
+        commandId suppliedCommandId: String? = nil,
+        expectedSourceRevision: Int? = nil,
+        expectedDestinationRevision: Int? = nil,
         completion: ((Result<[String: Any], Error>) -> Void)? = nil
     ) {
-        let payload: [String: Any] = [
+        let normalizedCommandId = suppliedCommandId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let commandId = normalizedCommandId.isEmpty
+            ? "admin-ios-branch-transfer-\(productId)-\(UUID().uuidString.lowercased())"
+            : normalizedCommandId
+        var payload: [String: Any] = [
             "productId": productId,
             "sourceBranchId": sourceBranchId,
             "destinationBranchId": destinationBranchId,
             "quantity": quantity,
             "sessionId": BranchContextStore.shared.currentSessionId,
             "reason": reason,
-            "notes": notes
+            "notes": notes,
+            "commandId": commandId
         ]
+        if let expectedSourceRevision { payload["expectedSourceRevision"] = expectedSourceRevision }
+        if let expectedDestinationRevision { payload["expectedDestinationRevision"] = expectedDestinationRevision }
 
         let callable = Functions.functions().httpsCallable("transferBranchStock")
-        callable.call(["payload": payload]) { [weak self] result, error in
+        callable.call(["contractVersion": 2, "payload": payload]) { [weak self] result, error in
             if let error = error {
                 completion?(.failure(error))
                 return
             }
             let data = (result?.data as? [String: Any]) ?? [:]
+            guard data["ok"] as? Bool == true,
+                  data["commandId"] as? String == commandId else {
+                let responseError = NSError(
+                    domain: "pp.branch.inventory",
+                    code: 502,
+                    userInfo: [NSLocalizedDescriptionKey: Language.get(
+                        "Inventory_InvalidTransferResponse",
+                        alter: "تعذر التحقق من نتيجة نقل المخزون."
+                    )]
+                )
+                completion?(.failure(responseError))
+                return
+            }
             Task { @MainActor [weak self] in
                 guard let self = self else {
                     completion?(.success(data))
@@ -1128,4 +1172,3 @@ public enum PPBranchInventoryErrorHelper {
         return Language.get("Branch_Stock_GeneralError", alter: "حدث خطأ أثناء تعديل المخزون. يرجى المحاولة مرة أخرى.")
     }
 }
-

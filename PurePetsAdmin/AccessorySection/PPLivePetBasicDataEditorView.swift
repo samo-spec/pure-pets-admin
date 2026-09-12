@@ -95,6 +95,8 @@ public struct PPLivePetBasicDataEditorView: View {
     @State private var isSaving: Bool = false
     @State private var saveProgressText: String = ""
     @State private var initialSnapshot: [String: Any] = [:]
+    @State private var saveCommandID: String? = nil
+    @State private var savePayloadFingerprint: String? = nil
 
     // Haptics
     private let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
@@ -1316,7 +1318,20 @@ public struct PPLivePetBasicDataEditorView: View {
         }
     }
 
-    // MARK: - Save Execution & Audit Ledger
+    // MARK: - Authoritative Save Execution
+
+    private func stableSaveCommandID(for payload: [String: Any]) throws -> String {
+        guard JSONSerialization.isValidJSONObject(payload) else {
+            throw PPLivePetServiceError.invalidResponse
+        }
+        let encoded = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+        let fingerprint = encoded.base64EncodedString()
+        if savePayloadFingerprint != fingerprint || saveCommandID == nil {
+            savePayloadFingerprint = fingerprint
+            saveCommandID = PPLivePetInventoryService.commandID("basic-data")
+        }
+        return saveCommandID ?? PPLivePetInventoryService.commandID("basic-data")
+    }
 
     private func executeSave() async {
         guard hasChanges else { return }
@@ -1352,94 +1367,60 @@ public struct PPLivePetBasicDataEditorView: View {
                 finalImageURLs.insert(cover, at: 0)
             }
 
+            // Retain successfully uploaded URLs in the draft so a callable
+            // timeout retries the exact same payload instead of uploading a
+            // second set of objects.
+            remoteImageURLs = finalImageURLs
+            localImages.removeAll()
+
             saveProgressText = Language.get("PersistingData", alter: "جاري حفظ بيانات الصنف...")
 
-            // 2. Prepare Firestore Updates
-            let normalizedSearch = ArabicNormalizer.normalize(nameAr) ?? ""
-            var updateData: [String: Any] = [
+            // 2. Submit only public-safe catalog fields. Infra derives search,
+            // actor, timestamps, audit, revision, and marketplace projection.
+            let updateData: [String: Any] = [
                 "name": nameAr,
                 "nameEn": nameEn,
-                "name_en": nameEn,
-                "searchTitle": normalizedSearch,
                 "desc": descAr,
                 "descEn": descEn,
-                "desc_en": descEn,
                 "petMainCategoryID": selectedSpeciesID,
                 "petSubCategoryID": selectedSubKindID,
                 "imageURLsArray": finalImageURLs,
-                "relatedAccessories": selectedRelatedAccessoryIDs,
-                "updatedAt": FieldValue.serverTimestamp()
+                "relatedAccessories": selectedRelatedAccessoryIDs
             ]
+            let commandID = try stableSaveCommandID(for: updateData)
+            let response = try await PPLivePetInventoryService.updateCatalogPresentation(
+                productID: item.accessoryID,
+                values: updateData,
+                commandID: commandID,
+                expectedRevision: item.revision > 0 ? item.revision : nil
+            )
+            let confirmedRevision = PPLivePetInventoryService.integer(response["revision"])
+            let confirmed = try await PPLivePetInventoryService.readProduct(
+                productID: item.accessoryID,
+                minimumRevision: confirmedRevision
+            )
 
-            if let cover = finalImageURLs.first {
-                updateData["image"] = cover
-                updateData["imageUrl"] = cover
-            }
+            // 3. Publish the authoritative readback to existing callers.
+            item.name = confirmed.name
+            item.nameEn = confirmed.nameEn
+            item.desc = confirmed.desc
+            item.descEn = confirmed.descEn
+            item.petMainCategoryID = confirmed.petMainCategoryID
+            item.petSubCategoryID = confirmed.petSubCategoryID
+            item.imageURLsArray = confirmed.imageURLsArray
+            item.relatedAccessories = confirmed.relatedAccessories
+            item.revision = confirmed.revision
 
-            let db = Firestore.firestore()
-            try await db.collection("petAccessories").document(item.accessoryID).updateData(updateData)
-
-            // 3. Write Immutable Audit Log to AdminAuditLogs
-            saveProgressText = Language.get("RecordingAuditLog", alter: "تدوين السجل الرقابي...")
-            let adminUid = Auth.auth().currentUser?.uid ?? "system_admin"
-            let adminEmail = Auth.auth().currentUser?.email ?? ""
-
-            var changesSummary: [String: Any] = [:]
-            if nameAr != (initialSnapshot["name"] as? String ?? "") {
-                changesSummary["name"] = ["old": initialSnapshot["name"] as? String ?? "", "new": nameAr]
-            }
-            if nameEn != (initialSnapshot["nameEn"] as? String ?? "") {
-                changesSummary["nameEn"] = ["old": initialSnapshot["nameEn"] as? String ?? "", "new": nameEn]
-            }
-            if descAr != (initialSnapshot["desc"] as? String ?? "") {
-                changesSummary["desc"] = ["old": initialSnapshot["desc"] as? String ?? "", "new": descAr]
-            }
-            if descEn != (initialSnapshot["descEn"] as? String ?? "") {
-                changesSummary["descEn"] = ["old": initialSnapshot["descEn"] as? String ?? "", "new": descEn]
-            }
-            if selectedSpeciesID != (initialSnapshot["petMainCategoryID"] as? Int ?? 0) {
-                changesSummary["petMainCategoryID"] = ["old": initialSnapshot["petMainCategoryID"] as? Int ?? 0, "new": selectedSpeciesID]
-            }
-            if selectedSubKindID != (initialSnapshot["petSubCategoryID"] as? Int ?? 0) {
-                changesSummary["petSubCategoryID"] = ["old": initialSnapshot["petSubCategoryID"] as? Int ?? 0, "new": selectedSubKindID]
-            }
-            if finalImageURLs != (initialSnapshot["imageURLsArray"] as? [String] ?? []) {
-                changesSummary["imageURLsArray"] = ["old": initialSnapshot["imageURLsArray"] as? [String] ?? [], "new": finalImageURLs]
-            }
-            if selectedRelatedAccessoryIDs != (initialSnapshot["relatedAccessories"] as? [String] ?? []) {
-                changesSummary["relatedAccessories"] = ["old": initialSnapshot["relatedAccessories"] as? [String] ?? [], "new": selectedRelatedAccessoryIDs]
-            }
-
-            let auditPayload: [String: Any] = [
-                "action": "live_pet.edit_basic_data",
-                "targetCollection": "petAccessories",
-                "targetId": item.accessoryID,
-                "adminUid": adminUid,
-                "adminEmail": adminEmail,
-                "changes": changesSummary,
-                "before": initialSnapshot,
-                "timestamp": FieldValue.serverTimestamp()
-            ]
-            try await db.collection("AdminAuditLogs").document().setData(auditPayload)
-
-            // 4. Update local item model directly
-            item.name = nameAr
-            item.nameEn = nameEn
-            item.desc = descAr
-            item.descEn = descEn
-            item.petMainCategoryID = selectedSpeciesID
-            item.petSubCategoryID = selectedSubKindID
-            item.imageURLsArray = finalImageURLs
-            item.relatedAccessories = selectedRelatedAccessoryIDs
-
-            onSaved?(item)
+            saveCommandID = nil
+            savePayloadFingerprint = nil
+            onSaved?(confirmed)
             isSaving = false
 
             // Success Alert via PPAlertHelper
             PPAlertHelper.showSuccess(
                 in: nil,
                 title: Language.get("SavedSuccessfully", alter: "تم الحفظ بنجاح"),
-                subtitle: Language.get("LivePetBasicDataSavedSubtitle", alter: "تم تحديث البيانات الأساسية وسجل التدقيق بنجاح")
+                subtitle: Language.get("LivePetBasicDataSavedSubtitle", alter: "تم تحديث البيانات الأساسية وتأكيد النسخة المعتمدة بنجاح")
             )
 
             dismiss()

@@ -247,6 +247,9 @@ extern BOOL PP_TouchDotsEnabled;
     
     // Register for remote notifications
     [self registerForRemoteNotifications];
+
+    // Reconcile pending in-flight Live Pet Return commands on launch
+    [LivePetReturnRecoveryServiceBridge startAutoReconciliation];
     
     // ✅ iOS 12 fallback (no SceneDelegate)
     if (@available(iOS 13.0, *)) {
@@ -424,6 +427,9 @@ extern BOOL PP_TouchDotsEnabled;
     if (self.notificationV2LogoutBarrierActive) {
         return;
     }
+
+    // Reconcile pending in-flight Live Pet Return commands on app foreground
+    [LivePetReturnRecoveryServiceBridge startAutoReconciliation];
 
     NSString *uid = PPAdminRouteTrimmedString([FIRAuth auth].currentUser.uid);
     if (uid.length == 0) {

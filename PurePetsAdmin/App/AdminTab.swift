@@ -40,7 +40,37 @@ enum AdminTab: String, CaseIterable, Identifiable {
         case .more: return "ellipsis.circle.fill"
         }
     }
+
+    var shortcutNumber: Int {
+        switch self {
+        case .command: return 1
+        case .work: return 2
+        case .operations: return 3
+        case .customers: return 4
+        case .more: return 5
+        }
+    }
+
+    var shortcutBadge: String {
+        "⌘\(shortcutNumber)"
+    }
 }
+
+#if canImport(SwiftUI)
+import SwiftUI
+
+extension AdminTab {
+    var keyEquivalent: KeyEquivalent {
+        switch self {
+        case .command: return "1"
+        case .work: return "2"
+        case .operations: return "3"
+        case .customers: return "4"
+        case .more: return "5"
+        }
+    }
+}
+#endif
 
 extension AdminTab {
     func routes(for session: AdminSession) -> [AdminRoute] {

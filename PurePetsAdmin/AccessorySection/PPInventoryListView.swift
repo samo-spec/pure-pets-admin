@@ -196,6 +196,8 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
     let subSubKindItemID: Int?
     let subSubKindItemNameAr: String?
     let subSubKindItemNameEn: String?
+    let gender: PPLivePetUnitGender
+    let mediaURLs: [String]
 
     var subSubKindName: String? {
         if Language.isRTL() {
@@ -243,6 +245,8 @@ struct PPLivePetInventoryUnit: Identifiable, Equatable {
             ?? (dictionary["subSubKindItemId"] as? NSNumber)?.intValue
         subSubKindItemNameAr = PPLivePetInventoryService.string(dictionary["subSubKindItemNameAr"] ?? dictionary["subSubKindItemName"])
         subSubKindItemNameEn = PPLivePetInventoryService.string(dictionary["subSubKindItemNameEn"])
+        gender = PPLivePetUnitGender.resolved(dictionary["gender"])
+        mediaURLs = PPLivePetInventoryService.strings(dictionary["mediaURLs"] ?? dictionary["mediaUrls"])
     }
 }
 
@@ -410,6 +414,13 @@ enum PPLivePetInventoryService {
         return nil
     }
 
+    nonisolated static func integer(_ value: Any?) -> Int {
+        if let number = value as? NSNumber { return number.intValue }
+        if let integer = value as? Int { return integer }
+        if let text = value as? String, let integer = Int(text) { return integer }
+        return 0
+    }
+
     nonisolated static func date(_ value: Any?) -> Date? {
         if let date = value as? Date { return date }
         if let timestamp = value as? Timestamp { return timestamp.dateValue() }
@@ -478,12 +489,19 @@ enum PPLivePetInventoryService {
         action: String,
         productID: String? = nil,
         commandID: String? = nil,
+        expectedRevision: Int? = nil,
         payload: [String: Any]
     ) async throws -> [String: Any] {
-        var request: [String: Any] = ["action": action, "payload": payload]
+        var request: [String: Any] = ["contractVersion": 2, "action": action, "payload": payload]
         if let productID, !productID.isEmpty { request["productId"] = productID }
         if let commandID, !commandID.isEmpty { request["commandId"] = commandID }
-        return try await call("validateInventoryChange", payload: request)
+        if let expectedRevision { request["expectedRevision"] = expectedRevision }
+        let response = try await call("validateInventoryChange", payload: request)
+        if let commandID, !commandID.isEmpty,
+           string(response["commandId"]) != commandID {
+            throw PPLivePetServiceError.invalidResponse
+        }
+        return response
     }
 
     static func callTransaction(_ payload: [String: Any]) async throws -> [String: Any] {
@@ -689,14 +707,15 @@ enum PPLivePetInventoryService {
         unit: PPLivePetInventoryUnit,
         customer: PPPosCustomerRecord,
         branchID: String,
-        validUntil: Date
+        validUntil: Date,
+        commandID: String
     ) async throws {
         guard let sellingPrice = unit.sellingPrice, sellingPrice > 0 else {
             throw PPLivePetServiceError.missingSellingPrice
         }
         _ = try await callTransaction([
             "action": "create",
-            "commandId": commandID("live-reservation"),
+            "commandId": commandID,
             "payload": [
                 "items": [[
                     "productId": productID,
@@ -718,7 +737,7 @@ enum PPLivePetInventoryService {
         ])
     }
 
-    static func completeReservation(_ reservation: PPLivePetReservation, cashReceived: Double) async throws {
+    static func completeReservation(_ reservation: PPLivePetReservation, cashReceived: Double, commandID: String) async throws {
         var binding: [String: Any] = reservation.customerSource == "directory"
             ? ["posCustomerId": reservation.customerID]
             : ["customerUid": reservation.customerID]
@@ -729,75 +748,69 @@ enum PPLivePetInventoryService {
         _ = try await callTransaction([
             "action": "complete",
             "transactionId": reservation.id,
-            "commandId": commandID("complete-reservation"),
+            "commandId": commandID,
             "payload": binding,
         ])
     }
 
-    static func cancelReservation(_ reservation: PPLivePetReservation) async throws {
+    static func cancelReservation(_ reservation: PPLivePetReservation, commandID: String) async throws {
         _ = try await callTransaction([
             "action": "cancel",
             "transactionId": reservation.id,
-            "commandId": commandID("release-reservation"),
+            "commandId": commandID,
             "expectedStatus": "pending",
             "reason": "admin_live_pet_reservation_release",
             "currency": reservation.currency,
         ])
     }
 
-    @MainActor
-    static func updateCatalogPresentation(productID: String, values: [String: Any]) async throws {
-        // Strict: ONLY in live pets case each pet showing in ios consumer app as a separate and independent ad
-        let isLive = (values["accessKindType"] as? Int == 3) ||
-                     (values["product_type"] as? String == "live") ||
-                     (values["category"] as? String == "Live Pets")
-
-        // Sanitize values to omit server-owned and immutable inventory fields
-        // that are protected by firestore.rules hasStableServerInventoryFields()
-        var sanitizedValues = values
-        let immutableServerKeys: Set<String> = [
-            "accessKindType",
-            "type",
-            "product_type",
-            "productType",
-            "inventoryMode",
-            "inventorySchemaVersion",
-            "quantity",
-            "noStock",
-            "reservedQuantity",
-            "inventoryCreateCommandId",
-            "inventoryCreateFingerprint",
-            "inventoryMigratedAt",
-            "inventoryMigratedBy",
-            "supplier",
-            "source",
-            "sourceMetadata",
-            "notes",
-            "intakeNotes",
-            "arrivalDate",
-            "acquisitionDate",
-            "veterinaryReference",
-            "veterinaryMetadata",
-            "isArchived",
-            "isDeleted",
-            "costPrice",
-            "buyPrice",
-            "cost_price",
-            "pricing"
+    static func updateCatalogPresentation(
+        productID: String,
+        values: [String: Any],
+        commandID: String,
+        expectedRevision: Int? = nil
+    ) async throws -> [String: Any] {
+        // Despite the legacy name, this is now an authoritative catalog command.
+        // Only public-safe metadata crosses the client boundary; actor, owner,
+        // branch, lifecycle, timestamps, stock, cost, and projection fields are
+        // resolved or derived by Infra.
+        let allowedKeys: Set<String> = [
+            "name", "nameEn", "desc", "descEn", "sku", "barcode", "category",
+            "price", "sellPrice", "finalPrice", "discountPercent", "discountAmount",
+            "wholesalePrice", "petMainCategoryID", "petSubCategoryID", "condition",
+            "weight", "weightUnit", "size", "imageURLsArray", "imageMeta", "isNew",
+            "hasOffer", "showInAppMarket", "active", "inventoryTrackingPolicy",
+            "expiryDate", "reorderLevel", "keywords", "birdColor", "relatedAccessories",
+            "shelfLifeDays", "guaranteedShelfLifeDays", "expiryCutoffDays"
         ]
-        for key in immutableServerKeys {
-            sanitizedValues.removeValue(forKey: key)
+        let sanitizedValues = values.filter { allowedKeys.contains($0.key) }
+        guard !sanitizedValues.isEmpty else {
+            throw PPLivePetServiceError.invalidResponse
         }
+        return try await callInventory(
+            action: "update",
+            productID: productID,
+            commandID: commandID,
+            expectedRevision: expectedRevision,
+            payload: sanitizedValues
+        )
+    }
 
-        let boxed = PPSendableDictionary(dict: sanitizedValues)
-        try await Firestore.firestore().collection("petAccessories").document(productID).updateData(boxed.dict)
-
-        guard isLive else { return }
-
-        // Marketplace projection for live pets is canonically governed by Infra Cloud Functions:
-        // Updating petAccessories triggers `syncLivePetMarketplaceProjection` which safely
-        // manages ad lifecycles, avoids duplicate records, and protects private unit media.
-        // Client direct writes to pet_ads are removed to prevent uncoordinated schemas and privacy leaks.
+    static func readProduct(productID: String, minimumRevision: Int) async throws -> PetAccessory {
+        let normalizedProductID = productID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProductID.isEmpty else { throw PPLivePetServiceError.invalidResponse }
+        let snapshot = try await Firestore.firestore()
+            .collection("petAccessories")
+            .document(normalizedProductID)
+            .getDocument()
+        guard snapshot.exists, let data = snapshot.data() else {
+            throw PPLivePetServiceError.invalidResponse
+        }
+        let revision = integer(data["revision"])
+        guard revision >= minimumRevision else {
+            throw PPLivePetServiceError.readbackPending
+        }
+        return PetAccessory(dictionary: data, documentID: normalizedProductID)
     }
 
     private static func call(_ name: String, payload: [String: Any]) async throws -> [String: Any] {
@@ -837,6 +850,7 @@ private struct PPSendableDictionary: @unchecked Sendable {
 
 enum PPLivePetServiceError: LocalizedError {
     case invalidResponse
+    case readbackPending
     case truncatedReservations
     case missingSellingPrice
     case notAuthenticated
@@ -845,6 +859,8 @@ enum PPLivePetServiceError: LocalizedError {
         switch self {
         case .invalidResponse:
             return Language.get("LivePet_Error_InvalidResponse", alter: "تعذر تأكيد استجابة الخادم. حدّث البيانات وحاول مرة أخرى.")
+        case .readbackPending:
+            return Language.get("Inventory_ReadbackPending", alter: "اعتمد الخادم العملية، لكن النسخة المؤكدة لم تصل بعد. أعد المحاولة دون تعديل البيانات.")
         case .truncatedReservations:
             return Language.get("LivePet_Error_ReservationLimit", alter: "تعذر تحميل جميع الحجوزات بأمان. استخدم نقطة البيع لمراجعة القائمة الكاملة.")
         case .missingSellingPrice:
@@ -902,8 +918,84 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     @Published var successMessage: String?
     @Published var operation: PPLivePetOperationContext?
 
+    @Published var availableSubSubKinds: [AdminSubSubKindItem] = []
+    @Published var subSubKindItemsBySubSubID: [Int: [AdminSubKindItemDetail]] = [:]
+    @Published var isLoadingSubSubTaxonomy: Bool = false
+    var hasSubSubKinds: Bool { !availableSubSubKinds.isEmpty }
+
     init(item: PetAccessory) {
         self.item = item
+        fetchTaxonomy()
+    }
+
+    func fetchTaxonomy() {
+        guard availableSubSubKinds.isEmpty, !isLoadingSubSubTaxonomy else { return }
+        let mainID = item.petMainCategoryID
+        let subID = item.petSubCategoryID
+        guard mainID > 0 || subID > 0 else { return }
+
+        let cachedKinds = (AppManager.shared().mainKindsArray as? [MainKindsModel]) ?? (MainKindsArrayManager.shared().mainKindsArray as? [MainKindsModel]) ?? []
+        if let mainKind = cachedKinds.first(where: { $0.id == mainID }) ?? MainKindsArrayManager.shared().mainKind(forID: mainID),
+           let subKinds = (mainKind.subKindsArray as? [SubKindModel]) ?? (MainKindsArrayManager.shared().getSubKindArray(mainID) as? [SubKindModel]),
+           let subKind = subKinds.first(where: { $0.id == subID }) {
+            if let arr = subKind.subSubKindArray as? [subSubKindModel], !arr.isEmpty {
+                self.availableSubSubKinds = arr.map { m in
+                    AdminSubSubKindItem(
+                        id: "\(m.id)",
+                        numericID: m.id,
+                        subKindID: m.subKindID,
+                        nameAr: m.nameAr ?? "",
+                        nameEn: m.nameEn ?? "",
+                        imageUrl: ""
+                    )
+                }
+                for m in arr {
+                    if let items = m.subKindItemsArray as? [subKindItemsModel], !items.isEmpty {
+                        self.subSubKindItemsBySubSubID[m.id] = items.map { it in
+                            AdminSubKindItemDetail(
+                                id: "\(it.id)",
+                                numericID: it.id,
+                                subSubKindID: it.subSubKindID,
+                                itemNameAr: it.itemNameAr ?? "",
+                                itemNameEn: it.itemNameEn ?? "",
+                                male: it.male ?? "",
+                                female: it.female ?? "",
+                                imageUrl: ""
+                            )
+                        }
+                    }
+                }
+                if !self.availableSubSubKinds.isEmpty { return }
+            }
+
+            let mainDocID = mainKind.documentID.isEmpty ? "\(mainKind.id)" : mainKind.documentID
+            let subKindDocID = (subKind.documentID != nil && !subKind.documentID!.isEmpty) ? subKind.documentID! : "\(subKind.id)"
+            guard !mainDocID.isEmpty && !subKindDocID.isEmpty else { return }
+
+            isLoadingSubSubTaxonomy = true
+            let db = Firestore.firestore()
+            let subDocRef = db.collection("MainKinds").document(mainDocID).collection("SubKinds").document(subKindDocID)
+            subDocRef.collection("SubSubKinds").order(by: "ID", descending: false).getDocuments { [weak self] snapshot, _ in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.isLoadingSubSubTaxonomy = false
+                    guard let docs = snapshot?.documents, !docs.isEmpty else { return }
+                    let subSubs = docs.compactMap { AdminSubSubKindItem.fromSnapshot($0) }
+                    if !subSubs.isEmpty {
+                        self.availableSubSubKinds = subSubs
+                        for subSub in subSubs {
+                            let subSubDocID = subSub.id.isEmpty ? "\(subSub.numericID)" : subSub.id
+                            subDocRef.collection("SubSubKinds").document(subSubDocID).collection("Items").order(by: "ID", descending: false).getDocuments { itemSnap, _ in
+                                DispatchQueue.main.async {
+                                    let items = itemSnap?.documents.compactMap { AdminSubKindItemDetail.fromSnapshot($0) } ?? []
+                                    self.subSubKindItemsBySubSubID[subSub.numericID] = items
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     var mode: PPLivePetInventoryMode? {
@@ -922,18 +1014,33 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
     var canReleaseReservations: Bool {
         canSell && (staff?.hasPermission(kStaffPermPaymentsRefund) ?? false)
     }
-    var canReleaseQuarantine: Bool { canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false) }
+    var canReleaseQuarantine: Bool { canManageStock && (staff?.hasPermission("stock.quarantine.release") ?? false) }
     var canViewCosts: Bool { (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false) }
 
     func reservation(for unit: PPLivePetInventoryUnit) -> PPLivePetReservation? {
         reservations.first { $0.contains(productID: item.accessoryID, unitID: unit.id) }
     }
 
-    func load() async {
-        guard item.isLivePet else { return }
+    @discardableResult
+    func load() async -> Bool {
+        guard item.isLivePet else { return true }
         isLoading = true
         errorMessage = nil
+        var confirmed = true
         do {
+            let authoritativeProduct = try await PPLivePetInventoryService.readProduct(
+                productID: item.accessoryID,
+                minimumRevision: 0
+            )
+            item.revision = authoritativeProduct.revision
+            item.quantity = authoritativeProduct.quantity
+            item.reservedQuantity = authoritativeProduct.reservedQuantity
+            item.noStock = authoritativeProduct.noStock
+            item.isArchived = authoritativeProduct.isArchived
+            item.active = authoritativeProduct.active
+            item.showInAppMarket = authoritativeProduct.showInAppMarket
+            item.inventoryMode = authoritativeProduct.inventoryMode
+            item.inventorySchemaVersion = authoritativeProduct.inventorySchemaVersion
             if mode == .individual {
                 do {
                     if canManageStock {
@@ -953,7 +1060,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                     }
                 } catch {
                     if canManageStock { throw error }
-                    units = []
+                    confirmed = false
                     errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
                 }
             } else {
@@ -962,22 +1069,25 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             do {
                 branches = scopedBranches(try await PPLivePetInventoryService.listBranches())
             } catch {
-                branches = []
+                confirmed = false
+                errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
             }
             if canViewReservations {
                 do {
                     reservations = try await PPLivePetInventoryService.listReservations(productID: item.accessoryID)
                 } catch {
-                    reservations = []
+                    confirmed = false
                     errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
                 }
             } else {
                 reservations = []
             }
         } catch {
+            confirmed = false
             errorMessage = PPLivePetInventoryService.localizedMessage(for: error)
         }
         isLoading = false
+        return confirmed && errorMessage == nil
     }
 
     private func scopedBranches(_ options: [PPInventoryBranchOption]) -> [PPInventoryBranchOption] {
@@ -1003,9 +1113,11 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         successMessage = nil
         do {
             try await work()
-            await load()
-            if errorMessage != nil {
+            let confirmed = await load()
+            if !confirmed {
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                isMutating = false
+                return false
             } else {
                 successMessage = Language.get(successKey, alter: successFallback)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -1020,7 +1132,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         }
     }
 
-    func migrate(mode: PPLivePetInventoryMode, units: [PPLivePetUnitDraft], standardSellingPrice: Double) async -> Bool {
+    func migrate(mode: PPLivePetInventoryMode, units: [PPLivePetUnitDraft], standardSellingPrice: Double, commandID: String) async -> Bool {
         await perform({
             let unitPayloads = try self.validatedUnitPayloads(units, allowEmpty: true)
             let branchId = BranchContextStore.shared.activeBranch?.branchID ?? self.item.storeID ?? ""
@@ -1033,7 +1145,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "migrate_inventory",
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID("inventory-migration"),
+                commandID: commandID,
                 payload: payload
             )
             self.item.inventoryMode = mode.rawValue
@@ -1041,30 +1153,92 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         }, successKey: "LivePet_Migration_Success", successFallback: "تم اعتماد نمط تتبع المخزون الحي.")
     }
 
-    func intake(mode: PPLivePetInventoryMode, unit: PPLivePetUnitDraft, quantity: Int, cost: Double, supplier: String, notes: String, branchID: String? = nil) async -> Bool {
+    func intake(
+        mode: PPLivePetInventoryMode,
+        units: [PPLivePetUnitDraft],
+        photoDrafts: [String: PPLivePetUnitPhotoDraft] = [:],
+        quantity: Int,
+        cost: Double?,
+        supplier: String,
+        notes: String,
+        branchID: String? = nil,
+        commandID: String
+    ) async -> Bool {
         await perform({
             let targetBranch = branchID ?? BranchContextStore.shared.activeBranch?.branchID ?? self.item.storeID ?? ""
+            let effectiveQty = mode == .individual ? max(1, units.count) : max(1, quantity)
             var payload: [String: Any] = [
-                "quantity": max(1, quantity),
-                "costPrice": max(0, cost),
+                "quantity": effectiveQty,
                 "supplier": supplier,
-                "arrivalDate": ISO8601DateFormatter().string(from: unit.acquisitionDate),
+                "arrivalDate": ISO8601DateFormatter().string(from: units.first?.acquisitionDate ?? Date()),
                 "notes": notes,
             ]
+            if let cost { payload["costPrice"] = cost }
             if !targetBranch.isEmpty {
                 payload["branchId"] = targetBranch
             }
-            if mode == .individual { payload["units"] = try self.validatedUnitPayloads([unit]) }
+            if mode == .individual {
+                var mediaByUnitID: [String: [String]] = [:]
+                if !photoDrafts.isEmpty {
+                    guard let actorUID = Auth.auth().currentUser?.uid, !actorUID.isEmpty else {
+                        throw PPLivePetUnitPhotoStorageService.livePetUnitPhotoError(
+                            code: 2,
+                            key: "LivePetIntake_UnitPhotoSessionExpired",
+                            fallback: "انتهت جلسة الموظف. سجّل الدخول مجدداً قبل رفع صورة الحيوان."
+                        )
+                    }
+                    for u in units {
+                        if var photo = photoDrafts[u.id] {
+                            let uploadedURL = try await PPLivePetUnitPhotoStorageService.upload(
+                                photo: &photo,
+                                unitID: u.id,
+                                commandID: commandID,
+                                actorUID: actorUID
+                            )
+                            if !uploadedURL.isEmpty {
+                                mediaByUnitID[u.id] = [uploadedURL]
+                            }
+                        }
+                    }
+                }
+                payload["units"] = try self.validatedUnitPayloads(units, mediaURLs: mediaByUnitID)
+            }
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "intake",
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID("stock-intake"),
+                commandID: commandID,
                 payload: payload
             )
         }, successKey: "LivePet_Intake_Success", successFallback: "تمت إضافة المخزون وتأكيد سجل الحركة.")
     }
 
-    func reserve(unit: PPLivePetInventoryUnit, customerName: String, phone: String, branchID: String, validUntil: Date) async -> Bool {
+    func intake(
+        mode: PPLivePetInventoryMode,
+        unit: PPLivePetUnitDraft,
+        photoDraft: PPLivePetUnitPhotoDraft? = nil,
+        quantity: Int,
+        cost: Double?,
+        supplier: String,
+        notes: String,
+        branchID: String? = nil,
+        commandID: String
+    ) async -> Bool {
+        var draftsMap: [String: PPLivePetUnitPhotoDraft] = [:]
+        if let photoDraft { draftsMap[unit.id] = photoDraft }
+        return await intake(
+            mode: mode,
+            units: [unit],
+            photoDrafts: draftsMap,
+            quantity: quantity,
+            cost: cost,
+            supplier: supplier,
+            notes: notes,
+            branchID: branchID,
+            commandID: commandID
+        )
+    }
+
+    func reserve(unit: PPLivePetInventoryUnit, customerName: String, phone: String, branchID: String, validUntil: Date, commandID: String) async -> Bool {
         await perform({
             let customer = try await PPLivePetInventoryService.createOrMatchCustomer(
                 name: customerName,
@@ -1076,29 +1250,30 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                 unit: unit,
                 customer: customer,
                 branchID: branchID,
-                validUntil: validUntil
+                validUntil: validUntil,
+                commandID: commandID
             )
         }, successKey: "LivePet_Reservation_Success", successFallback: "تم حجز الحيوان وربطه بالعميل ونقطة البيع.")
     }
 
-    func complete(reservation: PPLivePetReservation, cashReceived: Double) async -> Bool {
+    func complete(reservation: PPLivePetReservation, cashReceived: Double, commandID: String) async -> Bool {
         await perform({
-            try await PPLivePetInventoryService.completeReservation(reservation, cashReceived: cashReceived)
+            try await PPLivePetInventoryService.completeReservation(reservation, cashReceived: cashReceived, commandID: commandID)
         }, successKey: "LivePet_Reservation_Complete_Success", successFallback: "اكتمل البيع وتم تحويل الحيوان إلى حالة مباع.")
     }
 
-    func cancel(reservation: PPLivePetReservation) async -> Bool {
+    func cancel(reservation: PPLivePetReservation, commandID: String) async -> Bool {
         await perform({
-            try await PPLivePetInventoryService.cancelReservation(reservation)
+            try await PPLivePetInventoryService.cancelReservation(reservation, commandID: commandID)
         }, successKey: "LivePet_Reservation_Release_Success", successFallback: "تم تحرير الحجز وإعادة الحيوان إلى المتاح.")
     }
 
-    func transfer(unit: PPLivePetInventoryUnit, sourceBranchID: String, destinationBranchID: String, reason: String) async -> Bool {
+    func transfer(unit: PPLivePetInventoryUnit, sourceBranchID: String, destinationBranchID: String, reason: String, commandID: String) async -> Bool {
         await perform({
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "transfer_units_branch",
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID("branch-transfer"),
+                commandID: commandID,
                 payload: [
                     "unitIds": [unit.id],
                     "expectedSourceBranchId": sourceBranchID,
@@ -1109,7 +1284,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         }, successKey: "LivePet_Transfer_Success", successFallback: "تم نقل عهدة الحيوان إلى الفرع المحدد.")
     }
 
-    func lifecycle(action: String, unit: PPLivePetInventoryUnit, reason: String, causeCode: String = "UNKNOWN", notes: String = "", veterinaryReference: String = "", observedDeathAt: Date? = nil) async -> Bool {
+    func lifecycle(action: String, unit: PPLivePetInventoryUnit, reason: String, causeCode: String = "UNKNOWN", notes: String = "", veterinaryReference: String = "", observedDeathAt: Date? = nil, commandID: String) async -> Bool {
         await perform({
             var payload: [String: Any] = ["unitId": unit.id, "reason": reason]
             if action == "record_mortality" {
@@ -1122,13 +1297,13 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             _ = try await PPLivePetInventoryService.callInventory(
                 action: action,
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID(action),
+                commandID: commandID,
                 payload: payload
             )
         }, successKey: "LivePet_Lifecycle_Success", successFallback: "تم تحديث حالة الحيوان وتسجيل الحركة في سجل التدقيق.")
     }
 
-    func remove(unit: PPLivePetInventoryUnit, reason: String) async -> Bool {
+    func remove(unit: PPLivePetInventoryUnit, reason: String, commandID: String) async -> Bool {
         let unitID = unit.id
         // Optimistically remove unit from active units list so the row disappears immediately
         self.units.removeAll { $0.id == unitID }
@@ -1137,7 +1312,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "remove_unit",
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID("remove-unit"),
+                commandID: commandID,
                 payload: ["unitId": unitID, "reason": reason]
             )
         }, successKey: "LivePet_Remove_Success", successFallback: "تمت إزالة السجل المتاح من المخزون مع حفظ الأثر التشغيلي.")
@@ -1147,22 +1322,24 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         return ok
     }
 
-    func updatePrice(unit: PPLivePetInventoryUnit, price: Double) async -> Bool {
+    func updatePrice(unit: PPLivePetInventoryUnit, price: Double, commandID: String) async -> Bool {
         await perform({
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "update_unit_selling_price",
                 productID: self.item.accessoryID,
-                commandID: PPLivePetInventoryService.commandID("unit-price"),
+                commandID: commandID,
                 payload: ["unitId": unit.id, "sellingPrice": price]
             )
         }, successKey: "LivePet_Price_Success", successFallback: "تم تحديث سعر بيع الحيوان.")
     }
 
-    func adjustGroup(targetQuantity: Int, reason: String) async -> Bool {
+    func adjustGroup(targetQuantity: Int, reason: String, commandID: String) async -> Bool {
         await perform({
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "adjust",
                 productID: self.item.accessoryID,
+                commandID: commandID,
+                expectedRevision: self.item.revision > 0 ? self.item.revision : nil,
                 payload: [
                     "adjustmentType": "manual",
                     "targetQuantity": max(0, targetQuantity),
@@ -1172,18 +1349,20 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         }, successKey: "LivePet_Group_Adjust_Success", successFallback: "تم تحديث كمية المجموعة وتسجيل سبب التعديل.")
     }
 
-    func archive(_ archived: Bool, reason: String) async -> Bool {
+    func archive(_ archived: Bool, reason: String, commandID: String) async -> Bool {
         await perform({
             _ = try await PPLivePetInventoryService.callInventory(
                 action: "archive",
                 productID: self.item.accessoryID,
+                commandID: commandID,
+                expectedRevision: self.item.revision > 0 ? self.item.revision : nil,
                 payload: ["archived": archived, "reason": reason]
             )
             self.item.isArchived = archived
         }, successKey: archived ? "LivePet_Archive_Success" : "LivePet_Restore_Success", successFallback: archived ? "تمت أرشفة سجل الكتالوج." : "تمت استعادة سجل الكتالوج.")
     }
 
-    private func validatedUnitPayloads(_ drafts: [PPLivePetUnitDraft], allowEmpty: Bool = false) throws -> [[String: Any]] {
+    private func validatedUnitPayloads(_ drafts: [PPLivePetUnitDraft], mediaURLs: [String: [String]] = [:], allowEmpty: Bool = false) throws -> [[String: Any]] {
         let ringKeys = drafts.map {
             $0.ringTag.precomposedStringWithCompatibilityMapping
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1222,7 +1401,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                 "sellingPrice": price,
                 "supplier": draft.supplier.trimmingCharacters(in: .whitespacesAndNewlines),
                 "notes": draft.notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                "mediaURLs": [],
+                "mediaURLs": mediaURLs[draft.id] ?? [],
             ]
             if let subSubID = draft.subSubKindID {
                 dict["subSubKindID"] = subSubID
@@ -1371,8 +1550,7 @@ final class PPInventoryListViewModel: ObservableObject {
 
     private var listener: AnyObject?
     private var branchInventoryCancellable: AnyCancellable?
-    private var pendingQuantityDeltas: [String: Int] = [:]
-    private var pendingDebounceWorkItems: [String: DispatchWorkItem] = [:]
+    private var pendingQuantityItemIDs = Set<String>()
     private var pendingDeletedIDs = Set<String>()
 
     func effectiveStock(for item: PetAccessory) -> Int {
@@ -1480,13 +1658,6 @@ final class PPInventoryListViewModel: ObservableObject {
             _ = reg.perform(Selector(("remove")))
         }
         listener = nil
-        for workItem in pendingDebounceWorkItems.values {
-            if !workItem.isCancelled {
-                workItem.perform()
-            }
-        }
-        pendingDebounceWorkItems.removeAll()
-        pendingQuantityDeltas.removeAll()
     }
 
     func applyFilter() {
@@ -1573,7 +1744,7 @@ final class PPInventoryListViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Quantity Adjustment with Real-time Debounce
+    // MARK: - Explicit Quantity Adjustment
 
     func adjustQuantity(by delta: Int, for item: PetAccessory) {
         let docID = item.accessoryID
@@ -1588,69 +1759,65 @@ final class PPInventoryListViewModel: ObservableObject {
             return
         }
 
-        // Local optimistic update
-        item.quantity = max(0, item.quantity + delta)
+        guard !pendingQuantityItemIDs.contains(docID) else {
+            PPHUD.showError(
+                Language.get("Inventory_AdjustmentPending", alter: "التعديل قيد التأكيد"),
+                subtitle: Language.get("Inventory_AdjustmentPendingDetail", alter: "انتظر تأكيد التعديل الحالي قبل إرسال تعديل آخر للصنف نفسه.")
+            )
+            return
+        }
+        guard let branchId = BranchContextStore.shared.activeBranch?.branchID
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !branchId.isEmpty,
+              branchId != "main_store" else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("SelectSpecificBranchFirst", alter: "يرجى اختيار فرع محدد أولاً")
+            )
+            return
+        }
+
+        let previousQuantity = effectiveStock(for: item)
+        let targetQuantity = previousQuantity + delta
+        guard targetQuantity >= 0 else {
+            PPHUD.showError(
+                Language.get("Error", alter: "خطأ"),
+                subtitle: Language.get("Inventory_NegativeStockRejected", alter: "لا يمكن أن يصبح الرصيد المتاح أقل من صفر.")
+            )
+            return
+        }
+        pendingQuantityItemIDs.insert(docID)
+        item.quantity = targetQuantity
         item.noStock = (item.quantity <= 0)
         objectWillChange.send()
         applyFilter()
-
-        // Batch delta
-        let currentPending = pendingQuantityDeltas[docID] ?? 0
-        let newPending = currentPending + delta
-        pendingQuantityDeltas[docID] = newPending
-
-        // Cancel existing debounce timer for this item
-        pendingDebounceWorkItems[docID]?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            guard let batchedDelta = self.pendingQuantityDeltas[docID], batchedDelta != 0 else { return }
-            self.pendingQuantityDeltas.removeValue(forKey: docID)
-            self.pendingDebounceWorkItems.removeValue(forKey: docID)
-
-            if let branchId = BranchContextStore.shared.activeBranch?.branchID, !branchId.isEmpty {
-                PPBranchInventoryService.shared.adjustStock(
-                    productId: docID,
-                    branchId: branchId,
-                    delta: batchedDelta,
-                    type: batchedDelta > 0 ? "purchase" : "adjustment",
-                    referenceId: "admin_inventory_list",
-                    reason: "manual_adjustment",
-                    notes: "Adjusted from admin inventory list"
-                ) { [weak self] result in
-                    if case .failure(let error) = result {
-                        DispatchQueue.main.async {
-                            item.quantity -= batchedDelta
-                            if item.quantity <= 0 {
-                                item.quantity = 0
-                                item.noStock = true
-                            }
-                            self?.objectWillChange.send()
-                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
-                        }
-                    }
-                }
-            } else {
-                AccessoryManager.shared().adjustQuantity(by: batchedDelta, forAccessoryID: docID) { [weak self] error in
-                    if let error = error {
-                        DispatchQueue.main.async {
-                            item.quantity -= batchedDelta
-                            if item.quantity <= 0 {
-                                item.quantity = 0
-                                item.noStock = true
-                            }
-                            self?.objectWillChange.send()
-                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
-                        }
-                    }
+        let expectedRevision = PPBranchInventoryService.shared.inventory(for: docID)?.projectionRevision
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "adjust", targetId: docID)
+        PPInventoryCommandService.shared.adjustStock(
+            productId: docID,
+            branchId: branchId,
+            delta: delta,
+            newQuantity: nil,
+            reason: "manual_adjustment",
+            notes: "admin_inventory_list",
+            expectedRevision: expectedRevision,
+            commandId: commandID
+        ) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.pendingQuantityItemIDs.remove(docID)
+                if let error {
+                    item.quantity = previousQuantity
+                    item.noStock = previousQuantity <= 0
+                    self.objectWillChange.send()
+                    self.applyFilter()
+                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             }
         }
-
-        pendingDebounceWorkItems[docID] = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: workItem)
     }
 
     // MARK: - Quick Out of Stock Toggle
@@ -1671,7 +1838,9 @@ final class PPInventoryListViewModel: ObservableObject {
         let previousQuantity = item.quantity
         let newNoStock = !previousNoStock
 
-        guard let branchId = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines), !branchId.isEmpty else {
+        guard let branchId = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines),
+              !branchId.isEmpty,
+              branchId != "main_store" else {
             PPHUD.showError(
                 Language.get("Error", alter: "خطأ"),
                 subtitle: Language.get("SelectBranchFirst", alter: "يرجى اختيار الفرع أولاً قبل تعديل حالة المخزون")
@@ -1697,49 +1866,29 @@ final class PPInventoryListViewModel: ObservableObject {
         objectWillChange.send()
         applyFilter()
 
-        if newNoStock && currentBranchStock > 0 {
-            PPBranchInventoryService.shared.adjustStock(
-                productId: docID,
-                branchId: branchId,
-                newQuantity: 0,
-                type: "adjustment",
-                referenceId: "admin_toggle_stock",
-                reason: "marked_no_stock",
-                notes: "Marked out of stock from inventory list"
-            ) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success:
-                        AccessoryManager.shared().setNoStock(true, forAccessoryID: docID) { _ in }
-                        AccessoryManager.shared().updateQuantity(0, forAccessoryID: docID) { _ in }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    case .failure(let error):
-                        // Rollback state cleanly
-                        item.noStock = previousNoStock
-                        item.quantity = previousQuantity
-                        self?.objectWillChange.send()
-                        self?.applyFilter()
-                        let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
-                    }
-                }
-            }
-        } else {
-            // Covers: (newNoStock && currentBranchStock <= 0) and (!newNoStock)
-            AccessoryManager.shared().setNoStock(newNoStock, forAccessoryID: docID) { [weak self] error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        item.noStock = previousNoStock
-                        item.quantity = previousQuantity
-                        self?.objectWillChange.send()
-                        self?.applyFilter()
-                        PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: error.localizedDescription)
-                    } else {
-                        if newNoStock {
-                            AccessoryManager.shared().updateQuantity(0, forAccessoryID: docID) { _ in }
-                        }
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    }
+        let targetQuantity = newNoStock ? 0 : currentBranchStock
+        let expectedRevision = PPBranchInventoryService.shared.inventory(for: docID)?.projectionRevision
+        let commandID = PPInventoryCommandService.shared.generateCommandId(action: "availability", targetId: docID)
+        PPInventoryCommandService.shared.adjustStock(
+            productId: docID,
+            branchId: branchId,
+            delta: nil,
+            newQuantity: targetQuantity,
+            reason: newNoStock ? "marked_no_stock" : "reconciled_in_stock",
+            notes: "admin_inventory_list_availability",
+            expectedRevision: expectedRevision,
+            commandId: commandID
+        ) { [weak self] _, error in
+            DispatchQueue.main.async {
+                if let error {
+                    item.noStock = previousNoStock
+                    item.quantity = previousQuantity
+                    self?.objectWillChange.send()
+                    self?.applyFilter()
+                    let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
+                    PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
+                } else {
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
             }
         }
@@ -1764,6 +1913,8 @@ final class PPInventoryListViewModel: ObservableObject {
                 _ = try await PPLivePetInventoryService.callInventory(
                     action: "delete",
                     productID: docID,
+                    commandID: PPLivePetInventoryService.commandID("delete"),
+                    expectedRevision: item.revision > 0 ? item.revision : nil,
                     payload: ["reason": "admin_ios_soft_delete"]
                 )
 
@@ -1789,9 +1940,22 @@ final class PPInventoryListViewModel: ObservableObject {
         let docID = item.accessoryID
         guard !docID.isEmpty else { return }
         let newActive = !item.active
-        AccessoryManager.shared().setActive(newActive, forAccessoryID: docID) { error in
-            if let error = error {
-                PPHUD.showError(Language.get("Error", alter: nil), subtitle: error.localizedDescription)
+        Task { @MainActor in
+            do {
+                _ = try await PPLivePetInventoryService.callInventory(
+                    action: "update",
+                    productID: docID,
+                    commandID: PPLivePetInventoryService.commandID("active-state"),
+                    expectedRevision: item.revision > 0 ? item.revision : nil,
+                    payload: ["active": newActive]
+                )
+                item.active = newActive
+                await refresh()
+            } catch {
+                PPHUD.showError(
+                    Language.get("Error", alter: nil),
+                    subtitle: PPLivePetInventoryService.localizedMessage(for: error)
+                )
             }
         }
     }
@@ -1828,9 +1992,9 @@ struct PPInventoryListView: View {
     }
     private var canCreateStock: Bool {
         if let session {
-            return session.hasPermission("stock.create") || session.hasPermission("stock.manage") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
+            return session.hasPermission("stock.create") || session.grantsAllPermissions || session.roleIdentifier == "admin" || session.roleIdentifier == "super_admin"
         }
-        return (staff?.hasPermission("stock.create") ?? false) || canManageStock
+        return (staff?.hasPermission("stock.create") ?? false) || (staff?.isAdmin() ?? false)
     }
     private var canDeleteStock: Bool {
         if let session {
@@ -1840,9 +2004,9 @@ struct PPInventoryListView: View {
     }
     private var canReleaseQuarantine: Bool {
         if let session {
-            return session.hasPermission("stock.quarantine.release") || canManageStock
+            return canManageStock && session.hasPermission("stock.quarantine.release")
         }
-        return canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false)
+        return canManageStock && (staff?.hasPermission("stock.quarantine.release") ?? false)
     }
     private var canViewCosts: Bool {
         if let session {
@@ -2310,24 +2474,28 @@ struct PPInventoryListView: View {
                 // Primary: 4-tile single row (Standard iPhone & iPad)
                 HStack(spacing: 8) {
                     telemetryTile(
+                        filter: .inStock,
                         title: Language.get("InStock", alter: "متوفر"),
                         count: viewModel.inStockCount,
                         color: Color(uiColor: .ppSuccess),
                         icon: "checkmark.circle.fill"
                     )
                     telemetryTile(
+                        filter: .lowStock,
                         title: Language.get("LowStock", alter: "مخزون حرج"),
                         count: viewModel.lowStockCount,
                         color: Color(uiColor: .ppWarning),
                         icon: "exclamationmark.triangle.fill"
                     )
                     telemetryTile(
+                        filter: .outOfStock,
                         title: Language.get("OutOfStock", alter: "نفذ"),
                         count: viewModel.outOfStockCount,
                         color: Color(uiColor: .ppError),
                         icon: "xmark.octagon.fill"
                     )
                     telemetryTile(
+                        filter: .hasOffer,
                         title: Language.get("Offers", alter: "تخفيضات"),
                         count: viewModel.offersCount,
                         color: Color(red: 0.65, green: 0.35, blue: 0.95),
@@ -2339,12 +2507,14 @@ struct PPInventoryListView: View {
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
                         telemetryTile(
+                            filter: .inStock,
                             title: Language.get("InStock", alter: "متوفر"),
                             count: viewModel.inStockCount,
                             color: Color(uiColor: .ppSuccess),
                             icon: "checkmark.circle.fill"
                         )
                         telemetryTile(
+                            filter: .lowStock,
                             title: Language.get("LowStock", alter: "مخزون حرج"),
                             count: viewModel.lowStockCount,
                             color: Color(uiColor: .ppWarning),
@@ -2353,12 +2523,14 @@ struct PPInventoryListView: View {
                     }
                     HStack(spacing: 8) {
                         telemetryTile(
+                            filter: .outOfStock,
                             title: Language.get("OutOfStock", alter: "نفذ"),
                             count: viewModel.outOfStockCount,
                             color: Color(uiColor: .ppError),
                             icon: "xmark.octagon.fill"
                         )
                         telemetryTile(
+                            filter: .hasOffer,
                             title: Language.get("Offers", alter: "تخفيضات"),
                             count: viewModel.offersCount,
                             color: Color(red: 0.65, green: 0.35, blue: 0.95),
@@ -2385,33 +2557,75 @@ struct PPInventoryListView: View {
         )
     }
 
-    private func telemetryTile(title: String, count: Int, color: Color, icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(color)
-                Spacer()
-                Text(verbatim: count.englishDigits)
-                    .font(PPBrandFont.bold(size: 18))
-                    .foregroundStyle(color)
-                    .minimumScaleFactor(0.80)
+    private func telemetryTile(
+        filter: InventoryFilter,
+        title: String,
+        count: Int,
+        color: Color,
+        icon: String
+    ) -> some View {
+        let isSelected = viewModel.activeFilter == filter
+
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                if viewModel.activeFilter == filter {
+                    viewModel.activeFilter = .all
+                } else {
+                    viewModel.activeFilter = filter
+                }
             }
-            Text(title)
-                .font(AdminType.caption2Bold)
-                .foregroundStyle(AdminCommandInk.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(color)
+                    Spacer()
+                    Text(verbatim: count.englishDigits)
+                        .font(PPBrandFont.bold(size: 18))
+                        .foregroundStyle(color)
+                        .minimumScaleFactor(0.80)
+                }
+                HStack(spacing: 4) {
+                    Text(title)
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(isSelected ? color : AdminCommandInk.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+
+                    if isSelected {
+                        Circle()
+                            .fill(color)
+                            .frame(width: 4.5, height: 4.5)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(color.opacity(isSelected ? 0.18 : 0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(
+                        color.opacity(isSelected ? 0.90 : 0.22),
+                        lineWidth: isSelected ? 1.5 : 0.75
+                    )
+            )
+            .shadow(color: isSelected ? color.opacity(0.22) : Color.clear, radius: 6, x: 0, y: 3)
+            .scaleEffect(isSelected ? 1.02 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: isSelected)
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(color.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(color.opacity(0.22), lineWidth: 0.75)
+        .buttonStyle(CatalogPressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(count)")
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : [.isButton])
+        .accessibilityHint(isSelected ?
+            Language.get("DoubleTapToDeselect", alter: "اضغط مرتين لإلغاء التصفية") :
+            Language.get("DoubleTapToFilter", alter: "اضغط مرتين لتصفية القائمة")
         )
     }
 
@@ -3867,17 +4081,12 @@ public struct PPInventoryItemDetailView: View {
                 apexNavigationBar
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 6)
+                    .padding(.bottom, 8)
                     .background(
-                        LinearGradient(
-                            colors: [
-                                AdminSurface.background.opacity(0.98),
-                                AdminSurface.background.opacity(0.85),
-                                AdminSurface.background.opacity(0.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .ignoresSafeArea(edges: .top)
+                        AdminSurface.background.opacity(0.96)
+                            .background(.ultraThinMaterial)
+                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
+                            .ignoresSafeArea(edges: .top)
                     )
                 Spacer()
             }
@@ -5032,6 +5241,19 @@ public struct PPInventoryItemDetailView: View {
     }
 
     private func adjustQuantity(_ delta: Int) {
+        if onAdjustQuantity == nil, viewModel == nil {
+            let branchID = BranchContextStore.shared.activeBranch?.branchID.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !branchID.isEmpty, branchID != "main_store" else {
+                PPHUD.showError(
+                    Language.get("Error", alter: "خطأ"),
+                    subtitle: Language.get(
+                        "Inventory_SpecificBranchRequired",
+                        alter: "اختر فرعاً محدداً قبل تعديل المخزون."
+                    )
+                )
+                return
+            }
+        }
         let newQty = max(0, currentQuantity + delta)
         guard newQty != currentQuantity else { return }
         let effectiveDelta = newQty - currentQuantity
@@ -5066,14 +5288,16 @@ public struct PPInventoryItemDetailView: View {
                     }
                 }
             } else {
-                AccessoryManager.shared().adjustQuantity(by: effectiveDelta, forAccessoryID: item.accessoryID) { error in
-                    if let error = error {
-                        DispatchQueue.main.async {
-                            let message = PPBranchInventoryErrorHelper.localizedMessage(for: error)
-                            PPHUD.showError(Language.get("Error", alter: "خطأ"), subtitle: message)
-                        }
-                    }
-                }
+                // The guard above makes this path unreachable for a raw
+                // detail view. Keep the failure explicit instead of falling
+                // back to a parent/catalog mutation with an unknown branch.
+                PPHUD.showError(
+                    Language.get("Error", alter: "خطأ"),
+                    subtitle: Language.get(
+                        "Inventory_SpecificBranchRequired",
+                        alter: "اختر فرعاً محدداً قبل تعديل المخزون."
+                    )
+                )
             }
         }
     }
@@ -5360,8 +5584,10 @@ public struct PPInventoryItemDetailView: View {
     // MARK: - Individual Animal Ledger
 
     private var individualAnimalLedger: some View {
-        let activeUnits = liveModel.units.filter { $0.status != "REMOVED" && $0.status != "DECEASED" && $0.status != "TRANSFERRED" }
-        let historyUnits = liveModel.units.filter { $0.status == "REMOVED" || $0.status == "DECEASED" || $0.status == "TRANSFERRED" }
+        let activeUnits = liveModel.units.filter { $0.status == "AVAILABLE" || $0.status == "RESERVED" || $0.status == "QUARANTINED" }
+        let historyUnits = liveModel.units.filter { $0.status == "SOLD" || $0.status == "REMOVED" || $0.status == "DECEASED" || $0.status == "TRANSFERRED" }
+        let availableCount = liveModel.units.filter { $0.status == "AVAILABLE" }.count
+        let soldCount = liveModel.units.filter { $0.status == "SOLD" }.count
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 8) {
@@ -5369,12 +5595,18 @@ public struct PPInventoryItemDetailView: View {
                     Text(Language.get("LivePetDossier_UnitLedgerTitle", alter: "سجل الحيوانات الفردية"))
                         .font(Font.custom("Beiruti-Bold", size: 16))
                         .foregroundStyle(AdminSurface.primaryText)
-                    Text(String(
-                        format: Language.get("LivePetDossier_ActiveUnitLedgerCount", alter: "%ld سجلات هوية نشطة"),
-                        activeUnits.count
-                    ))
-                    .font(Font.custom("Beiruti-Regular", size: 12))
-                    .foregroundStyle(AdminCommandInk.secondary)
+                    if activeUnits.isEmpty {
+                        Text(Language.get("LivePetDossier_NoActiveInStock", alter: "لا توجد حيوانات متاحة حالياً بالمخزون") + (soldCount > 0 ? " • " + String(format: Language.get("LivePetDossier_SoldCount", alter: "%ld مباع"), soldCount) : ""))
+                            .font(Font.custom("Beiruti-Regular", size: 12))
+                            .foregroundStyle(soldCount > 0 ? AdminCommandInk.secondary : Color(uiColor: .ppError))
+                    } else {
+                        Text(String(
+                            format: Language.get("LivePetDossier_ActiveOnHandCount", alter: "%ld متاح بالمخزون"),
+                            availableCount
+                        ) + (soldCount > 0 ? " • " + String(format: Language.get("LivePetDossier_SoldCount", alter: "%ld مباع"), soldCount) : ""))
+                        .font(Font.custom("Beiruti-Regular", size: 12))
+                        .foregroundStyle(AdminCommandInk.secondary)
+                    }
                 }
                 Spacer(minLength: AdminSpacing.xs)
                 dossierStatusPill(
@@ -5411,7 +5643,7 @@ public struct PPInventoryItemDetailView: View {
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundStyle(AdminCommandInk.secondary)
                                 Text(String(
-                                    format: Language.get("LivePet_Units_Archived_Count", alter: "السجلات المؤرشفة والمزالة (%ld)"),
+                                    format: Language.get("LivePet_Units_Archived_Count", alter: "سجل المبيعات والأرشيف (%ld)"),
                                     historyUnits.count
                                 ))
                                 .font(Font.custom("Beiruti-SemiBold", size: 13))
@@ -5573,16 +5805,45 @@ public struct PPInventoryItemDetailView: View {
         let identity = unit.ringTag.isEmpty ? unit.id : unit.ringTag
         let status = liveUnitStatus(unit.status)
         let statusColor = liveUnitStatusColor(unit.status)
+        let firstMediaURL = unit.mediaURLs.first.flatMap { URL(string: $0) }
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
-                // Status Jewel (Right in RTL)
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(statusColor.opacity(0.12))
-                    Image(systemName: liveUnitStatusSymbol(unit.status))
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(statusColor)
+                // Status Jewel or Specimen Photo (Right in RTL)
+                ZStack(alignment: .bottomTrailing) {
+                    if let url = firstMediaURL {
+                        AdminRemoteImage(url: url, contentMode: .fill, targetSize: CGSize(width: 44, height: 44)) {
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(statusColor.opacity(0.12))
+                                .overlay(
+                                    Image(systemName: liveUnitStatusSymbol(unit.status))
+                                        .font(.system(size: 16, weight: .bold))
+                                        .foregroundStyle(statusColor)
+                                )
+                        }
+                        .frame(width: 44, height: 44)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(statusColor.opacity(0.4), lineWidth: 1)
+                        )
+                        .overlay(alignment: .bottomTrailing) {
+                            Circle()
+                                .fill(statusColor)
+                                .frame(width: 12, height: 12)
+                                .overlay(Circle().strokeBorder(AdminSurface.surface, lineWidth: 2))
+                                .offset(x: 2, y: 2)
+                        }
+                    } else {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(statusColor.opacity(0.12))
+                            .overlay(
+                                Image(systemName: liveUnitStatusSymbol(unit.status))
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(statusColor)
+                            )
+                            .frame(width: 44, height: 44)
+                    }
                 }
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
@@ -5601,6 +5862,10 @@ public struct PPInventoryItemDetailView: View {
                             symbol: liveUnitStatusSymbol(unit.status),
                             tint: statusColor
                         )
+
+                        if unit.gender != .unspecified {
+                            livePetGenderPill(unit.gender)
+                        }
 
                         let unitBranchID = unit.currentBranchID.isEmpty ? (item.resolvedBranchID() ?? item.storeID ?? "") : unit.currentBranchID
                         if !unitBranchID.isEmpty {
@@ -5786,6 +6051,21 @@ public struct PPInventoryItemDetailView: View {
             .padding(.vertical, 4)
             .background(tint.opacity(0.11), in: Capsule(style: .continuous))
             .overlay(Capsule(style: .continuous).strokeBorder(tint.opacity(0.22), lineWidth: 0.5))
+    }
+
+    private func livePetGenderPill(_ gender: PPLivePetUnitGender) -> some View {
+        let tint = Color(uiColor: gender.tint)
+        return HStack(spacing: 3) {
+            Image(systemName: gender.symbolName)
+                .font(.system(size: 8, weight: .bold))
+            Text(gender.localizedShortTitle)
+                .font(Font.custom("Beiruti-Bold", size: 11))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3.5)
+        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(tint.opacity(0.30), lineWidth: 0.5))
     }
 
     private var inventoryTrackingTitle: String {
@@ -7533,9 +7813,30 @@ private struct PPLivePetOperationSheet: View {
     let context: PPLivePetOperationContext
     @ObservedObject var model: PPLivePetOperationsViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
 
     @State private var selectedMode: PPLivePetInventoryMode = .individual
     @State private var unitDrafts: [PPLivePetUnitDraft]
+    @State private var unitPhotos: [String: PPLivePetUnitPhotoDraft] = [:]
+    @State private var showUnitPhotoSource: Bool = false
+    @State private var showUnitPhotoCamera: Bool = false
+    @State private var showUnitPhotoLibrary: Bool = false
+    @State private var showCameraAccessAlert: Bool = false
+    @State private var unitPhotoTargetID: String? = nil
+    @State private var previewMedia: PPLivePetPreviewMedia? = nil
+    @State private var expandedUnitIDs: Set<String> = []
+    @Namespace private var genderSelectionNamespace
+
+    private enum FocusedField: Hashable {
+        case unitRing(String)
+        case unitSellingPrice(String)
+        case unitPurchaseCost(String)
+        case unitSupplier(String)
+        case unitNotes(String)
+    }
+    @FocusState private var focusedField: FocusedField?
+
     @State private var quantityText: String
     @State private var costText: String = ""
     @State private var standardPriceText: String
@@ -7553,6 +7854,8 @@ private struct PPLivePetOperationSheet: View {
     @State private var validationMessage: String?
     @State private var isBranchPickerPresented: Bool = false
     @State private var branchPickerExcludedID: String? = nil
+    @State private var operationCommandID: String
+    @State private var submittedIntentSignature: String? = nil
 
     private var currentLiveUnit: PPLivePetInventoryUnit? {
         switch context {
@@ -7584,6 +7887,7 @@ private struct PPLivePetOperationSheet: View {
     init(context: PPLivePetOperationContext, model: PPLivePetOperationsViewModel) {
         self.context = context
         self.model = model
+        _operationCommandID = State(initialValue: PPLivePetInventoryService.commandID(context.id))
         let standardPrice = model.item.standardSellingPrice?.doubleValue ?? model.item.price.doubleValue
         _standardPriceText = State(initialValue: standardPrice > 0 ? String(format: "%g", standardPrice) : "")
         _quantityText = State(initialValue: "\(max(0, model.item.quantity))")
@@ -7594,9 +7898,11 @@ private struct PPLivePetOperationSheet: View {
         } else {
             draftCount = 1
         }
-        _unitDrafts = State(initialValue: (0..<draftCount).map { _ in
+        let initialDrafts = (0..<draftCount).map { _ in
             PPLivePetUnitDraft(sellingPriceText: standardPrice > 0 ? String(format: "%g", standardPrice) : "")
-        })
+        }
+        _unitDrafts = State(initialValue: initialDrafts)
+        _expandedUnitIDs = State(initialValue: Set(initialDrafts.map { $0.id }))
 
         switch context {
         case .price(let unit):
@@ -7633,6 +7939,52 @@ private struct PPLivePetOperationSheet: View {
         default:
             break
         }
+    }
+
+    private var currentIntentSignature: String {
+        let unitSignature = unitDrafts.map { unit in
+            [
+                unit.id,
+                unit.ringTag,
+                unit.gender.rawValue,
+                ISO8601DateFormatter().string(from: unit.acquisitionDate),
+                unit.purchaseCostText,
+                unit.sellingPriceText,
+                unit.supplier,
+                unit.notes,
+                unit.subSubKindID.map { String($0) } ?? "",
+                unit.subSubKindItemID.map { String($0) } ?? "",
+                unitPhotos[unit.id]?.contentSHA256 ?? ""
+            ].joined(separator: "|")
+        }.joined(separator: "||")
+        return [
+            context.id,
+            selectedMode.rawValue,
+            quantityText,
+            costText,
+            standardPriceText,
+            supplier,
+            notes,
+            reason,
+            customerName,
+            customerPhone,
+            selectedBranchID,
+            ISO8601DateFormatter().string(from: reservationValidUntil),
+            cashReceivedText,
+            causeCode,
+            veterinaryReference,
+            ISO8601DateFormatter().string(from: observedDeathAt),
+            unitSignature
+        ].joined(separator: "\u{1f}")
+    }
+
+    private func stableCommandIDForCurrentIntent() -> String {
+        let signature = currentIntentSignature
+        if submittedIntentSignature != signature {
+            submittedIntentSignature = signature
+            operationCommandID = PPLivePetInventoryService.commandID(context.id)
+        }
+        return operationCommandID
     }
 
     var body: some View {
@@ -7684,6 +8036,59 @@ private struct PPLivePetOperationSheet: View {
                 selectedBranchID: $selectedBranchID,
                 excludedBranchID: branchPickerExcludedID
             )
+        }
+        .confirmationDialog(
+            Language.get("LivePetIntake_UnitPhotoSourceTitle", alter: "صورة هذا الحيوان"),
+            isPresented: $showUnitPhotoSource,
+            titleVisibility: .visible
+        ) {
+            Button(Language.get("LivePetIntake_UnitPhotoCamera", alter: "التقاط صورة")) {
+                requestUnitPhotoCamera()
+            }
+            Button(Language.get("LivePetIntake_UnitPhotoLibrary", alter: "اختيار من مكتبة الصور")) {
+                showUnitPhotoLibrary = true
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get(
+                "LivePetIntake_UnitPhotoSourceMessage",
+                alter: "سترتبط الصورة بسجل هذا الحيوان فقط ولن تُنسخ إلى الحيوانات الأخرى."
+            ))
+        }
+        .sheet(isPresented: $showUnitPhotoLibrary) {
+            PPLivePetPhotoPicker(maxSelection: 1) { images, failedCount in
+                if let image = images.first {
+                    acceptUnitPhoto(image)
+                } else if failedCount > 0 {
+                    validationMessage = Language.get(
+                        "LivePetIntake_UnitPhotoImportFailed",
+                        alter: "تعذر استيراد الصورة المحددة. اختر صورة أخرى وحاول مجدداً."
+                    )
+                }
+            }
+        }
+        .fullScreenCover(isPresented: $showUnitPhotoCamera) {
+            PPLivePetCameraPicker { image in
+                acceptUnitPhoto(image)
+            }
+        }
+        .alert(
+            Language.get("LivePetIntake_UnitPhotoCameraPermissionTitle", alter: "السماح باستخدام الكاميرا"),
+            isPresented: $showCameraAccessAlert
+        ) {
+            Button(Language.get("LivePetIntake_OpenSettings", alter: "فتح الإعدادات")) {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
+        } message: {
+            Text(Language.get(
+                "LivePetIntake_UnitPhotoCameraPermissionMessage",
+                alter: "فعّل إذن الكاميرا من الإعدادات لالتقاط صورة خاصة بهذا الحيوان، أو اختر صورة من المكتبة."
+            ))
+        }
+        .fullScreenCover(item: $previewMedia) { media in
+            PPLivePetMediaPreview(media: media)
         }
         .onAppear {
             normalizeBranchSelection()
@@ -7775,7 +8180,40 @@ private struct PPLivePetOperationSheet: View {
             case .intake:
                 branchPicker(excluding: nil)
                 if model.mode == .individual {
-                    unitDraftFields($unitDrafts[0], showRemove: false)
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(alignment: .center) {
+                            Text(Language.get("LivePet_Intake_Roster_Title", alter: "جوازات الحيوانات المضافة"))
+                                .font(Font.custom("Beiruti-Bold", size: 16))
+                                .foregroundStyle(AdminSurface.primaryText)
+                            Spacer()
+                            if unitDrafts.count < 100 {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    let newDraft = PPLivePetUnitDraft(
+                                        sellingPriceText: standardPriceText.isEmpty ? "" : standardPriceText
+                                    )
+                                    unitDrafts.append(newDraft)
+                                    expandedUnitIDs.insert(newDraft.id)
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "plus.circle.fill")
+                                            .font(.system(size: 13, weight: .bold))
+                                        Text(Language.get("LivePetIntake_AddAnimal", alter: "إضافة حيوان آخر"))
+                                            .font(Font.custom("Beiruti-Bold", size: 13))
+                                    }
+                                    .foregroundStyle(AdminSurface.primary)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(AdminSurface.primary.opacity(0.10), in: Capsule(style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
+                        ForEach(Array($unitDrafts.enumerated()), id: \.element.id) { index, $unit in
+                            unitPassport(index: index, unit: $unit)
+                        }
+                    }
                 } else {
                     numberField(Language.get("LivePet_Group_Quantity", alter: "الكمية المضافة"), text: $quantityText)
                     if model.canViewCosts {
@@ -8257,8 +8695,9 @@ private struct PPLivePetOperationSheet: View {
                let validUntil = reservation.validUntil, validUntil <= Date() {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    let commandID = stableCommandIDForCurrentIntent()
                     Task {
-                        let ok = await model.cancel(reservation: reservation)
+                        let ok = await model.cancel(reservation: reservation, commandID: commandID)
                         if ok { dismiss() }
                     }
                 } label: {
@@ -8336,9 +8775,10 @@ private struct PPLivePetOperationSheet: View {
     private var releaseReservationButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            let commandID = stableCommandIDForCurrentIntent()
             Task {
                 if case .reservation(let reservation) = context {
-                    let ok = await model.cancel(reservation: reservation)
+                    let ok = await model.cancel(reservation: reservation, commandID: commandID)
                     if ok { dismiss() }
                 }
             }
@@ -8783,6 +9223,7 @@ private struct PPLivePetOperationSheet: View {
 
     private func performAction() {
         validationMessage = nil
+        let commandID = stableCommandIDForCurrentIntent()
         Task {
             let ok: Bool
             switch context {
@@ -8792,13 +9233,14 @@ private struct PPLivePetOperationSheet: View {
                 ok = await model.migrate(
                     mode: selectedMode,
                     units: selectedMode == .individual ? unitDrafts : [],
-                    standardSellingPrice: price
+                    standardSellingPrice: price,
+                    commandID: commandID
                 )
             case .intake:
                 let targetBranch = selectedBranchID.isEmpty ? (BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? "") : selectedBranchID
                 if model.mode == .individual {
                     let cleanCostText = unitDrafts[0].purchaseCostText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
-                    let cost = Double(cleanCostText) ?? 0
+                    let cost = Double(cleanCostText)
                     ok = await model.intake(
                         mode: .individual,
                         unit: unitDrafts[0],
@@ -8806,7 +9248,8 @@ private struct PPLivePetOperationSheet: View {
                         cost: cost,
                         supplier: unitDrafts[0].supplier.trimmingCharacters(in: .whitespacesAndNewlines),
                         notes: unitDrafts[0].notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                        branchID: targetBranch
+                        branchID: targetBranch,
+                        commandID: commandID
                     )
                 } else {
                     let cleanQty = quantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -8816,7 +9259,18 @@ private struct PPLivePetOperationSheet: View {
                         return
                     }
                     let cleanCostText = costText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
-                    let cost = Double(cleanCostText) ?? 0
+                    let normalizedCostText = cleanCostText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cost = normalizedCostText.isEmpty ? nil : Double(normalizedCostText)
+                    if model.canViewCosts {
+                        guard let cost, cost >= 0, cost <= 999_999_999.99,
+                              abs(cost * 100 - (cost * 100).rounded()) < 0.000_001 else {
+                            validationMessage = Language.get(
+                                "LivePet_Validation_UnitCost",
+                                alter: "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين."
+                            )
+                            return
+                        }
+                    }
                     ok = await model.intake(
                         mode: .quantity,
                         unit: unitDrafts[0],
@@ -8824,7 +9278,8 @@ private struct PPLivePetOperationSheet: View {
                         cost: cost,
                         supplier: supplier.trimmingCharacters(in: .whitespacesAndNewlines),
                         notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
-                        branchID: targetBranch
+                        branchID: targetBranch,
+                        commandID: commandID
                     )
                 }
             case .reserve(let contextUnit):
@@ -8853,7 +9308,8 @@ private struct PPLivePetOperationSheet: View {
                     customerName: cleanCustomerName,
                     phone: cleanPhone,
                     branchID: targetBranch,
-                    validUntil: reservationValidUntil
+                    validUntil: reservationValidUntil,
+                    commandID: commandID
                 )
             case .reservation(let reservation):
                 if let validUntil = reservation.validUntil, validUntil <= Date() {
@@ -8866,7 +9322,7 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_Cash", alter: "يجب أن يغطي المبلغ النقدي إجمالي الحجز.")
                     return
                 }
-                ok = await model.complete(reservation: reservation, cashReceived: cash)
+                ok = await model.complete(reservation: reservation, cashReceived: cash, commandID: commandID)
             case .transfer(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
                 let currentBranch = effectiveCurrentBranchID(for: unit)
@@ -8890,7 +9346,8 @@ private struct PPLivePetOperationSheet: View {
                     unit: unit,
                     sourceBranchID: canonicalCurrent,
                     destinationBranchID: canonicalTarget,
-                    reason: trimmedReason
+                    reason: trimmedReason,
+                    commandID: commandID
                 )
             case .quarantine(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
@@ -8899,7 +9356,7 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: trimmedReason)
+                ok = await model.lifecycle(action: "quarantine_unit", unit: unit, reason: trimmedReason, commandID: commandID)
             case .releaseQuarantine(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
                 let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -8907,7 +9364,7 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.lifecycle(action: "release_quarantine", unit: unit, reason: trimmedReason)
+                ok = await model.lifecycle(action: "release_quarantine", unit: unit, reason: trimmedReason, commandID: commandID)
             case .mortality(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
                 let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -8922,7 +9379,8 @@ private struct PPLivePetOperationSheet: View {
                     causeCode: causeCode,
                     notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
                     veterinaryReference: veterinaryReference.trimmingCharacters(in: .whitespacesAndNewlines),
-                    observedDeathAt: observedDeathAt
+                    observedDeathAt: observedDeathAt,
+                    commandID: commandID
                 )
             case .price(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
@@ -8931,7 +9389,7 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_UnitPrice", alter: "حدد سعر بيع صالحاً لكل حيوان وبحد أقصى منزلتين عشريتين.")
                     return
                 }
-                ok = await model.updatePrice(unit: unit, price: price)
+                ok = await model.updatePrice(unit: unit, price: price, commandID: commandID)
             case .remove(let contextUnit):
                 let unit = currentLiveUnit ?? contextUnit
                 let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -8939,7 +9397,7 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.remove(unit: unit, reason: trimmedReason)
+                ok = await model.remove(unit: unit, reason: trimmedReason, commandID: commandID)
             case .groupAdjustment:
                 let cleanQty = quantityText.normalizedEnglishDigits(allowsDecimal: false).trimmingCharacters(in: .whitespacesAndNewlines)
                 guard let target = Int(cleanQty), target >= 0 else {
@@ -8951,14 +9409,14 @@ private struct PPLivePetOperationSheet: View {
                     validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.adjustGroup(targetQuantity: target, reason: trimmedReason)
+                ok = await model.adjustGroup(targetQuantity: target, reason: trimmedReason, commandID: commandID)
             case .archive(let target):
                 let trimmedReason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard trimmedReason.count >= 3 else {
                     validationMessage = Language.get("LivePet_Validation_Reason", alter: "اكتب سبباً واضحاً من ثلاثة أحرف على الأقل.")
                     return
                 }
-                ok = await model.archive(target, reason: trimmedReason)
+                ok = await model.archive(target, reason: trimmedReason, commandID: commandID)
             }
 
             if ok {

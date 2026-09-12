@@ -5352,7 +5352,10 @@
 "LivePetDossier_UnitLedgerTitle" = "Individual animal ledger";
 "LivePetDossier_UnitLedgerCount" = "%ld independent identity records";
 "LivePetDossier_ActiveUnitLedgerCount" = "%ld active identity records";
-"LivePet_Units_Archived_Count" = "Archived and removed records (%ld)";
+"LivePetDossier_NoActiveInStock" = "No animals currently available in stock";
+"LivePetDossier_ActiveOnHandCount" = "%ld available in stock";
+"LivePetDossier_SoldCount" = "%ld sold";
+"LivePet_Units_Archived_Count" = "Sales history and archived (%ld)";
 "LivePetDossier_LoadingHint" = "The current state is being fetched before actions are available.";
 "LivePetDossier_UnitsRestricted" = "Individual animal records are unavailable with your permission.";
 "LivePetDossier_EmptyUnitsHint" = "Add individual stock to create an identity record for each animal.";
@@ -6530,8 +6533,8 @@
 "AdminPOS_NewShift" = "New shift ready to begin";
 "AdminPOS_NewShiftSubtitle" = "Start the first checkout to activate the register ledger";
 "AdminPOS_RetryConnection" = "Retry Connection";
-"AdminPOS_HardwareDiagnostics" = "Hardware Diagnostics";
-"AdminPOS_QIBReady" = "QIB Ready";
+"AdminPOS_QIBReady" = "Ready for Customers";
+"AdminPOS_ReadyForCustomers" = "Ready for Customers";
 "AdminPOS_CloudSyncActive" = "Cloud Sync Online";
 "AdminPOS_ThermalPrinterReady" = "Thermal Printer Ready";
 "AdminPOS_BarcodeEngineReady" = "Barcode Engine Active";
@@ -6543,6 +6546,15 @@
 "AdminPOS_TerminalShortCut_N" = "New Sale (⌘N)";
 "AdminPOS_TerminalShortCut_H" = "Invoices (⌘H)";
 "AdminPOS_TerminalShortCut_B" = "Quick Scan (⌘B)";
+"AdminPOS_TerminalSubtitle_Clean" = "Fast checkout and instant barcode scanning";
+"AdminPOS_StartFastCheckout_Short" = "Start Sale";
+"AdminPOS_HistorySection_Title" = "Today's Sales Summary";
+"AdminPOS_ShiftActive" = "Shift Active";
+"AdminPOS_ShiftReady" = "Shift Ready";
+"AdminPOS_Transactions_Header" = "Transactions";
+"AdminPOS_Refunds_Header" = "Refunds";
+"AdminPOS_NoRefunds" = "None";
+"AdminPOS_OpenLedger_Short" = "View Invoices & Receipts";
 "Stock_Section_Title" = "Stock & Products Horizon";
 "Stock_Section_Subtitle" = "Products catalog, nutrition & live pets with real-time stock sync";
 "Stock_Alerts_Count_Format" = "%d Stock Alerts";
@@ -7006,3 +7018,227 @@
 "Service_Type_Service" = "Service";
 "Service_Untitled" = "Untitled Service";
 
+/* ===================== Live Pet Return & Refund Architecture ===================== */
+"LivePet_ReturnStatus_Available" = "Available for Sale";
+"LivePet_ReturnStatus_Reserved" = "Reserved for Customer";
+"LivePet_ReturnStatus_Sold" = "Sold";
+"LivePet_ReturnStatus_ReturnRequested" = "Return Requested";
+"LivePet_ReturnStatus_ReturnInTransit" = "Return In Transit";
+"LivePet_ReturnStatus_ReturnReceived" = "Return Received at Store";
+"LivePet_ReturnStatus_UnderInspection" = "Under Inspection";
+"LivePet_ReturnStatus_Quarantined" = "Quarantined";
+"LivePet_ReturnStatus_MedicalHold" = "Medical Hold";
+"LivePet_ReturnStatus_Cleared" = "Cleared for Resale";
+"LivePet_ReturnStatus_NotForResale" = "Not for Resale";
+"LivePet_ReturnStatus_TransferredToCare" = "Transferred to Care Center";
+"LivePet_ReturnStatus_WrittenOff" = "Written Off";
+
+"Custody_Store" = "Store / Enclosure";
+"Custody_ReservedForCustomer" = "Reserved at Store";
+"Custody_Customer" = "Customer Custody";
+"Custody_InTransit" = "In Transit";
+"Custody_ReturnDesk" = "Store Return Desk";
+"Custody_Quarantine" = "Quarantine & Isolation Unit";
+"Custody_Medical" = "Veterinary Clinic";
+"Custody_ExternalCare" = "External Care Facility";
+"Custody_Closed" = "Custody Closed";
+
+"Health_Unknown" = "Unspecified";
+"Health_AppearsNormal" = "Appears Normal";
+"Health_InspectionRequired" = "Inspection Required";
+"Health_QuarantineRequired" = "Quarantine Required";
+"Health_MedicalAttention" = "Urgent Medical Attention";
+"Health_Cleared" = "Cleared & Healthy";
+"Health_NotForResale" = "Medically Ineligible for Resale";
+
+"ReturnCase_Draft" = "Draft";
+"ReturnCase_Initiated" = "Initiated";
+"ReturnCase_AwaitingReceive" = "Awaiting Receive";
+"ReturnCase_Received" = "Received";
+"ReturnCase_UnderInspection" = "Under Inspection";
+"ReturnCase_Approved" = "Approved";
+"ReturnCase_Rejected" = "Rejected";
+"ReturnCase_Completed" = "Completed";
+"ReturnCase_Cancelled" = "Cancelled";
+
+"ReturnCondition_AppearsNormal" = "Appears Normal & Active";
+"ReturnCondition_MinorConcern" = "Minor Behavioral or Physical Concern";
+"ReturnCondition_Injured" = "Physical Injury / Bruises / Cuts";
+"ReturnCondition_IllnessSuspected" = "Suspected Illness or Lethargy";
+"ReturnCondition_UrgentMedical" = "Critical Condition / Immediate Medical Care";
+
+"HealthDisposition_InspectionRequired" = "Routine Inspection Required";
+"HealthDisposition_Quarantine" = "Quarantine & Preventive Isolation";
+"HealthDisposition_VetAssessment" = "Specialized Vet Assessment";
+"HealthDisposition_Cleared" = "Medically Cleared";
+
+"CommercialDisposition_Hold" = "Commercial Hold";
+"CommercialDisposition_EligibleResale" = "Eligible for Resale (Pending Clearance)";
+"CommercialDisposition_NonResale" = "Permanently Excluded from Resale";
+"CommercialDisposition_CareTransfer" = "Care Facility / Adoption Transfer";
+
+"FinancialResolution_None" = "No Financial Settlement";
+"FinancialResolution_FullRefund" = "Full Refund";
+"FinancialResolution_PartialRefund" = "Partial Refund";
+"FinancialResolution_Exchange" = "Exchange with Item/Animal";
+"FinancialResolution_StoreCredit" = "Store Credit / Wallet Voucher";
+"FinancialResolution_ManualSettlement" = "Manual Accounting Settlement";
+
+"RefundStatus_NotRequired" = "Not Required";
+"RefundStatus_NotRequested" = "Not Requested";
+"RefundStatus_Requested" = "Requested";
+"RefundStatus_Processing" = "Processing with Gateway";
+"RefundStatus_Succeeded" = "Refund Settled Successfully";
+"RefundStatus_Failed" = "Refund Failed";
+"RefundStatus_RetryRequired" = "Retry Required";
+"RefundStatus_ManualReview" = "Pending Financial Audit";
+
+"ReturnEvent_Created" = "Return Request Created";
+"ReturnEvent_UnitSelected" = "Return Animal Selected";
+"ReturnEvent_HandoffStarted" = "Customer Handoff Started";
+"ReturnEvent_UnitReceived" = "Animal Received at Return Desk";
+"ReturnEvent_InspectionStarted" = "Health Inspection Started";
+"ReturnEvent_InspectionCleared" = "Health Clearance Approved";
+"ReturnEvent_QuarantineStarted" = "Moved to Quarantine";
+"ReturnEvent_MedicalHoldStarted" = "Transferred to Medical Care";
+"ReturnEvent_RefundRequested" = "Refund Requested";
+"ReturnEvent_RefundProcessing" = "Refund Processing with Gateway";
+"ReturnEvent_RefundSucceeded" = "Refund Succeeded";
+"ReturnEvent_RefundFailed" = "Refund Failed";
+"ReturnEvent_ReturnCompleted" = "Return Case Completed";
+"ReturnEvent_ReturnCancelled" = "Return Case Cancelled";
+
+"LivePet_Return_SelectUnitsTitle" = "Select Live Pet Exactly";
+"LivePet_Return_SelectUnitsSub" = "Choose the animal matching the ring tag or microchip";
+"LivePet_AlreadyReturned_Badge" = "Already Returned";
+"LivePet_IntakeConditionTitle" = "Intake Condition:";
+"LivePet_UnitNotes_Placeholder" = "Additional notes on animal behavior or appearance...";
+"LivePet_NoUnitsFound" = "No individually tracked animal records found on this receipt.";
+
+"LivePet_Custody_IntakeLocationTitle" = "Intake Custody Location";
+"LivePet_Custody_DeskFormat" = "Return Desk • %@";
+"LivePet_Notice_NoAutoRestockTitle" = "Live Pet Safety Protocol";
+"LivePet_Notice_NoAutoRestockSub" = "The animal will never automatically return to active sale inventory after refund. It enters 'Under Inspection' custody until evaluated and manually cleared.";
+"LivePet_Reason_Behavior" = "Adaptation Difficulty / Behavior";
+"LivePet_Reason_Allergy" = "Family Allergy Concern";
+"LivePet_Reason_HealthConcern" = "Health Concern Requiring Checkup";
+"LivePet_Reason_Placeholder" = "Describe the return reason in detail...";
+"LivePet_FinancialResolutionTitle" = "Financial Settlement Method";
+"LivePet_TotalRefundDue" = "Total Refund Due";
+"LivePet_UnitsCount" = "Animal(s) Selected";
+
+"LivePet_Confirm_SuccessTitle" = "Live Pet Return Processed";
+"LivePet_Confirm_SuccessSub" = "Return case created and animal transferred to intake custody";
+"LivePet_CaseNumberLabel" = "Return Case Number";
+"LivePet_AnimalStateLabel" = "Animal Status";
+"LivePet_RefundStateLabel" = "Refund Status";
+"LivePet_UnderInspection_Notice" = "Under Intake Desk Custody";
+"LivePet_ReturnedUnitsHeader" = "Returned Animals:";
+"LivePet_OpenDossierButton" = "Open Return Dossier & Follow Up";
+
+"LivePet_AnimalCustody" = "Custody & Location";
+"LivePet_FinancialSettlement" = "Financial Settlement";
+"LivePet_ReturnedAnimalsHeader" = "Animal Dossier & Veterinary Actions";
+"LivePet_ActionClearResale" = "Clear for Resale";
+"LivePet_ActionQuarantine" = "Move to Quarantine";
+"LivePet_TimelineHeader" = "Audit Trail & Event Timeline";
+"LivePet_NoEventsYet" = "No timeline events recorded yet.";
+"LivePet_CaseNotFound" = "Return case not found.";
+"LivePet_ConfirmClearanceTitle" = "Confirm Resale Clearance";
+"LivePet_ConfirmClearanceMsg" = "Are you sure this animal has passed all veterinary inspections and is eligible for sale in store inventory?";
+"LivePet_ConfirmQuarantineTitle" = "Move Animal to Quarantine";
+"LivePet_ConfirmQuarantineMsg" = "The animal will be quarantined and removed from intake desk custody pending veterinary review.";
+"LivePet_Clearance_Success" = "Animal successfully cleared and restored to active store inventory.";
+"LivePet_Quarantine_Success" = "Animal successfully moved to the quarantine unit.";
+"LivePet_Error_NoClearancePerm" = "You lack permission to clear animals for resale (returns.live_pet.inspect).";
+"LivePet_Error_NoInspectPerm" = "You lack permission to update animal inspection status (returns.live_pet.inspect).";
+
+"LivePet_Return_CoordinatorTitle" = "Live Pet Return (Exact Unit)";
+"LivePet_NextCustodyIntake" = "Continue Intake (%d Selected)";
+"LivePet_ConfirmReturnAction" = "Confirm Return (%@)";
+"LivePet_MixedReceiptNoticeTitle" = "Receipt Contains Tracked Live Pets";
+"LivePet_MixedReceiptNoticeSub" = "To return live animals with exact ring tag verification and health protocol, please use the dedicated Live Pet Return Studio.";
+"LivePet_LaunchCoordinatorButton" = "Open Live Pet Return Studio";
+"LivePet_TrackedBadge" = "Tracked Live Pet";
+"LivePet_SelectExactRingTag" = "Select Ring Tag";
+"LivePet_Action_Return" = "Return Animal";
+"LivePet_MissingReceivingBranch" = "Unable to determine authorized receiving branch.";
+"NotSelected" = "Not Selected";
+"ReturnEvent_InspectionUpdated" = "Inspection Results Updated";
+"LivePet_WorkflowStateLabel" = "Case Status";
+"LivePet_ProceedToMerchandiseRefund" = "Continue to Merchandise Refund";
+"LivePet_Action_RefundMerchandise" = "Refund Products & Accessories";
+
+/* ===================== Authoritative Inventory Commands ===================== */
+"Inventory_InvalidCommandResponse" = "The inventory service response could not be verified.";
+"Inventory_InvalidAdjustmentResponse" = "The stock adjustment result could not be verified.";
+"Inventory_InvalidDeleteResponse" = "The item archive result could not be verified.";
+"Inventory_InvalidTransferResponse" = "The inventory transfer result could not be verified.";
+"Inventory_SpecificBranchRequired" = "Select a specific branch before creating opening stock for this item.";
+"Inventory_MissingProductIdentifier" = "The save could not be confirmed because the product identifier is invalid.";
+"Inventory_ReadbackMissing" = "The server accepted the operation, but the item was not found during final verification. Retry without changing the data.";
+"Inventory_ReadbackPending" = "The server accepted the operation, but the confirmed revision is not visible yet. Retry without changing the data.";
+"Inventory_CommandAcceptedReadbackPending_Format" = "The server accepted the save, but the final revision could not be confirmed. Retry without changing the data. Details: %@";
+"Inventory_AdjustmentPending" = "Adjustment pending";
+"Inventory_AdjustmentPendingDetail" = "Wait for the current adjustment to be confirmed before submitting another change for this item.";
+"Inventory_NegativeStockRejected" = "Available stock cannot become negative.";
+"CatalogIntake_ValidationCost" = "Enter a valid acquisition cost with no more than two decimal places.";
+"CatalogIntake_CostRequiredForOpeningStock" = "Enter the acquisition cost for opening stock, or create the item with zero quantity.";
+"Inventory_Projection_Badge" = "Inventory";
+"Listing_Projection_Cannot_Moderate" = "This listing cannot be moderated directly because it is automatically managed by live pet inventory.";
+"Listing_Projection_Title" = "Managed Automatically from Inventory";
+"Listing_Projection_Notice" = "Listing status, price, and availability reflect live pet inventory state.";
+
+/* ===================== V6 Docked Bottom Bar ===================== */
+"Live Radar Online" = "Live Radar Online";
+"Syncing..." = "Syncing...";
+"Global Network" = "Global Network";
+"Operator" = "Operator";
+
+/* Physical Specifications Studio NextGen V6 Additions */
+"PhysicalSpec_Title" = "Physical Specifications";
+"PhysicalSpec_Subtitle" = "Select a single measurement archetype or leave unspecified";
+"PhysicalSpec_Dimensions_Title" = "Dimensions (W × H)";
+"PhysicalSpec_Dimensions_Subtitle" = "For cages, crates & enclosures";
+"PhysicalSpec_ApparelSize_Title" = "Standard Size";
+"PhysicalSpec_ApparelSize_Subtitle" = "For apparel, collars & harnesses";
+"PhysicalSpec_Weight_Title" = "Weight or Volume";
+"PhysicalSpec_Weight_Subtitle" = "For litter, shampoo & liquids";
+"PhysicalSpec_None_Title" = "Unspecified";
+"PhysicalSpec_None_Subtitle" = "Item has no physical dimensions";
+"PhysicalSpec_Width" = "Width";
+"PhysicalSpec_Height" = "Height";
+"PhysicalSpec_Swap" = "Swap Dimensions";
+"PhysicalSpec_Area" = "Approximate Footprint";
+"PhysicalSpec_Unit_cm" = "cm";
+"PhysicalSpec_Unit_m" = "m";
+"PhysicalSpec_Unit_in" = "in";
+"PhysicalSpec_Unit_mm" = "mm";
+"PhysicalSpec_Presets_Cages" = "Common Cage & Carrier Sizes:";
+"PhysicalSpec_LiveBlueprint" = "Live Blueprint";
+"PhysicalSpec_Clear" = "Clear";
+"PhysicalSpec_BlueprintPrompt" = "Enter width and height to render dynamic blueprint and auto-calculate proportions";
+"Dimensions_Short" = "Dimensions W×H";
+"CatalogIntake_ValidationDimensions" = "Enter valid dimensions (width and height) with at most two decimal places.";
+
+/* ===================== Twin POS Cockpit Quick Expense Studio ===================== */
+"AdminPOS_ExpenseCard_Badge" = "Shift OPEX";
+"AdminPOS_ExpenseCard_Title" = "Add Expense";
+"AdminPOS_ExpenseCard_Subtitle" = "Log petty cash & store payouts";
+"AdminPOS_ExpenseCard_Action" = "New Expense";
+"AdminPOS_ExpenseCard_Shortcut" = "Expense (⌘E)";
+"AdminPOS_QuickExpense_SheetTitle" = "Log Shift Expense";
+"AdminPOS_QuickExpense_SheetSubtitle" = "Record immediate operational payout from register";
+"AdminPOS_QuickExpense_Amount" = "Amount (QAR)";
+"AdminPOS_QuickExpense_Category" = "Expense Category";
+"AdminPOS_QuickExpense_Notes" = "Notes & Reason";
+"AdminPOS_QuickExpense_NotesPlaceholder" = "e.g. Cleaning materials, delivery tip, petty supplies...";
+"AdminPOS_QuickExpense_Confirm" = "Confirm Payout & Record Voucher";
+"AdminPOS_QuickExpense_Success" = "Expense recorded successfully";
+"AdminPOS_QuickExpense_ViewAccounting" = "View All Store Accounts";
+"AdminPOS_Category_Supplies" = "Supplies & Cleaning";
+"AdminPOS_Category_Maintenance" = "Maintenance & Ops";
+"AdminPOS_Category_CashOut" = "Petty Cash Payout";
+"AdminPOS_Category_Delivery" = "Courier & Delivery";
+"AdminPOS_Category_Other" = "Other Expenses";
+"AdminPOS_QuickExpense_ValidationAmount" = "Enter a valid positive amount";

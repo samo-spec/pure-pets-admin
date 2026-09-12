@@ -80,6 +80,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, copy, nullable) NSString *branchID;
 @property (nonatomic, copy, nullable) NSString *branchName;
 @property (nonatomic, copy, nullable) NSString *cashierName;
+@property (nonatomic, readonly) BOOL hasIndividuallyTrackedLivePets;
+@property (nonatomic, readonly) BOOL hasGenericMerchandise;
+@property (nonatomic, readonly) NSArray<PPPOSCartItem *> *livePetCartItems;
+@property (nonatomic, readonly) NSArray<PPPOSCartItem *> *genericCartItems;
 - (instancetype)initWithDictionary:(NSDictionary *)dict documentID:(NSString *)docID;
 @end
 
@@ -168,6 +172,14 @@ NS_ASSUME_NONNULL_BEGIN
                  currency:(nullable NSString *)currency
                completion:(void(^)(BOOL success, NSError * _Nullable error))completion
     NS_SWIFT_NAME(refundTransaction(transactionID:refundAmount:refundItems:reason:currency:completion:));
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+                commandID:(nullable NSString *)commandID
+               completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(refundTransaction(transactionID:refundAmount:refundItems:reason:currency:commandID:completion:));
 @end
 
 // MARK: - POS Deep Diagnostic Logging

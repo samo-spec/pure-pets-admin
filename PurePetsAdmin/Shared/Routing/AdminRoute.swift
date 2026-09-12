@@ -201,7 +201,7 @@ enum AdminRoute: Hashable, Identifiable {
         case .notifications: return ["notifications.view", "support.view", "support.manage", "moderation.view", "moderation.manage"]
         case .notificationComposer: return ["notifications.send"]
         case .notificationSettings: return ["notifications.view", "notifications.send", "support.manage", "moderation.manage", "users.block"]
-        case .accessories, .food, .livePets: return ["stock.view", "stock.manage", "stock.create", "stock.delete"]
+        case .accessories, .food, .livePets: return ["stock.view", "stock.manage"]
         case .branches: return ["branches.view", "branches.manage"]
         case .agents: return ["agents.view", "agents.manage"]
         case .homeControl: return ["settings.view", "settings.manage"]

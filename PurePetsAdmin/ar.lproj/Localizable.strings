@@ -5413,7 +5413,10 @@
 "LivePetDossier_UnitLedgerTitle" = "سجل الحيوانات الفردية";
 "LivePetDossier_UnitLedgerCount" = "%ld سجلات هوية مستقلة";
 "LivePetDossier_ActiveUnitLedgerCount" = "%ld سجلات هوية نشطة";
-"LivePet_Units_Archived_Count" = "السجلات المؤرشفة والمزالة (%ld)";
+"LivePetDossier_NoActiveInStock" = "لا توجد حيوانات متاحة حالياً بالمخزون";
+"LivePetDossier_ActiveOnHandCount" = "%ld متاح بالمخزون";
+"LivePetDossier_SoldCount" = "%ld مباع";
+"LivePet_Units_Archived_Count" = "سجل المبيعات والأرشيف (%ld)";
 "LivePetDossier_LoadingHint" = "يتم جلب الحالة الحالية قبل إتاحة الإجراءات.";
 "LivePetDossier_UnitsRestricted" = "سجلات الحيوانات الفردية غير متاحة لصلاحيتك.";
 "LivePetDossier_EmptyUnitsHint" = "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.";
@@ -6591,8 +6594,8 @@
 "AdminPOS_NewShift" = "وردية جديدة جاهزة للبدء";
 "AdminPOS_NewShiftSubtitle" = "ابدأ أول عملية بيع لتفعيل سجل المعاملات";
 "AdminPOS_RetryConnection" = "إعادة الاتصال";
-"AdminPOS_HardwareDiagnostics" = "فحص العتاد";
-"AdminPOS_QIBReady" = "QIB جاهز للدفع";
+"AdminPOS_QIBReady" = "جاهز لاستقبال العملاء";
+"AdminPOS_ReadyForCustomers" = "جاهز لاستقبال العملاء";
 "AdminPOS_CloudSyncActive" = "المزامنة السحابية متصلة";
 "AdminPOS_ThermalPrinterReady" = "الطابعة الحرارية جاهزة";
 "AdminPOS_BarcodeEngineReady" = "محرك الباركود نشط";
@@ -6604,6 +6607,15 @@
 "AdminPOS_TerminalShortCut_N" = "جلسة جديدة (⌘N)";
 "AdminPOS_TerminalShortCut_H" = "سجل الفواتير (⌘H)";
 "AdminPOS_TerminalShortCut_B" = "مسح سريع (⌘B)";
+"AdminPOS_TerminalSubtitle_Clean" = "إتمام عمليات البيع الفوري ومسح الباركود";
+"AdminPOS_StartFastCheckout_Short" = "بدء عملية بيع";
+"AdminPOS_HistorySection_Title" = "ملخص مبيعات اليوم";
+"AdminPOS_ShiftActive" = "وردية نشطة";
+"AdminPOS_ShiftReady" = "وردية جاهزة";
+"AdminPOS_Transactions_Header" = "العمليات";
+"AdminPOS_Refunds_Header" = "المرتجعات";
+"AdminPOS_NoRefunds" = "لا يوجد";
+"AdminPOS_OpenLedger_Short" = "عرض سجل الفواتير";
 "Stock_Section_Title" = "قطاع المخزون والمنتجات";
 "Stock_Section_Subtitle" = "كتالوج المنتجات، الأغذية، والحيوانات الحية مع تتبع الكميات";
 "Stock_Alerts_Count_Format" = "%d تنبيهات بالمخزون";
@@ -7070,3 +7082,227 @@
 "Service_Type_Service" = "خدمة";
 "Service_Untitled" = "خدمة بدون عنوان";
 
+/* ===================== Live Pet Return & Refund Architecture ===================== */
+"LivePet_ReturnStatus_Available" = "متاح للبيع";
+"LivePet_ReturnStatus_Reserved" = "محجوز لعميل";
+"LivePet_ReturnStatus_Sold" = "مباع";
+"LivePet_ReturnStatus_ReturnRequested" = "طلب استرجاع قيد الانتظار";
+"LivePet_ReturnStatus_ReturnInTransit" = "في طريق الاسترجاع";
+"LivePet_ReturnStatus_ReturnReceived" = "تم الاستلام في المتجر";
+"LivePet_ReturnStatus_UnderInspection" = "قيد الفحص والتقييم";
+"LivePet_ReturnStatus_Quarantined" = "في الحجر الصحي";
+"LivePet_ReturnStatus_MedicalHold" = "حجز رعاية بيطرية";
+"LivePet_ReturnStatus_Cleared" = "معتمد بعد الفحص";
+"LivePet_ReturnStatus_NotForResale" = "غير قابل لإعادة البيع";
+"LivePet_ReturnStatus_TransferredToCare" = "محول لمركز رعاية متخصص";
+"LivePet_ReturnStatus_WrittenOff" = "تم الشطب";
+
+"Custody_Store" = "في المتجر / القفص";
+"Custody_ReservedForCustomer" = "محجوز للعميل في الفرع";
+"Custody_Customer" = "في عهدة العميل";
+"Custody_InTransit" = "في النقل";
+"Custody_ReturnDesk" = "مكتب استلام المرتجعات بالفرع";
+"Custody_Quarantine" = "وحدة الحجر والعزل";
+"Custody_Medical" = "العيادة البيطرية";
+"Custody_ExternalCare" = "مركز رعاية خارجي";
+"Custody_Closed" = "أغلقت العهدة";
+
+"Health_Unknown" = "غير محدد";
+"Health_AppearsNormal" = "يبدو بحالة طبيعية";
+"Health_InspectionRequired" = "يتطلب فحصاً بيطرياً";
+"Health_QuarantineRequired" = "يتطلب حجراً صحياً";
+"Health_MedicalAttention" = "يحتاج رعاية طبية عاجلة";
+"Health_Cleared" = "سليم ومعتمد";
+"Health_NotForResale" = "غير مؤهل صحياً للبيع";
+
+"ReturnCase_Draft" = "مسودة غير مرسلة";
+"ReturnCase_Initiated" = "تم فتح الطلب";
+"ReturnCase_AwaitingReceive" = "بانتظار وصول الحيوان";
+"ReturnCase_Received" = "تم الاستلام الفعلي";
+"ReturnCase_UnderInspection" = "قيد الفحص والتقييم";
+"ReturnCase_Approved" = "معتمد";
+"ReturnCase_Rejected" = "مرفوض";
+"ReturnCase_Completed" = "مكتمل نهائياً";
+"ReturnCase_Cancelled" = "ملغي";
+
+"ReturnCondition_AppearsNormal" = "سليم ونشط ظاهرياً";
+"ReturnCondition_MinorConcern" = "ملاحظة سلوكية أو مظهرية طفيفة";
+"ReturnCondition_Injured" = "إصابة جسدية / كدمات / جروح";
+"ReturnCondition_IllnessSuspected" = "اشتباه بأعراض مرضية أو خمول";
+"ReturnCondition_UrgentMedical" = "حالة حرجة تتطلب تدخلاً بيطرياً فورياً";
+
+"HealthDisposition_InspectionRequired" = "فحص روتيني مطلوب";
+"HealthDisposition_Quarantine" = "حجر صحي وعزل وقائي";
+"HealthDisposition_VetAssessment" = "كشف بيطري تخصصي";
+"HealthDisposition_Cleared" = "معتمد طبياً (سليم)";
+
+"CommercialDisposition_Hold" = "حجز معلق حتى الفحص";
+"CommercialDisposition_EligibleResale" = "مؤهل للبيع (بانتظار الاعتماد)";
+"CommercialDisposition_NonResale" = "استبعاد دائم من البيع";
+"CommercialDisposition_CareTransfer" = "تحويل لمركز رعاية / تبني";
+
+"FinancialResolution_None" = "بدون تسوية مالية";
+"FinancialResolution_FullRefund" = "استرداد مالي كامل";
+"FinancialResolution_PartialRefund" = "استرداد مالي جزئي";
+"FinancialResolution_Exchange" = "استبدال بحيوان/منتج آخر";
+"FinancialResolution_StoreCredit" = "رصيد محفظة / قسيمة متجر";
+"FinancialResolution_ManualSettlement" = "تسوية يدوية محاسبية";
+
+"RefundStatus_NotRequired" = "غير مطلوب";
+"RefundStatus_NotRequested" = "لم يُطلب بعد";
+"RefundStatus_Requested" = "تم تقديم الطلب";
+"RefundStatus_Processing" = "قيد المعالجة البنكية";
+"RefundStatus_Succeeded" = "تم الاسترداد بنجاح";
+"RefundStatus_Failed" = "فشلت العملية";
+"RefundStatus_RetryRequired" = "يتطلب إعادة المحاولة";
+"RefundStatus_ManualReview" = "بانتظار مراجعة الإدارة المالية";
+
+"ReturnEvent_Created" = "إنشاء طلب الاسترجاع";
+"ReturnEvent_UnitSelected" = "تحديد الحيوان المسترجع";
+"ReturnEvent_HandoffStarted" = "بدء تسليم العميل للحيوان";
+"ReturnEvent_UnitReceived" = "استلام الحيوان في مكتب الفرع";
+"ReturnEvent_InspectionStarted" = "بدء الفحص والتقييم الصحي";
+"ReturnEvent_InspectionCleared" = "اجتياز الفحص والاعتماد للبيع";
+"ReturnEvent_QuarantineStarted" = "إدخال الحيوان في الحجر الصحي";
+"ReturnEvent_MedicalHoldStarted" = "تحويل للرعاية والعلاج البيطري";
+"ReturnEvent_RefundRequested" = "طلب الاسترداد المالي";
+"ReturnEvent_RefundProcessing" = "معالجة الاسترداد مع بوابة الدفع";
+"ReturnEvent_RefundSucceeded" = "اكتمال تسوية الاسترداد المالي";
+"ReturnEvent_RefundFailed" = "فشل في تسوية الاسترداد المالي";
+"ReturnEvent_ReturnCompleted" = "إغلاق واكتمال ملف الاسترجاع";
+"ReturnEvent_ReturnCancelled" = "إلغاء طلب الاسترجاع";
+
+"LivePet_Return_SelectUnitsTitle" = "تحديد الحيوان الأليف بدقة";
+"LivePet_Return_SelectUnitsSub" = "اختر الحيوان المطابق لرقم الحجل أو الشريحة";
+"LivePet_AlreadyReturned_Badge" = "مسترجع سابقاً";
+"LivePet_IntakeConditionTitle" = "حالة الحيوان عند الاستلام:";
+"LivePet_UnitNotes_Placeholder" = "ملاحظات إضافية حول سلوك أو مظهر الحيوان...";
+"LivePet_NoUnitsFound" = "لم يتم العثور على سجلات حيوانات مفردة في هذه الفاتورة.";
+
+"LivePet_Custody_IntakeLocationTitle" = "موقع استلام الحيوان";
+"LivePet_Custody_DeskFormat" = "مكتب المرتجعات • %@";
+"LivePet_Notice_NoAutoRestockTitle" = "بروتوكول سلامة الحيوان المرتجع";
+"LivePet_Notice_NoAutoRestockSub" = "لن يتم إرجاع الحيوان لمخزون البيع تلقائياً بعد الاسترداد المالي، بل يدخل في عهدة (قيد الفحص) لحين تقييمه واعتماده يدوياً.";
+"LivePet_Reason_Behavior" = "صعوبة تكيف / سلوك";
+"LivePet_Reason_Allergy" = "حساسية مفاجئة للأسرة";
+"LivePet_Reason_HealthConcern" = "ملاحظة صحية تحتاج فحص";
+"LivePet_Reason_Placeholder" = "اكتب سبب إرجاع العميل بالتفصيل...";
+"LivePet_FinancialResolutionTitle" = "طريقة التسوية المالية";
+"LivePet_TotalRefundDue" = "المبلغ الإجمالي المستحق";
+"LivePet_UnitsCount" = "حيوان محدد";
+
+"LivePet_Confirm_SuccessTitle" = "تم تسجيل استرجاع الحيوان بنجاح";
+"LivePet_Confirm_SuccessSub" = "تم فتح ملف الاسترجاع ونقل الحيوان للعهدة المخصصة";
+"LivePet_CaseNumberLabel" = "رقم ملف الاسترجاع";
+"LivePet_AnimalStateLabel" = "حالة الحيوان";
+"LivePet_RefundStateLabel" = "حالة الاسترداد";
+"LivePet_UnderInspection_Notice" = "في عهدة مكتب الاستلام";
+"LivePet_ReturnedUnitsHeader" = "الحيوانات المسترجعة:";
+"LivePet_OpenDossierButton" = "فتح ملف الاسترجاع والمتابعة";
+
+"LivePet_AnimalCustody" = "العهدة والموقع";
+"LivePet_FinancialSettlement" = "التسوية المالية";
+"LivePet_ReturnedAnimalsHeader" = "سجل الحيوانات والإجراءات البيطرية";
+"LivePet_ActionClearResale" = "اعتماد للبيع";
+"LivePet_ActionQuarantine" = "نقل للحجر";
+"LivePet_TimelineHeader" = "سجل العمليات والتدقيق التاريخي";
+"LivePet_NoEventsYet" = "لا توجد سجلات بعد.";
+"LivePet_CaseNotFound" = "لم يتم العثور على ملف الاسترجاع.";
+"LivePet_ConfirmClearanceTitle" = "تأكيد اعتماد الحيوان للبيع";
+"LivePet_ConfirmClearanceMsg" = "هل أنت متأكد من اجتياز الحيوان لكافة الفحوصات البيطرية وأنه مؤهل للإتاحة في المتجر مجدداً؟";
+"LivePet_ConfirmQuarantineTitle" = "نقل الحيوان للحجر الصحي";
+"LivePet_ConfirmQuarantineMsg" = "سيتم عزل الحيوان في وحدة الحجر ونقله من عهدة مكتب الاستلام لحين التقييم الطبي.";
+"LivePet_Clearance_Success" = "تم اعتماد الحيوان بنجاح وأصبح متاحاً للبيع في المتجر.";
+"LivePet_Quarantine_Success" = "تم نقل الحيوان إلى وحدة الحجر الصحي بنجاح.";
+"LivePet_Error_NoClearancePerm" = "ليس لديك صلاحية لاعتماد الحيوانات للبيع (returns.live_pet.inspect).";
+"LivePet_Error_NoInspectPerm" = "ليس لديك صلاحية لتحديث حالة الفحص (returns.live_pet.inspect).";
+
+"LivePet_Return_CoordinatorTitle" = "استرجاع حيوان أليف (حجل محدد)";
+"LivePet_NextCustodyIntake" = "متابعة الاستلام (%d حيوان)";
+"LivePet_ConfirmReturnAction" = "تأكيد الاسترجاع (%@)";
+"LivePet_MixedReceiptNoticeTitle" = "تحتوي الفاتورة على حيوانات أليفة محجلة";
+"LivePet_MixedReceiptNoticeSub" = "لاسترجاع الحيوانات الأليفة بدقة رقم الحجل وبروتوكول الفحص، يرجى استخدام استوديو الحيوانات الأليفة المخصص.";
+"LivePet_LaunchCoordinatorButton" = "الانتقال إلى استرجاع الحيوانات الأليفة";
+"LivePet_TrackedBadge" = "حيوان محجل";
+"LivePet_SelectExactRingTag" = "تحديد الحجل";
+"LivePet_Action_Return" = "استرجاع الحيوان";
+"LivePet_MissingReceivingBranch" = "تعذر تحديد فرع الاستلام المعتمد.";
+"NotSelected" = "غير محدد";
+"ReturnEvent_InspectionUpdated" = "تحديث نتائج الفحص الصحي";
+"LivePet_WorkflowStateLabel" = "حالة الملف";
+"LivePet_ProceedToMerchandiseRefund" = "استكمال استرداد المنتجات والأكسسوارات";
+"LivePet_Action_RefundMerchandise" = "استرداد المنتجات والأكسسوارات";
+
+/* ===================== Authoritative Inventory Commands ===================== */
+"Inventory_InvalidCommandResponse" = "تعذر التحقق من استجابة خدمة المخزون.";
+"Inventory_InvalidAdjustmentResponse" = "تعذر التحقق من نتيجة تعديل المخزون.";
+"Inventory_InvalidDeleteResponse" = "تعذر التحقق من نتيجة أرشفة الصنف.";
+"Inventory_InvalidTransferResponse" = "تعذر التحقق من نتيجة نقل المخزون.";
+"Inventory_SpecificBranchRequired" = "اختر فرعاً محدداً قبل إنشاء مخزون أولي لهذا الصنف.";
+"Inventory_MissingProductIdentifier" = "تعذر تأكيد الحفظ لأن معرّف الصنف غير صالح.";
+"Inventory_ReadbackMissing" = "اعتمد الخادم العملية، لكن تعذر العثور على الصنف عند التحقق النهائي. أعد المحاولة دون تغيير البيانات.";
+"Inventory_ReadbackPending" = "اعتمد الخادم العملية، لكن النسخة المؤكدة لم تصل بعد. أعد المحاولة دون تعديل البيانات.";
+"Inventory_CommandAcceptedReadbackPending_Format" = "اعتمد الخادم الحفظ، لكن تعذر تأكيد النسخة النهائية. أعد المحاولة دون تعديل البيانات. التفاصيل: %@";
+"Inventory_AdjustmentPending" = "التعديل قيد التأكيد";
+"Inventory_AdjustmentPendingDetail" = "انتظر تأكيد التعديل الحالي قبل إرسال تعديل آخر للصنف نفسه.";
+"Inventory_NegativeStockRejected" = "لا يمكن أن يصبح الرصيد المتاح أقل من صفر.";
+"CatalogIntake_ValidationCost" = "أدخل تكلفة استلام صالحة وبحد أقصى منزلتين عشريتين.";
+"CatalogIntake_CostRequiredForOpeningStock" = "أدخل تكلفة الاستلام للمخزون الافتتاحي، أو أنشئ الصنف بكمية صفر.";
+"Inventory_Projection_Badge" = "مخزون";
+"Listing_Projection_Cannot_Moderate" = "لا يمكن تعديل هذا الإعلان لأنه مُدار تلقائياً من مخزون الحيوانات الأليفة.";
+"Listing_Projection_Title" = "إعلان مُدار تلقائياً من المخزون";
+"Listing_Projection_Notice" = "حالة الإعلان والتسعير والتوفر مرتبطة مباشرة بدورة حياة مخزون الحيوانات.";
+
+/* ===================== V6 Docked Bottom Bar ===================== */
+"Live Radar Online" = "رادار العمليات متصل";
+"Syncing..." = "جاري المزامنة...";
+"Global Network" = "الشبكة العامة";
+"Operator" = "المشغّل";
+
+/* Physical Specifications Studio NextGen V6 Additions */
+"PhysicalSpec_Title" = "المواصفات الفيزيائية للصنف";
+"PhysicalSpec_Subtitle" = "اختر نمط قياس واحداً للمنتج أو اتركه بدون تحديد";
+"PhysicalSpec_Dimensions_Title" = "الأبعاد (العرض × الارتفاع)";
+"PhysicalSpec_Dimensions_Subtitle" = "للأقفاص، النواقل، والبيوت";
+"PhysicalSpec_ApparelSize_Title" = "المقاس المعياري";
+"PhysicalSpec_ApparelSize_Subtitle" = "للملابس، الياقات، والأحزمة";
+"PhysicalSpec_Weight_Title" = "الوزن أو السعة";
+"PhysicalSpec_Weight_Subtitle" = "للرمل، الشامبو، والمستحضرات";
+"PhysicalSpec_None_Title" = "بدون مواصفة";
+"PhysicalSpec_None_Subtitle" = "منتج بدون أبعاد أو أحجام محددة";
+"PhysicalSpec_Width" = "العرض";
+"PhysicalSpec_Height" = "الارتفاع";
+"PhysicalSpec_Swap" = "تبديل الأبعاد";
+"PhysicalSpec_Area" = "المساحة التقريبية";
+"PhysicalSpec_Unit_cm" = "سم";
+"PhysicalSpec_Unit_m" = "م";
+"PhysicalSpec_Unit_in" = "بوصة";
+"PhysicalSpec_Unit_mm" = "ملم";
+"PhysicalSpec_Presets_Cages" = "مقاسات شائعة للأقفاص والنواقل:";
+"PhysicalSpec_LiveBlueprint" = "مخطط هندسي حي";
+"PhysicalSpec_Clear" = "مسح التحديد";
+"PhysicalSpec_BlueprintPrompt" = "أدخل العرض والارتفاع لرسم المخطط وتحديد التناسب تلقائياً";
+"Dimensions_Short" = "الأبعاد W×H";
+"CatalogIntake_ValidationDimensions" = "أدخل أبعاداً صالحة (العرض والارتفاع) وبحد أقصى منزلتين عشريتين.";
+
+/* ===================== Twin POS Cockpit Quick Expense Studio ===================== */
+"AdminPOS_ExpenseCard_Badge" = "مصروفات الوردية";
+"AdminPOS_ExpenseCard_Title" = "تسجيل مصروف";
+"AdminPOS_ExpenseCard_Subtitle" = "صرف عهدة ونثرية ومشتريات";
+"AdminPOS_ExpenseCard_Action" = "إضافة مصروف";
+"AdminPOS_ExpenseCard_Shortcut" = "مصروف (⌘E)";
+"AdminPOS_QuickExpense_SheetTitle" = "تسجيل مصروف وردية";
+"AdminPOS_QuickExpense_SheetSubtitle" = "تسجيل عملية صرف فوري من صندوق الكاشير";
+"AdminPOS_QuickExpense_Amount" = "مبلغ المصروف (ر.ق)";
+"AdminPOS_QuickExpense_Category" = "تصنيف المصروف";
+"AdminPOS_QuickExpense_Notes" = "بيان وسبب الصرف";
+"AdminPOS_QuickExpense_NotesPlaceholder" = "مثال: أدوات نظافة، أكياس، عهدة نثرية، صيانة سريعة...";
+"AdminPOS_QuickExpense_Confirm" = "اعتماد الصرف وتوثيق السند";
+"AdminPOS_QuickExpense_Success" = "تم تسجيل المصروف وتوثيقه بنجاح";
+"AdminPOS_QuickExpense_ViewAccounting" = "فتح سجل الحسابات العام";
+"AdminPOS_Category_Supplies" = "مستلزمات ونظافة";
+"AdminPOS_Category_Maintenance" = "صيانة وتشغيل";
+"AdminPOS_Category_CashOut" = "عهدة ونثرية كاشير";
+"AdminPOS_Category_Delivery" = "توصيل وخدمات";
+"AdminPOS_Category_Other" = "مصروفات أخرى";
+"AdminPOS_QuickExpense_ValidationAmount" = "يرجى إدخال مبلغ صالح أكبر من صفر";

@@ -91,7 +91,7 @@ struct AdminAppShell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if !(selectedTab == .command && commandShowsNestedWorkflow) {
-                V6GlobalTabBar(selectedTab: $selectedTab, tabs: availableTabs)
+                V6GlobalTabBar(selectedTab: $selectedTab, tabs: availableTabs, session: session)
             }
         }
         .ignoresSafeArea()
@@ -415,52 +415,92 @@ private enum AdminShellMetric {
 struct V6GlobalTabBar: View {
     @Binding var selectedTab: AdminTab
     var tabs: [AdminTab] = AdminTab.allCases
+    var session: AdminSession? = nil
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var isPadWidescreen: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
+    }
+
+    private var bottomSafeAreaInset: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let window = scenes.flatMap { $0.windows }.first(where: { $0.isKeyWindow }) ?? scenes.flatMap { $0.windows }.first
+        let bottom = window?.safeAreaInsets.bottom ?? 0
+        return max(bottom, 10)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Specular Top Hairline
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AdminSurface.hairline.opacity(colorScheme == .dark ? 0.35 : 0.65),
+                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.25 : 0.15),
+                            AdminSurface.hairline.opacity(colorScheme == .dark ? 0.20 : 0.40)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 0.75)
+
+            // Dedicated Form-Factor Ergonomics
+            if isPadWidescreen {
+                AdminPadCountertopTabBar(
+                    selectedTab: $selectedTab,
+                    tabs: tabs,
+                    session: session
+                )
+            } else {
+                AdminPhoneDockedTabBar(
+                    selectedTab: $selectedTab,
+                    tabs: tabs
+                )
+            }
+
+            // Safe Area Bottom Inset Floor Spacer
+            Color.clear
+                .frame(height: bottomSafeAreaInset)
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                AdminSurface.surface.opacity(colorScheme == .dark ? 0.92 : 0.96)
+            }
+        )
+        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06), radius: 12, x: 0, y: -4)
+        .ignoresSafeArea(.container, edges: .bottom)
+    }
+}
+
+// MARK: - iPhone Handheld Tactical Command Deck
+
+private struct AdminPhoneDockedTabBar: View {
+    @Binding var selectedTab: AdminTab
+    let tabs: [AdminTab]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Namespace private var tabAnimationNamespace
+    @Namespace private var phoneTabAnimationNamespace
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        HStack(alignment: .center, spacing: 4) {
+        HStack(alignment: .center, spacing: 2) {
             ForEach(tabs) { tab in
-                tabItem(tab)
+                phoneTabItem(tab)
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .frame(height: 60)
-        .background(
-            ZStack {
-                // Glassmorphic Base
-                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
-                    .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.90 : 0.95))
-
-                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
-                    .fill(Material.ultraThinMaterial)
-
-                // Specular Border Highlight
-                RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(colorScheme == .dark ? 0.22 : 0.60),
-                                Color.white.opacity(colorScheme == .dark ? 0.06 : 0.18),
-                                AdminSurface.hairline.opacity(0.4)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 1.0
-                    )
-            }
-        )
-        .clipShape(RoundedRectangle(cornerRadius: AdminShellMetric.dockCornerRadius, style: .continuous))
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.32 : 0.08), radius: 18, x: 0, y: 8)
-        .shadow(color: AdminSurface.primary.opacity(colorScheme == .dark ? 0.18 : 0.06), radius: 10, x: 0, y: 4)
-        .padding(.horizontal, 14)
-        .padding(.bottom, 16)
+        .padding(.horizontal, 6)
+        .padding(.top, 6)
+        .padding(.bottom, 2)
+        .frame(height: 52)
     }
 
-    private func tabItem(_ tab: AdminTab) -> some View {
+    private func phoneTabItem(_ tab: AdminTab) -> some View {
         let isSelected = selectedTab == tab
         let title = Language.get(tab.titleKey, alter: nil)
         let symbol = isSelected ? tab.selectedSymbol : tab.symbol
@@ -479,40 +519,40 @@ struct V6GlobalTabBar: View {
             ZStack {
                 if isSelected {
                     // Fluid Matched-Geometry Active Capsule
-                    RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(
                             LinearGradient(
                                 colors: [
                                     AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.12),
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.15 : 0.06)
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.05)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
                         .overlay(
-                            RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(0.22), lineWidth: 0.75)
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.28 : 0.18), lineWidth: 0.75)
                         )
-                        .matchedGeometryEffect(id: "ActiveTabIndicator", in: tabAnimationNamespace)
+                        .matchedGeometryEffect(id: "ActivePhoneTabIndicator", in: phoneTabAnimationNamespace)
                 }
 
                 VStack(spacing: 2) {
-                    // Micro-Beacon Dot for Active State
+                    // Micro-Beacon Active Dot
                     Circle()
                         .fill(isSelected ? AdminSurface.primary : Color.clear)
                         .frame(width: 4, height: 4)
                         .opacity(isSelected ? 1.0 : 0.0)
                         .scaleEffect(isSelected ? 1.0 : 0.2)
-                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
+                        .animation(.spring(response: 0.28, dampingFraction: 0.7), value: isSelected)
                         .accessibilityHidden(true)
 
                     Image(systemName: symbol)
-                        .font(.system(size: isSelected ? 17 : 16, weight: isSelected ? .semibold : .medium))
+                        .font(.system(size: isSelected ? 17 : 16, weight: isSelected ? .semibold : .regular))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.80))
-                        .frame(height: 19)
-                        .scaleEffect(isSelected ? 1.06 : 1.0)
+                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.78))
+                        .frame(height: 18)
+                        .scaleEffect(isSelected ? 1.05 : 1.0)
                         .accessibilityHidden(true)
 
                     Text(title)
@@ -520,18 +560,288 @@ struct V6GlobalTabBar: View {
                         .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText.opacity(0.80))
                         .multilineTextAlignment(.center)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.85)
+                        .minimumScaleFactor(0.82)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.vertical, 3)
+                .padding(.vertical, 2)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 50)
-            .contentShape(RoundedRectangle(cornerRadius: AdminShellMetric.dockItemRadius, style: .continuous))
+            .frame(height: 48)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(V6TabButtonStyle())
+        .keyboardShortcut(tab.keyEquivalent, modifiers: .command)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+}
+
+// MARK: - iPad Countertop Flight Deck (3-Zone Mission Architecture)
+
+private struct AdminPadCountertopTabBar: View {
+    @Binding var selectedTab: AdminTab
+    let tabs: [AdminTab]
+    let session: AdminSession?
+    @ObservedObject private var branchStore = BranchContextStore.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var padTabAnimationNamespace
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            // Zone 1: Leading Branch Context & Radar Beacon
+            leadingBranchRadarZone
+                .frame(minWidth: 180, maxWidth: 260, alignment: .leading)
+
+            Spacer(minLength: 8)
+
+            // Zone 2: Centered Anchored Segmented Command Rail
+            centerCommandRailZone
+                .frame(maxWidth: 640)
+
+            Spacer(minLength: 8)
+
+            // Zone 3: Trailing Operator Identity & Session Badge
+            trailingOperatorZone
+                .frame(minWidth: 180, maxWidth: 260, alignment: .trailing)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 6)
+        .frame(height: 58)
+    }
+
+    private var leadingBranchRadarZone: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.15, green: 0.78, blue: 0.45).opacity(0.25))
+                    .frame(width: 18, height: 18)
+                Circle()
+                    .fill(Color(red: 0.15, green: 0.78, blue: 0.45))
+                    .frame(width: 7, height: 7)
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Image(systemName: "building.2.crop.circle")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(AdminSurface.secondaryText)
+
+                    Text(branchDisplayName)
+                        .font(Font.custom("Beiruti-Bold", size: 12))
+                        .foregroundColor(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+
+                Text(branchStore.isSyncingBackend ? Language.get("Syncing...", alter: nil) : Language.get("Live Radar Online", alter: nil))
+                    .font(Font.custom("Beiruti-Regular", size: 10))
+                    .foregroundColor(branchStore.isSyncingBackend ? AdminSurface.primary : Color(red: 0.15, green: 0.78, blue: 0.45))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.45 : 0.65))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline.opacity(0.35), lineWidth: 0.5)
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(branchDisplayName), \(Language.get("Live Radar Online", alter: nil))")
+    }
+
+    private var branchDisplayName: String {
+        if !branchStore.currentBranchDisplayName.isEmpty {
+            return branchStore.currentBranchDisplayName
+        } else if let branch = branchStore.activeBranch {
+            return Language.isRTL() ? branch.nameAr : branch.nameEn
+        } else if branchStore.isGlobal {
+            return Language.get("Global Network", alter: nil)
+        } else {
+            return "PurePets Central"
+        }
+    }
+
+    private var centerCommandRailZone: some View {
+        HStack(spacing: 4) {
+            ForEach(tabs) { tab in
+                padTabItem(tab)
+            }
+        }
+        .padding(4)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.50 : 0.70))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline.opacity(0.4), lineWidth: 0.75)
+                )
+        )
+    }
+
+    private func padTabItem(_ tab: AdminTab) -> some View {
+        let isSelected = selectedTab == tab
+        let title = Language.get(tab.titleKey, alter: nil)
+        let symbol = isSelected ? tab.selectedSymbol : tab.symbol
+
+        return Button {
+            guard selectedTab != tab else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            if reduceMotion {
+                selectedTab = tab
+            } else {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.76)) {
+                    selectedTab = tab
+                }
+            }
+        } label: {
+            ZStack {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.26 : 0.14),
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.16 : 0.07)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.75)
+                        )
+                        .matchedGeometryEffect(id: "ActivePadTabIndicator", in: padTabAnimationNamespace)
+                }
+
+                HStack(spacing: 6) {
+                    if isSelected {
+                        Circle()
+                            .fill(AdminSurface.primary)
+                            .frame(width: 4, height: 4)
+                            .transition(.scale)
+                    }
+
+                    Image(systemName: symbol)
+                        .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundColor(isSelected ? AdminSurface.primary : AdminSurface.secondaryText.opacity(0.85))
+
+                    Text(title)
+                        .font(isSelected ? Font.custom("Beiruti-Bold", size: 13) : Font.custom("Beiruti-Medium", size: 12.5))
+                        .foregroundColor(isSelected ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .lineLimit(1)
+
+                    Text(tab.shortcutBadge)
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundColor(isSelected ? AdminSurface.primary.opacity(0.85) : AdminSurface.secondaryText.opacity(0.45))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(isSelected ? AdminSurface.primary.opacity(0.12) : AdminSurface.hairline.opacity(0.2))
+                        )
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(V6TabButtonStyle())
+        .keyboardShortcut(tab.keyEquivalent, modifiers: .command)
+        .hoverEffect(.lift)
+        .accessibilityLabel(title)
+        .accessibilityValue(tab.shortcutBadge)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var trailingOperatorZone: some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(operatorName)
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .foregroundColor(AdminSurface.primaryText)
+                    .lineLimit(1)
+
+                Text(operatorRole)
+                    .font(Font.custom("Beiruti-Regular", size: 10))
+                    .foregroundColor(AdminSurface.secondaryText)
+                    .lineLimit(1)
+            }
+
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AdminSurface.primary.opacity(0.25),
+                                AdminSurface.primary.opacity(0.10)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 28, height: 28)
+                    .overlay(
+                        Circle()
+                            .strokeBorder(AdminSurface.primary.opacity(0.35), lineWidth: 0.75)
+                    )
+
+                Text(operatorInitials)
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(AdminSurface.primary)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.45 : 0.65))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(AdminSurface.hairline.opacity(0.35), lineWidth: 0.5)
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(Language.get("Operator", alter: nil)): \(operatorName), \(operatorRole)")
+    }
+
+    private var operatorName: String {
+        if let session = session, !session.displayName.isEmpty {
+            return session.displayName
+        } else if let staff = branchStore.currentStaff, let name = staff.displayName, !name.isEmpty {
+            return name
+        } else {
+            return "Command Staff"
+        }
+    }
+
+    private var operatorRole: String {
+        if let session = session {
+            return session.roleIdentifier.replacingOccurrences(of: "_", with: " ").capitalized
+        } else if let staff = branchStore.currentStaff {
+            return staff.localizedRoleName() ?? staff.roleIdentifier ?? "Operator"
+        } else {
+            return "Operator"
+        }
+    }
+
+    private var operatorInitials: String {
+        let name = operatorName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = name.split(separator: " ")
+        if parts.count >= 2, let first = parts.first?.first, let second = parts.last?.first {
+            return "\(first)\(second)".uppercased()
+        } else if let first = name.first {
+            return String(first).uppercased()
+        } else {
+            return "OP"
+        }
     }
 }
 

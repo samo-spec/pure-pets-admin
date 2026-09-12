@@ -113,6 +113,7 @@ public struct PPListingModerationModel: Identifiable, Equatable, Sendable {
     public var location: String
     public var petAge: String
     public var rejectionReason: String?
+    public var isInventoryProjection: Bool
 
     public var isMarketplace: Bool { source == "pet_ads" }
     public var isAdoption: Bool { source == "adopt_pets" }
@@ -340,6 +341,12 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
         let createdAt = (data["createdAt"] as? Timestamp)?.dateValue()
         let updatedAt = (data["updatedAt"] as? Timestamp)?.dateValue()
 
+        let isFromCatalog = (data["isFromCatalog"] as? Bool) ?? false
+        let sourceAccessoryId = (data["sourceAccessoryId"] as? String) ?? ""
+        let catalogItemId = (data["catalogItemId"] as? String) ?? ""
+        let isProjectionId = id.hasPrefix("ad_live_") || id.hasPrefix("ad_unit_") || id.hasPrefix("live_pet_")
+        let isInventoryProjection = isFromCatalog || !sourceAccessoryId.isEmpty || !catalogItemId.isEmpty || isProjectionId
+
         return PPListingModerationModel(
             id: id,
             source: "pet_ads",
@@ -360,7 +367,8 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             updatedAt: updatedAt,
             location: location,
             petAge: petAge,
-            rejectionReason: rejectionReason
+            rejectionReason: rejectionReason,
+            isInventoryProjection: isInventoryProjection
         )
     }
 
@@ -405,7 +413,8 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
             updatedAt: createdAt,
             location: location,
             petAge: "",
-            rejectionReason: nil
+            rejectionReason: nil,
+            isInventoryProjection: false
         )
     }
 
@@ -493,6 +502,10 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
 
     public func approveListing(_ item: PPListingModerationModel) {
         guard item.isMarketplace else { return }
+        guard !item.isInventoryProjection else {
+            self.errorMessage = Language.get("Listing_Projection_Cannot_Moderate", alter: "لا يمكن تعديل هذا الإعلان لأنه مُدار تلقائياً من مخزون الحيوانات الأليفة")
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()
@@ -518,6 +531,10 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
 
     public func rejectListing(_ item: PPListingModerationModel, reason: String? = nil) {
         guard item.isMarketplace else { return }
+        guard !item.isInventoryProjection else {
+            self.errorMessage = Language.get("Listing_Projection_Cannot_Moderate", alter: "لا يمكن تعديل هذا الإعلان لأنه مُدار تلقائياً من مخزون الحيوانات الأليفة")
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()
@@ -551,6 +568,10 @@ public final class PPListingsCommandCenterViewModel: ObservableObject {
 
     public func archiveListing(_ item: PPListingModerationModel) {
         guard item.isMarketplace else { return }
+        guard !item.isInventoryProjection else {
+            self.errorMessage = Language.get("Listing_Projection_Cannot_Moderate", alter: "لا يمكن تعديل هذا الإعلان لأنه مُدار تلقائياً من مخزون الحيوانات الأليفة")
+            return
+        }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let db = Firestore.firestore()
@@ -1049,6 +1070,19 @@ public struct PPListingsCommandCenterScreen: View {
 
                         Spacer()
 
+                        if item.isInventoryProjection {
+                            HStack(spacing: 4) {
+                                Image(systemName: "shippingbox.fill")
+                                    .font(.system(size: 8))
+                                Text(Language.get("Inventory_Projection_Badge", alter: "مخزون"))
+                                    .font(AdminType.caption2Bold)
+                            }
+                            .foregroundStyle(Color(uiColor: .ppPrimary))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 2)
+                            .background(Color(uiColor: .ppPrimary).opacity(0.12), in: Capsule())
+                        }
+
                         // Status Aura Pill
                         HStack(spacing: 4) {
                             Circle()
@@ -1087,7 +1121,7 @@ public struct PPListingsCommandCenterScreen: View {
             }
 
             // Inline High-Velocity Triage Bar (For Pending Market Listings)
-            if item.isPending && item.isMarketplace && viewModel.canModerate {
+            if item.isPending && item.isMarketplace && !item.isInventoryProjection && viewModel.canModerate {
                 Divider().background(Color(uiColor: .ppSurfaceBorder).opacity(0.5))
 
                 HStack(spacing: 10) {
@@ -1487,61 +1521,88 @@ public struct PPListingDetailDossierSheet: View {
     }
 
     private var moderationActionDock: some View {
-        HStack(spacing: 12) {
-            if viewModel.canModerate && item.status != 1 {
-                Button {
-                    viewModel.approveListing(item)
-                    if let onBack = onBack {
-                        onBack()
-                    } else {
-                        dismiss()
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.seal.fill")
-                        Text(Language.get("ApproveListing", alter: "اعتماد ونشر"))
-                    }
-                    .font(AdminType.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
+        Group {
+            if item.isInventoryProjection {
+                HStack(spacing: 12) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: .ppPrimary))
 
-            if viewModel.canModerate && item.status != 5 {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    viewModel.itemForRejectionSheet = item
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "xmark.seal.fill")
-                        Text(Language.get("RejectListing", alter: "رفض الإعلان"))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(Language.get("Listing_Projection_Title", alter: "إعلان مُدار تلقائياً من المخزون"))
+                            .font(AdminType.caption1Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(Language.get("Listing_Projection_Notice", alter: "حالة الإعلان والتسعير والتوفر مرتبطة مباشرة بدورة حياة مخزون الحيوانات."))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminCommandInk.secondary)
                     }
-                    .font(AdminType.headline)
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
 
-            if viewModel.canManage && item.status != 4 {
-                Button {
-                    viewModel.archiveListing(item)
-                    if let onBack = onBack {
-                        onBack()
-                    } else {
-                        dismiss()
-                    }
-                } label: {
-                    Image(systemName: "archivebox.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(AdminSurface.primaryText)
-                        .frame(width: 48, height: 48)
-                        .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Spacer()
                 }
-                .buttonStyle(.plain)
+                .padding(14)
+                .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.25), lineWidth: 1)
+                )
+            } else {
+                HStack(spacing: 12) {
+                    if viewModel.canModerate && item.status != 1 {
+                        Button {
+                            viewModel.approveListing(item)
+                            if let onBack = onBack {
+                                onBack()
+                            } else {
+                                dismiss()
+                            }
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.seal.fill")
+                                Text(Language.get("ApproveListing", alter: "اعتماد ونشر"))
+                            }
+                            .font(AdminType.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Color(uiColor: .ppSuccess), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if viewModel.canModerate && item.status != 5 {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            viewModel.itemForRejectionSheet = item
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: "xmark.seal.fill")
+                                Text(Language.get("RejectListing", alter: "رفض الإعلان"))
+                            }
+                            .font(AdminType.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Color(uiColor: .ppError), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if viewModel.canManage && item.status != 4 {
+                        Button {
+                            viewModel.archiveListing(item)
+                            if let onBack = onBack {
+                                onBack()
+                            } else {
+                                dismiss()
+                            }
+                        } label: {
+                            Image(systemName: "archivebox.fill")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(AdminSurface.primaryText)
+                                .frame(width: 48, height: 48)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
         .padding(.horizontal, 16)

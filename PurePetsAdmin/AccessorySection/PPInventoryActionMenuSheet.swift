@@ -56,7 +56,7 @@ public struct PPInventoryActionMenuSheet: View {
         (staff?.hasPermission("stock.delete") ?? false) || (staff?.isAdmin() ?? false)
     }
     private var canReleaseQuarantine: Bool {
-        canManageStock || (staff?.hasPermission("stock.quarantine.release") ?? false)
+        canManageStock && (staff?.hasPermission("stock.quarantine.release") ?? false)
     }
     private var canViewCosts: Bool {
         (staff?.hasPermission("stock.cost.view") ?? false) || (staff?.isAdmin() ?? false)
