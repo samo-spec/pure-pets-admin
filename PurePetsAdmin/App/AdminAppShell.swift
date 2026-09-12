@@ -9,6 +9,8 @@ struct AdminAppShell: View {
     @State private var selectedTab: AdminTab = .command
     @State private var commandShowsNestedWorkflow = false
     @State private var showsLogoutConfirmation = false
+    @State private var scrollProgress: CGFloat = 0.0
+    @State private var tabScrollProgress: [AdminTab: CGFloat] = [:]
     @StateObject private var commandState: CommandCenterState
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -91,12 +93,37 @@ struct AdminAppShell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if !(selectedTab == .command && commandShowsNestedWorkflow) {
-                V6GlobalTabBar(selectedTab: $selectedTab, tabs: availableTabs, session: session)
+                V6GlobalTabBar(
+                    selectedTab: $selectedTab,
+                    tabs: availableTabs,
+                    session: session,
+                    scrollProgress: scrollProgress
+                )
             }
         }
         .ignoresSafeArea()
         .tint(AdminSurface.primary)
         .background(routePushLink)
+        .onPreferenceChange(PPNavScrollOffsetPreferenceKey.self) { offset in
+            let progress = min(max(-offset / 70.0, 0.0), 1.0)
+            tabScrollProgress[selectedTab] = progress
+            withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
+                scrollProgress = progress
+            }
+        }
+        .onReceive(
+            NotificationCenter.default
+                .publisher(for: NSNotification.Name("PPAdminRootScrollDidUpdateNotification"))
+                .receive(on: RunLoop.main)
+        ) { notif in
+            if let progressNum = notif.userInfo?["progress"] as? NSNumber {
+                let progress = CGFloat(progressNum.doubleValue)
+                tabScrollProgress[selectedTab] = progress
+                withAnimation(.interpolatingSpring(stiffness: 220, damping: 26)) {
+                    scrollProgress = progress
+                }
+            }
+        }
         .alert(Language.get("CommandCenter_Permission_Denied_Title", alter: nil), isPresented: $router.permissionDenied) {
             Button(Language.get("OK", alter: nil), role: .cancel) {}
         } message: {
@@ -117,6 +144,9 @@ struct AdminAppShell: View {
         .onChange(of: selectedTab) { tab in
             if tab != .command {
                 commandState.loadIfNeeded()
+            }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                scrollProgress = tabScrollProgress[tab] ?? 0.0
             }
         }
         .onChange(of: session) { updatedSession in
@@ -262,17 +292,17 @@ private final class AdminCommandOrbitContainerController: UIViewController, UINa
         let tabBar = tabBarController.tabBar
 
         tabBarController.view.backgroundColor = .ppBackground
-        tabBar.backgroundColor = .ppBackground
-        tabBar.isTranslucent = false
+        tabBar.backgroundColor = .clear
+        tabBar.isTranslucent = true
         tabBar.tintColor = .ppPrimary
         tabBar.unselectedItemTintColor = .ppTextSecondary
 
         let appearance = (tabBar.standardAppearance.copy() as? UITabBarAppearance)
             ?? UITabBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = .ppBackground
-        appearance.backgroundEffect = nil
-        appearance.shadowColor = UIColor.ppSurfaceBorder.withAlphaComponent(0.72)
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        appearance.backgroundColor = UIColor.ppBackground.withAlphaComponent(0.48)
+        appearance.shadowColor = UIColor.clear
 
         let normalBaseFont = UIFont(name: "Beiruti-Medium", size: 11)
             ?? UIFont.systemFont(ofSize: 11, weight: .medium)
@@ -416,9 +446,11 @@ struct V6GlobalTabBar: View {
     @Binding var selectedTab: AdminTab
     var tabs: [AdminTab] = AdminTab.allCases
     var session: AdminSession? = nil
+    var scrollProgress: CGFloat = 0.0
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var isPadWidescreen: Bool {
         UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass != .compact
@@ -431,22 +463,60 @@ struct V6GlobalTabBar: View {
         return max(bottom, 10)
     }
 
+    private var clampedProgress: CGFloat {
+        min(max(scrollProgress, 0.0), 1.0)
+    }
+
+    // Ambient Color Effect Confined Strictly to Bar Background
+    private var tabBarBackground: some View {
+        ZStack {
+            // 1. Ultra-thin material blur
+            if reduceTransparency {
+                AdminSurface.surface.opacity(0.98)
+            } else {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+
+                // 2. Delicate translucent glass wash
+                AdminSurface.surface.opacity(colorScheme == .dark ? 0.38 : 0.50)
+            }
+
+            // 3. Color effect on the bar background only (confined within bar bounds, no upward bleed)
+            LinearGradient(
+                colors: [
+                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.08 : 0.04),
+                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.03 : 0.015),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        .clipped()
+    }
+
+    private var specularTopHairline: some View {
+        let isDark = colorScheme == .dark
+
+        return Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [
+                        AdminSurface.hairline.opacity(isDark ? 0.30 : 0.45),
+                        AdminSurface.primary.opacity(isDark ? 0.20 : 0.25),
+                        AdminSurface.hairline.opacity(isDark ? 0.20 : 0.35)
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .frame(height: 0.5)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            // Specular Top Hairline
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AdminSurface.hairline.opacity(colorScheme == .dark ? 0.35 : 0.65),
-                            AdminSurface.primary.opacity(colorScheme == .dark ? 0.25 : 0.15),
-                            AdminSurface.hairline.opacity(colorScheme == .dark ? 0.20 : 0.40)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(height: 0.75)
+            // Specular Top Hairline with clean boundary and no upward glowing shadow
+            specularTopHairline
 
             // Dedicated Form-Factor Ergonomics
             if isPadWidescreen {
@@ -468,13 +538,14 @@ struct V6GlobalTabBar: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                AdminSurface.surface.opacity(colorScheme == .dark ? 0.92 : 0.96)
-            }
+            tabBarBackground
         )
-        .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.22 : 0.06), radius: 12, x: 0, y: -4)
+        .shadow(
+            color: Color.black.opacity(colorScheme == .dark ? 0.06 : 0.025),
+            radius: 4,
+            x: 0,
+            y: -1
+        )
         .ignoresSafeArea(.container, edges: .bottom)
     }
 }
@@ -518,22 +589,20 @@ private struct AdminPhoneDockedTabBar: View {
         } label: {
             ZStack {
                 if isSelected {
-                    // Fluid Matched-Geometry Active Capsule
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    // Fluid Matched-Geometry Active Borderless Capsule
+                    Capsule()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.12),
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.05)
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.22 : 0.13),
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.14 : 0.07)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
                         )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.28 : 0.18), lineWidth: 0.75)
-                        )
+                        .padding(.horizontal, 2)
+                        .padding(.vertical, 2)
                         .matchedGeometryEffect(id: "ActivePhoneTabIndicator", in: phoneTabAnimationNamespace)
                 }
 
@@ -567,7 +636,7 @@ private struct AdminPhoneDockedTabBar: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Capsule())
         }
         .buttonStyle(V6TabButtonStyle())
         .keyboardShortcut(tab.keyEquivalent, modifiers: .command)
@@ -674,10 +743,10 @@ private struct AdminPadCountertopTabBar: View {
         }
         .padding(4)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            Capsule()
                 .fill(AdminSurface.surface.opacity(colorScheme == .dark ? 0.50 : 0.70))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    Capsule()
                         .strokeBorder(AdminSurface.hairline.opacity(0.4), lineWidth: 0.75)
                 )
         )
@@ -701,20 +770,17 @@ private struct AdminPadCountertopTabBar: View {
         } label: {
             ZStack {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    // Fluid Matched-Geometry Active Borderless Capsule
+                    Capsule()
                         .fill(
                             LinearGradient(
                                 colors: [
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.26 : 0.14),
-                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.16 : 0.07)
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.24 : 0.14),
+                                    AdminSurface.primary.opacity(colorScheme == .dark ? 0.15 : 0.08)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(AdminSurface.primary.opacity(colorScheme == .dark ? 0.35 : 0.22), lineWidth: 0.75)
                         )
                         .matchedGeometryEffect(id: "ActivePadTabIndicator", in: padTabAnimationNamespace)
                 }
@@ -751,7 +817,7 @@ private struct AdminPadCountertopTabBar: View {
                 .padding(.vertical, 7)
             }
             .frame(maxWidth: .infinity)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(Capsule())
         }
         .buttonStyle(V6TabButtonStyle())
         .keyboardShortcut(tab.keyEquivalent, modifiers: .command)

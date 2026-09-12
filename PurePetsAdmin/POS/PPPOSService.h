@@ -180,6 +180,16 @@ NS_ASSUME_NONNULL_BEGIN
                 commandID:(nullable NSString *)commandID
                completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion
     NS_SWIFT_NAME(refundTransaction(transactionID:refundAmount:refundItems:reason:currency:commandID:completion:));
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+                commandID:(nullable NSString *)commandID
+               refundMode:(nullable NSString *)refundMode
+   refundAdjustmentReason:(nullable NSString *)refundAdjustmentReason
+               completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(refundTransaction(transactionID:refundAmount:refundItems:reason:currency:commandID:refundMode:refundAdjustmentReason:completion:));
 @end
 
 // MARK: - POS Deep Diagnostic Logging

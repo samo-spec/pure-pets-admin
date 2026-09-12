@@ -2239,10 +2239,10 @@ private enum PPNavScrollCoordinateSpace {
     static let name = "PPGlobalNavigationScrollSpace"
 }
 
-private struct PPNavScrollOffsetPreferenceKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
+public struct PPNavScrollOffsetPreferenceKey: PreferenceKey {
+    public static let defaultValue: CGFloat = 0
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    public static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
 }

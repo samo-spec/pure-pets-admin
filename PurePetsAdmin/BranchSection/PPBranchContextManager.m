@@ -139,6 +139,12 @@ static NSString * const kPPActiveBranchStoragePrefix = @"PPAdminActiveBranchID_"
             return b;
         }
     }
+    for (PPBranchModel *b in self.allBranches) {
+        if ([b.branchID isEqualToString:branchID] ||
+            [b.code caseInsensitiveCompare:branchID] == NSOrderedSame) {
+            return b;
+        }
+    }
     return nil;
 }
 

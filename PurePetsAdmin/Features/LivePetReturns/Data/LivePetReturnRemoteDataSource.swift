@@ -117,6 +117,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
             let species: String?
             let breed: String?
             let sex: String?
+            let status: String?
         }
 
         let metadataByUnitId: [String: UnitMetadata] = try await withThrowingTaskGroup(of: (String, UnitMetadata).self) { group in
@@ -127,9 +128,10 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                         let species = (uData["subSubKindNameAr"] as? String) ?? (uData["subSubKindNameEn"] as? String) ?? (uData["species"] as? String)
                         let breed = (uData["subSubKindItemNameAr"] as? String) ?? (uData["subSubKindItemNameEn"] as? String) ?? (uData["breed"] as? String)
                         let sex = uData["sex"] as? String
-                        return (lookup.unitId, UnitMetadata(species: species, breed: breed, sex: sex))
+                        let status = (uData["status"] as? String) ?? ""
+                        return (lookup.unitId, UnitMetadata(species: species, breed: breed, sex: sex, status: status))
                     } else {
-                        return (lookup.unitId, UnitMetadata(species: nil, breed: nil, sex: nil))
+                        return (lookup.unitId, UnitMetadata(species: nil, breed: nil, sex: nil, status: nil))
                     }
                 }
             }
@@ -144,6 +146,10 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
         var resultUnits: [LivePetReturnUnit] = []
         for lookup in pendingLookups {
             let meta = metadataByUnitId[lookup.unitId]
+            let isPhysicallySold = (meta?.status?.uppercased() == "SOLD")
+            // A unit is only considered truly returned if it has an existing return case OR its status is no longer SOLD.
+            // If it is still SOLD in inventory, physical intake is required even if a financial refund was recorded.
+            let unitAlreadyReturned = isPhysicallySold ? false : lookup.alreadyReturned
             let returnUnit = LivePetReturnUnit(
                 unitId: lookup.unitId,
                 productId: lookup.productId,
@@ -161,7 +167,7 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 disposition: .hold,
                 previousLifecycleStatus: .sold,
                 resultingLifecycleStatus: .returnRequested,
-                isAlreadyReturned: lookup.alreadyReturned,
+                isAlreadyReturned: unitAlreadyReturned,
                 activeReturnCaseId: lookup.existingCaseId,
                 activeReturnCaseNumber: lookup.existingCaseNumber
             )
@@ -456,5 +462,34 @@ public final class LivePetReturnRemoteDataSource: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    // MARK: - Fetch Latest Refund ID for Transaction
+
+    public func fetchLatestRefundId(for transactionId: String) async -> String? {
+        let trimmedId = transactionId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedId.isEmpty else { return nil }
+
+        // 1. Check parent transaction document for refunds array
+        if let snap = try? await db.collection("transactions").document(trimmedId).getDocument(),
+           let data = snap.data() {
+            if let refunds = data["refunds"] as? [[String: Any]],
+               let last = refunds.last,
+               let rId = (last["id"] as? String) ?? (last["commandId"] as? String),
+               !rId.isEmpty {
+                return rId
+            }
+        }
+
+        // 2. Check refunds subcollection
+        if let querySnap = try? await db.collection("transactions").document(trimmedId).collection("refunds")
+            .order(by: "createdAt", descending: true)
+            .limit(to: 1)
+            .getDocuments(),
+           let doc = querySnap.documents.first {
+            return doc.documentID
+        }
+
+        return nil
     }
 }

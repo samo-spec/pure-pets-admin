@@ -29,6 +29,7 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
     public var financialResolution: FinancialResolution
     public var refundStatus: LivePetRefundStatus
     public var totalRefundAmountMinor: Int64
+    public var refundAdjustmentReason: String?
     public var currency: String
 
     public let createdAt: Date
@@ -60,6 +61,7 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
         financialResolution: FinancialResolution = .fullRefund,
         refundStatus: LivePetRefundStatus = .notRequested,
         totalRefundAmountMinor: Int64? = nil,
+        refundAdjustmentReason: String? = nil,
         currency: String = "QAR",
         createdAt: Date = Date(),
         createdBy: String,
@@ -86,6 +88,7 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
         self.financialResolution = financialResolution
         self.refundStatus = refundStatus
         self.totalRefundAmountMinor = totalRefundAmountMinor ?? units.reduce(0) { $0 + $1.refundAmountMinor }
+        self.refundAdjustmentReason = refundAdjustmentReason
         self.currency = currency
         self.createdAt = createdAt
         self.createdBy = createdBy
@@ -99,7 +102,15 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
     }
 
     public var totalRefundAmountMajor: Double {
-        Double(totalRefundAmountMinor) / 100.0
+        Double(totalRefundAmountMinor) / LivePetMoney.scaleFactor(for: currency)
+    }
+
+    public var canonicalRefundAmountMinor: Int64 {
+        units.reduce(0) { $0 + $1.refundableRemainingMinor }
+    }
+
+    public var retainedAmountMinor: Int64 {
+        max(0, canonicalRefundAmountMinor - totalRefundAmountMinor)
     }
 
     public var isCrossBranchReturn: Bool {
@@ -131,6 +142,7 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
         if let customerId { dict["customerId"] = customerId }
         if let customerName { dict["customerName"] = customerName }
         if let customerPhone { dict["customerPhone"] = customerPhone }
+        if let refundAdjustmentReason, !refundAdjustmentReason.isEmpty { dict["refundAdjustmentReason"] = refundAdjustmentReason }
         if let receivedAt { dict["receivedAt"] = receivedAt }
         if let receivedBy { dict["receivedBy"] = receivedBy }
         if let approvedAt { dict["approvedAt"] = approvedAt }
@@ -186,6 +198,7 @@ public struct LivePetReturnCase: Identifiable, Codable, Hashable, Sendable {
             financialResolution: financialResolution,
             refundStatus: refundStatus,
             totalRefundAmountMinor: totalMinor,
+            refundAdjustmentReason: dict["refundAdjustmentReason"] as? String,
             currency: (dict["currency"] as? String) ?? "QAR",
             createdAt: createdAt,
             createdBy: createdBy,

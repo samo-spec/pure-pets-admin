@@ -10,6 +10,7 @@ import SwiftUI
 
 public struct ReturnCaseDetailView: View {
     @StateObject private var viewModel: ReturnCaseDetailViewModel
+    @ObservedObject private var branchStore = BranchContextStore.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedUnitForAction: LivePetReturnUnit?
@@ -145,7 +146,7 @@ public struct ReturnCaseDetailView: View {
                     .font(AdminType.headline)
                     .foregroundColor(rCase.status.badgeColor)
 
-                Text(verbatim: "\(Language.get("Branch", alter: "الفرع")): \(rCase.receivingBranchId)")
+                Text(verbatim: "\(Language.get("Branch", alter: "الفرع")): \(branchDisplayName(for: rCase.receivingBranchId))")
                     .font(AdminType.caption)
                     .foregroundColor(AdminSurface.secondaryText)
             }
@@ -352,5 +353,26 @@ public struct ReturnCaseDetailView: View {
         formatter.timeStyle = .short
         formatter.locale = Locale(identifier: Language.isRTL() ? "ar_QA" : "en_US")
         return formatter.string(from: date)
+    }
+
+    private func branchDisplayName(for branchId: String) -> String {
+        let trimmed = branchId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        if trimmed == "main_store" || trimmed.lowercased() == "main_store" || trimmed.lowercased() == "main store" {
+            return Language.get("MainStore", alter: "المتجر الرئيسي")
+        }
+        let localized = branchStore.localizedBranchName(for: trimmed)
+        if localized != trimmed && !localized.isEmpty {
+            return localized
+        }
+        if let canonical = PPLivePetInventoryService.canonicalBranch(for: trimmed, in: PPLivePetInventoryService.cachedBranches) {
+            return canonical.fullMeaningfulTitle
+        }
+        if let cached = PPLivePetInventoryService.branch(for: trimmed) {
+            return cached.fullMeaningfulTitle
+        }
+        return localized
     }
 }

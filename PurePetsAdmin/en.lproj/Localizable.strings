@@ -4210,6 +4210,12 @@
 "alert_eyebrow_info" = "Information";
 "alert_eyebrow_confirmation" = "Confirm action";
 "alert_eyebrow_input" = "Required information";
+"Alert_Eyebrow_Success" = "Completed";
+"Alert_Eyebrow_Error" = "Action needed";
+"Alert_Eyebrow_Warning" = "Review required";
+"Alert_Eyebrow_Info" = "Information";
+"Alert_Eyebrow_Confirmation" = "Confirm action";
+"Alert_Eyebrow_TextInput" = "Required information";
 "PPAlert_Default_Success_Title" = "Action completed";
 "PPAlert_Default_Success_Message" = "The action completed successfully. You can continue.";
 "PPAlert_Default_Error_Title" = "Action couldn’t be completed";
@@ -7135,6 +7141,8 @@
 "LivePet_UnderInspection_Notice" = "Under Intake Desk Custody";
 "LivePet_ReturnedUnitsHeader" = "Returned Animals:";
 "LivePet_OpenDossierButton" = "Open Return Dossier & Follow Up";
+"LivePet_ReturnDossier_SectionTitle" = "Live Pet Return Dossier";
+"LivePet_Action_ViewReturnCase" = "Return Dossier";
 
 "LivePet_AnimalCustody" = "Custody & Location";
 "LivePet_FinancialSettlement" = "Financial Settlement";
@@ -7242,3 +7250,48 @@
 "AdminPOS_Category_Delivery" = "Courier & Delivery";
 "AdminPOS_Category_Other" = "Other Expenses";
 "AdminPOS_QuickExpense_ValidationAmount" = "Enter a valid positive amount";
+
+/* ===================== Live Pet Action Menu Studios ===================== */
+"LivePet_Studios_Section" = "Veterinary Care & Live Pet Operations";
+"LivePet_Quarantine_Studio" = "Veterinary Quarantine & Isolation Studio";
+"LivePet_Quarantine_Studio_Desc" = "Isolate cases for clinical observation, medical checkups, and post-recovery release";
+"LivePet_Quarantine_Badge" = "Vet Isolation";
+"LivePet_Mortality_Studio" = "Pet Mortality & Deceased Record Studio";
+"LivePet_Mortality_Studio_Desc" = "Document mortality with veterinary cause code, clinical diagnosis, and official ledger drop";
+"LivePet_Mortality_Badge" = "Mortality Record";
+"LivePet_Intake_Studio" = "Live Intake & Head Count Studio";
+"LivePet_Intake_Studio_Desc" = "Log new arrivals with ring/chip identifiers or reconcile live cage head counts";
+"LivePet_Intake_Badge" = "Live Intake";
+"LivePet_POS_Studio" = "Live Pet POS Sale & Client Reservation";
+"LivePet_POS_Studio_Desc" = "Complete instant cashier checkout or secure temporary customer reservation with deposit";
+"LivePet_POS_Badge" = "POS & Reserve";
+"LivePet_Edit_Specimen" = "Edit Pet Profile";
+"LivePet_Share_Specimen" = "Share Pet Card";
+"LivePet_Delete_Guarded" = "Permanently Delete Live Animal Record";
+"LivePet_Action_Center" = "Live Pet Care & Command Center";
+"LivePet_Action_Center_Sub" = "Veterinary monitoring, intake, and live specimen operations";
+"Live_Tracking_Mode" = "Live Tracking Mode";
+"Live_Mode_Individual" = "Individual Specimen Tracking (Ring/Microchip)";
+"Live_Mode_Group" = "Group Census Tracking (Cage Batch Head Count)";
+
+/* ===================== Catalog Intake App Switcher ===================== */
+"CatalogIntake_StepsSwitcherTitle" = "Catalog Intake Stages";
+"CatalogIntake_StepsSwitcherHint" = "Opens an iPhone app-switcher overview to browse and jump between steps";
+"CatalogIntake_AppSwitcherCardHint" = "Tap to switch to this step and zoom into it";
+"CatalogIntake_ActiveNowPill" = "Editing";
+"CatalogIntake_DonePill" = "Complete";
+"CatalogIntake_NeedsInputPill" = "Needs Data";
+"CatalogIntake_NoPhotosYet" = "No photos added yet";
+"CatalogIntake_NameMissing" = "Arabic name not entered";
+"CatalogIntake_CategoryMissing" = "Unspecified";
+"CatalogIntake_NoSubcategorySelected" = "Not selected";
+"CatalogIntake_WeightUnspecified" = "Unspecified";
+"CatalogIntake_StoreMissing" = "Branch not selected";
+"CatalogIntake_CurrentActiveStage" = "Current Active Step";
+"CatalogIntake_SwitchToStage" = "Tap to switch into step";
+"CatalogIntake_AppSwitcherSwipeHint" = "Swipe horizontally to browse steps, or tap any card to zoom in";
+"CatalogIntake_SubkindsCountFormat" = "%ld Subcategories";
+"CatalogIntake_QuantityFormat" = "Available Stock: %ld pcs";
+"CatalogIntake_CostLabel" = "Cost:";
+"CatalogIntake_BranchLabel" = "Owning Branch";
+"CatalogIntake_ChecklistLabel" = "Readiness Indicators:";

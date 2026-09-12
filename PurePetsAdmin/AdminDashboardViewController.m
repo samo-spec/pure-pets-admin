@@ -3962,6 +3962,11 @@ void PPAdminRefreshCommandSpineDashboard(UIViewController *controller) {
 
 - (void)scrollViewDidScroll:(UIScrollView *)scrollView {
     [self pp_applyHeaderMotionForOffset:scrollView.contentOffset.y];
+    CGFloat offsetY = scrollView.contentOffset.y;
+    CGFloat progress = MIN(MAX(offsetY / 70.0, 0.0), 1.0);
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"PPAdminRootScrollDidUpdateNotification"
+                                                        object:self
+                                                      userInfo:@{@"progress": @(progress)}];
 }
 
 - (void)pp_applyHeaderMotionForOffset:(CGFloat)offsetY {

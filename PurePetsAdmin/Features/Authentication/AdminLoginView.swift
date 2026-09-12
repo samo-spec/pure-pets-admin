@@ -1058,6 +1058,7 @@ enum AdminType {
     static let caption1 = Font.custom("Beiruti-Regular", size: 12, relativeTo: .caption)
     static let caption1Bold = Font.custom("Beiruti-Bold", size: 12, relativeTo: .caption)
     static let caption2 = Font.custom("Beiruti-Regular", size: 11, relativeTo: .caption2)
+    static let caption2Medium = Font.custom("Beiruti-Medium", size: 11, relativeTo: .caption2)
     static let caption2Bold = Font.custom("Beiruti-Bold", size: 11, relativeTo: .caption2)
     static let captionBold = Font.custom("Beiruti-Medium", size: 13, relativeTo: .caption)
 }

@@ -265,9 +265,10 @@ public struct LivePetReturnCoordinatorView: View {
             )
             return
         }
-        let selectedUnits = viewModel.selectedUnitsList
+        let selectedUnits = viewModel.selectedUnitsForSubmission
         let reason = viewModel.effectiveReason
         let resolution = viewModel.financialResolution
+        let adjustmentReason = viewModel.refundAdjustmentReason.trimmingCharacters(in: .whitespacesAndNewlines)
         let draftId = viewModel.activeDraftId
 
         Task {
@@ -278,6 +279,7 @@ public struct LivePetReturnCoordinatorView: View {
                     receivingBranchId: receivingBranch,
                     reason: reason,
                     financialResolution: resolution,
+                    refundAdjustmentReason: resolution == .partialRefund ? adjustmentReason : nil,
                     draftId: draftId
                 )
 

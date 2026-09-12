@@ -32,9 +32,9 @@ static NSString * const PPMainKindsUpdatedNotification = @"MainKindsUpdatedNotif
 
 
 //Get Sub Kinds Array From MainKinds By subKindsID
--(NSArray<SubKindModel *> *)getSubKindArray:(NSInteger)MainKindID;
+-(nullable NSArray<SubKindModel *> *)getSubKindArray:(NSInteger)MainKindID;
 @property (strong, nonatomic) NSMutableArray<SubKindModel *> *subKindsArrayForFilter;
-- (MainKindsModel *)mainKindForID:(NSInteger)kindID ;
+- (nullable MainKindsModel *)mainKindForID:(NSInteger)kindID ;
 
 - (void)listenForMainKindsChangesWithBlock:(void (^)(NSArray<MainKindsModel *> *mainKinds, NSError *error))block ;
 

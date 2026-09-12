@@ -37,6 +37,11 @@ public struct ReturnReceiveView: View {
             // Financial Resolution Picker
             financialResolutionSection
 
+            // Refund amount is independent from the settlement channel.
+            if viewModel.financialResolution == .fullRefund || viewModel.financialResolution == .partialRefund {
+                refundAmountSection
+            }
+
             // Refund Calculation Summary
             refundSummaryCard
         }
@@ -155,11 +160,17 @@ public struct ReturnReceiveView: View {
 
             HStack(spacing: 10) {
                 ForEach([FinancialResolution.fullRefund, FinancialResolution.storeCredit, FinancialResolution.manualSettlement]) { res in
-                    let isSelected = viewModel.financialResolution == res
+                    let isSelected = res == .fullRefund
+                        ? (viewModel.financialResolution == .fullRefund || viewModel.financialResolution == .partialRefund)
+                        : viewModel.financialResolution == res
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        viewModel.financialResolution = res
-                        viewModel.syncDraft()
+                        if res == .fullRefund {
+                            viewModel.selectFullRefund()
+                        } else {
+                            viewModel.financialResolution = res
+                            viewModel.syncDraft()
+                        }
                     } label: {
                         VStack(spacing: 6) {
                             Image(systemName: res.iconName)
@@ -184,27 +195,115 @@ public struct ReturnReceiveView: View {
         }
     }
 
+    // MARK: - Refund Amount
+
+    private var refundAmountSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("LivePet_RefundAmountTitle", alter: "مبلغ الاسترداد"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            HStack(spacing: 8) {
+                refundModeButton(
+                    title: Language.get("LivePet_RefundAmountFull", alter: "استرداد كامل"),
+                    selected: viewModel.financialResolution == .fullRefund
+                ) { viewModel.selectFullRefund() }
+
+                refundModeButton(
+                    title: Language.get("LivePet_RefundAmountPartial", alter: "استرداد جزئي"),
+                    selected: viewModel.financialResolution == .partialRefund
+                ) { viewModel.selectPartialRefund() }
+            }
+
+            if viewModel.financialResolution == .partialRefund {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 8) {
+                        TextField(
+                            Language.get("LivePet_RefundAmountPlaceholder", alter: "0.00"),
+                            text: Binding(
+                                get: { viewModel.partialRefundAmountText },
+                                set: { viewModel.updatePartialRefundAmount(text: $0) }
+                            )
+                        )
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 20, weight: .semibold, design: .rounded))
+                        .monospacedDigit()
+                        .padding(12)
+                        .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                        Text(viewModel.receipt.currency)
+                            .font(AdminType.subheadlineBold)
+                            .foregroundColor(AdminSurface.secondaryText)
+                    }
+
+                    Text(String(
+                        format: Language.get("LivePet_MaxRefundFormat", alter: "الحد الأقصى المتاح: %@"),
+                        money(viewModel.maximumRefundMinor)
+                    ))
+                    .font(AdminType.caption)
+                    .foregroundColor(AdminSurface.secondaryText)
+
+                    TextField(
+                        Language.get("LivePet_RefundAdjustmentReason", alter: "سبب تعديل مبلغ الاسترداد (مطلوب)"),
+                        text: $viewModel.refundAdjustmentReason
+                    )
+                    .font(AdminType.body)
+                    .padding(12)
+                    .background(AdminSurface.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .onChange(of: viewModel.refundAdjustmentReason) { _ in viewModel.syncDraft() }
+
+                    if !viewModel.isPartialRefundValid {
+                        Text(Language.get("LivePet_PartialRefundValidation", alter: "أدخل مبلغاً أكبر من صفر وأقل من الحد الأقصى، مع سبب واضح للتعديل."))
+                            .font(AdminType.caption2)
+                            .foregroundColor(Color(uiColor: .systemRed))
+                    }
+                }
+            }
+        }
+    }
+
+    private func refundModeButton(title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                Text(title)
+            }
+            .font(AdminType.subheadlineBold)
+            .foregroundColor(selected ? .white : AdminSurface.primaryText)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .background(selected ? AdminSurface.primary : AdminSurface.backgroundSecondary,
+                        in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func money(_ minor: Int64) -> String {
+        LivePetMoney(amountMinor: minor, currency: viewModel.receipt.currency).formatted
+    }
+
     // MARK: - Refund Summary Card
 
     private var refundSummaryCard: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(Language.get("LivePet_TotalRefundDue", alter: "المبلغ الإجمالي المستحق"))
-                    .font(AdminType.captionBold)
-                    .foregroundColor(AdminSurface.secondaryText)
-
-                Text(verbatim: "\(viewModel.selectedUnitIds.count) \(Language.get("LivePet_UnitsCount", alter: "حيوان محدد"))")
-                    .font(AdminType.caption)
-                    .foregroundColor(AdminSurface.secondaryText)
+        VStack(spacing: 10) {
+            refundSummaryRow(
+                Language.get("LivePet_RefundableAmount", alter: "المبلغ القابل للاسترداد"),
+                money(viewModel.maximumRefundMinor),
+                emphasized: false
+            )
+            refundSummaryRow(
+                Language.get("LivePet_RefundAmount", alter: "المبلغ المسترد"),
+                money(viewModel.effectiveRefundMinor),
+                emphasized: true
+            )
+            if viewModel.retainedAmountMinor > 0 {
+                Divider().background(AdminSurface.hairline)
+                refundSummaryRow(
+                    Language.get("LivePet_RetainedAmount", alter: "المبلغ غير المسترد"),
+                    money(viewModel.retainedAmountMinor),
+                    emphasized: false
+                )
             }
-
-            Spacer()
-
-            let scale = LivePetMoney.minorUnitScale(for: viewModel.receipt.currency)
-            Text(verbatim: "\(viewModel.calculatedRefundAmountMajor.formatted(.number.precision(.fractionLength(scale)))) \(viewModel.receipt.currency)")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundColor(AdminSurface.primary)
-                .monospacedDigit()
         }
         .padding(16)
         .background(AdminSurface.cardElevated, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -212,5 +311,18 @@ public struct ReturnReceiveView: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .strokeBorder(AdminSurface.hairline, lineWidth: 0.8)
         )
+    }
+
+    private func refundSummaryRow(_ title: String, _ value: String, emphasized: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(emphasized ? AdminType.subheadlineBold : AdminType.captionBold)
+                .foregroundColor(emphasized ? AdminSurface.primaryText : AdminSurface.secondaryText)
+            Spacer()
+            Text(value)
+                .font(emphasized ? .system(size: 21, weight: .bold, design: .rounded) : AdminType.subheadlineBold)
+                .foregroundColor(emphasized ? AdminSurface.primary : AdminSurface.primaryText)
+                .monospacedDigit()
+        }
     }
 }

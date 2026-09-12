@@ -49,6 +49,7 @@ public final class LivePetReturnService: @unchecked Sendable {
         receivingBranchId: String,
         reason: String,
         financialResolution: FinancialResolution = .fullRefund,
+        refundAdjustmentReason: String? = nil,
         draftId: String? = nil
     ) async throws -> LivePetReturnCase {
         guard canCreateReturn() else {
@@ -66,6 +67,21 @@ public final class LivePetReturnService: @unchecked Sendable {
             throw NSError(domain: "LivePetReturn", code: 400, userInfo: [NSLocalizedDescriptionKey: "A valid return reason (at least 3 characters) is required."])
         }
 
+        let maximumRefundMinor = selectedUnits.reduce(Int64(0)) { $0 + $1.refundableRemainingMinor }
+        let requestedRefundMinor = selectedUnits.reduce(Int64(0)) { $0 + $1.refundAmountMinor }
+        let trimmedAdjustmentReason = refundAdjustmentReason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if financialResolution == .fullRefund && requestedRefundMinor != maximumRefundMinor {
+            throw NSError(domain: "LivePetReturn", code: 400, userInfo: [NSLocalizedDescriptionKey: "Full refund amount must equal the refundable balance."])
+        }
+        if financialResolution == .partialRefund {
+            guard requestedRefundMinor > 0, requestedRefundMinor < maximumRefundMinor else {
+                throw NSError(domain: "LivePetReturn", code: 400, userInfo: [NSLocalizedDescriptionKey: "Partial refund amount must be greater than zero and below the refundable balance."])
+            }
+            guard trimmedAdjustmentReason.count >= 3 else {
+                throw NSError(domain: "LivePetReturn", code: 400, userInfo: [NSLocalizedDescriptionKey: "A partial refund adjustment reason is required."])
+            }
+        }
+
         // Check if there is an in-flight command for this transaction
         let existingInFlight = recoveryService.hasUnresolvedCommand(for: transaction.receiptID)
         let commandId = existingInFlight?.commandId
@@ -78,6 +94,7 @@ public final class LivePetReturnService: @unchecked Sendable {
             reason: trimmedReason,
             financialResolution: financialResolution,
             currency: transaction.currency.isEmpty ? "QAR" : transaction.currency,
+            refundAdjustmentReason: financialResolution == .partialRefund ? trimmedAdjustmentReason : nil,
             existingCommandId: commandId
         )
 
@@ -134,7 +151,9 @@ public final class LivePetReturnService: @unchecked Sendable {
                     refundItems: refundItemsPayload,
                     reason: trimmedReason,
                     currency: command.currency,
-                    commandID: refundCommandId
+                    commandID: refundCommandId,
+                    refundMode: financialResolution == .partialRefund ? "partial_amount" : "full_amount",
+                    refundAdjustmentReason: financialResolution == .partialRefund ? trimmedAdjustmentReason : nil
                 ) { success, returnedRefundId, error in
                     if success {
                         safeResume(.succeeded, returnedRefundId ?? refundCommandId)
@@ -171,6 +190,28 @@ public final class LivePetReturnService: @unchecked Sendable {
             }
         } else {
             initialRefundStatus = .notRequired
+            // If the transaction already had a financial refund processed earlier, resolve its refundId to accept physical return
+            resolvedRefundId = await LivePetReturnRemoteDataSource.shared.fetchLatestRefundId(for: transaction.receiptID)
+            if let effectiveRefundId = resolvedRefundId {
+                for unit in selectedUnits {
+                    let unitCommandId = "cmd_accept_return_\(unit.unitId)_\(UUID().uuidString.prefix(8))"
+                    do {
+                        _ = try await LivePetReturnRemoteDataSource.shared.acceptLiveAnimalReturn(
+                            productId: unit.productId,
+                            unitId: unit.unitId,
+                            ringTag: unit.ringTag,
+                            transactionId: transaction.receiptID,
+                            refundId: effectiveRefundId,
+                            reason: trimmedReason,
+                            notes: "Intake via Live Pet Return Studio (previously refunded)",
+                            commandId: unitCommandId,
+                            returnCaseId: caseId
+                        )
+                    } catch {
+                        NSLog("[LivePetReturnService] acceptLiveAnimalReturn warning for previously refunded unit %@: %@", unit.unitId, error.localizedDescription)
+                    }
+                }
+            }
         }
 
         // 5. Construct initial append-only events
@@ -253,6 +294,8 @@ public final class LivePetReturnService: @unchecked Sendable {
             reasonNotes: trimmedReason,
             financialResolution: financialResolution,
             refundStatus: initialRefundStatus,
+            totalRefundAmountMinor: command.refundAmountMinor,
+            refundAdjustmentReason: financialResolution == .partialRefund ? trimmedAdjustmentReason : nil,
             currency: command.currency,
             createdAt: now,
             createdBy: currentUserId,

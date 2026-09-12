@@ -17,6 +17,7 @@ public struct LocalReturnDraft: Identifiable, Codable, Hashable, Sendable {
     public var reasonNotes: String
     public var financialResolution: FinancialResolution
     public var allocatedRefundMinor: Int64
+    public var refundAdjustmentReason: String?
     public let commandId: String
     public let createdAt: Date
     public var updatedAt: Date
@@ -32,6 +33,7 @@ public struct LocalReturnDraft: Identifiable, Codable, Hashable, Sendable {
         reasonNotes: String = "",
         financialResolution: FinancialResolution = .fullRefund,
         allocatedRefundMinor: Int64 = 0,
+        refundAdjustmentReason: String? = nil,
         commandId: String? = nil,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
@@ -44,6 +46,7 @@ public struct LocalReturnDraft: Identifiable, Codable, Hashable, Sendable {
         self.reasonNotes = reasonNotes
         self.financialResolution = financialResolution
         self.allocatedRefundMinor = allocatedRefundMinor
+        self.refundAdjustmentReason = refundAdjustmentReason
         self.commandId = commandId ?? "pos-livepet-return-\(UUID().uuidString)"
         self.createdAt = createdAt
         self.updatedAt = updatedAt

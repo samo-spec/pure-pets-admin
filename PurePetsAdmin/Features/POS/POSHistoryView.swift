@@ -1763,6 +1763,9 @@ struct POSTransactionDossierSheet: View {
     @State private var isPreparingWhatsApp = false
     @State private var receiptShare: POSHistoryReceiptShare?
     @State private var feedbackMessage: String?
+    @State private var returnCases: [LivePetReturnCase] = []
+    @State private var isLoadingReturnCases = false
+    @State private var selectedReturnCaseForDetail: LivePetReturnCase?
 
     var body: some View {
         ZStack {
@@ -1782,6 +1785,11 @@ struct POSTransactionDossierSheet: View {
                             cancellationBanner
                         } else if isRefunded {
                             refundBanner
+                        }
+
+                        // Associated Live Pet Return Dossier Cards
+                        if !returnCases.isEmpty {
+                            livePetReturnCasesSection
                         }
 
                         // Customer Contact Conduit
@@ -1808,6 +1816,24 @@ struct POSTransactionDossierSheet: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sheet(item: $receiptShare) { share in
             POSHistoryReceiptShareSheet(share: share) {}
+        }
+        .sheet(item: $selectedReturnCaseForDetail) { rCase in
+            ReturnCaseDetailView(returnCaseId: rCase.returnCaseId, initialCase: rCase)
+        }
+        .task {
+            guard receipt.hasIndividuallyTrackedLivePets || isRefunded else { return }
+            isLoadingReturnCases = true
+            do {
+                let cases = try await LivePetReturnRepository.shared.fetchReturnCases(for: receipt.receiptID)
+                await MainActor.run {
+                    self.returnCases = cases
+                    self.isLoadingReturnCases = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoadingReturnCases = false
+                }
+            }
         }
         .alert(
             Language.get("POS_History_ContactFailed", alter: "تعذر إكمال الإجراء"),
@@ -1969,6 +1995,84 @@ struct POSTransactionDossierSheet: View {
                     lineWidth: 1
                 )
         )
+    }
+
+    // MARK: - Live Pet Return Cases Section
+
+    private var livePetReturnCasesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Language.get("LivePet_ReturnDossier_SectionTitle", alter: "ملف استرجاع الحيوانات الأليفة"))
+                .font(AdminType.captionBold)
+                .foregroundColor(AdminSurface.secondaryText)
+
+            ForEach(returnCases) { rCase in
+                VStack(spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "pawprint.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(Color(uiColor: .ppPrimary))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(verbatim: rCase.caseNumber)
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundColor(AdminSurface.primaryText)
+
+                                Spacer()
+
+                                Text(rCase.status.localizedTitle)
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(rCase.status.badgeColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(rCase.status.badgeColor.opacity(0.12), in: Capsule())
+                            }
+
+                            if !rCase.units.isEmpty {
+                                let unitNames = rCase.units.map { $0.ringTag.isEmpty ? $0.unitId : $0.ringTag }.joined(separator: " • ")
+                                Text(verbatim: "\(Language.get("LivePet_Units", alter: "الحيوانات")): \(unitNames)")
+                                    .font(AdminType.caption)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                            }
+
+                            if !rCase.reasonNotes.isEmpty {
+                                Text(verbatim: "\(Language.get("Reason", alter: "السبب")): \(rCase.reasonNotes)")
+                                    .font(AdminType.caption2)
+                                    .foregroundColor(AdminSurface.secondaryText)
+                                    .lineLimit(2)
+                            }
+                        }
+                    }
+
+                    Divider().background(AdminSurface.hairline)
+
+                    Button {
+                        selectedReturnCaseForDetail = rCase
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder.badge.gearshape.fill")
+                                .font(.system(size: 13, weight: .bold))
+                            Text(Language.get("LivePet_OpenDossierButton", alter: "فتح ملف الاسترجاع والمتابعة"))
+                                .font(AdminType.captionBold)
+                            Spacer()
+                            Image(systemName: Language.isRTL() ? "chevron.left" : "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+                        .padding(.vertical, 9)
+                        .padding(.horizontal, 12)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(14)
+                .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(Color(uiColor: .ppPrimary).opacity(0.3), lineWidth: 1)
+                )
+            }
+        }
     }
 
     // MARK: - Customer Conduit Card
@@ -2290,21 +2394,39 @@ struct POSTransactionDossierSheet: View {
                 .buttonStyle(.plain)
 
                 // Refund / Live Pet Return Button
-                Button(action: onRefund) {
-                    HStack(spacing: 6) {
-                        let routesToLivePetReturn = receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
-                        Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
-                        Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
-                            .font(AdminType.captionBold)
+                if let firstReturnCase = returnCases.first {
+                    Button {
+                        selectedReturnCaseForDetail = firstReturnCase
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder.badge.gearshape.fill")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(Language.get("LivePet_Action_ViewReturnCase", alter: "ملف الاسترجاع"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(Color(uiColor: .ppPrimary))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color(uiColor: .ppPrimary).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
-                    .foregroundColor(isCancelled || isFullyRefunded ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Color(uiColor: .systemOrange).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: onRefund) {
+                        HStack(spacing: 6) {
+                            let routesToLivePetReturn = receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise
+                            Image(systemName: routesToLivePetReturn ? "pawprint.fill" : "arrow.uturn.backward.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                            Text(routesToLivePetReturn ? Language.get("LivePet_Action_Return", alter: "استرجاع الحيوان") : Language.get("POS_Action_Refund", alter: "استرداد"))
+                                .font(AdminType.captionBold)
+                        }
+                        .foregroundColor(isCancelled || (isFullyRefunded && !(receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise)) ? AdminSurface.secondaryText.opacity(0.5) : Color(uiColor: .systemOrange))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(Color(uiColor: .systemOrange).opacity(0.1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isCancelled || (isFullyRefunded && !(receipt.hasIndividuallyTrackedLivePets && !receipt.hasGenericMerchandise)))
                 }
-                .buttonStyle(.plain)
-                .disabled(isCancelled || isFullyRefunded)
 
                 // Cancel / Void Button
                 Button(action: onCancel) {

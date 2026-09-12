@@ -9,6 +9,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import AVFoundation
 import FirebaseFirestore
 import FirebaseFunctions
 import FirebaseAuth
@@ -935,7 +936,8 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
         guard mainID > 0 || subID > 0 else { return }
 
         let cachedKinds = (AppManager.shared().mainKindsArray as? [MainKindsModel]) ?? (MainKindsArrayManager.shared().mainKindsArray as? [MainKindsModel]) ?? []
-        if let mainKind = cachedKinds.first(where: { $0.id == mainID }) ?? MainKindsArrayManager.shared().mainKind(forID: mainID),
+        let fallbackKind: MainKindsModel? = MainKindsArrayManager.shared().mainKind(forID: mainID)
+        if let mainKind = cachedKinds.first(where: { $0.id == mainID }) ?? fallbackKind,
            let subKinds = (mainKind.subKindsArray as? [SubKindModel]) ?? (MainKindsArrayManager.shared().getSubKindArray(mainID) as? [SubKindModel]),
            let subKind = subKinds.first(where: { $0.id == subID }) {
             if let arr = subKind.subSubKindArray as? [subSubKindModel], !arr.isEmpty {
@@ -975,7 +977,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
             isLoadingSubSubTaxonomy = true
             let db = Firestore.firestore()
             let subDocRef = db.collection("MainKinds").document(mainDocID).collection("SubKinds").document(subKindDocID)
-            subDocRef.collection("SubSubKinds").order(by: "ID", descending: false).getDocuments { [weak self] snapshot, _ in
+            subDocRef.collection("SubSubKinds").order(by: "ID", descending: false).getDocuments { [weak self] (snapshot: QuerySnapshot?, _: Error?) in
                 DispatchQueue.main.async {
                     guard let self else { return }
                     self.isLoadingSubSubTaxonomy = false
@@ -985,7 +987,7 @@ private final class PPLivePetOperationsViewModel: ObservableObject {
                         self.availableSubSubKinds = subSubs
                         for subSub in subSubs {
                             let subSubDocID = subSub.id.isEmpty ? "\(subSub.numericID)" : subSub.id
-                            subDocRef.collection("SubSubKinds").document(subSubDocID).collection("Items").order(by: "ID", descending: false).getDocuments { itemSnap, _ in
+                            subDocRef.collection("SubSubKinds").document(subSubDocID).collection("Items").order(by: "ID", descending: false).getDocuments { (itemSnap: QuerySnapshot?, _: Error?) in
                                 DispatchQueue.main.async {
                                     let items = itemSnap?.documents.compactMap { AdminSubKindItemDetail.fromSnapshot($0) } ?? []
                                     self.subSubKindItemsBySubSubID[subSub.numericID] = items
@@ -2243,6 +2245,26 @@ struct PPInventoryListView: View {
                 onDelete: {
                     itemForActionMenu = nil
                     confirmDelete(item: item)
+                },
+                onOpenPOS: {
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        if let controller = PPAdminRouteFactory.viewController(routeIdentifier: "pos", payload: item.accessoryID) {
+                            onPushViewController(controller)
+                        }
+                    }
+                },
+                onRecordMortality: {
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        openItemDetail(for: item)
+                    }
+                },
+                onLiveIntake: {
+                    itemForActionMenu = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        openItemDetail(for: item)
+                    }
                 }
             )
             .presentationDetents([.fraction(0.72), .large])
@@ -4076,18 +4098,13 @@ public struct PPInventoryItemDetailView: View {
             // Persistent Floating Master Command Dock
             floatingMasterCommandDock
 
-            // Floating Apex Navigation Bar
+            // Floating Apex Navigation Bar (Transparent)
             VStack {
                 apexNavigationBar
                     .padding(.horizontal, AdminSpacing.screenMargin)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
-                    .background(
-                        AdminSurface.background.opacity(0.96)
-                            .background(.ultraThinMaterial)
-                            .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 3)
-                            .ignoresSafeArea(edges: .top)
-                    )
+                    .background(Color.clear)
                 Spacer()
             }
 
@@ -8800,69 +8817,1223 @@ private struct PPLivePetOperationSheet: View {
 
     private var migrationUnitFields: some View {
         VStack(spacing: 12) {
-            ForEach($unitDrafts) { $unit in
-                unitDraftFields($unit, showRemove: false)
+            ForEach(Array($unitDrafts.enumerated()), id: \.element.id) { index, $unit in
+                unitPassport(index: index, unit: $unit)
             }
         }
     }
 
-    private func unitDraftFields(_ unit: Binding<PPLivePetUnitDraft>, showRemove: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            textField(
-                Language.get("LivePet_Ring_Placeholder", alter: "رقم الحلقة أو الشريحة"),
-                text: unit.ringTag,
-                icon: "barcode.viewfinder"
+    // MARK: - Unit Passport
+
+    private func unitPassport(index: Int, unit: Binding<PPLivePetUnitDraft>) -> some View {
+        let draft = unit.wrappedValue
+        let expanded = expandedUnitIDs.contains(draft.id)
+        let readiness = unitReadiness(for: draft)
+        let photo = unitPhotos[draft.id]?.image
+
+        return VStack(spacing: 0) {
+            passportSpine(
+                index: index,
+                unit: draft,
+                readiness: readiness,
+                expanded: expanded,
+                photo: photo
             )
 
-            HStack(spacing: 12) {
-                decimalField(
-                    Language.get("LivePet_Unit_SellingPrice", alter: "سعر البيع"),
-                    text: unit.sellingPriceText,
-                    icon: "tag.fill"
+            if expanded {
+                Rectangle()
+                    .fill(AdminSurface.hairline.opacity(0.72))
+                    .frame(height: 0.75)
+
+                passportBody(index: index, unit: unit, readiness: readiness)
+            }
+        }
+        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                .strokeBorder(
+                    expanded
+                        ? readiness.tint.opacity(0.54)
+                        : (readiness.isSubmittable ? AdminSurface.hairline : readiness.tint.opacity(0.42)),
+                    lineWidth: expanded ? 1.25 : (readiness.isSubmittable ? 0.75 : 1)
                 )
-                if model.canViewCosts {
-                    decimalField(
-                        Language.get("LivePet_Unit_PurchaseCost", alter: "تكلفة الشراء"),
-                        text: unit.purchaseCostText,
-                        icon: "creditcard.fill"
+        )
+        .overlay(alignment: .leading) {
+            Capsule(style: .continuous)
+                .fill(readiness.tint)
+                .frame(width: 3)
+                .padding(.vertical, AdminSpacing.md)
+                .opacity(expanded ? 1 : 0.52)
+                .accessibilityHidden(true)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous))
+        .shadow(
+            color: Color.black.opacity(expanded ? 0.065 : 0.025),
+            radius: expanded ? 14 : 5,
+            x: 0,
+            y: expanded ? 6 : 2
+        )
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.22), value: expanded)
+        .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2), value: readiness.isSubmittable)
+    }
+
+    private func passportSpine(
+        index: Int,
+        unit: PPLivePetUnitDraft,
+        readiness: PPUnitReadiness,
+        expanded: Bool,
+        photo: UIImage?
+    ) -> some View {
+        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return Button {
+            UISelectionFeedbackGenerator().selectionChanged()
+            if expanded {
+                expandedUnitIDs.remove(unit.id)
+            } else {
+                expandedUnitIDs.insert(unit.id)
+            }
+        } label: {
+            HStack(alignment: .center, spacing: AdminSpacing.md) {
+                passportIdentityAperture(
+                    index: index,
+                    readiness: readiness,
+                    photo: photo
+                )
+
+                VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+                    HStack(spacing: AdminSpacing.xs) {
+                        readinessStatusPill(readiness)
+                        if photo != nil {
+                            Image(systemName: "photo.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(AdminSurface.primary)
+                                .accessibilityHidden(true)
+                        }
+                    }
+
+                    Text(ring.isEmpty ? Language.get("LivePetIntake_IdentifierMissing", alter: "الهوية مطلوبة") : ring.normalizedEnglishDigits)
+                        .font(ring.isEmpty ? Font.custom("Beiruti-Bold", size: 14) : PPBrandFont.bold(size: 16))
+                        .foregroundStyle(ring.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                        .environment(\.layoutDirection, ring.isEmpty && Language.isRTL() ? .rightToLeft : .leftToRight)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: AdminSpacing.xs) {
+                        genderTag(unit.gender)
+
+                        if isPositiveMoney(unit.sellingPriceText) {
+                            Text(verbatim: String(
+                                format: Language.get("LivePetIntake_UnitPriceFormat", alter: "%@ ر.ق"),
+                                unit.sellingPriceText.normalizedEnglishDigits
+                            ))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .environment(\.layoutDirection, .leftToRight)
+                        }
+                    }
+
+                    if !readiness.isSubmittable {
+                        Text(readiness.isDuplicateIdentity
+                            ? Language.get("LivePetIntake_DuplicateIdentity", alter: "هذه الهوية مستخدمة في حيوان آخر")
+                            : String(
+                                format: Language.get("LivePetIntake_MissingFormat", alter: "ناقص: %@"),
+                                readiness.missingLabels.joined(separator: Language.get("ListSeparator", alter: "، "))
+                            ))
+                            .font(Font.custom("Beiruti-Regular", size: 11))
+                            .foregroundStyle(readiness.tint)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                Spacer(minLength: AdminSpacing.xs)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .rotationEffect(.degrees(expanded ? 180 : 0))
+                    .frame(width: AdminTouchTarget.minimum, height: AdminTouchTarget.minimum)
+            }
+            .padding(AdminSpacing.md)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func passportIdentityAperture(
+        index: Int,
+        readiness: PPUnitReadiness,
+        photo: UIImage?
+    ) -> some View {
+        ZStack {
+            Circle()
+                .fill(readiness.tint.opacity(0.09))
+
+            if let photo {
+                Image(uiImage: photo)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+            } else if readiness.isDuplicateIdentity {
+                Image(systemName: "exclamationmark")
+                    .font(.system(size: 16, weight: .heavy))
+                    .foregroundStyle(readiness.tint)
+            } else if readiness.isSubmittable {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(readiness.tint)
+                    .transition(.opacity)
+            } else {
+                Text(verbatim: String(format: "%02d", index + 1).normalizedEnglishDigits)
+                    .font(PPBrandFont.bold(size: 13))
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+
+            Circle()
+                .strokeBorder(AdminSurface.hairline, lineWidth: 2.5)
+
+            Circle()
+                .trim(from: 0, to: max(0.001, readiness.progress))
+                .stroke(readiness.tint, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.28), value: readiness.progress)
+        }
+        .frame(width: 52, height: 52)
+        .overlay(alignment: .bottomTrailing) {
+            if photo != nil {
+                Text(verbatim: "\(index + 1)")
+                    .font(PPBrandFont.bold(size: 9))
+                    .monospacedDigit()
+                    .foregroundStyle(.white)
+                    .frame(width: 19, height: 19)
+                    .background(readiness.tint, in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.surface, lineWidth: 2))
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func readinessStatusPill(_ readiness: PPUnitReadiness) -> some View {
+        let symbol: String
+        if readiness.isDuplicateIdentity {
+            symbol = "exclamationmark.triangle.fill"
+        } else if readiness.isSubmittable {
+            symbol = "checkmark.circle.fill"
+        } else if readiness.isUntouched {
+            symbol = "circle.dashed"
+        } else {
+            symbol = "circle.lefthalf.filled"
+        }
+
+        return Label(readiness.statusSummary, systemImage: symbol)
+            .font(Font.custom("Beiruti-Bold", size: 11))
+            .foregroundStyle(readiness.tint)
+            .padding(.horizontal, AdminSpacing.xs)
+            .padding(.vertical, 3)
+            .background(readiness.tint.opacity(0.10), in: Capsule(style: .continuous))
+    }
+
+    private func genderTag(_ gender: PPLivePetUnitGender) -> some View {
+        let tint = Color(uiColor: gender.tint)
+        return HStack(spacing: 3) {
+            Image(systemName: gender.symbolName)
+                .font(.system(size: 9, weight: .bold))
+            Text(gender.localizedShortTitle)
+                .font(Font.custom("Beiruti-Bold", size: 11))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, AdminSpacing.xs)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.12), in: Capsule(style: .continuous))
+        .overlay(Capsule(style: .continuous).strokeBorder(tint.opacity(0.30), lineWidth: 0.5))
+    }
+
+    // MARK: - Passport Body
+
+    private func passportBody(
+        index: Int,
+        unit: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        let draft = unit.wrappedValue
+        return VStack(alignment: .leading, spacing: 10) {
+            // 01 Identity & Gender
+            VStack(alignment: .leading, spacing: 8) {
+                passportSectionHeader(
+                    sequence: 1,
+                    symbol: "viewfinder.circle.fill",
+                    title: Language.get("LivePetIntake_PassportIdentityTitle", alter: "إشارة الهوية")
+                )
+
+                identityCaptureLayout(unit: unit, readiness: readiness)
+                unitGenderSelector(unit: unit)
+            }
+
+            passportSectionDivider
+
+            // 02 Commercial
+            VStack(alignment: .leading, spacing: 8) {
+                passportSectionHeader(
+                    sequence: 2,
+                    symbol: "point.3.filled.connected.trianglepath.dotted",
+                    title: Language.get("LivePetIntake_PassportCommercialTitle", alter: "الإحداثيات التجارية")
+                )
+                moneyFields(unit: unit)
+            }
+
+            passportSectionDivider
+
+            // 03 Provenance & Arrival Context
+            VStack(alignment: .leading, spacing: 8) {
+                passportSectionHeader(
+                    sequence: 3,
+                    symbol: "clock.arrow.circlepath",
+                    title: Language.get("LivePetIntake_PassportProvenanceTitle", alter: "سياق الوصول")
+                )
+
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 6) {
+                        receivedDateField(unit: unit)
+                        supplierField(unit: unit)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                        receivedDateField(unit: unit)
+                        supplierField(unit: unit)
+                    }
+                }
+
+                notesField(unit: unit)
+            }
+
+            passportActions(index: index, unit: draft)
+        }
+        .padding(AdminSpacing.md)
+        .background(
+            LinearGradient(
+                colors: [readiness.tint.opacity(0.045), AdminSurface.primaryText.opacity(0.018)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+    }
+
+    private func passportSectionHeader(
+        sequence: Int,
+        symbol: String,
+        title: String
+    ) -> some View {
+        HStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(AdminSurface.primary.opacity(0.10))
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+            .frame(width: 22, height: 22)
+
+            Text(verbatim: String(format: "%02d", sequence).normalizedEnglishDigits)
+                .font(PPBrandFont.bold(size: 10))
+                .foregroundStyle(AdminSurface.primary)
+                .environment(\.layoutDirection, .leftToRight)
+
+            Text(title)
+                .font(Font.custom("Beiruti-Bold", size: 13))
+                .foregroundStyle(AdminSurface.primaryText)
+
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var passportSectionDivider: some View {
+        Rectangle()
+            .fill(AdminSurface.hairline.opacity(0.50))
+            .frame(height: 0.5)
+            .padding(.vertical, 1)
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func identityCaptureLayout(
+        unit: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 6) {
+                unitPhotoCard(unitID: unit.wrappedValue.id)
+                identityFieldsColumn(unit: unit, readiness: readiness)
+            }
+        } else {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                unitPhotoCard(unitID: unit.wrappedValue.id)
+                    .frame(width: 104)
+                identityFieldsColumn(unit: unit, readiness: readiness)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func identityFieldsColumn(
+        unit: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            identityField(unit: unit, readiness: readiness)
+
+            if model.hasSubSubKinds {
+                unitSubSubKindSelector(unit: unit)
+            }
+
+            if let subSubID = unit.wrappedValue.subSubKindID,
+               let items = model.subSubKindItemsBySubSubID[subSubID],
+               !items.isEmpty {
+                unitSubSubKindItemSelector(unit: unit, items: items)
+            }
+        }
+    }
+
+    private func unitPhotoCard(unitID: String) -> some View {
+        let photo = unitPhotos[unitID]?.image
+        let canAttach = model.canManageStock
+
+        return VStack(alignment: .leading, spacing: AdminSpacing.xs) {
+            ZStack(alignment: .topTrailing) {
+                Button {
+                    if let photo {
+                        previewMedia = PPLivePetPreviewMedia(source: .local(photo))
+                    } else {
+                        presentUnitPhotoSource(for: unitID)
+                    }
+                } label: {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: AdminRadius.card, style: .continuous)
+                            .fill(photo == nil ? AdminSurface.primary.opacity(0.055) : AdminSurface.control)
+
+                        if let photo {
+                            Image(uiImage: photo)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .clipped()
+
+                            LinearGradient(
+                                colors: [.clear, Color.black.opacity(0.44)],
+                                startPoint: .center,
+                                endPoint: .bottom
+                            )
+
+                            Label(
+                                Language.get("LivePetIntake_UnitPhotoPreview", alter: "معاينة"),
+                                systemImage: "arrow.up.left.and.arrow.down.right"
+                            )
+                            .font(Font.custom("Beiruti-Bold", size: 10))
+                            .foregroundStyle(.white)
+                            .padding(AdminSpacing.xs)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        } else {
+                            VStack(spacing: 3) {
+                                Image(systemName: canAttach ? "camera.aperture" : "lock.fill")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(canAttach ? AdminSurface.primary : AdminSurface.secondaryText)
+                                Text(Language.get("LivePetIntake_UnitPhotoAdd", alter: "أضف صورة"))
+                                    .font(Font.custom("Beiruti-Bold", size: 11))
+                                    .foregroundStyle(AdminSurface.primaryText)
+                                Text(Language.get("LivePetIntake_Optional", alter: "اختياري"))
+                                    .font(Font.custom("Beiruti-Regular", size: 9))
+                                    .foregroundStyle(AdminSurface.secondaryText)
+                            }
+                            .multilineTextAlignment(.center)
+                            .padding(6)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 130 : 96)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(
+                                photo == nil ? AdminSurface.primary.opacity(0.30) : AdminSurface.hairline,
+                                style: StrokeStyle(lineWidth: 1, dash: photo == nil ? [4, 3] : [])
+                            )
                     )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                .disabled(!canAttach && photo == nil)
+
+                if photo != nil {
+                    Button(role: .destructive) {
+                        unitPhotos.removeValue(forKey: unitID)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 9, weight: .heavy))
+                            .foregroundStyle(.white)
+                            .frame(width: 22, height: 22)
+                            .background(Color.black.opacity(0.65), in: Circle())
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(3)
                 }
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 5) {
-                    Image(systemName: "calendar")
+            Label(
+                Language.get("LivePetIntake_UnitPhotoInternalNote", alter: "ترتبط بسجل هذا الحيوان فقط"),
+                systemImage: "link.badge.plus"
+            )
+            .font(Font.custom("Beiruti-Regular", size: 9))
+            .foregroundStyle(AdminSurface.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+    }
+
+    private func identityField(
+        unit: Binding<PPLivePetUnitDraft>,
+        readiness: PPUnitReadiness
+    ) -> some View {
+        let ring = unit.wrappedValue.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return intakeField(
+            caption: Language.get("LivePetIntake_RingLabel", alter: "رقم الحلقة أو الشريحة"),
+            symbol: "number",
+            required: true,
+            focused: focusedField == .unitRing(unit.wrappedValue.id),
+            invalid: readiness.isDuplicateIdentity,
+            footnote: readiness.isDuplicateIdentity
+                ? Language.get("LivePetIntake_DuplicateIdentity", alter: "هذه الهوية مستخدمة في حيوان آخر")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            HStack(spacing: AdminSpacing.xs) {
+                TextField(
+                    "",
+                    text: unit.ringTag,
+                    prompt: promptText("QA-RING-000")
+                )
+                .font(PPBrandFont.bold(size: 17))
+                .foregroundStyle(AdminSurface.primaryText)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled(true)
+                .textContentType(.none)
+                .keyboardType(.asciiCapable)
+                .environment(\.layoutDirection, .leftToRight)
+                .multilineTextAlignment(.leading)
+                .focused($focusedField, equals: .unitRing(unit.wrappedValue.id))
+                .submitLabel(.next)
+                .onSubmit { focusedField = .unitSellingPrice(unit.wrappedValue.id) }
+
+                if !ring.isEmpty {
+                    Button {
+                        unit.ringTag.wrappedValue = ""
+                        focusedField = .unitRing(unit.wrappedValue.id)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .frame(width: 30, height: AdminTouchTarget.minimum)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                AdminBarcodeScanButton { scanned in
+                    unit.ringTag.wrappedValue = scanned
+                    focusedField = nil
+                }
+            }
+        }
+    }
+
+    private func unitSubSubKindSelector(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        let selectedSubSub = model.availableSubSubKinds.first { $0.numericID == unit.wrappedValue.subSubKindID }
+        let title = selectedSubSub?.localizedName ?? Language.get("LivePetIntake_SelectSubSubKind", alter: "اختر التفريع الفرعي...")
+        let hasSelection = selectedSubSub != nil
+
+        return intakeField(
+            caption: Language.get("LivePetIntake_SubSubKindLabel", alter: "التفريع الفرعي (SubSubKind)"),
+            symbol: "arrow.triangle.branch",
+            required: false,
+            optionalNote: Language.get("LivePetIntake_Optional", alter: "اختياري"),
+            focused: false
+        ) {
+            Menu {
+                Button {
+                    setUnitSubSubKind(nil, unitID: unit.wrappedValue.id)
+                } label: {
+                    Label(Language.get("LivePetIntake_None", alter: "بدون تفريع"), systemImage: "xmark")
+                }
+                Divider()
+                ForEach(model.availableSubSubKinds) { subSub in
+                    Button {
+                        setUnitSubSubKind(subSub, unitID: unit.wrappedValue.id)
+                    } label: {
+                        HStack {
+                            Text(subSub.localizedName)
+                            if unit.wrappedValue.subSubKindID == subSub.numericID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AdminSpacing.xs) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Regular", size: 14))
+                        .foregroundStyle(hasSelection ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(AdminSurface.primary)
-                    Text(Language.get("LivePet_Unit_AcquisitionDate", alter: "تاريخ الاستلام"))
-                        .font(Font.custom("Beiruti-SemiBold", size: 13))
                         .foregroundStyle(AdminSurface.secondaryText)
                 }
-                DatePicker("", selection: unit.acquisitionDate, displayedComponents: .date)
-                    .labelsHidden()
-                    .datePickerStyle(.compact)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func unitSubSubKindItemSelector(unit: Binding<PPLivePetUnitDraft>, items: [AdminSubKindItemDetail]) -> some View {
+        let selectedItem = items.first { $0.numericID == unit.wrappedValue.subSubKindItemID }
+        let title = selectedItem?.localizedName ?? Language.get("LivePetIntake_SelectSubSubKindItem", alter: "اختر تصنيف العنصر...")
+        let hasSelection = selectedItem != nil
+
+        return intakeField(
+            caption: Language.get("LivePetIntake_SubSubKindItemLabel", alter: "عنصر التفريع (SubSubKindItem)"),
+            symbol: "tag.fill",
+            required: false,
+            optionalNote: Language.get("LivePetIntake_Optional", alter: "اختياري"),
+            focused: false
+        ) {
+            Menu {
+                Button {
+                    setUnitSubSubKindItem(nil, unitID: unit.wrappedValue.id)
+                } label: {
+                    Label(Language.get("LivePetIntake_None", alter: "بدون عنصر"), systemImage: "xmark")
+                }
+                Divider()
+                ForEach(items) { item in
+                    Button {
+                        setUnitSubSubKindItem(item, unitID: unit.wrappedValue.id)
+                    } label: {
+                        HStack {
+                            Text(item.localizedName)
+                            if unit.wrappedValue.subSubKindItemID == item.numericID {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: AdminSpacing.xs) {
+                    Text(title)
+                        .font(Font.custom("Beiruti-Regular", size: 14))
+                        .foregroundStyle(hasSelection ? AdminSurface.primaryText : AdminSurface.secondaryText)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func unitGenderSelector(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        let draft = unit.wrappedValue
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.xs) {
+                Image(systemName: "allergens.fill")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(Language.get("LivePetIntake_UnitGender", alter: "جنس هذا الحيوان"))
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Spacer(minLength: AdminSpacing.xs)
+                if draft.gender == .unspecified {
+                    Text(Language.get("LivePetIntake_GenderUnsetNote", alter: "سيُحفظ كغير محدد"))
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                }
             }
 
-            textField(
-                Language.get("LivePet_Supplier_Placeholder", alter: "المورد (اختياري)"),
-                text: unit.supplier,
-                icon: "person.crop.square"
-            )
-
-            textField(
-                Language.get("LivePet_Unit_Notes_Placeholder", alter: "ملاحظات داخلية (اختيارية)"),
-                text: unit.notes,
-                icon: "note.text"
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 3) {
+                        ForEach(PPLivePetUnitGender.allCases) { option in
+                            genderOption(option, unit: unit, compact: false)
+                        }
+                    }
+                } else {
+                    HStack(spacing: 4) {
+                        ForEach(PPLivePetUnitGender.allCases) { option in
+                            genderOption(option, unit: unit, compact: true)
+                        }
+                    }
+                }
+            }
+            .padding(3)
+            .background(AdminSurface.primaryText.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(AdminSurface.hairline.opacity(0.75), lineWidth: 0.75)
             )
         }
-        .padding(16)
-        .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+    }
+
+    private func genderOption(
+        _ option: PPLivePetUnitGender,
+        unit: Binding<PPLivePetUnitDraft>,
+        compact: Bool
+    ) -> some View {
+        let selected = unit.wrappedValue.gender == option
+        let tint = Color(uiColor: option.tint)
+
+        return Button {
+            setUnitGender(option, unitID: unit.wrappedValue.id)
+        } label: {
+            Group {
+                if compact {
+                    HStack(spacing: 4) {
+                        Image(systemName: option.symbolName)
+                            .font(.system(size: 11, weight: .bold))
+                        Text(option.localizedShortTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 11))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 36)
+                } else {
+                    HStack(spacing: AdminSpacing.sm) {
+                        Image(systemName: option.symbolName)
+                            .font(.system(size: 14, weight: .semibold))
+                        Text(option.localizedTitle)
+                            .font(Font.custom("Beiruti-Bold", size: 14))
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if selected {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14, weight: .bold))
+                        }
+                    }
+                    .padding(.horizontal, AdminSpacing.md)
+                    .frame(maxWidth: .infinity, minHeight: AdminTouchTarget.minimum, alignment: .leading)
+                }
+            }
+            .foregroundStyle(selected ? tint : AdminSurface.primaryText)
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(AdminSurface.surface)
+                    if selected {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(tint.opacity(0.14))
+                            .matchedGeometryEffect(id: unit.wrappedValue.id, in: genderSelectionNamespace)
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(selected ? tint.opacity(0.50) : AdminSurface.hairline.opacity(0.4), lineWidth: selected ? 1.2 : 0.6)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+        .animation(
+            accessibilityReduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.84),
+            value: unit.wrappedValue.gender
+        )
+    }
+
+    @ViewBuilder
+    private func moneyFields(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: AdminSpacing.base) {
+                sellingPriceField(unit: unit)
+                if model.canViewCosts {
+                    purchaseCostField(unit: unit)
+                }
+            }
+        } else {
+            HStack(alignment: .top, spacing: AdminSpacing.sm) {
+                sellingPriceField(unit: unit)
+                if model.canViewCosts {
+                    purchaseCostField(unit: unit)
+                }
+            }
+        }
+    }
+
+    private func sellingPriceField(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        let entered = !unit.wrappedValue.sellingPriceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return intakeField(
+            caption: Language.get("LivePetIntake_UnitSellingPriceShort", alter: "سعر البيع"),
+            symbol: "tag.fill",
+            required: true,
+            focused: focusedField == .unitSellingPrice(unit.wrappedValue.id),
+            invalid: entered && !isPositiveMoney(unit.wrappedValue.sellingPriceText),
+            trailingAffix: Language.get("QAR", alter: "ر.ق"),
+            footnote: entered && !isPositiveMoney(unit.wrappedValue.sellingPriceText)
+                ? Language.get("LivePetIntake_MoneyFormat", alter: "مبلغ صالح بمنزلتين عشريتين كحد أقصى")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            moneyTextField(
+                text: unit.sellingPriceText,
+                field: .unitSellingPrice(unit.wrappedValue.id),
+                label: Language.get("LivePetIntake_UnitSellingPrice", alter: "سعر البيع (ر.ق)")
+            )
+        }
+    }
+
+    private func purchaseCostField(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        let entered = !unit.wrappedValue.purchaseCostText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        return intakeField(
+            caption: Language.get("LivePetIntake_UnitCostShort", alter: "تكلفة الاستلام"),
+            symbol: "arrow.down.circle.fill",
+            required: true,
+            focused: focusedField == .unitPurchaseCost(unit.wrappedValue.id),
+            invalid: entered && !isNonNegativeMoney(unit.wrappedValue.purchaseCostText),
+            trailingAffix: Language.get("QAR", alter: "ر.ق"),
+            footnote: entered && !isNonNegativeMoney(unit.wrappedValue.purchaseCostText)
+                ? Language.get("LivePetIntake_MoneyFormat", alter: "مبلغ صالح بمنزلتين عشريتين كحد أقصى")
+                : nil,
+            footnoteTint: Color(uiColor: .ppError)
+        ) {
+            moneyTextField(
+                text: unit.purchaseCostText,
+                field: .unitPurchaseCost(unit.wrappedValue.id),
+                label: Language.get("LivePetIntake_UnitCost", alter: "تكلفة الاستلام (ر.ق)")
+            )
+        }
+    }
+
+    private func moneyTextField(text: Binding<String>, field: FocusedField, label: String) -> some View {
+        TextField("", text: text, prompt: promptText("0.00"))
+            .font(PPBrandFont.bold(size: 18))
+            .foregroundStyle(AdminSurface.primaryText)
+            .englishNumericInput(text: text, allowsDecimal: true)
+            .monospacedDigit()
+            .multilineTextAlignment(.leading)
+            .focused($focusedField, equals: field)
+            .accessibilityLabel(label)
+    }
+
+    private func receivedDateField(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: Language.get("LivePetIntake_ReceivedDate", alter: "تاريخ الاستلام"),
+            symbol: "calendar",
+            required: false,
+            focused: false
+        ) {
+            DatePicker(
+                Language.get("LivePetIntake_ReceivedDate", alter: "تاريخ الاستلام"),
+                selection: unit.acquisitionDate,
+                in: ...Date(),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.compact)
+            .labelsHidden()
+            .font(Font.custom("Beiruti-Regular", size: 14))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func supplierField(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: Language.get("LivePetIntake_SupplierField", alter: "المورد أو المصدر"),
+            symbol: "shippingbox.fill",
+            required: false,
+            optionalNote: Language.get("LivePetIntake_Optional", alter: "اختياري"),
+            focused: focusedField == .unitSupplier(unit.wrappedValue.id)
+        ) {
+            TextField(
+                "",
+                text: unit.supplier,
+                prompt: promptText(Language.get("LivePetIntake_SupplierPrompt", alter: "اسم المورد أو المزرعة"))
+            )
+            .font(Font.custom("Beiruti-Regular", size: 14))
+            .foregroundStyle(AdminSurface.primaryText)
+            .focused($focusedField, equals: .unitSupplier(unit.wrappedValue.id))
+            .submitLabel(.next)
+            .onSubmit { focusedField = .unitNotes(unit.wrappedValue.id) }
+        }
+    }
+
+    private func notesField(unit: Binding<PPLivePetUnitDraft>) -> some View {
+        intakeField(
+            caption: Language.get("LivePetIntake_NotesField", alter: "ملاحظات الاستلام الداخلية"),
+            symbol: "text.alignleft",
+            required: false,
+            optionalNote: Language.get("LivePetIntake_Optional", alter: "اختياري"),
+            focused: focusedField == .unitNotes(unit.wrappedValue.id)
+        ) {
+            TextField(
+                "",
+                text: unit.notes,
+                prompt: promptText(Language.get("LivePetIntake_NotesPrompt", alter: "حالة الوصول، ملاحظة بيطرية، أي تحفظ"))
+            )
+            .font(Font.custom("Beiruti-Regular", size: 14))
+            .foregroundStyle(AdminSurface.primaryText)
+            .focused($focusedField, equals: .unitNotes(unit.wrappedValue.id))
+            .submitLabel(.done)
+            .onSubmit { focusedField = nil }
+        }
+    }
+
+    private func passportActions(index: Int, unit: PPLivePetUnitDraft) -> some View {
+        let hasNext = index + 1 < unitDrafts.count
+
+        return HStack(spacing: 8) {
+            if unitDrafts.count > 1 {
+                removeUnitButton(unit.id)
+            }
+            cloneUnitButton(unit)
+
+            if hasNext || unitDrafts.count < 100 {
+                Button {
+                    advanceFromUnit(at: index)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: hasNext ? "arrow.forward.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                        Text(hasNext
+                            ? Language.get("LivePetIntake_NextAnimal", alter: "الحيوان التالي")
+                            : Language.get("LivePetIntake_AddAnimal", alter: "إضافة حيوان آخر"))
+                            .font(Font.custom("Beiruti-Bold", size: 12))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(AdminSurface.primary, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+                .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+            }
+        }
+        .padding(.top, 2)
+    }
+
+    private func advanceFromUnit(at index: Int) {
+        focusedField = nil
+        if index + 1 < unitDrafts.count {
+            let nextID = unitDrafts[index + 1].id
+            UISelectionFeedbackGenerator().selectionChanged()
+            expandedUnitIDs = [nextID]
+        } else if unitDrafts.count < 100 {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            let newDraft = PPLivePetUnitDraft(
+                sellingPriceText: standardPriceText.isEmpty ? "" : standardPriceText
+            )
+            unitDrafts.append(newDraft)
+            expandedUnitIDs = [newDraft.id]
+        }
+    }
+
+    private func cloneUnitButton(_ unit: PPLivePetUnitDraft) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            var nextRing = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let regex = try? NSRegularExpression(pattern: #"(\d+)$"#),
+               let match = regex.firstMatch(in: nextRing, range: NSRange(nextRing.startIndex..., in: nextRing)),
+               let range = Range(match.range(at: 1), in: nextRing) {
+                let digitStr = String(nextRing[range])
+                if let num = Int(digitStr) {
+                    let nextNumStr = String(format: "%0\(digitStr.count)d", num + 1)
+                    nextRing.replaceSubrange(range, with: nextNumStr)
+                }
+            }
+
+            let clone = PPLivePetUnitDraft(
+                ringTag: nextRing,
+                gender: unit.gender,
+                acquisitionDate: unit.acquisitionDate,
+                purchaseCostText: unit.purchaseCostText,
+                sellingPriceText: unit.sellingPriceText,
+                supplier: unit.supplier,
+                notes: unit.notes,
+                subSubKindID: unit.subSubKindID,
+                subSubKindItemID: unit.subSubKindItemID
+            )
+            unitDrafts.append(clone)
+            expandedUnitIDs = [clone.id]
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "plus.square.on.square")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(Language.get("LivePetIntake_Clone", alter: "نسخ كحيوان جديد"))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color(uiColor: .ppSuccess))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 38)
+            .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppSuccess).opacity(0.24), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+        .disabled(unitDrafts.count >= 100)
+    }
+
+    private func removeUnitButton(_ id: String) -> some View {
+        Button(role: .destructive) {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            unitDrafts.removeAll(where: { $0.id == id })
+            unitPhotos.removeValue(forKey: id)
+            expandedUnitIDs.remove(id)
+            if expandedUnitIDs.isEmpty, let first = unitDrafts.first {
+                expandedUnitIDs.insert(first.id)
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "trash")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(Language.get("LivePetIntake_Remove", alter: "إزالة"))
+                    .font(Font.custom("Beiruti-Bold", size: 12))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Color(uiColor: .ppError))
+            .padding(.horizontal, 10)
+            .frame(minHeight: 38)
+            .background(Color(uiColor: .ppError).opacity(0.10), in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(Color(uiColor: .ppError).opacity(0.24), lineWidth: 0.75)
+            )
+        }
+        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+    }
+
+    private func intakeField<Control: View>(
+        caption: String,
+        symbol: String,
+        required: Bool,
+        optionalNote: String? = nil,
+        focused: Bool,
+        invalid: Bool = false,
+        trailingAffix: String? = nil,
+        footnote: String? = nil,
+        footnoteTint: Color = Color(uiColor: .ppError),
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        let borderColor: Color = {
+            if invalid { return Color(uiColor: .ppError) }
+            if focused { return AdminSurface.primary }
+            return AdminSurface.hairline
+        }()
+        let borderWidth: CGFloat = invalid ? 1.4 : (focused ? 1.6 : 1)
+
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: symbol)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(focused ? AdminSurface.primary : AdminSurface.secondaryText)
+                Text(caption)
+                    .font(Font.custom("Beiruti-Bold", size: 11))
+                    .foregroundStyle(focused ? AdminSurface.primary : AdminSurface.secondaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                if required {
+                    Circle()
+                        .fill(Color(uiColor: .ppError))
+                        .frame(width: 4, height: 4)
+                        .accessibilityHidden(true)
+                } else if let optionalNote {
+                    Text(optionalNote)
+                        .font(Font.custom("Beiruti-Regular", size: 10))
+                        .foregroundStyle(Color(uiColor: .ppTextTertiary))
+                }
+                Spacer(minLength: 0)
+            }
+
+            HStack(spacing: AdminSpacing.xs) {
+                control()
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    .contentShape(Rectangle())
+
+                if let trailingAffix {
+                    Text(trailingAffix)
+                        .font(Font.custom("Beiruti-Bold", size: 11))
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2.5)
+                        .background(AdminSurface.primaryText.opacity(0.06), in: Capsule(style: .continuous))
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .background(AdminSurface.surface, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: borderWidth)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+            .animation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.16), value: focused)
+
+            if let footnote {
+                Text(footnote)
+                    .font(Font.custom("Beiruti-Regular", size: 11))
+                    .foregroundStyle(footnoteTint)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func promptText(_ value: String) -> Text {
+        Text(value).foregroundColor(AdminSurface.secondaryText.opacity(0.75))
+    }
+
+    private func unitReadiness(for unit: PPLivePetUnitDraft) -> PPUnitReadiness {
+        let ring = unit.ringTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasRing = !ring.isEmpty
+        let hasPrice = isPositiveMoney(unit.sellingPriceText)
+        let costRequired = model.canViewCosts
+        let hasCost = !costRequired || isNonNegativeMoney(unit.purchaseCostText)
+
+        var missing: [String] = []
+        if !hasRing { missing.append(Language.get("LivePetIntake_MissingIdentity", alter: "الهوية")) }
+        if !hasPrice { missing.append(Language.get("LivePetIntake_MissingPrice", alter: "سعر البيع")) }
+        if costRequired && !hasCost { missing.append(Language.get("LivePetIntake_MissingCost", alter: "تكلفة الاستلام")) }
+
+        let required = costRequired ? 3 : 2
+        let satisfied = [hasRing, hasPrice, hasCost].filter { $0 }.count - (costRequired ? 0 : 1)
+
+        let ringKey = PPAccessoryEditorViewModel.ringTagKey(unit.ringTag)
+        let duplicateInDrafts = hasRing && unitDrafts.filter({ PPAccessoryEditorViewModel.ringTagKey($0.ringTag) == ringKey }).count > 1
+        let duplicateInStock = hasRing && model.units.contains(where: { PPAccessoryEditorViewModel.ringTagKey($0.ringTag) == ringKey })
+        let duplicate = duplicateInDrafts || duplicateInStock
+
+        let untouched = !hasRing && !hasPrice && unit.purchaseCostText.isEmpty
+            && unit.supplier.isEmpty && unit.notes.isEmpty && unit.gender == .unspecified
+
+        let tint: Color
+        let summary: String
+        if duplicate {
+            tint = Color(uiColor: .ppError)
+            summary = Language.get("LivePetIntake_StatusDuplicate", alter: "هوية مكررة")
+        } else if satisfied == required {
+            tint = Color(uiColor: .ppSuccess)
+            summary = Language.get("LivePetIntake_StatusReady", alter: "مكتمل")
+        } else if untouched {
+            tint = Color(uiColor: .ppTextTertiary)
+            summary = Language.get("LivePetIntake_StatusEmpty", alter: "فارغ")
+        } else {
+            tint = Color(uiColor: .ppWarning)
+            summary = Language.get("LivePetIntake_StatusPartial", alter: "غير مكتمل")
+        }
+
+        return PPUnitReadiness(
+            satisfied: max(0, satisfied),
+            required: required,
+            missingLabels: missing,
+            isDuplicateIdentity: duplicate,
+            isUntouched: untouched,
+            genderRecorded: unit.gender != .unspecified,
+            statusSummary: summary,
+            tint: tint
+        )
+    }
+
+    private func isPositiveMoney(_ raw: String) -> Bool {
+        let clean = raw.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value = Double(clean), value > 0, value <= 999_999_999.99 else { return false }
+        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+    }
+
+    private func isNonNegativeMoney(_ raw: String) -> Bool {
+        let clean = raw.normalizedEnglishDigits.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, let value = Double(clean), value >= 0, value <= 999_999_999.99 else { return false }
+        return abs(value * 100 - (value * 100).rounded()) < 0.000_001
+    }
+
+    private func presentUnitPhotoSource(for unitID: String) {
+        focusedField = nil
+        guard model.canManageStock else {
+            validationMessage = Language.get(
+                "LivePetIntake_UnitPhotoPermissionRequired",
+                alter: "تحتاج إلى صلاحية إدارة المخزون لإرفاق صورة الحيوان."
+            )
+            return
+        }
+        unitPhotoTargetID = unitID
+        showUnitPhotoSource = true
+    }
+
+    private func acceptUnitPhoto(_ image: UIImage) {
+        guard let unitID = unitPhotoTargetID else { return }
+        if let draft = PPLivePetUnitPhotoStorageService.prepareLivePetUnitPhoto(image) {
+            unitPhotos[unitID] = draft
+            let message = Language.get(
+                "LivePetIntake_UnitPhotoSelectedAnnouncement",
+                alter: "تم إرفاق الصورة بهذا الحيوان فقط."
+            )
+            UIAccessibility.post(notification: .announcement, argument: message)
+        } else {
+            validationMessage = Language.get(
+                "LivePetIntake_UnitPhotoImportFailed",
+                alter: "تعذر استيراد الصورة المحددة. اختر صورة أخرى وحاول مجدداً."
+            )
+        }
+    }
+
+    private func requestUnitPhotoCamera() {
+        guard unitPhotoTargetID != nil else { return }
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+            validationMessage = Language.get(
+                "LivePetIntake_UnitPhotoCameraUnavailable",
+                alter: "الكاميرا غير متاحة على هذا الجهاز. اختر صورة من المكتبة."
+            )
+            return
+        }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            showUnitPhotoCamera = true
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    if granted {
+                        showUnitPhotoCamera = true
+                    } else {
+                        showCameraAccessAlert = true
+                    }
+                }
+            }
+        case .denied, .restricted:
+            showCameraAccessAlert = true
+        @unknown default:
+            showCameraAccessAlert = true
+        }
+    }
+
+    private func setUnitSubSubKind(_ subSub: AdminSubSubKindItem?, unitID: String) {
+        guard let idx = unitDrafts.firstIndex(where: { $0.id == unitID }) else { return }
+        unitDrafts[idx].subSubKindID = subSub?.numericID
+        unitDrafts[idx].subSubKindItemID = nil
+    }
+
+    private func setUnitSubSubKindItem(_ item: AdminSubKindItemDetail?, unitID: String) {
+        guard let idx = unitDrafts.firstIndex(where: { $0.id == unitID }) else { return }
+        unitDrafts[idx].subSubKindItemID = item?.numericID
+    }
+
+    private func setUnitGender(_ gender: PPLivePetUnitGender, unitID: String) {
+        guard let idx = unitDrafts.firstIndex(where: { $0.id == unitID }) else { return }
+        unitDrafts[idx].gender = gender
     }
 
     private func textField(_ title: String, text: Binding<String>, icon: String? = nil, keyboard: UIKeyboardType = .default) -> some View {
@@ -9230,6 +10401,23 @@ private struct PPLivePetOperationSheet: View {
             case .migrate:
                 let cleanPriceText = standardPriceText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
                 let price = Double(cleanPriceText) ?? 0
+                if selectedMode == .individual && !unitDrafts.isEmpty {
+                    for draft in unitDrafts {
+                        let readiness = unitReadiness(for: draft)
+                        if !readiness.isSubmittable {
+                            if readiness.isDuplicateIdentity {
+                                validationMessage = Language.get("LivePetIntake_DuplicateIdentity", alter: "هذه الهوية مستخدمة في حيوان آخر")
+                            } else {
+                                validationMessage = String(
+                                    format: Language.get("LivePetIntake_MissingFormat", alter: "ناقص: %@"),
+                                    readiness.missingLabels.joined(separator: Language.get("ListSeparator", alter: "، "))
+                                )
+                            }
+                            expandedUnitIDs.insert(draft.id)
+                            return
+                        }
+                    }
+                }
                 ok = await model.migrate(
                     mode: selectedMode,
                     units: selectedMode == .individual ? unitDrafts : [],
@@ -9239,15 +10427,29 @@ private struct PPLivePetOperationSheet: View {
             case .intake:
                 let targetBranch = selectedBranchID.isEmpty ? (BranchContextStore.shared.activeBranch?.branchID ?? model.item.storeID ?? "") : selectedBranchID
                 if model.mode == .individual {
-                    let cleanCostText = unitDrafts[0].purchaseCostText.normalizedEnglishDigits(allowsDecimal: true).replacingOccurrences(of: ",", with: ".")
-                    let cost = Double(cleanCostText)
+                    for draft in unitDrafts {
+                        let readiness = unitReadiness(for: draft)
+                        if !readiness.isSubmittable {
+                            if readiness.isDuplicateIdentity {
+                                validationMessage = Language.get("LivePetIntake_DuplicateIdentity", alter: "هذه الهوية مستخدمة في حيوان آخر")
+                            } else {
+                                validationMessage = String(
+                                    format: Language.get("LivePetIntake_MissingFormat", alter: "ناقص: %@"),
+                                    readiness.missingLabels.joined(separator: Language.get("ListSeparator", alter: "، "))
+                                )
+                            }
+                            expandedUnitIDs.insert(draft.id)
+                            return
+                        }
+                    }
                     ok = await model.intake(
                         mode: .individual,
-                        unit: unitDrafts[0],
-                        quantity: 1,
-                        cost: cost,
-                        supplier: unitDrafts[0].supplier.trimmingCharacters(in: .whitespacesAndNewlines),
-                        notes: unitDrafts[0].notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                        units: unitDrafts,
+                        photoDrafts: unitPhotos,
+                        quantity: unitDrafts.count,
+                        cost: nil,
+                        supplier: unitDrafts.first?.supplier.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                        notes: unitDrafts.first?.notes.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
                         branchID: targetBranch,
                         commandID: commandID
                     )

@@ -4272,6 +4272,12 @@
 "alert_eyebrow_info" = "معلومات";
 "alert_eyebrow_confirmation" = "تأكيد الإجراء";
 "alert_eyebrow_input" = "بيانات مطلوبة";
+"Alert_Eyebrow_Success" = "اكتمل";
+"Alert_Eyebrow_Error" = "إجراء مطلوب";
+"Alert_Eyebrow_Warning" = "تتطلب المراجعة";
+"Alert_Eyebrow_Info" = "معلومات";
+"Alert_Eyebrow_Confirmation" = "تأكيد الإجراء";
+"Alert_Eyebrow_TextInput" = "بيانات مطلوبة";
 "PPAlert_Default_Success_Title" = "اكتمل الإجراء";
 "PPAlert_Default_Success_Message" = "اكتمل الإجراء بنجاح. يمكنك المتابعة.";
 "PPAlert_Default_Error_Title" = "تعذر إكمال الإجراء";
@@ -7199,6 +7205,8 @@
 "LivePet_UnderInspection_Notice" = "في عهدة مكتب الاستلام";
 "LivePet_ReturnedUnitsHeader" = "الحيوانات المسترجعة:";
 "LivePet_OpenDossierButton" = "فتح ملف الاسترجاع والمتابعة";
+"LivePet_ReturnDossier_SectionTitle" = "ملف استرجاع الحيوانات الأليفة";
+"LivePet_Action_ViewReturnCase" = "ملف الاسترجاع";
 
 "LivePet_AnimalCustody" = "العهدة والموقع";
 "LivePet_FinancialSettlement" = "التسوية المالية";
@@ -7306,3 +7314,48 @@
 "AdminPOS_Category_Delivery" = "توصيل وخدمات";
 "AdminPOS_Category_Other" = "مصروفات أخرى";
 "AdminPOS_QuickExpense_ValidationAmount" = "يرجى إدخال مبلغ صالح أكبر من صفر";
+
+/* ===================== Live Pet Action Menu Studios ===================== */
+"LivePet_Studios_Section" = "استوديوهات الرعاية والعمليات البيطرية";
+"LivePet_Quarantine_Studio" = "استوديو الحجر البيطري والعزل الطبي";
+"LivePet_Quarantine_Studio_Desc" = "عزل الحالات للفحص الطبي أو الملاحظة السريرية وفك الحجر بعد التعافي";
+"LivePet_Quarantine_Badge" = "عزل بيطري";
+"LivePet_Mortality_Studio" = "استوديو تسجيل النفوق وفقد الحيوان";
+"LivePet_Mortality_Studio_Desc" = "توثيق حالات الوفاة مع التشخيص الطبي والسبب البيطري وإسقاط الرأس رسمياً";
+"LivePet_Mortality_Badge" = "تسجيل نفوق";
+"LivePet_Intake_Studio" = "استوديو التوريد والأرصدة الحية";
+"LivePet_Intake_Studio_Desc" = "تسجيل وصول دفعات أو أفراد جدد مع بيانات الحجل ومطابقة الأعداد الحية";
+"LivePet_Intake_Badge" = "رصيد وتوريد";
+"LivePet_POS_Studio" = "نقطة البيع وحجز الحيوانات";
+"LivePet_POS_Studio_Desc" = "إتمام عملية بيع الكاشير الفورية أو تثبيت حجز مسبق للعميل مع العربون";
+"LivePet_POS_Badge" = "بيع وحجز";
+"LivePet_Edit_Specimen" = "تعديل بيانات الحيوان";
+"LivePet_Share_Specimen" = "مشاركة بطاقة الحيوان";
+"LivePet_Delete_Guarded" = "حذف السجل الحي نهائياً من المخزون";
+"LivePet_Action_Center" = "مركز إدارة ورعاية الحيوان الحي";
+"LivePet_Action_Center_Sub" = "الرقابة البيطرية، التوريد، وتسجيل الحالات الحية";
+"Live_Tracking_Mode" = "نظام التتبع الحي";
+"Live_Mode_Individual" = "تتبع فردي بالرأس (حجل/شريحة)";
+"Live_Mode_Group" = "إدارة كمية بالمجموعة (رصيد القفص)";
+
+/* ===================== Catalog Intake App Switcher ===================== */
+"CatalogIntake_StepsSwitcherTitle" = "مراحل إضافة الصنف";
+"CatalogIntake_StepsSwitcherHint" = "يفتح نظرة عامة لجميع الخطوات بنمط مبدل تطبيقات الآيفون";
+"CatalogIntake_AppSwitcherCardHint" = "اضغط للانتقال إلى هذه الخطوة وتكبيرها";
+"CatalogIntake_ActiveNowPill" = "قيد التعديل";
+"CatalogIntake_DonePill" = "مكتملة";
+"CatalogIntake_NeedsInputPill" = "بحاجة لبيانات";
+"CatalogIntake_NoPhotosYet" = "لا توجد صور مضافة بعد";
+"CatalogIntake_NameMissing" = "لم يدخل الاسم بالعربي";
+"CatalogIntake_CategoryMissing" = "غير محددة";
+"CatalogIntake_NoSubcategorySelected" = "لم يتم التحديد";
+"CatalogIntake_WeightUnspecified" = "غير محدد";
+"CatalogIntake_StoreMissing" = "لم يتم اختيار الفرع";
+"CatalogIntake_CurrentActiveStage" = "أنت في هذه الخطوة الآن";
+"CatalogIntake_SwitchToStage" = "اضغط للانتقال الفوري";
+"CatalogIntake_AppSwitcherSwipeHint" = "اسحب أفقياً لتصفح الخطوات، أو اضغط على أي بطاقة لتكبيرها";
+"CatalogIntake_SubkindsCountFormat" = "%ld فئات فرعية";
+"CatalogIntake_QuantityFormat" = "الكمية المتاحة: %ld قطعة";
+"CatalogIntake_CostLabel" = "التكلفة:";
+"CatalogIntake_BranchLabel" = "الفرع المالك";
+"CatalogIntake_ChecklistLabel" = "مؤشرات الجاهزية:";

@@ -24,6 +24,7 @@
 #import "BasicClasses/PetAccessory.h"
 #import "BasicClasses/ArabicNormalizer.h"
 #import "BasicClasses/MainKindsModel.h"
+#import "BasicClasses/MainKindsArrayManager.h"
 #import "BasicClasses/SubKindModel.h"
 #import "AppManager.h"
 #import "AccessorySection/AccessoryManager.h"

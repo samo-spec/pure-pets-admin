@@ -98,32 +98,32 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         case PPAlertTypeSuccess:
             appearance.accentColor = [UIColor ppSuccess];
             appearance.iconSystemName = @"checkmark.seal.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_Success") ?: (kLang(@"alert_eyebrow_success") ?: @"SUCCESS");
+            appearance.eyebrowText = [Language get:@"alert_eyebrow_success" alter:@"اكتمل"];
             break;
         case PPAlertTypeError:
             appearance.accentColor = [UIColor ppError];
             appearance.iconSystemName = @"xmark.seal.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_Error") ?: (kLang(@"alert_eyebrow_error") ?: @"ACTION REQUIRED");
+            appearance.eyebrowText = [Language get:@"alert_eyebrow_error" alter:@"إجراء مطلوب"];
             break;
         case PPAlertTypeWarning:
             appearance.accentColor = [UIColor ppWarning];
             appearance.iconSystemName = @"exclamationmark.triangle.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_Warning") ?: (kLang(@"alert_eyebrow_warning") ?: @"PLEASE REVIEW");
+            appearance.eyebrowText = [Language get:@"alert_eyebrow_warning" alter:@"تتطلب المراجعة"];
             break;
         case PPAlertTypeInfo:
             appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"info.circle.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_Info") ?: (kLang(@"alert_eyebrow_info") ?: @"DETAILS");
+            appearance.eyebrowText = [Language get:@"alert_eyebrow_info" alter:@"معلومات"];
             break;
         case PPAlertTypeConfirmation:
             appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"questionmark.circle.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_Confirmation") ?: (kLang(@"alert_eyebrow_confirmation") ?: @"CONFIRMATION");
+            appearance.eyebrowText = nil;
             break;
         case PPAlertTypeTextInput:
             appearance.accentColor = AppPrimaryClr;
             appearance.iconSystemName = @"square.and.pencil.circle.fill";
-            appearance.eyebrowText = kLang(@"Alert_Eyebrow_TextInput") ?: (kLang(@"alert_eyebrow_input") ?: @"INPUT");
+            appearance.eyebrowText = nil;
             break;
     }
     appearance.badgeBackgroundColor = [appearance.accentColor colorWithAlphaComponent:0.12];
@@ -151,11 +151,10 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
 @property (nonatomic, strong) UIVisualEffectView *backdropView;
 @property (nonatomic, strong) UIView *dimmingView;
 @property (nonatomic, strong) UIView *cardContainerView;
-@property (nonatomic, strong) UIView *cardInnerAuraView;
 @property (nonatomic, strong) UIView *badgeView;
 @property (nonatomic, strong) UIImageView *iconView;
-@property (nonatomic, strong) UIView *eyebrowCapsule;
-@property (nonatomic, strong) UILabel *eyebrowLabel;
+@property (nonatomic, strong, nullable) UIView *eyebrowCapsule;
+@property (nonatomic, strong, nullable) UILabel *eyebrowLabel;
 @property (nonatomic, strong) UILabel *titleLabel;
 @property (nonatomic, strong) UILabel *subtitleLabel;
 @property (nonatomic, strong) UIView *inputContainerView;
@@ -289,20 +288,10 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     self.cardContainerView.semanticContentAttribute = Language.semanticAttributeForCurrentLanguage;
     [self addSubview:self.cardContainerView];
 
-    // 5. Contained Inner Aura (Replaces the broken clipped-moon heroGlowView)
-    self.cardInnerAuraView = [[UIView alloc] init];
-    self.cardInnerAuraView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.cardInnerAuraView.backgroundColor = [self.appearance.accentColor colorWithAlphaComponent:0.07];
-    self.cardInnerAuraView.layer.cornerRadius = 140.0;
-    self.cardInnerAuraView.layer.cornerCurve = kCACornerCurveContinuous;
-    self.cardInnerAuraView.layer.masksToBounds = YES;
-    self.cardInnerAuraView.userInteractionEnabled = NO;
-    [self.cardContainerView addSubview:self.cardInnerAuraView];
-
-    // 6. Tactile Icon Badge
+    // 5. Tactile Icon Badge
     self.badgeView = [[UIView alloc] init];
     self.badgeView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.badgeView.layer.cornerRadius = 28.0;
+    self.badgeView.layer.cornerRadius = 24.0;
     self.badgeView.layer.cornerCurve = kCACornerCurveContinuous;
     self.badgeView.layer.borderWidth = 1.0 / UIScreen.mainScreen.scale;
     self.badgeView.layer.borderColor = [self.appearance.accentColor colorWithAlphaComponent:0.20].CGColor;
@@ -314,23 +303,26 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     self.iconView.isAccessibilityElement = NO;
     [self.badgeView addSubview:self.iconView];
 
-    // 7. Eyebrow Semantic Pill
-    self.eyebrowCapsule = [[UIView alloc] init];
-    self.eyebrowCapsule.translatesAutoresizingMaskIntoConstraints = NO;
-    self.eyebrowCapsule.backgroundColor = [self.appearance.accentColor colorWithAlphaComponent:0.10];
-    self.eyebrowCapsule.layer.cornerRadius = 11.0;
-    self.eyebrowCapsule.layer.cornerCurve = kCACornerCurveContinuous;
-    [self.cardContainerView addSubview:self.eyebrowCapsule];
+    // 6. Optional Eyebrow Semantic Pill (Only for alerts requiring category guidance)
+    BOOL hasEyebrow = (self.appearance.eyebrowText.length > 0);
+    if (hasEyebrow) {
+        self.eyebrowCapsule = [[UIView alloc] init];
+        self.eyebrowCapsule.translatesAutoresizingMaskIntoConstraints = NO;
+        self.eyebrowCapsule.backgroundColor = [self.appearance.accentColor colorWithAlphaComponent:0.10];
+        self.eyebrowCapsule.layer.cornerRadius = 11.0;
+        self.eyebrowCapsule.layer.cornerCurve = kCACornerCurveContinuous;
+        [self.cardContainerView addSubview:self.eyebrowCapsule];
 
-    self.eyebrowLabel = [[UILabel alloc] init];
-    self.eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.eyebrowLabel.font = PPFontBold(10.5);
-    self.eyebrowLabel.textColor = self.appearance.accentColor;
-    self.eyebrowLabel.textAlignment = NSTextAlignmentCenter;
-    self.eyebrowLabel.numberOfLines = 1;
-    self.eyebrowLabel.text = [self.appearance.eyebrowText uppercaseString];
-    self.eyebrowLabel.adjustsFontForContentSizeCategory = YES;
-    [self.eyebrowCapsule addSubview:self.eyebrowLabel];
+        self.eyebrowLabel = [[UILabel alloc] init];
+        self.eyebrowLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.eyebrowLabel.font = PPFontBold(10.5);
+        self.eyebrowLabel.textColor = self.appearance.accentColor;
+        self.eyebrowLabel.textAlignment = NSTextAlignmentCenter;
+        self.eyebrowLabel.numberOfLines = 1;
+        self.eyebrowLabel.text = self.appearance.eyebrowText;
+        self.eyebrowLabel.adjustsFontForContentSizeCategory = YES;
+        [self.eyebrowCapsule addSubview:self.eyebrowLabel];
+    }
 
     // 8. Title Label (Centered Harmonic Axis)
     self.titleLabel = [[UILabel alloc] init];
@@ -409,7 +401,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
     NSLayoutConstraint *cardWidthConstraint = [self.cardContainerView.widthAnchor constraintEqualToConstant:maxCardWidth];
     cardWidthConstraint.priority = 999.0f;
 
-    [NSLayoutConstraint activateConstraints:@[
+    NSMutableArray<NSLayoutConstraint *> *constraints = [NSMutableArray arrayWithArray:@[
         // Backdrop
         [self.backdropView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
         [self.backdropView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
@@ -435,12 +427,6 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         [self.cardContainerView.trailingAnchor constraintLessThanOrEqualToAnchor:self.safeAreaLayoutGuide.trailingAnchor constant:-24.0],
         cardWidthConstraint,
 
-        // Contained Top Ambient Glow (Zero clipping artifacts)
-        [self.cardInnerAuraView.centerXAnchor constraintEqualToAnchor:self.cardContainerView.centerXAnchor],
-        [self.cardInnerAuraView.centerYAnchor constraintEqualToAnchor:self.cardContainerView.topAnchor constant:40.0],
-        [self.cardInnerAuraView.widthAnchor constraintEqualToConstant:280.0],
-        [self.cardInnerAuraView.heightAnchor constraintEqualToConstant:180.0],
-
         // Centered Badge View
         [self.badgeView.topAnchor constraintEqualToAnchor:self.cardContainerView.topAnchor constant:26.0],
         [self.badgeView.centerXAnchor constraintEqualToAnchor:self.cardContainerView.centerXAnchor],
@@ -452,17 +438,7 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         [self.iconView.widthAnchor constraintEqualToConstant:28.0],
         [self.iconView.heightAnchor constraintEqualToConstant:28.0],
 
-        // Eyebrow Capsule
-        [self.eyebrowCapsule.topAnchor constraintEqualToAnchor:self.badgeView.bottomAnchor constant:14.0],
-        [self.eyebrowCapsule.centerXAnchor constraintEqualToAnchor:self.cardContainerView.centerXAnchor],
-        [self.eyebrowCapsule.heightAnchor constraintEqualToConstant:22.0],
-
-        [self.eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.eyebrowCapsule.leadingAnchor constant:10.0],
-        [self.eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.eyebrowCapsule.trailingAnchor constant:-10.0],
-        [self.eyebrowLabel.centerYAnchor constraintEqualToAnchor:self.eyebrowCapsule.centerYAnchor],
-
-        // Title
-        [self.titleLabel.topAnchor constraintEqualToAnchor:self.eyebrowCapsule.bottomAnchor constant:10.0],
+        // Title Horizontal Bounds
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.cardContainerView.leadingAnchor constant:22.0],
         [self.titleLabel.trailingAnchor constraintEqualToAnchor:self.cardContainerView.trailingAnchor constant:-22.0],
 
@@ -492,6 +468,24 @@ typedef NS_ENUM(NSInteger, PPAlertActionStyle) {
         [self.buttonStackView.trailingAnchor constraintEqualToAnchor:self.cardContainerView.trailingAnchor constant:-20.0],
         [self.buttonStackView.bottomAnchor constraintEqualToAnchor:self.cardContainerView.bottomAnchor constant:-22.0]
     ]];
+
+    if (hasEyebrow && self.eyebrowCapsule && self.eyebrowLabel) {
+        [constraints addObjectsFromArray:@[
+            [self.eyebrowCapsule.topAnchor constraintEqualToAnchor:self.badgeView.bottomAnchor constant:14.0],
+            [self.eyebrowCapsule.centerXAnchor constraintEqualToAnchor:self.cardContainerView.centerXAnchor],
+            [self.eyebrowCapsule.heightAnchor constraintEqualToConstant:22.0],
+
+            [self.eyebrowLabel.leadingAnchor constraintEqualToAnchor:self.eyebrowCapsule.leadingAnchor constant:10.0],
+            [self.eyebrowLabel.trailingAnchor constraintEqualToAnchor:self.eyebrowCapsule.trailingAnchor constant:-10.0],
+            [self.eyebrowLabel.centerYAnchor constraintEqualToAnchor:self.eyebrowCapsule.centerYAnchor],
+
+            [self.titleLabel.topAnchor constraintEqualToAnchor:self.eyebrowCapsule.bottomAnchor constant:10.0]
+        ]];
+    } else {
+        [constraints addObject:[self.titleLabel.topAnchor constraintEqualToAnchor:self.badgeView.bottomAnchor constant:16.0]];
+    }
+
+    [NSLayoutConstraint activateConstraints:constraints];
 }
 
 - (void)applyStyling {

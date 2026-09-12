@@ -8752,80 +8752,111 @@ private struct PPLivePetIntakeJourney: View {
     }
 
     private var journeyCompass: some View {
-        Button {
-            showJourneyMap = true
-        } label: {
-            VStack(alignment: .leading, spacing: AdminSpacing.md) {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: AdminSpacing.sm) {
-                            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.md) {
-                                compassStepNumber
-                                Spacer(minLength: AdminSpacing.sm)
-                                compassCompletionBadge
-                            }
-                            compassStageCopy
-                        }
-                    } else {
-                        HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.md) {
-                            compassStepNumber
-                            compassStageCopy
-                            Spacer(minLength: AdminSpacing.sm)
-                            compassCompletionBadge
-                        }
+        VStack(alignment: .leading, spacing: AdminSpacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: AdminSpacing.md) {
+                Button {
+                    showJourneyMap = true
+                } label: {
+                    VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
+                        Text(stageEyebrow(viewModel.activeStage).uppercased())
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(stageTitle(viewModel.activeStage))
+                            .font(AdminType.title2)
+                            .foregroundStyle(AdminSurface.primaryText)
+                        Text(stageQuestion(viewModel.activeStage))
+                            .font(AdminType.footnote)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(
+                    format: tr("LivePetIntake_ProgressAccessibility", "الخطوة %ld من 4، %@"),
+                    viewModel.activeStage.rawValue + 1,
+                    stageTitle(viewModel.activeStage)
+                ))
+                .accessibilityHint(tr("LivePetIntake_JourneyMapHint", "يفتح جميع الخطوات وحالة اكتمالها"))
 
+                Spacer(minLength: AdminSpacing.sm)
+
+                Button {
+                    showJourneyMap = true
+                } label: {
+                    compassCompletionBadge
+                }
+                .buttonStyle(.plain)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: AdminSpacing.xs) {
                     ForEach(PPEditorStage.allCases) { stage in
-                        Capsule()
-                            .fill(progressColor(for: stage))
-                            .frame(maxWidth: .infinity, minHeight: 5, maxHeight: 5)
+                        Button {
+                            move(to: stage)
+                        } label: {
+                            stagePill(for: stage)
+                        }
+                        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+                        .accessibilityAddTraits(stage == viewModel.activeStage ? .isSelected : [])
                     }
                 }
             }
-            .padding(AdminSpacing.base)
-            .background(
-                LinearGradient(
-                    colors: [AdminSurface.surface, AdminSurface.primarySoft.opacity(0.38)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                ),
-                in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
-                    .strokeBorder(AdminSurface.primary.opacity(0.16), lineWidth: 1)
-            )
         }
-        .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
-        .disabled(viewModel.hasPendingLivePetRecovery)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(String(
-            format: tr("LivePetIntake_ProgressAccessibility", "الخطوة %ld من 4، %@"),
-            viewModel.activeStage.rawValue + 1,
-            stageTitle(viewModel.activeStage)
-        ))
-        .accessibilityHint(tr("LivePetIntake_JourneyMapHint", "يفتح جميع الخطوات وحالة اكتمالها"))
+        .padding(AdminSpacing.base)
+        .background(
+            LinearGradient(
+                colors: [AdminSurface.surface, AdminSurface.primarySoft.opacity(0.38)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ),
+            in: RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AdminRadius.hero, style: .continuous)
+                .strokeBorder(AdminSurface.primary.opacity(0.16), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
     }
 
-    private var compassStepNumber: some View {
-        Text(verbatim: String(format: "%02d", viewModel.activeStage.rawValue + 1).normalizedEnglishDigits)
-            .font(PPBrandFont.bold(size: dynamicTypeSize.isAccessibilitySize ? 24 : 32))
-            .foregroundStyle(AdminSurface.primary)
+    private func stageEyebrow(_ stage: PPEditorStage) -> String {
+        switch stage {
+        case .identity: return tr("CatalogIntake_StageOne", "الخطوة 1")
+        case .bioVault: return tr("CatalogIntake_StageTwo", "الخطوة 2")
+        case .pricing: return tr("CatalogIntake_StageThree", "الخطوة 3")
+        case .governance: return tr("CatalogIntake_StageFour", "الخطوة 4")
+        }
     }
 
-    private var compassStageCopy: some View {
-        VStack(alignment: .leading, spacing: AdminSpacing.xxs) {
-            Text(stageTitle(viewModel.activeStage))
-                .font(AdminType.title2)
-                .foregroundStyle(AdminSurface.primaryText)
-                .multilineTextAlignment(.leading)
-            Text(stageQuestion(viewModel.activeStage))
-                .font(AdminType.footnote)
-                .foregroundStyle(AdminSurface.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
+    private func shortStageTitle(_ stage: PPEditorStage) -> String {
+        switch stage {
+        case .identity: return tr("CatalogIntake_ShortIdentity", "الهوية")
+        case .bioVault: return tr("CatalogIntake_ShortSpecs", "المواصفات")
+        case .pricing: return tr("CatalogIntake_ShortPricing", "التسعير")
+        case .governance: return tr("CatalogIntake_ShortRelease", "الإتاحة")
         }
+    }
+
+    @ViewBuilder
+    private func stagePill(for stage: PPEditorStage) -> some View {
+        let isCurrent = stage == viewModel.activeStage
+        let isDone = validationMessage(for: stage) == nil
+        let icon = isDone ? "checkmark.circle.fill" : stage.symbol
+        let tint = progressColor(for: stage)
+        HStack(spacing: AdminSpacing.xs) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+            Text(shortStageTitle(stage))
+                .font(AdminType.caption2Bold)
+                .lineLimit(1)
+        }
+        .foregroundStyle(isCurrent ? Color.white : tint)
+        .padding(.horizontal, AdminSpacing.sm)
+        .frame(minHeight: 36)
+        .background(
+            isCurrent ? AdminSurface.primary : tint.opacity(0.10),
+            in: Capsule()
+        )
+        .contentShape(Capsule())
     }
 
     private var compassCompletionBadge: some View {
@@ -12039,8 +12070,9 @@ private struct PPLivePetIntakeJourney: View {
 
     private func progressColor(for stage: PPEditorStage) -> Color {
         if stage == viewModel.activeStage { return AdminSurface.primary }
-        if validationMessage(for: stage) == nil { return Color(uiColor: .ppSuccess) }
-        return AdminSurface.hairline
+        return validationMessage(for: stage) == nil
+            ? Color(uiColor: .ppSuccess)
+            : AdminSurface.secondaryText
     }
 
     private func fieldLabel(_ text: String, required: Bool) -> some View {
@@ -13878,7 +13910,7 @@ private struct PPCageDimensionPreset: Identifiable {
     let targetPet: String
 }
 
-// MARK: - Category-Defining 2D Architectural Blueprint Canvas
+//// MARK: - Category-Defining 2D & 3D Architectural Blueprint Canvas
 
 private struct PPDimensionsBlueprintCanvas: View {
     let width: Double
@@ -13886,6 +13918,7 @@ private struct PPDimensionsBlueprintCanvas: View {
     let unit: String
     let isIPad: Bool
 
+    @State private var is3DMode: Bool = false
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -13942,9 +13975,111 @@ private struct PPDimensionsBlueprintCanvas: View {
         }
     }
 
+    private var volumeTelemetryFormatted: String? {
+        guard width > 0, height > 0 else { return nil }
+        let d = min(width, height) > 0 ? min(width, height) : max(width, height) * 0.70
+        let vol = width * height * d
+        let isArabic = Language.isRTL()
+        let volStr = String(format: "%.1f", vol).replacingOccurrences(of: ".0", with: "")
+
+        switch unit.lowercased() {
+        case "cm":
+            let liters = vol / 1000.0
+            let litersStr = String(format: "%.1f", liters).replacingOccurrences(of: ".0", with: "")
+            let unitCm3 = isArabic ? "سم³" : "cm³"
+            let unitL = isArabic ? "لتر" : "L"
+            return "\(volStr) \(unitCm3) (\(litersStr) \(unitL))".normalizedEnglishDigits
+        case "m":
+            let unitM3 = isArabic ? "م³" : "m³"
+            return "\(volStr) \(unitM3)".normalizedEnglishDigits
+        case "in":
+            let gallons = vol / 231.0
+            let galStr = String(format: "%.1f", gallons).replacingOccurrences(of: ".0", with: "")
+            let unitIn3 = isArabic ? "بوصة³" : "in³"
+            let unitGal = isArabic ? "جالون" : "gal"
+            return "\(volStr) \(unitIn3) (\(galStr) \(unitGal))".normalizedEnglishDigits
+        case "mm":
+            let ml = vol / 1000.0
+            let mlStr = String(format: "%.1f", ml).replacingOccurrences(of: ".0", with: "")
+            let unitMm3 = isArabic ? "ملم³" : "mm³"
+            let unitMl = isArabic ? "مل" : "ml"
+            return "\(volStr) \(unitMm3) (\(mlStr) \(unitMl))".normalizedEnglishDigits
+        default:
+            return "\(volStr) \(unit)³".normalizedEnglishDigits
+        }
+    }
+
+    private var modeSwitcherButton: some View {
+        HStack(spacing: 2) {
+            Button {
+                if is3DMode {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        is3DMode = false
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "square")
+                        .font(.system(size: 9.5, weight: .bold))
+                    Text("2D")
+                        .font(PPBrandFont.bold(size: 11))
+                }
+                .foregroundStyle(!is3DMode ? Color.white : AdminSurface.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    !is3DMode
+                        ? Color(red: 0.20, green: 0.50, blue: 0.95)
+                        : Color.clear,
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("PhysicalSpec_Mode_2D", alter: "عرض ثنائي الأبعاد 2D"))
+
+            Button {
+                if !is3DMode {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.78)) {
+                        is3DMode = true
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "cube.transparent")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("3D")
+                        .font(PPBrandFont.bold(size: 11))
+                }
+                .foregroundStyle(is3DMode ? Color.white : AdminSurface.secondaryText)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    is3DMode
+                        ? Color(red: 0.20, green: 0.50, blue: 0.95)
+                        : Color.clear,
+                    in: Capsule()
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Language.get("PhysicalSpec_Mode_3D", alter: "عرض ثلاثي الأبعاد 3D"))
+        }
+        .padding(2.5)
+        .background(
+            Capsule()
+                .fill(colorScheme == .dark ? Color.black.opacity(0.72) : Color.white.opacity(0.92))
+                .shadow(color: Color.black.opacity(0.08), radius: 4, x: 0, y: 1.5)
+        )
+        .overlay(
+            Capsule()
+                .strokeBorder(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.35), lineWidth: 0.8)
+        )
+    }
+
     var body: some View {
         VStack(spacing: 8) {
-            ZStack {
+            ZStack(alignment: .topLeading) {
                 // Blueprint Ambient Background Canvas
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
@@ -13968,122 +14103,198 @@ private struct PPDimensionsBlueprintCanvas: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                if hasDimensions {
-                    // Active Dimensioned Wireframe Box
-                    GeometryReader { geo in
-                        let maxW = geo.size.width - 70
-                        let maxH = geo.size.height - 56
-                        let boxAspect = clampedAspectRatio
+                // Content: 3D Isometric View OR 2D Plan View
+                if is3DMode {
+                    if hasDimensions {
+                        PPDimensionsIsometric3DView(
+                            width: width,
+                            height: height,
+                            unit: unit,
+                            displayUnit: displayUnitLocalized,
+                            isIPad: isIPad
+                        )
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.95)))
+                    } else {
+                        // 3D Empty / Prompt State
+                        VStack(spacing: 6) {
+                            Image(systemName: "cube.transparent")
+                                .font(.system(size: 26, weight: .light))
+                                .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.95).opacity(0.85))
 
-                        let boxW: CGFloat = (boxAspect >= 1.0)
-                            ? min(maxW, maxH * boxAspect)
-                            : min(maxW, maxH * boxAspect)
-                        let boxH: CGFloat = max(24, boxW / boxAspect)
+                            Text(Language.get("PhysicalSpec_Live3DBlueprint", alter: "مجسم هندسي ثلاثي الأبعاد 3D"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
 
-                        ZStack {
-                            // Proportional Wireframe Box
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.18 : 0.10))
-                                .frame(width: max(30, boxW), height: max(24, boxH))
-                                .overlay(
-                                    PPCageMeshPattern()
-                                        .stroke(
-                                            Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.25),
-                                            lineWidth: 0.75
-                                        )
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .strokeBorder(
-                                            Color(red: 0.20, green: 0.50, blue: 0.95),
-                                            lineWidth: 1.5
-                                        )
-                                )
-                                .overlay(
-                                    VStack(spacing: 2) {
-                                        Image(systemName: "cube.transparent")
-                                            .font(.system(size: min(20, max(12, boxH * 0.35)), weight: .semibold))
-                                            .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
-                                    }
-                                )
-
-                            // Dimension Annotation Line: Top (Width)
-                            VStack(spacing: 2) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "arrow.left")
-                                        .font(.system(size: 8, weight: .bold))
-                                    Text("\(String(format: "%g", width).normalizedEnglishDigits) \(displayUnitLocalized)")
-                                        .font(PPBrandFont.bold(size: 11))
-                                        .lineLimit(1)
-                                    Image(systemName: "arrow.right")
-                                        .font(.system(size: 8, weight: .bold))
-                                }
-                                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    Capsule()
-                                        .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
-                                        .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
-                                )
-                            }
-                            .offset(y: -(max(24, boxH) / 2) - 16)
-
-                            // Dimension Annotation Line: Trailing (Height)
-                            HStack(spacing: 2) {
-                                VStack(spacing: 3) {
-                                    Image(systemName: "arrow.up")
-                                        .font(.system(size: 8, weight: .bold))
-                                    Text("\(String(format: "%g", height).normalizedEnglishDigits)")
-                                        .font(PPBrandFont.bold(size: 10.5))
-                                        .lineLimit(1)
-                                    Text(displayUnitLocalized)
-                                        .font(PPBrandFont.medium(size: 9))
-                                        .lineLimit(1)
-                                    Image(systemName: "arrow.down")
-                                        .font(.system(size: 8, weight: .bold))
-                                }
-                                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 4)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
-                                        .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
-                                )
-                            }
-                            .offset(x: (max(30, boxW) / 2) + 26)
+                            Text(Language.get("PhysicalSpec_3DPrompt", alter: "أدخل العرض والارتفاع لإنشاء المجسم ثلاثي الأبعاد والتحكم بزاوية الرؤية"))
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: boxAspect)
-                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: width)
-                        .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.vertical, 16)
                     }
                 } else {
-                    // Empty / Prompt State
-                    VStack(spacing: 6) {
-                        Image(systemName: "ruler")
-                            .font(.system(size: 24, weight: .light))
-                            .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.95).opacity(0.75))
+                    if hasDimensions {
+                        // Active Dimensioned Wireframe Box (2D)
+                        GeometryReader { geo in
+                            let maxW = geo.size.width - 70
+                            let maxH = geo.size.height - 56
+                            let boxAspect = clampedAspectRatio
 
-                        Text(Language.get("PhysicalSpec_LiveBlueprint", alter: "مخطط هندسي حي للأقفاص والنواقل"))
-                            .font(AdminType.caption2Bold)
-                            .foregroundStyle(AdminSurface.primaryText)
+                            let boxW: CGFloat = (boxAspect >= 1.0)
+                                ? min(maxW, maxH * boxAspect)
+                                : min(maxW, maxH * boxAspect)
+                            let boxH: CGFloat = max(24, boxW / boxAspect)
 
-                        Text(Language.get("PhysicalSpec_BlueprintPrompt", alter: "أدخل العرض والارتفاع لرسم المخطط وتحديد التناسب تلقائياً"))
-                            .font(AdminType.caption2)
-                            .foregroundStyle(AdminSurface.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 16)
+                            ZStack {
+                                // Proportional Wireframe Box
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.18 : 0.10))
+                                    .frame(width: max(30, boxW), height: max(24, boxH))
+                                    .overlay(
+                                        PPCageMeshPattern()
+                                            .stroke(
+                                                Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.25),
+                                                lineWidth: 0.75
+                                            )
+                                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(
+                                                Color(red: 0.20, green: 0.50, blue: 0.95),
+                                                lineWidth: 1.5
+                                            )
+                                    )
+                                    .overlay(
+                                        Button {
+                                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                            withAnimation(.spring(response: 0.30, dampingFraction: 0.78)) {
+                                                is3DMode = true
+                                            }
+                                        } label: {
+                                            ZStack {
+                                                Circle()
+                                                    .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.12))
+                                                    .frame(width: 30, height: 30)
+                                                Image(systemName: "cube.transparent")
+                                                    .font(.system(size: min(18, max(12, boxH * 0.35)), weight: .semibold))
+                                                    .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                                            }
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel(Language.get("PhysicalSpec_Mode_3D", alter: "تحويل إلى 3D"))
+                                    )
+
+                                // Dimension Annotation Line: Top (Width)
+                                VStack(spacing: 2) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "arrow.left")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("\(String(format: "%g", width).normalizedEnglishDigits) \(displayUnitLocalized)")
+                                            .font(PPBrandFont.bold(size: 11))
+                                            .lineLimit(1)
+                                        Image(systemName: "arrow.right")
+                                            .font(.system(size: 8, weight: .bold))
+                                    }
+                                    .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Capsule()
+                                            .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
+                                            .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
+                                    )
+                                }
+                                .offset(y: -(max(24, boxH) / 2) - 16)
+
+                                // Dimension Annotation Line: Trailing (Height)
+                                HStack(spacing: 2) {
+                                    VStack(spacing: 3) {
+                                        Image(systemName: "arrow.up")
+                                            .font(.system(size: 8, weight: .bold))
+                                        Text("\(String(format: "%g", height).normalizedEnglishDigits)")
+                                            .font(PPBrandFont.bold(size: 10.5))
+                                            .lineLimit(1)
+                                        Text(displayUnitLocalized)
+                                            .font(PPBrandFont.medium(size: 9))
+                                            .lineLimit(1)
+                                        Image(systemName: "arrow.down")
+                                            .font(.system(size: 8, weight: .bold))
+                                    }
+                                    .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 4)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
+                                            .shadow(color: Color.black.opacity(0.06), radius: 3, x: 0, y: 1)
+                                    )
+                                }
+                                .offset(x: (max(30, boxW) / 2) + 26)
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                            .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: boxAspect)
+                            .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: width)
+                            .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: height)
+                        }
+                    } else {
+                        // Empty / Prompt State (2D)
+                        VStack(spacing: 6) {
+                            Image(systemName: "ruler")
+                                .font(.system(size: 24, weight: .light))
+                                .foregroundStyle(Color(red: 0.25, green: 0.50, blue: 0.95).opacity(0.75))
+
+                            Text(Language.get("PhysicalSpec_LiveBlueprint", alter: "مخطط هندسي حي للأقفاص والنواقل"))
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.primaryText)
+
+                            Text(Language.get("PhysicalSpec_BlueprintPrompt", alter: "أدخل العرض والارتفاع لرسم المخطط وتحديد التناسب تلقائياً"))
+                                .font(AdminType.caption2)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 16)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(.vertical, 16)
                     }
-                    .padding(.vertical, 16)
                 }
-            }
-            .frame(height: isIPad ? 220 : 160)
 
-            // Footprint Area Telemetry Badge
-            if let areaBadge = areaTelemetryFormatted {
+                // 2D / 3D Mode Switcher Pill (Top-Leading Corner)
+                modeSwitcherButton
+                    .padding(8)
+            }
+            .frame(height: isIPad ? (is3DMode ? 260 : 220) : (is3DMode ? 190 : 160))
+            .animation(reduceMotion ? .none : .spring(response: 0.35, dampingFraction: 0.78), value: is3DMode)
+
+            // Telemetry Badge (3D Volume or 2D Footprint Area)
+            if is3DMode, let volumeBadge = volumeTelemetryFormatted {
+                HStack(spacing: 5) {
+                    Image(systemName: "cube.fill")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+
+                    Text(Language.get("PhysicalSpec_Volume", alter: "الحجم التقريبي:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+
+                    Text(volumeBadge)
+                        .font(PPBrandFont.bold(size: 12))
+                        .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.20 : 0.08))
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.30), lineWidth: 0.75)
+                )
+                .transition(.scale.combined(with: .opacity))
+            } else if let areaBadge = areaTelemetryFormatted {
                 HStack(spacing: 5) {
                     Image(systemName: "square.dashed")
                         .font(.system(size: 10.5, weight: .semibold))
@@ -14108,6 +14319,366 @@ private struct PPDimensionsBlueprintCanvas: View {
                         .strokeBorder(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.30), lineWidth: 0.75)
                 )
                 .transition(.scale.combined(with: .opacity))
+            }
+        }
+    }
+}
+
+// MARK: - Category-Defining 3D Isometric Architectural Blueprint View
+
+private struct PPDimensionsIsometric3DView: View {
+    let width: Double
+    let height: Double
+    let unit: String
+    let displayUnit: String
+    let isIPad: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var pitch: Double = 0
+    @State private var yaw: Double = 0
+    @State private var accumulatedPitch: Double = 0
+    @State private var accumulatedYaw: Double = 0
+    @State private var isDragging: Bool = false
+
+    private var depth: Double {
+        let minSide = min(width, height)
+        let maxSide = max(width, height)
+        if minSide > 0 {
+            return minSide
+        } else if maxSide > 0 {
+            return maxSide * 0.70
+        }
+        return 30
+    }
+
+    private var hasBeenRotated: Bool {
+        abs(accumulatedYaw) > 1 || abs(accumulatedPitch) > 1 || abs(yaw) > 1 || abs(pitch) > 1
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let padW: CGFloat = isIPad ? 90 : 70
+            let padH: CGFloat = isIPad ? 60 : 44
+            let maxW = max(80, geo.size.width - padW)
+            let maxH = max(60, geo.size.height - padH)
+
+            let rawW = CGFloat(max(1, width))
+            let rawH = CGFloat(max(1, height))
+            let rawD = CGFloat(max(1, depth))
+
+            let depthFactorX: CGFloat = 0.55
+            let depthFactorY: CGFloat = 0.35
+
+            let projW = rawW + (rawD * depthFactorX)
+            let projH = rawH + (rawD * depthFactorY)
+
+            let scale = min(maxW / projW, maxH / projH)
+            let w = max(36, rawW * scale)
+            let h = max(28, rawH * scale)
+            let d = max(24, rawD * scale)
+            let dx = d * depthFactorX
+            let dy = d * depthFactorY
+
+            let cx = geo.size.width / 2
+            let cy = geo.size.height / 2
+            let x0 = cx - (w + dx) / 2
+            let y0 = cy - (h - dy) / 2
+
+            // 8 Canonical Isometric Vertices:
+            let p0 = CGPoint(x: x0, y: y0)                   // Front Top-Left
+            let p1 = CGPoint(x: x0 + w, y: y0)               // Front Top-Right
+            let p2 = CGPoint(x: x0 + w, y: y0 + h)           // Front Bottom-Right
+            let p3 = CGPoint(x: x0, y: y0 + h)               // Front Bottom-Left
+
+            let p4 = CGPoint(x: x0 + dx, y: y0 - dy)         // Back Top-Left
+            let p5 = CGPoint(x: x0 + w + dx, y: y0 - dy)     // Back Top-Right
+            let p6 = CGPoint(x: x0 + w + dx, y: y0 + h - dy) // Back Bottom-Right
+            let p7 = CGPoint(x: x0 + dx, y: y0 + h - dy)     // Back Bottom-Left
+
+            ZStack {
+                // 1. Back Interior Architectural Blueprint Hidden Edges (Dashed)
+                Path { path in
+                    path.move(to: p3)
+                    path.addLine(to: p7)
+                    path.addLine(to: p6)
+                    path.move(to: p7)
+                    path.addLine(to: p4)
+                }
+                .stroke(
+                    Color(red: 0.35, green: 0.60, blue: 0.98).opacity(colorScheme == .dark ? 0.35 : 0.25),
+                    style: StrokeStyle(lineWidth: 1.0, dash: [4, 3])
+                )
+
+                // 2. Top Roof Face (Isometric Skewed)
+                Path { path in
+                    path.move(to: p0)
+                    path.addLine(to: p4)
+                    path.addLine(to: p5)
+                    path.addLine(to: p1)
+                    path.closeSubpath()
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.35, green: 0.65, blue: 1.0).opacity(colorScheme == .dark ? 0.22 : 0.15),
+                            Color(red: 0.25, green: 0.55, blue: 0.95).opacity(colorScheme == .dark ? 0.32 : 0.24)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+                // Top Face Internal Wireframe Grid
+                Path { path in
+                    let steps = max(2, min(5, Int(w / 28)))
+                    for i in 1..<steps {
+                        let t = CGFloat(i) / CGFloat(steps)
+                        let topStart = CGPoint(x: p0.x + (p1.x - p0.x) * t, y: p0.y)
+                        let topEnd = CGPoint(x: p4.x + (p5.x - p4.x) * t, y: p4.y)
+                        path.move(to: topStart)
+                        path.addLine(to: topEnd)
+                    }
+                    let depthSteps = max(2, min(4, Int(d / 24)))
+                    for j in 1..<depthSteps {
+                        let u = CGFloat(j) / CGFloat(depthSteps)
+                        let depthStart = CGPoint(x: p0.x + dx * u, y: p0.y - dy * u)
+                        let depthEnd = CGPoint(x: p1.x + dx * u, y: p1.y - dy * u)
+                        path.move(to: depthStart)
+                        path.addLine(to: depthEnd)
+                    }
+                }
+                .stroke(Color(red: 0.35, green: 0.65, blue: 1.0).opacity(0.28), lineWidth: 0.75)
+
+                // Top Face Perimeter Stroke
+                Path { path in
+                    path.move(to: p0)
+                    path.addLine(to: p4)
+                    path.addLine(to: p5)
+                    path.addLine(to: p1)
+                    path.closeSubpath()
+                }
+                .stroke(Color(red: 0.30, green: 0.60, blue: 0.98), lineWidth: 1.5)
+
+                // 3. Side Wall Face (Isometric Depth)
+                Path { path in
+                    path.move(to: p1)
+                    path.addLine(to: p5)
+                    path.addLine(to: p6)
+                    path.addLine(to: p2)
+                    path.closeSubpath()
+                }
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.15, green: 0.40, blue: 0.85).opacity(colorScheme == .dark ? 0.28 : 0.18),
+                            Color(red: 0.10, green: 0.32, blue: 0.75).opacity(colorScheme == .dark ? 0.38 : 0.28)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+                // Side Face Internal Wireframe Grid
+                Path { path in
+                    let depthSteps = max(2, min(4, Int(d / 24)))
+                    for j in 1..<depthSteps {
+                        let u = CGFloat(j) / CGFloat(depthSteps)
+                        let sideTop = CGPoint(x: p1.x + dx * u, y: p1.y - dy * u)
+                        let sideBottom = CGPoint(x: p2.x + dx * u, y: p2.y - dy * u)
+                        path.move(to: sideTop)
+                        path.addLine(to: sideBottom)
+                    }
+                    let hSteps = max(2, min(5, Int(h / 24)))
+                    for k in 1..<hSteps {
+                        let v = CGFloat(k) / CGFloat(hSteps)
+                        let sideLeft = CGPoint(x: p1.x, y: p1.y + h * v)
+                        let sideRight = CGPoint(x: p5.x, y: p5.y + h * v)
+                        path.move(to: sideLeft)
+                        path.addLine(to: sideRight)
+                    }
+                }
+                .stroke(Color(red: 0.25, green: 0.55, blue: 0.95).opacity(0.28), lineWidth: 0.75)
+
+                // Side Face Perimeter Stroke
+                Path { path in
+                    path.move(to: p1)
+                    path.addLine(to: p5)
+                    path.addLine(to: p6)
+                    path.addLine(to: p2)
+                    path.closeSubpath()
+                }
+                .stroke(Color(red: 0.20, green: 0.50, blue: 0.95), lineWidth: 1.5)
+
+                // 4. Front Face (Primary Facade)
+                Path { path in
+                    path.move(to: p0)
+                    path.addLine(to: p1)
+                    path.addLine(to: p2)
+                    path.addLine(to: p3)
+                    path.closeSubpath()
+                }
+                .fill(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(colorScheme == .dark ? 0.18 : 0.10))
+
+                // Front Face Mesh Pattern
+                PPCageMeshPattern()
+                    .stroke(Color(red: 0.20, green: 0.50, blue: 0.95).opacity(0.25), lineWidth: 0.75)
+                    .clipShape(
+                        Path { path in
+                            path.move(to: p0)
+                            path.addLine(to: p1)
+                            path.addLine(to: p2)
+                            path.addLine(to: p3)
+                            path.closeSubpath()
+                        }
+                    )
+
+                // Front Face Perimeter Stroke
+                Path { path in
+                    path.move(to: p0)
+                    path.addLine(to: p1)
+                    path.addLine(to: p2)
+                    path.addLine(to: p3)
+                    path.closeSubpath()
+                }
+                .stroke(Color(red: 0.20, green: 0.50, blue: 0.95), lineWidth: 1.5)
+
+                // 5. Corner Glowing Vertices
+                ForEach([p0, p1, p2, p3, p4, p5, p6], id: \.x) { pt in
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 4, height: 4)
+                        .shadow(color: Color(red: 0.20, green: 0.50, blue: 0.95), radius: 3)
+                        .position(pt)
+                }
+
+                // 6. 3D Spatial Dimension Callouts:
+                // Width Callout (Front Bottom)
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.left")
+                        .font(.system(size: 7.5, weight: .bold))
+                    Text("\(String(format: "%g", width).normalizedEnglishDigits) \(displayUnit)")
+                        .font(PPBrandFont.bold(size: 10.5))
+                        .lineLimit(1)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 7.5, weight: .bold))
+                }
+                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2.5)
+                .background(
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.black.opacity(0.75) : Color.white.opacity(0.92))
+                        .shadow(color: Color.black.opacity(0.06), radius: 3, y: 1)
+                )
+                .position(x: (p3.x + p2.x) / 2, y: p2.y + 14)
+
+                // Height Callout (Front Left)
+                VStack(spacing: 2) {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 7.5, weight: .bold))
+                    Text("\(String(format: "%g", height).normalizedEnglishDigits)")
+                        .font(PPBrandFont.bold(size: 10))
+                        .lineLimit(1)
+                    Text(displayUnit)
+                        .font(PPBrandFont.medium(size: 8.5))
+                        .lineLimit(1)
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 7.5, weight: .bold))
+                }
+                .foregroundStyle(Color(red: 0.15, green: 0.45, blue: 0.95))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 3)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(colorScheme == .dark ? Color.black.opacity(0.75) : Color.white.opacity(0.92))
+                        .shadow(color: Color.black.opacity(0.06), radius: 3, y: 1)
+                )
+                .position(x: max(14, p0.x - 22), y: (p0.y + p3.y) / 2)
+
+                // Depth Callout (Top Receding Edge)
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.up.forward")
+                        .font(.system(size: 7.5, weight: .bold))
+                    Text("\(String(format: "%g", depth).normalizedEnglishDigits) \(displayUnit)")
+                        .font(PPBrandFont.bold(size: 10))
+                        .lineLimit(1)
+                }
+                .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2.5)
+                .background(
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.black.opacity(0.75) : Color.white.opacity(0.92))
+                        .shadow(color: Color.black.opacity(0.06), radius: 3, y: 1)
+                )
+                .position(x: min(geo.size.width - 24, (p1.x + p5.x) / 2 + 18), y: max(14, (p1.y + p5.y) / 2 - 12))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .rotation3DEffect(
+                .degrees(pitch),
+                axis: (x: 1, y: 0, z: 0)
+            )
+            .rotation3DEffect(
+                .degrees(yaw),
+                axis: (x: 0, y: 1, z: 0)
+            )
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { val in
+                        isDragging = true
+                        yaw = accumulatedYaw + Double(val.translation.width) * 0.35
+                        pitch = max(-35, min(35, accumulatedPitch - Double(val.translation.height) * 0.35))
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        accumulatedYaw = yaw
+                        accumulatedPitch = pitch
+                    }
+            )
+            .overlay(alignment: .bottomTrailing) {
+                if hasBeenRotated {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            pitch = 0
+                            yaw = 0
+                            accumulatedPitch = 0
+                            accumulatedYaw = 0
+                        }
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(Language.get("Reset", alter: "إعادة الضبط"))
+                                .font(PPBrandFont.bold(size: 10))
+                        }
+                        .foregroundStyle(Color(red: 0.20, green: 0.50, blue: 0.95))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3.5)
+                        .background(
+                            Capsule()
+                                .fill(colorScheme == .dark ? Color.black.opacity(0.70) : Color.white.opacity(0.90))
+                                .shadow(color: Color.black.opacity(0.06), radius: 3, y: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .padding(8)
+                    .transition(.opacity.combined(with: .scale))
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: "hand.draw")
+                            .font(.system(size: 9))
+                        Text(Language.get("PhysicalSpec_3D_DragHint", alter: "اسحب للتدوير 3D"))
+                            .font(PPBrandFont.medium(size: 9.5))
+                    }
+                    .foregroundStyle(AdminSurface.secondaryText.opacity(0.75))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .padding(6)
+                }
             }
         }
     }
@@ -15063,6 +15634,7 @@ private struct PPAccessoryFoodIntakeJourney: View {
     @State private var showQuantityAlert: Bool = false
     @State private var quantityAlertText: String = ""
     @State private var bilingualLanguage: PPBilingualLanguage = .arabic
+    @State private var showStepsAppSwitcher: Bool = false
 
     private enum FocusedField: Hashable {
         case name
@@ -15122,13 +15694,36 @@ private struct PPAccessoryFoodIntakeJourney: View {
                 catalogActionDock
                     .accessibilitySortPriority(1)
             }
-            .allowsHitTesting(!viewModel.isSubmitting && !viewModel.hasCompletedSave)
+            .scaleEffect(showStepsAppSwitcher ? 0.83 : 1.0)
+            .blur(radius: showStepsAppSwitcher ? 2.5 : 0.0)
+            .clipShape(RoundedRectangle(cornerRadius: showStepsAppSwitcher ? 36 : 0, style: .continuous))
+            .shadow(
+                color: Color.black.opacity(showStepsAppSwitcher ? 0.32 : 0.0),
+                radius: showStepsAppSwitcher ? 28 : 0,
+                y: showStepsAppSwitcher ? 14 : 0
+            )
+            .animation(.spring(response: 0.38, dampingFraction: 0.82), value: showStepsAppSwitcher)
+            .allowsHitTesting(!showStepsAppSwitcher && !viewModel.isSubmitting && !viewModel.hasCompletedSave)
             .disabled(viewModel.hasCompletedSave)
-            .accessibilityHidden(viewModel.isSubmitting)
+            .accessibilityHidden(viewModel.isSubmitting || showStepsAppSwitcher)
+
+            if showStepsAppSwitcher {
+                catalogStepsAppSwitcherOverlay
+                    .transition(
+                        accessibilityReduceMotion
+                            ? .opacity
+                            : .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 1.06)),
+                                removal: .opacity.combined(with: .scale(scale: 0.94))
+                            )
+                    )
+                    .zIndex(50)
+            }
 
             if viewModel.isSubmitting {
                 catalogSubmissionOverlay
                     .transition(.opacity)
+                    .zIndex(100)
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
@@ -15351,12 +15946,37 @@ private struct PPAccessoryFoodIntakeJourney: View {
 
             Spacer(minLength: AdminSpacing.xs)
 
-            Image(systemName: viewModel.isFood ? "fork.knife" : "shippingbox.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(AdminSurface.primary)
-                .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
-                .background(AdminSurface.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous))
-                .accessibilityHidden(true)
+            Button {
+                focusedField = nil
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                    showStepsAppSwitcher.toggle()
+                }
+            } label: {
+                Image(systemName: viewModel.isFood ? "fork.knife" : "shippingbox.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(showStepsAppSwitcher ? Color.white : AdminSurface.primary)
+                    .frame(width: AdminTouchTarget.comfortable, height: AdminTouchTarget.comfortable)
+                    .background(
+                        showStepsAppSwitcher ? AdminSurface.primary : AdminSurface.primary.opacity(0.10),
+                        in: RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: AdminRadius.medium, style: .continuous)
+                            .strokeBorder(
+                                showStepsAppSwitcher ? AdminSurface.primary.opacity(0.8) : AdminSurface.primary.opacity(0.25),
+                                lineWidth: 1.0
+                            )
+                    )
+                    .shadow(
+                        color: AdminSurface.primary.opacity(showStepsAppSwitcher ? 0.35 : 0.0),
+                        radius: 8,
+                        y: 3
+                    )
+            }
+            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+            .accessibilityLabel(tr("CatalogIntake_StepsSwitcherTitle", "مراحل إضافة الصنف"))
+            .accessibilityHint(tr("CatalogIntake_StepsSwitcherHint", "يفتح نظرة عامة لجميع الخطوات بنمط مبدل تطبيقات الآيفون"))
         }
         .padding(.horizontal, AdminSpacing.screenMargin)
         .padding(.vertical, AdminSpacing.sm)
@@ -16565,6 +17185,537 @@ private struct PPAccessoryFoodIntakeJourney: View {
         .accessibilityAddTraits(.isModal)
         .accessibilityAddTraits(.updatesFrequently)
         .accessibilitySortPriority(100)
+    }
+
+    // MARK: - iPhone App-Switcher Multitasking Steps Deck
+
+    private var catalogStepsAppSwitcherOverlay: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Dimmed translucent frosted backdrop with tap-to-dismiss
+                Color.black.opacity(0.40)
+                    .background(.ultraThinMaterial)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                            showStepsAppSwitcher = false
+                        }
+                    }
+
+                VStack(spacing: 0) {
+                    // Top App Switcher Bar
+                    appSwitcherTopBar
+
+                    // 3D Horizontal Multi-Tasker Cards Carousel
+                    appSwitcherCarousel(in: geo)
+
+                    // Bottom Quick Dismiss Indicator / Instruction
+                    appSwitcherBottomHint
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(tr("CatalogIntake_StepsSwitcherTitle", "مراحل إضافة الصنف"))
+    }
+
+    private var appSwitcherTopBar: some View {
+        HStack(spacing: AdminSpacing.sm) {
+            HStack(spacing: AdminSpacing.xs) {
+                Image(systemName: viewModel.isFood ? "fork.knife" : "shippingbox.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                    .frame(width: 34, height: 34)
+                    .background(AdminSurface.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(tr("CatalogIntake_StepsSwitcherTitle", "مراحل إضافة الصنف"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                    Text(String(format: tr("CatalogIntake_CompletedFormat", "%ld من 4 مكتملة"), completedStageCount))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                }
+            }
+
+            Spacer(minLength: AdminSpacing.xs)
+
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.36, dampingFraction: 0.84)) {
+                    showStepsAppSwitcher = false
+                }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .frame(width: 36, height: 36)
+                    .background(AdminSurface.surface.opacity(0.85), in: Circle())
+                    .overlay(Circle().strokeBorder(AdminSurface.hairline, lineWidth: 0.75))
+            }
+            .buttonStyle(PPLivePetPressStyle(reduceMotion: accessibilityReduceMotion))
+            .accessibilityLabel(tr("Close", "إغلاق"))
+        }
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, AdminSpacing.md)
+        .padding(.bottom, AdminSpacing.xs)
+    }
+
+    private func appSwitcherCarousel(in geo: GeometryProxy) -> some View {
+        let cardWidth = min(geo.size.width * 0.78, 320.0)
+        let cardHeight = min(geo.size.height * 0.62, 530.0)
+        let horizontalPadding = max(24.0, (geo.size.width - cardWidth) / 2.0)
+
+        return ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 18) {
+                    ForEach(PPEditorStage.allCases) { stage in
+                        GeometryReader { cardGeo in
+                            let frame = cardGeo.frame(in: .named("AppSwitcherDeckSpace"))
+                            let center = geo.size.width / 2.0
+                            let distance = frame.midX - center
+                            let normalized = distance / (cardWidth + 18.0)
+                            let scale = accessibilityReduceMotion ? 1.0 : max(0.86, 1.0 - abs(normalized) * 0.12)
+                            let opacity = accessibilityReduceMotion ? 1.0 : max(0.70, 1.0 - abs(normalized) * 0.28)
+                            let rotationY = accessibilityReduceMotion ? 0.0 : Double(-normalized * 12.0)
+
+                            appSwitcherCard(for: stage, width: cardWidth, height: cardHeight)
+                                .scaleEffect(scale)
+                                .opacity(opacity)
+                                .rotation3DEffect(
+                                    .degrees(rotationY),
+                                    axis: (x: 0.0, y: 1.0, z: 0.0),
+                                    perspective: 0.55
+                                )
+                                .shadow(
+                                    color: Color.black.opacity(stage == viewModel.activeStage ? 0.26 : 0.12),
+                                    radius: stage == viewModel.activeStage ? 22 : 12,
+                                    x: 0,
+                                    y: stage == viewModel.activeStage ? 12 : 6
+                                )
+                        }
+                        .frame(width: cardWidth, height: cardHeight)
+                        .id(stage)
+                    }
+                }
+                .padding(.horizontal, horizontalPadding)
+                .padding(.vertical, 16)
+            }
+            .coordinateSpace(name: "AppSwitcherDeckSpace")
+            .onAppear {
+                scrollProxy.scrollTo(viewModel.activeStage, anchor: .center)
+            }
+        }
+        .frame(height: cardHeight + 36)
+    }
+
+    private func appSwitcherCard(for stage: PPEditorStage, width: CGFloat, height: CGFloat) -> some View {
+        let isCurrent = stage == viewModel.activeStage
+        let isDone = validationMessage(for: stage) == nil
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            move(to: stage)
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
+                showStepsAppSwitcher = false
+            }
+        } label: {
+            VStack(spacing: 0) {
+                // Card Header (App Icon + Step Name + Status Pill)
+                appSwitcherCardHeader(stage: stage, isCurrent: isCurrent, isDone: isDone)
+
+                // Simulated App Window Content
+                appSwitcherCardBody(stage: stage)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AdminSurface.surface)
+
+                // Card Footer / Jump Action
+                appSwitcherCardFooter(stage: stage, isCurrent: isCurrent)
+            }
+            .frame(width: width, height: height)
+            .background(AdminSurface.card)
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .strokeBorder(
+                        isCurrent
+                            ? AdminSurface.primary
+                            : (isDone ? Color(uiColor: .ppSuccess).opacity(0.4) : AdminSurface.hairline),
+                        lineWidth: isCurrent ? 2.0 : 1.0
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(stageEyebrow(stage)): \(stageTitle(stage))")
+        .accessibilityHint(tr("CatalogIntake_AppSwitcherCardHint", "اضغط للانتقال إلى هذه الخطوة وتكبيرها"))
+    }
+
+    private func appSwitcherCardHeader(stage: PPEditorStage, isCurrent: Bool, isDone: Bool) -> some View {
+        HStack(spacing: AdminSpacing.xs) {
+            stageIconSquircle(stage: stage)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stageEyebrow(stage))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                Text(shortStageTitle(stage))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            if isCurrent {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(AdminSurface.primary)
+                        .frame(width: 6, height: 6)
+                    Text(tr("CatalogIntake_ActiveNowPill", "قيد التعديل"))
+                        .font(AdminType.caption2Bold)
+                        .foregroundStyle(AdminSurface.primary)
+                }
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(AdminSurface.primary.opacity(0.12), in: Capsule())
+            } else if isDone {
+                HStack(spacing: 3) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .bold))
+                    Text(tr("CatalogIntake_DonePill", "مكتملة"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(Color(uiColor: .ppSuccess))
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Color(uiColor: .ppSuccess).opacity(0.12), in: Capsule())
+            } else {
+                HStack(spacing: 3) {
+                    Image(systemName: "exclamationmark")
+                        .font(.system(size: 9, weight: .bold))
+                    Text(tr("CatalogIntake_NeedsInputPill", "بحاجة لبيانات"))
+                        .font(AdminType.caption2Bold)
+                }
+                .foregroundStyle(Color(uiColor: .ppWarning))
+                .padding(.horizontal, 8)
+                .frame(height: 24)
+                .background(Color(uiColor: .ppWarning).opacity(0.12), in: Capsule())
+            }
+        }
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.sm)
+        .background(AdminSurface.surface.opacity(0.95))
+    }
+
+    private func stageIconSquircle(stage: PPEditorStage) -> some View {
+        let (symbol, gradientColors): (String, [Color]) = {
+            switch stage {
+            case .identity:
+                return ("photo.stack.fill", [Color.pink, AdminSurface.primary])
+            case .bioVault:
+                return ("slider.horizontal.3", [Color.orange, Color.yellow])
+            case .pricing:
+                return ("tag.fill", [Color(uiColor: .ppSuccess), Color.teal])
+            case .governance:
+                return ("shield.checkerboard", [Color.blue, Color.purple])
+            }
+        }()
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: gradientColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(Color.white)
+        }
+        .frame(width: 28, height: 28)
+        .shadow(color: gradientColors[0].opacity(0.3), radius: 4, y: 2)
+    }
+
+    @ViewBuilder
+    private func appSwitcherCardBody(stage: PPEditorStage) -> some View {
+        switch stage {
+        case .identity:
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                if !viewModel.existingImageURLs.isEmpty || !viewModel.pickedImages.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(Array(viewModel.existingImageURLs.prefix(3).enumerated()), id: \.offset) { _, url in
+                            AdminRemoteImage(url: URL(string: url), contentMode: .fill, targetSize: CGSize(width: 48, height: 48)) {
+                                Color.gray.opacity(0.2)
+                            }
+                            .frame(width: 48, height: 48)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        ForEach(Array(viewModel.pickedImages.prefix(3).enumerated()), id: \.offset) { _, img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 48, height: 48)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                        if viewModel.totalImageCount > 3 {
+                            Text("+\(viewModel.totalImageCount - 3)")
+                                .font(AdminType.caption2Bold)
+                                .foregroundStyle(AdminSurface.secondaryText)
+                                .frame(width: 48, height: 48)
+                                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        }
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera.fill")
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(tr("CatalogIntake_NoPhotosYet", "لا توجد صور مضافة بعد"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                    .padding(AdminSpacing.xs)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_NameLabel", "اسم الصنف"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    Text(viewModel.name.isEmpty ? tr("CatalogIntake_NameMissing", "لم يدخل الاسم بالعربي") : viewModel.name)
+                        .font(AdminType.footnoteBold)
+                        .foregroundStyle(viewModel.name.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                        .lineLimit(1)
+                    if !viewModel.nameEn.isEmpty {
+                        Text(viewModel.nameEn)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                if !viewModel.desc.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tr("CatalogIntake_DescriptionLabel", "الوصف"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(viewModel.desc)
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.primaryText)
+                            .lineLimit(2)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(AdminSpacing.md)
+
+        case .bioVault:
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_CategoryLabel", "الفئة الرئيسية"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.grid.2x2.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(viewModel.selectedMainKind?.kindName ?? tr("CatalogIntake_CategoryMissing", "غير محددة"))
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(viewModel.selectedMainKind == nil ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_SubcategoryLabel", "الفئات الفرعية"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    let subText: String = {
+                        if viewModel.isAllSubCategoriesSelected {
+                            return tr("CatalogIntake_AllSubcategoriesPrompt", "جميع السلالات والتفريعات")
+                        } else if viewModel.selectedSubKinds.count > 0 {
+                            return String(format: tr("CatalogIntake_SubkindsCountFormat", "%ld فئات فرعية"), viewModel.selectedSubKinds.count)
+                        } else if let sub = viewModel.selectedSubKind {
+                            return sub.subKindName
+                        } else {
+                            return tr("CatalogIntake_NoSubcategorySelected", "لم يتم التحديد")
+                        }
+                    }()
+                    Text(subText)
+                        .font(AdminType.caption1)
+                        .foregroundStyle(AdminSurface.primaryText)
+                        .lineLimit(1)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_WeightLabel", "الوزن أو الحجم"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: 4) {
+                        Image(systemName: "scalemass.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text(viewModel.weightText.isEmpty ? tr("CatalogIntake_WeightUnspecified", "غير محدد") : "\(viewModel.weightText) \(viewModel.weightUnit)")
+                            .font(AdminType.caption1Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(AdminSpacing.md)
+
+        case .pricing:
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_PriceLabel", "سعر البيع للجمهور"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(viewModel.priceText.isEmpty ? "0" : viewModel.priceText)
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(Language.get("Rials", alter: "ر.ق"))
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                    }
+                }
+
+                if !viewModel.costPriceText.isEmpty {
+                    HStack(spacing: 6) {
+                        Text(tr("CatalogIntake_CostLabel", "التكلفة:"))
+                            .font(AdminType.caption2)
+                            .foregroundStyle(AdminSurface.secondaryText)
+                        Text("\(viewModel.costPriceText) \(Language.get("Rials", alter: "ر.ق"))")
+                            .font(AdminType.caption2Bold)
+                            .foregroundStyle(AdminSurface.primaryText)
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(uiColor: .ppSuccess))
+                    Text(String(format: tr("CatalogIntake_QuantityFormat", "الكمية المتاحة: %ld قطعة"), viewModel.quantity))
+                        .font(AdminType.caption1Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(uiColor: .ppSuccess).opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                Spacer(minLength: 0)
+            }
+            .padding(AdminSpacing.md)
+
+        case .governance:
+            VStack(alignment: .leading, spacing: AdminSpacing.sm) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(tr("CatalogIntake_BranchLabel", "الفرع المالك"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: 6) {
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(AdminSurface.primary)
+                        Text(viewModel.selectedStoreName.isEmpty ? tr("CatalogIntake_StoreMissing", "لم يتم اختيار الفرع") : viewModel.selectedStoreName)
+                            .font(AdminType.footnoteBold)
+                            .foregroundStyle(viewModel.selectedStoreName.isEmpty ? AdminSurface.secondaryText : AdminSurface.primaryText)
+                            .lineLimit(1)
+                    }
+                }
+
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(viewModel.isDraft ? Color(uiColor: .ppWarning) : Color(uiColor: .ppSuccess))
+                        .frame(width: 7, height: 7)
+                    Text(viewModel.isDraft ? tr("CatalogIntake_DraftState", "مسودة غير ظاهرة") : tr("CatalogIntake_ActiveState", "جاهز للإتاحة في المتجر"))
+                        .font(AdminType.caption1Bold)
+                        .foregroundStyle(AdminSurface.primaryText)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(AdminSurface.control, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(tr("CatalogIntake_ChecklistLabel", "مؤشرات الجاهزية:"))
+                        .font(AdminType.caption2)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                    HStack(spacing: 4) {
+                        checklistDot(label: tr("CatalogIntake_ShortIdentity", "الهوية"), done: validationMessage(for: .identity) == nil)
+                        checklistDot(label: tr("CatalogIntake_ShortSpecs", "المواصفات"), done: validationMessage(for: .bioVault) == nil)
+                        checklistDot(label: tr("CatalogIntake_ShortPricing", "التسعير"), done: validationMessage(for: .pricing) == nil)
+                        checklistDot(label: tr("CatalogIntake_ShortRelease", "الإتاحة"), done: validationMessage(for: .governance) == nil)
+                    }
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(AdminSpacing.md)
+        }
+    }
+
+    private func checklistDot(label: String, done: Bool) -> some View {
+        HStack(spacing: 2) {
+            Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 9))
+                .foregroundStyle(done ? Color(uiColor: .ppSuccess) : AdminSurface.secondaryText)
+            Text(label)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(done ? AdminSurface.primaryText : AdminSurface.secondaryText)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(done ? Color(uiColor: .ppSuccess).opacity(0.10) : AdminSurface.control.opacity(0.6), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+
+    private func appSwitcherCardFooter(stage: PPEditorStage, isCurrent: Bool) -> some View {
+        HStack(spacing: 6) {
+            if isCurrent {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(AdminSurface.primary)
+                Text(tr("CatalogIntake_CurrentActiveStage", "أنت في هذه الخطوة الآن"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primary)
+            } else {
+                Text(tr("CatalogIntake_SwitchToStage", "اضغط للانتقال الفوري"))
+                    .font(AdminType.caption2Bold)
+                    .foregroundStyle(AdminSurface.primaryText)
+                Image(systemName: "arrow.up.forward.app.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(AdminSurface.primary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 38)
+        .background(
+            isCurrent ? AdminSurface.primary.opacity(0.08) : AdminSurface.control.opacity(0.8),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.sm)
+    }
+
+    private var appSwitcherBottomHint: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "hand.draw.fill")
+                .font(.system(size: 12))
+            Text(tr("CatalogIntake_AppSwitcherSwipeHint", "اسحب أفقياً لتصفح الخطوات، أو اضغط على أي بطاقة لتكبيرها"))
+                .font(AdminType.caption2)
+        }
+        .foregroundStyle(AdminSurface.secondaryText.opacity(0.9))
+        .padding(.horizontal, AdminSpacing.md)
+        .padding(.vertical, AdminSpacing.xs)
+        .background(AdminSurface.surface.opacity(0.65), in: Capsule())
+        .padding(.bottom, AdminSpacing.sm)
     }
 
     private var completedStageCount: Int {

@@ -15,8 +15,10 @@ public struct LivePetReturnCommand {
     public let transactionId: String
     public let receivingBranchId: String
     public let units: [LivePetReturnUnit]
+    public let refundAmountMinor: Int64
     public let refundAmount: Double
     public let reason: String
+    public let refundAdjustmentReason: String?
     public let financialResolution: FinancialResolution
     public let currency: String
 
@@ -32,7 +34,7 @@ public struct LivePetReturnCommand {
             let unitIds = pUnits.map { $0.unitId }
             let unitPrices = pUnits.map { [
                 "unitId": $0.unitId,
-                "unitPrice": $0.refundAmountMajor
+                "unitPrice": $0.originalSalePriceMajor
             ] }
 
             let primaryUnit = pUnits.first!
@@ -70,14 +72,17 @@ public final class LivePetReturnCommandFactory: @unchecked Sendable {
         reason: String,
         financialResolution: FinancialResolution = .fullRefund,
         currency: String = "QAR",
+        refundAdjustmentReason: String? = nil,
         existingCommandId: String? = nil
     ) -> LivePetReturnCommand {
         let commandId = existingCommandId ?? "pos-livepet-return-\(UUID().uuidString)"
-        let refundAmount = units.reduce(0.0) { $0 + $1.refundAmountMajor }
+        let refundAmountMinor = units.reduce(Int64(0)) { $0 + $1.refundAmountMinor }
+        let refundAmount = Double(refundAmountMinor) / LivePetMoney.scaleFactor(for: currency)
 
         // Compute stable SHA256 fingerprint of critical parameters
         let unitIdsSorted = units.map { $0.unitId }.sorted().joined(separator: ",")
-        let rawFingerprint = "\(transactionId):\(receivingBranchId):\(unitIdsSorted):\(String(format: "%.2f", refundAmount)):\(financialResolution.rawValue):\(currency):\(reason)"
+        let adjustment = refundAdjustmentReason?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let rawFingerprint = "\(transactionId):\(receivingBranchId):\(unitIdsSorted):\(refundAmountMinor):\(financialResolution.rawValue):\(currency):\(reason):\(adjustment)"
         let digest = SHA256.hash(data: Data(rawFingerprint.utf8))
         let fingerprintString = digest.compactMap { String(format: "%02x", $0) }.joined()
 
@@ -87,8 +92,10 @@ public final class LivePetReturnCommandFactory: @unchecked Sendable {
             transactionId: transactionId,
             receivingBranchId: receivingBranchId,
             units: units,
+            refundAmountMinor: refundAmountMinor,
             refundAmount: refundAmount,
             reason: reason,
+            refundAdjustmentReason: refundAdjustmentReason,
             financialResolution: financialResolution,
             currency: currency
         )

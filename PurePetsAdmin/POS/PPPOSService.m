@@ -1187,6 +1187,26 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
                  currency:(nullable NSString *)currency
                 commandID:(nullable NSString *)commandID
                completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion {
+    [self refundTransaction:transactionId
+               refundAmount:refundAmount
+                refundItems:refundItems
+                     reason:reason
+                   currency:currency
+                  commandID:commandID
+                 refundMode:nil
+     refundAdjustmentReason:nil
+                 completion:completion];
+}
+
+- (void)refundTransaction:(NSString *)transactionId
+             refundAmount:(double)refundAmount
+              refundItems:(nullable NSArray<NSDictionary *> *)refundItems
+                   reason:(NSString *)reason
+                 currency:(nullable NSString *)currency
+                commandID:(nullable NSString *)commandID
+               refundMode:(nullable NSString *)refundMode
+   refundAdjustmentReason:(nullable NSString *)refundAdjustmentReason
+               completion:(void(^)(BOOL success, NSString * _Nullable refundID, NSError * _Nullable error))completion {
     NSString *trimmedID = [transactionId stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     NSString *trimmedReason = [reason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
     if (trimmedID.length == 0) {
@@ -1208,6 +1228,10 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
     payload[@"reason"] = trimmedReason;
     payload[@"currency"] = (currency.length > 0 ? currency.uppercaseString : @"QAR");
     payload[@"refundAmount"] = @(refundAmount);
+    NSString *trimmedRefundMode = [refundMode stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSString *trimmedAdjustment = [refundAdjustmentReason stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if (trimmedRefundMode.length > 0) payload[@"refundMode"] = trimmedRefundMode.lowercaseString;
+    if (trimmedAdjustment.length > 0) payload[@"refundAdjustmentReason"] = trimmedAdjustment;
     if (refundItems && refundItems.count > 0) {
         NSMutableArray<NSDictionary *> *sanitizedItems = [NSMutableArray arrayWithCapacity:refundItems.count];
         for (NSDictionary *rawItem in refundItems) {
@@ -1236,7 +1260,8 @@ static NSArray<NSString *> *PPPOSStringArray(id value) {
         }
         NSDictionary *resp = [result.data isKindOfClass:NSDictionary.class] ? result.data : nil;
         BOOL ok = [resp[@"ok"] boolValue];
-        if (completion) completion(ok, resolvedCommandId, nil);
+        NSString *returnedRefundId = resp[@"refundId"] ?: resp[@"reversalCommandId"] ?: resolvedCommandId;
+        if (completion) completion(ok, returnedRefundId, nil);
     }];
 }
 
