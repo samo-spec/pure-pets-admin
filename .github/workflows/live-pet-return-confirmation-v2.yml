@@ -12,6 +12,7 @@ on:
       - PurePetsAdmin/Features/POS/POSHistoryView.swift
       - PurePetsAdmin/Features/Providers/ProvidersView.swift
       - PurePetsAdmin/Features/More/ListingsView.swift
+      - PurePetsAdmin/App/PPSessionRestorationGatewayView.swift
       - PurePetsAdmin/ar.lproj/Localizable.strings
       - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml

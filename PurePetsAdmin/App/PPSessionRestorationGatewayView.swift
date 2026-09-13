@@ -217,13 +217,15 @@ struct PPSessionRestorationGatewayView: View {
     private func startStageCycle() {
         stageTimer?.invalidate()
         stageTimer = Timer.scheduledTimer(withTimeInterval: 1.4, repeats: true) { _ in
-            guard effectiveError == nil else { return }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
-                if currentStage.rawValue < VerificationStage.allCases.count - 1 {
-                    currentStage = VerificationStage(rawValue: currentStage.rawValue + 1) ?? .armingCockpit
-                } else {
-                    stageTimer?.invalidate()
-                    stageTimer = nil
+            Task { @MainActor in
+                guard effectiveError == nil else { return }
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.78)) {
+                    if currentStage.rawValue < VerificationStage.allCases.count - 1 {
+                        currentStage = VerificationStage(rawValue: currentStage.rawValue + 1) ?? .armingCockpit
+                    } else {
+                        stageTimer?.invalidate()
+                        stageTimer = nil
+                    }
                 }
             }
         }
