@@ -1954,13 +1954,13 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         case .authorized:
             configureAndStart()
         case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
-                DispatchQueue.main.async {
-                    if granted {
-                        self?.configureAndStart()
-                    } else {
-                        self?.onPermissionDenied?()
-                    }
+            Task { @MainActor [weak self] in
+                let granted = await AVCaptureDevice.requestAccess(for: .video)
+                guard let self else { return }
+                if granted {
+                    self.configureAndStart()
+                } else {
+                    self.onPermissionDenied?()
                 }
             }
         default:
