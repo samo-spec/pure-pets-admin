@@ -1793,6 +1793,7 @@ private enum DossierFont {
     }
 }
 
+@MainActor
 private enum DossierHaptics {
     static func light() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()

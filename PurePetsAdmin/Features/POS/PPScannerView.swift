@@ -1706,16 +1706,15 @@ private struct PPScannerAnalysisContext {
 
 // MARK: - Optical Scanner Vision & AVFoundation Engine
 
-@MainActor
-final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate {
-    nonisolated(unsafe) let session = AVCaptureSession()
+final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutputSampleBufferDelegate, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+    let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "com.purepets.ppscanner.session", qos: .userInitiated)
     private let visionQueue = DispatchQueue(label: "com.purepets.ppscanner.vision", qos: .userInitiated)
-    private nonisolated(unsafe) let motionManager = CMMotionManager()
+    private let motionManager = CMMotionManager()
 
-    private nonisolated(unsafe) var videoDevice: AVCaptureDevice?
-    private nonisolated(unsafe) let photoOutput = AVCapturePhotoOutput()
-    private nonisolated(unsafe) let videoOutput = AVCaptureVideoDataOutput()
+    private var videoDevice: AVCaptureDevice?
+    private let photoOutput = AVCapturePhotoOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
 
     @Published var isTorchOn: Bool = false
     @Published var isLowLight: Bool = false

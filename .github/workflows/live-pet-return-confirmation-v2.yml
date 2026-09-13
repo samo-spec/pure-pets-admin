@@ -9,6 +9,7 @@ on:
       - PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift
       - PurePetsAdmin/Shared/Components/AdminSharedComponents.swift
       - PurePetsAdmin/Features/POS/PPScannerView.swift
+      - PurePetsAdmin/Features/POS/POSHistoryView.swift
       - PurePetsAdmin/Features/Providers/ProvidersView.swift
       - PurePetsAdmin/Features/More/ListingsView.swift
       - PurePetsAdmin/ar.lproj/Localizable.strings
