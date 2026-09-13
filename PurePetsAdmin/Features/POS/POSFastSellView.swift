@@ -100,6 +100,9 @@ extension PetAccessory {
         let branchId = (activeBranch ?? BranchContextStore.shared.activeBranch?.branchID)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let branchId, !branchId.isEmpty {
             if let branchRecord = PPBranchInventoryService.shared.inventory(for: accessoryID) {
+                if isLivePet && quantity > 0 {
+                    return max(branchRecord.availableQuantity, quantity)
+                }
                 return branchRecord.availableQuantity
             }
             let itemBranch = (storeID ?? branchID ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -6184,7 +6187,6 @@ struct POSDeepLogInspectorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isSharing = false
-    @State private var showsClearAlert = false
 
     private static let timeFormatter: DateFormatter = {
         let df = DateFormatter()
@@ -6224,16 +6226,6 @@ struct POSDeepLogInspectorView: View {
                     .publisher(for: NSNotification.Name.PPPOSLogDidAppend)
             ) { _ in
                 viewModel.refresh()
-            }
-            .alert(isPresented: $showsClearAlert) {
-                Alert(
-                    title: Text(Language.get("POS_DeepLog_Clear", alter: "مسح السجل")),
-                    message: Text(Language.get("POS_DeepLog_Clear_Confirm", alter: "هل أنت متأكد من رغبتك في مسح جميع سجلات تشخيص نقاط البيع اللحظية؟")),
-                    primaryButton: .destructive(Text(Language.get("Delete", alter: "مسح"))) {
-                        viewModel.clearLogs()
-                    },
-                    secondaryButton: .cancel(Text(Language.get("Cancel", alter: "إلغاء")))
-                )
             }
             .sheet(isPresented: $isSharing) {
                 POSDeepLogActivityShareSheet(text: viewModel.exportText())
@@ -6293,7 +6285,7 @@ struct POSDeepLogInspectorView: View {
 
             // Clear button
             Button {
-                showsClearAlert = true
+                promptClearLogsConfirmation()
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 14, weight: .bold))
@@ -6563,6 +6555,24 @@ struct POSDeepLogInspectorView: View {
         .padding(.vertical, AdminSpacing.sm)
         .background(Color.black.opacity(0.85), in: Capsule())
         .shadow(color: .black.opacity(0.2), radius: 10, y: 4)
+    }
+
+    // MARK: - Clear Logs Confirmation (PPAlertHelper)
+
+    private func promptClearLogsConfirmation() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("POS_DeepLog_Clear", alter: "مسح السجل"),
+            subtitle: Language.get("POS_DeepLog_Clear_Confirm", alter: "هل أنت متأكد من رغبتك في مسح جميع سجلات تشخيص نقاط البيع اللحظية؟"),
+            confirmButton: Language.get("Delete", alter: "مسح"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.clearLogs()
+            },
+            cancelBlock: nil
+        )
     }
 }
 

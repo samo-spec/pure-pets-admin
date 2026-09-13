@@ -731,8 +731,8 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Live Pet Return Coordinator Sheet
-        .sheet(item: $receiptForLivePetReturn) { receipt in
+        // Live Pet Return Coordinator (Full Screen)
+        .fullScreenCover(item: $receiptForLivePetReturn) { receipt in
             LivePetReturnCoordinatorView(
                 receipt: receipt,
                 onProceedToMerchandiseRefund: { mixedReceipt in
@@ -748,8 +748,8 @@ struct AdminPOSHistoryView: View {
                 }
             )
         }
-        // Refund Studio Sheet (Generic Merchandise / Mixed)
-        .sheet(item: $receiptForRefund) { receipt in
+        // Refund Studio (Full Screen)
+        .fullScreenCover(item: $receiptForRefund) { receipt in
             POSRefundStudioSheet(
                 receipt: receipt,
                 viewModel: viewModel,
@@ -3006,11 +3006,18 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        // Existing return cases are history and have their own explicit
-                        // dossier buttons. They must never hijack the primary refund
-                        // action: a partially-refunded sale can still refund any
-                        // remaining eligible quantity or exact live-pet unit.
-                        onRefund()
+                        if isRefunded {
+                            // Post-first-refund only: historical return cases stay
+                            // accessible from their dossier cards, while the primary
+                            // action starts another eligible refund/return operation.
+                            onRefund()
+                        } else if let firstReturnCase = returnCases.first {
+                            // Preserve the existing pre-first-refund behavior exactly:
+                            // resume the active return case instead of creating another.
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
                     },
                     onCancel: {
                         DossierHaptics.warning()
@@ -3045,11 +3052,18 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        // Existing return cases are history and have their own explicit
-                        // dossier buttons. They must never hijack the primary refund
-                        // action: a partially-refunded sale can still refund any
-                        // remaining eligible quantity or exact live-pet unit.
-                        onRefund()
+                        if isRefunded {
+                            // Post-first-refund only: historical return cases stay
+                            // accessible from their dossier cards, while the primary
+                            // action starts another eligible refund/return operation.
+                            onRefund()
+                        } else if let firstReturnCase = returnCases.first {
+                            // Preserve the existing pre-first-refund behavior exactly:
+                            // resume the active return case instead of creating another.
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
                     },
                     onCancel: {
                         DossierHaptics.warning()
@@ -3095,7 +3109,7 @@ struct POSTransactionDossierSheet: View {
         .sheet(item: $receiptShare) { share in
             POSHistoryReceiptShareSheet(share: share) {}
         }
-        .sheet(item: $selectedReturnCaseForDetail) { rCase in
+        .fullScreenCover(item: $selectedReturnCaseForDetail) { rCase in
             ReturnCaseDetailView(returnCaseId: rCase.returnCaseId, initialCase: rCase)
         }
         .task {
@@ -3366,7 +3380,7 @@ struct POSRefundStudioSheet: View {
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .sheet(isPresented: $isShowingLivePetCoordinator) {
+        .fullScreenCover(isPresented: $isShowingLivePetCoordinator) {
             LivePetReturnCoordinatorView(
                 receipt: receipt,
                 onProceedToMerchandiseRefund: { _ in

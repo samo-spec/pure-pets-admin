@@ -6309,7 +6309,6 @@ struct PPQuantityGroupInspectorSheet: View {
 
     @State private var unitsText: String = "1"
     @State private var localErrorMessage: String? = nil
-    @State private var showDeleteConfirmation: Bool = false
 
     init(
         group: PPQuantityGroupDraft,
@@ -6349,7 +6348,7 @@ struct PPQuantityGroupInspectorSheet: View {
                         localErrorMessage: localErrorMessage,
                         onSave: validateAndSave,
                         onCancel: { dismiss() },
-                        onDelete: onDelete != nil ? { showDeleteConfirmation = true } : nil
+                        onDelete: onDelete != nil ? { promptDeleteConfirmation() } : nil
                     )
                 } else {
                     iPhoneQuantityGroupInspector(
@@ -6360,24 +6359,31 @@ struct PPQuantityGroupInspectorSheet: View {
                         localErrorMessage: localErrorMessage,
                         onSave: validateAndSave,
                         onCancel: { dismiss() },
-                        onDelete: onDelete != nil ? { showDeleteConfirmation = true } : nil
+                        onDelete: onDelete != nil ? { promptDeleteConfirmation() } : nil
                     )
                 }
             }
         }
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .alert(
-            Language.get("Delete_Unit_Confirm_Title", alter: "هل أنت متأكد من حذف وحدة البيع هذه؟"),
-            isPresented: $showDeleteConfirmation
-        ) {
-            Button(Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"), role: .destructive) {
+    }
+
+    // MARK: - Delete Confirmation (PPAlertHelper)
+
+    private func promptDeleteConfirmation() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Delete_Unit_Confirm_Title", alter: "هل أنت متأكد من حذف وحدة البيع هذه؟"),
+            subtitle: Language.get("Delete_Unit_Confirm_Msg", alter: "سيتم إلغاء هذه الوحدة من قائمة وحدات البيع لهذا الصنف ولن تتوفر في الكاشير."),
+            confirmButton: Language.get("Delete_Selling_Unit", alter: "حذف وحدة البيع هذه"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "trash.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
                 onDelete?()
                 dismiss()
-            }
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-        } message: {
-            Text(Language.get("Delete_Unit_Confirm_Msg", alter: "سيتم إلغاء هذه الوحدة من قائمة وحدات البيع لهذا الصنف ولن تتوفر في الكاشير."))
-        }
+            },
+            cancelBlock: nil
+        )
     }
 
     private func validateAndSave() {

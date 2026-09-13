@@ -245,17 +245,6 @@ struct AdminNotificationSettingsView: View {
         }
         .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
-        .alert(
-            Language.get("NotificationSettings_Reset_Confirm_Title", alter: "إعادة ضبط إعدادات القنوات"),
-            isPresented: $viewModel.showResetConfirmation
-        ) {
-            Button(Language.get("Cancel", alter: "إلغاء"), role: .cancel) {}
-            Button(Language.get("NotificationSettings_Action_ResetDefaults", alter: "إعادة تعيين"), role: .destructive) {
-                viewModel.resetToDefaults()
-            }
-        } message: {
-            Text(Language.get("NotificationSettings_Reset_Confirm_Message", alter: "هل ترغب في إعادة جميع إعدادات القنوات والأصوات إلى وضعها الافتراضي؟"))
-        }
         .onAppear {
             viewModel.refreshSystemStatus()
         }
@@ -299,7 +288,7 @@ struct AdminNotificationSettingsView: View {
 
                 // Reset Action
                 Button {
-                    viewModel.showResetConfirmation = true
+                    promptResetConfirmation()
                 } label: {
                     Image(systemName: "arrow.counterclockwise")
                         .font(.system(size: 14, weight: .semibold))
@@ -795,7 +784,7 @@ struct AdminNotificationSettingsView: View {
             .disabled(viewModel.isSyncingWithCloud)
 
             Button {
-                viewModel.showResetConfirmation = true
+                promptResetConfirmation()
             } label: {
                 Text(Language.get("NotificationSettings_Action_ResetDefaults", alter: "استعادة الإعدادات الافتراضية للقنوات"))
                     .font(AdminType.calloutBold)
@@ -803,5 +792,23 @@ struct AdminNotificationSettingsView: View {
             }
             .padding(.top, 4)
         }
+    }
+
+    // MARK: - Reset Confirmation (PPAlertHelper)
+
+    private func promptResetConfirmation() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("NotificationSettings_Reset_Confirm_Title", alter: "إعادة ضبط إعدادات القنوات"),
+            subtitle: Language.get("NotificationSettings_Reset_Confirm_Message", alter: "هل ترغب في إعادة جميع إعدادات القنوات والأصوات إلى وضعها الافتراضي؟"),
+            confirmButton: Language.get("NotificationSettings_Action_ResetDefaults", alter: "إعادة تعيين"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "arrow.counterclockwise"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                viewModel.resetToDefaults()
+            },
+            cancelBlock: nil
+        )
     }
 }

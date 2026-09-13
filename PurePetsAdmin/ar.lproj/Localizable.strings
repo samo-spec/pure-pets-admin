@@ -5585,6 +5585,9 @@
 "LivePetDossier_ActiveOnHandCount" = "%ld متاح بالمخزون";
 "LivePetDossier_SoldCount" = "%ld مباع";
 "LivePet_Units_Archived_Count" = "سجل المبيعات والأرشيف (%ld)";
+"LivePet_Units_Archived_Title" = "سجل المبيعات والأرشيف";
+"LivePet_Units_Archived_CollapsedHint" = "انقر لعرض سجل الحيوانات المباعة والمؤرشفة";
+"LivePet_Units_Archived_ExpandedHint" = "يتم الآن عرض سجل الحيوانات المباعة والمؤرشفة";
 "LivePetDossier_LoadingHint" = "يتم جلب الحالة الحالية قبل إتاحة الإجراءات.";
 "LivePetDossier_UnitsRestricted" = "سجلات الحيوانات الفردية غير متاحة لصلاحيتك.";
 "LivePetDossier_EmptyUnitsHint" = "أضف مخزوناً فردياً لإنشاء سجل هوية لكل حيوان.";
@@ -7376,7 +7379,7 @@
 "LivePet_UnitsCount" = "حيوان محدد";
 
 "LivePet_Confirm_SuccessTitle" = "تم تسجيل استرجاع الحيوان بنجاح";
-"LivePet_Confirm_SuccessSub" = "تم فتح ملف الاسترجاع ونقل الحيوان للعهدة المخصصة";
+"LivePet_Confirm_SuccessSub" = "اكتمل الاسترداد المالي وبدأت متابعة الحيوان ضمن مسار الفحص الآمن.";
 "LivePet_CaseNumberLabel" = "رقم ملف الاسترجاع";
 "LivePet_AnimalStateLabel" = "حالة الحيوان";
 "LivePet_RefundStateLabel" = "حالة الاسترداد";
@@ -7713,6 +7716,8 @@
 
 /* ===================== Live Pet Return Release Routing ===================== */
 "LivePet_LegacyReturn_Notice_Title" = "حيوان مسترجع في عهدة الحجر";
+"LivePet_Quarantine_Notice_Title" = "الحيوان خاضع للعزل البيطري";
+"LivePet_ReturnTx_Ref" = "معاملة الاسترجاع: %@";
 "LivePet_LegacyReturn_Notice_Desc" = "تم استلام هذا الحيوان عبر مسار الاسترجاع السابق. يبقى غير متاح للبيع حتى مراجعة الحجر وإصداره بالصلاحيات المعتمدة.";
 "LivePet_ActionApproveAndRelease" = "اعتماد وإتاحة للبيع";
 "LivePet_ActionReleaseResale" = "إتاحة للبيع";
@@ -7720,9 +7725,79 @@
 "LivePet_Error_ResaleReadback" = "تم إرسال أمر الإتاحة، لكن تعذر تأكيد الحالة النهائية. حدّث ملف الاسترجاع قبل إعادة المحاولة.";
 "LivePet_Error_ReturnUnitMissing" = "لم يعد ملف الاسترجاع أو سجل الحيوان المحدد متاحاً.";
 
+/* ===================== Admin Home Category-Defining Section Headers ===================== */
+"AdminPOS_SectionEyebrow" = "نظام نقاط البيع";
+"Stock_SectionEyebrow" = "المخزون والكتالوج";
+"AdminQuickActions_SectionEyebrow" = "العمليات الميدانية";
+"AdminHorizons_SectionEyebrow" = "المؤشرات والأفق التشغيلي";
+"AdminHorizons_SectionTitle" = "الأفق المالي والفندقي";
+"AdminHorizons_SectionDetail" = "تتبع مباشر للإيرادات، صافي الأرباح، ونزلاء الفندق والغرف";
+"AdminRunway_SectionEyebrow" = "التدخل السريع";
+"AdminLedger_SectionEyebrow" = "بيانات المنظومة";
+"AdminSectionHeader_AllOptimal" = "الحالة ممتازة ومطابقة";
+"AdminSectionHeader_Loading" = "جارٍ التحديث...";
+"AdminSectionHeader_TapToInspect" = "اضغط للمعاينة السريعة";
+"AdminSectionHeader_ActiveSignalsSingular" = "إشارة نشطة واحدة";
+
+/* ===================== Admin Inventory Product Cards (Catalog & Live Pets) ===================== */
+"Valuation_Heading"             = "القيمة والربحية";
+"Cost_Short"                    = "تكلفة:";
+"Margin_Short"                  = "هامش:";
+"Gross_Margin_Format"           = "هامش ربح: %@";
+"Stock_Lot_Expiry_Alert"        = "تتبع الدفعات وتاريخ الصلاحية";
+"Manage_Lots_Button"            = "الدفعات والصلاحية";
+"LivePet_Tracked_Units_Title"   = "وحدات مفردة بحجول رسمية";
+"Biological_Readiness"          = "الحالة الحيوية والبيطرية";
+"Pet_Health_Sound"              = "سليم بالمحل";
+"Pet_Quarantine_All"            = "محجوز / حجر بيطري";
+"LivePet_Manage_Units"          = "سجل الحيوانات الفردية";
+"Quarantine_Studio"             = "الحجر البيطري";
+"Specimen_Actions"              = "خيارات الحيوان";
+
+/* Inventory Redesign Category-Defining Additions */
+"ActiveInCatalog" = "متاح بالمتجر";
+"Wholesale_Short" = "جملة:";
+"Manage_Lots" = "إدارة الشحنات والصلاحية";
+"LivePet_Reserved_Format" = "محجوز (%@)";
+"LivePet_Mortality_Record" = "تسجيل فقدان أو نفوق";
+"ViewDetails" = "عرض التفاصيل";
+
 // Post-first-refund multi-refund lifecycle
 "POS_Action_AdditionalRefund" = "استرداد عنصر آخر";
 "LivePet_Action_ReturnAnother" = "استرجاع حيوان آخر";
 "POS_Refund_ItemProgress" = "%d مسترد • %d متبقي";
 "POS_Refund_ItemFullyRefunded" = "%d مسترد • مكتمل";
 "POS_Refund_NetRetained" = "صافي قيمة البيع المتبقية";
+// Live Pet Return Confirmation V2 (iPhone & iPadOS)
+"LivePet_Confirm_NoRefundRequiredSub" = "تم تسجيل الاسترجاع ولا يلزم استرداد مالي. بدأ مسار الفحص والمتابعة للحيوان.";
+"LivePet_Confirm_RefundProcessingSub" = "تم تسجيل الاسترجاع وطلب الاسترداد المالي قيد المعالجة. تستمر متابعة الحيوان بشكل مستقل.";
+"LivePet_Confirm_RefundAttentionSub" = "تم تسجيل الاسترجاع، لكن الاسترداد المالي يحتاج متابعة. افتح الملف لمراجعة الإجراء المطلوب.";
+"LivePet_Confirm_RefundPendingSub" = "تم تسجيل الاسترجاع، وما زالت التسوية المالية بانتظار البدء. مسار متابعة الحيوان محفوظ.";
+"LivePet_Confirm_WorkflowSupport" = "يبقى الحيوان خارج البيع حتى إغلاق الفحص";
+"LivePet_Confirm_NextStepTitle" = "ما الذي يحدث الآن؟";
+"LivePet_Confirm_FinalCaseNote" = "أُغلق مسار المتابعة لهذا الملف. يمكنك فتح الملف لمراجعة السجل الكامل.";
+"LivePet_Confirm_InspectionNote" = "يبقى الحيوان غير متاح للبيع حتى اكتمال الفحص واتخاذ قرار الحالة النهائية.";
+"LivePet_Confirm_Close" = "إغلاق";
+"LivePet_Confirm_ProtectedRecord" = "سجل استرجاع موثّق";
+"LivePet_Confirm_ProtectedCustody" = "مسجل ضمن عهدة الاسترجاع";
+"LivePet_Confirm_NoUnits" = "لا توجد بيانات حيوانات مرتبطة بهذا الملف حالياً.";
+"LivePet_Confirm_NextActions" = "الخطوة التالية";
+"LivePet_Confirm_ContinueCase" = "تابع ملف الحيوان";
+"LivePet_Confirm_ContinueCaseSub" = "الاسترداد المالي انتهى أو تم تسجيل حالته. افتح الملف لمتابعة الفحص والعهدة.";
+"LivePet_Confirm_ContinueSale" = "أكمل معالجة الفاتورة";
+"LivePet_Confirm_ContinueSaleSub" = "تم تسجيل استرجاع الحيوان. يمكنك الآن معالجة أي منتجات أخرى مؤهلة من نفس الفاتورة.";
+"LivePet_Confirm_RefundRemainingItems" = "استرداد بقية المنتجات";
+"LivePet_Confirm_RefundRemainingItemsSub" = "العودة للفاتورة واختيار العناصر المؤهلة المتبقية";
+"LivePet_Confirm_OpenDossierSub" = "متابعة الفحص والعهدة وسجل القرارات";
+"LivePet_Confirm_Done" = "تم";
+"LivePet_Confirm_Copy" = "نسخ";
+"LivePet_Confirm_Copied" = "تم النسخ";
+"LivePet_Confirm_CopyCaseA11y" = "نسخ رقم ملف الاسترجاع";
+"LivePet_Confirm_CopyCaseHint" = "ينسخ رقم الملف إلى الحافظة";
+"LivePet_Confirm_Loading" = "جارٍ تجهيز ملخص الاسترجاع";
+"LivePet_Confirm_EmptyTitle" = "لا توجد تفاصيل استرجاع لعرضها";
+"LivePet_Confirm_EmptyMessage" = "لم يتم العثور على ملف استرجاع مكتمل لهذه العملية. أغلق الشاشة وراجع الفاتورة مرة أخرى.";
+"LivePet_Confirm_ErrorTitle" = "تعذر تحميل ملخص الاسترجاع";
+"LivePet_Confirm_ErrorMessage" = "بيانات الاسترجاع محفوظة، لكن تعذر عرض الملخص الآن. حاول مرة أخرى.";
+"LivePet_Confirm_Retry" = "إعادة المحاولة";
+"POS_TransactionID" = "فاتورة";

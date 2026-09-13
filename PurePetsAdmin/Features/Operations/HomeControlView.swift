@@ -293,8 +293,6 @@ struct AdminHomeControlView: View {
     @StateObject private var viewModel = AdminHomeControlViewModel()
     @State private var toastMessage: String? = nil
     @State private var isErrorToast = false
-    @State private var showsAllHiddenWarning = false
-    @State private var showsCoreHiddenWarning = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(onDismiss: (() -> Void)? = nil) {
@@ -339,22 +337,6 @@ struct AdminHomeControlView: View {
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .onAppear {
             viewModel.loadConfig()
-        }
-        .alert(Language.get("HomeControl_AllSectionsHidden_Title", alter: nil), isPresented: $showsAllHiddenWarning) {
-            Button(Language.get("HomeControl_Cancel", alter: nil), role: .cancel) {}
-            Button(Language.get("HomeControl_Continue", alter: nil), role: .destructive) {
-                commitSave()
-            }
-        } message: {
-            Text(Language.get("HomeControl_AllSectionsHidden_Message", alter: nil))
-        }
-        .alert(Language.get("HomeControl_CoreSectionsHidden_Title", alter: nil), isPresented: $showsCoreHiddenWarning) {
-            Button(Language.get("HomeControl_Cancel", alter: nil), role: .cancel) {}
-            Button(Language.get("HomeControl_Continue", alter: nil), role: .destructive) {
-                commitSave()
-            }
-        } message: {
-            Text(Language.get("HomeControl_CoreSectionsHidden_Message", alter: nil))
         }
     }
 
@@ -815,7 +797,7 @@ struct AdminHomeControlView: View {
     private func validateAndSave() {
         let visibleCount = viewModel.enabledSectionsCount
         if visibleCount == 0 {
-            showsAllHiddenWarning = true
+            promptAllHiddenWarning()
             return
         }
 
@@ -826,7 +808,7 @@ struct AdminHomeControlView: View {
         }.count
 
         if criticalSections.count > 0 && hiddenCriticalCount == criticalSections.count {
-            showsCoreHiddenWarning = true
+            promptCoreHiddenWarning()
             return
         }
 
@@ -869,5 +851,39 @@ struct AdminHomeControlView: View {
                 .stroke(isError ? Color.red.opacity(0.3) : Color.green.opacity(0.3))
         )
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+    }
+
+    // MARK: - Save Warning Confirmations (PPAlertHelper)
+
+    private func promptAllHiddenWarning() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("HomeControl_AllSectionsHidden_Title", alter: "إخفاء كافة الأقسام"),
+            subtitle: Language.get("HomeControl_AllSectionsHidden_Message", alter: "هل أنت متأكد من رغبتك في إخفاء جميع أقسام الصفحة الرئيسية؟ لن يظهر للمستخدم أي محتوى."),
+            confirmButton: Language.get("HomeControl_Continue", alter: "متابعة الحفظ"),
+            cancelButton: Language.get("HomeControl_Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                commitSave()
+            },
+            cancelBlock: nil
+        )
+    }
+
+    private func promptCoreHiddenWarning() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("HomeControl_CoreSectionsHidden_Title", alter: "إخفاء الأقسام الأساسية"),
+            subtitle: Language.get("HomeControl_CoreSectionsHidden_Message", alter: "سيؤدي ذلك إلى إخفاء الأقسام الحيوية في التطبيق. هل ترغب في المتابعة؟"),
+            confirmButton: Language.get("HomeControl_Continue", alter: "متابعة الحفظ"),
+            cancelButton: Language.get("HomeControl_Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "exclamationmark.triangle.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                commitSave()
+            },
+            cancelBlock: nil
+        )
     }
 }

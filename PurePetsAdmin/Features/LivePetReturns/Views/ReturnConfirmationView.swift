@@ -96,9 +96,12 @@ public struct ReturnConfirmationView: View {
     @ViewBuilder
     private func readyState(_ returnCase: LivePetReturnCase) -> some View {
         if UIDevice.current.userInterfaceIdiom == .pad, horizontalSizeClass == .regular {
-            ScrollView(.vertical, showsIndicators: false) {
-                iPadReadyState(returnCase)
-                    .padding(AdminSpacing.screenMargin)
+            GeometryReader { windowProxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    iPadReadyState(returnCase, availableWidth: windowProxy.size.width)
+                        .padding(AdminSpacing.screenMargin)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         } else {
             VStack(spacing: 0) {
@@ -128,22 +131,35 @@ public struct ReturnConfirmationView: View {
         .onAppear(perform: revealSuccess)
     }
 
-    private func iPadReadyState(_ returnCase: LivePetReturnCase) -> some View {
-        VStack(spacing: 22) {
-            iPadCommandRail(returnCase)
+    private func iPadReadyState(_ returnCase: LivePetReturnCase, availableWidth: CGFloat = 1024) -> some View {
+        let isWide = availableWidth >= 900
 
-            HStack(alignment: .top, spacing: 24) {
+        return VStack(spacing: 22) {
+            iPadCommandRail(returnCase, isWide: isWide)
+
+            if isWide {
+                HStack(alignment: .top, spacing: 24) {
+                    VStack(spacing: 22) {
+                        hero(returnCase, compact: false)
+                        outcomeLane(returnCase)
+                        unitsSection(returnCase, compact: false)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .top)
+
+                    iPadInspector(returnCase)
+                        .frame(width: dynamicTypeSize.isAccessibilitySize ? 420 : 370)
+                }
+                .frame(maxWidth: 1100, alignment: .top)
+            } else {
                 VStack(spacing: 22) {
                     hero(returnCase, compact: false)
                     outcomeLane(returnCase)
                     unitsSection(returnCase, compact: false)
+                    iPadInspector(returnCase)
+                        .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity, alignment: .top)
-
-                iPadInspector(returnCase)
-                    .frame(width: dynamicTypeSize.isAccessibilitySize ? 430 : 390)
+                .frame(maxWidth: 720, alignment: .top)
             }
-            .frame(maxWidth: 1100, alignment: .top)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -172,7 +188,7 @@ public struct ReturnConfirmationView: View {
         .accessibilityLabel(text("LivePet_Confirm_Close", ar: "إغلاق", en: "Close"))
     }
 
-    private func iPadCommandRail(_ returnCase: LivePetReturnCase) -> some View {
+    private func iPadCommandRail(_ returnCase: LivePetReturnCase, isWide: Bool = true) -> some View {
         HStack(spacing: 16) {
             caseIdentityInline(returnCase)
 
@@ -208,7 +224,7 @@ public struct ReturnConfirmationView: View {
             .keyboardShortcut("w", modifiers: [.command])
             .accessibilityLabel(text("LivePet_Confirm_Close", ar: "إغلاق", en: "Close"))
         }
-        .frame(maxWidth: 1100)
+        .frame(maxWidth: isWide ? 1100 : 720)
     }
 
     // MARK: - Hero

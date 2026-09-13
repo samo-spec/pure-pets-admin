@@ -7,6 +7,9 @@ on:
     paths:
       - PurePetsAdmin/Features/LivePetReturns/Views/ReturnConfirmationView.swift
       - PurePetsAdmin/Features/LivePetReturns/Views/LivePetReturnCoordinatorView.swift
+      - PurePetsAdmin/Shared/Components/AdminSharedComponents.swift
+      - PurePetsAdmin/ar.lproj/Localizable.strings
+      - PurePetsAdmin/en.lproj/Localizable.strings
       - .github/workflows/live-pet-return-confirmation-v2.yml
 
 permissions:

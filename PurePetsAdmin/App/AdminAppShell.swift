@@ -8,7 +8,6 @@ struct AdminAppShell: View {
 
     @State private var selectedTab: AdminTab = .command
     @State private var commandShowsNestedWorkflow = false
-    @State private var showsLogoutConfirmation = false
     @State private var scrollProgress: CGFloat = 0.0
     @State private var tabScrollProgress: [AdminTab: CGFloat] = [:]
     @StateObject private var commandState: CommandCenterState
@@ -84,7 +83,7 @@ struct AdminAppShell: View {
                         router: router,
                         commandState: commandState,
                         isSigningOut: sessionStore.isSigningOut,
-                        onLogout: { showsLogoutConfirmation = true },
+                        onLogout: { promptLogoutConfirmation() },
                         onOpenCommand: { selectedTab = .command }
                     )
                     .ignoresSafeArea()
@@ -128,12 +127,6 @@ struct AdminAppShell: View {
             Button(Language.get("OK", alter: nil), role: .cancel) {}
         } message: {
             Text(Language.get("CommandCenter_Permission_Denied_Message", alter: nil))
-        }
-        .alert(Language.get("Logout_Confirm_Title", alter: nil), isPresented: $showsLogoutConfirmation) {
-            Button(Language.get("Cancel", alter: nil), role: .cancel) {}
-            Button(Language.get("Logout", alter: nil), role: .destructive, action: sessionStore.signOut)
-        } message: {
-            Text(Language.get("Logout_Confirm_Message", alter: nil))
         }
         .onAppear {
             if !availableTabs.contains(selectedTab) {
@@ -214,6 +207,24 @@ struct AdminAppShell: View {
 
     private func available(_ routes: [AdminRoute]) -> [AdminRoute] {
         routes.filter { $0.isAuthorized(for: session) }
+    }
+
+    // MARK: - Logout Confirmation (PPAlertHelper)
+
+    private func promptLogoutConfirmation() {
+        PPAlertHelper.showConfirmation(
+            in: nil,
+            title: Language.get("Logout_Confirm_Title", alter: "تسجيل الخروج"),
+            subtitle: Language.get("Logout_Confirm_Message", alter: "هل أنت متأكد من رغبتك في تسجيل الخروج من لوحة التحكم؟"),
+            confirmButton: Language.get("Logout", alter: "تسجيل الخروج"),
+            cancelButton: Language.get("Cancel", alter: "إلغاء"),
+            icon: UIImage(systemName: "rectangle.portrait.and.arrow.right.fill"),
+            confirmBlock: { _, didConfirm in
+                guard didConfirm else { return }
+                sessionStore.signOut()
+            },
+            cancelBlock: nil
+        )
     }
 }
 

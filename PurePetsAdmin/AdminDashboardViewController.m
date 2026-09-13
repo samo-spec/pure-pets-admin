@@ -1426,6 +1426,8 @@ static NSArray<NSString *> *PPAdminCommandTrackedFeedAreas(void) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.edgesForExtendedLayout = UIRectEdgeAll;
+    self.extendedLayoutIncludesOpaqueBars = YES;
 
     self.view.backgroundColor = PPAdminDashboardCanvasColor(self.traitCollection);
     self.dashboardBackdropView = [[PPAdminDashboardBackdropView alloc] initWithFrame:CGRectZero];

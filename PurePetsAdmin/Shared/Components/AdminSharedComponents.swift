@@ -310,28 +310,29 @@ public struct PPLottieAnimationView: UIViewRepresentable {
         }
     }
 
+    @MainActor
     public final class Coordinator: NSObject {
         weak var animationView: LOTAnimationView?
-        private var observer: NSObjectProtocol?
+        private var isObserving = false
 
         func startObserving() {
-            guard observer == nil else { return }
-            observer = NotificationCenter.default.addObserver(
-                forName: UIApplication.willEnterForegroundNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let anim = self?.animationView else { return }
-                if !anim.isAnimationPlaying {
-                    anim.play()
-                }
-            }
+            guard !isObserving else { return }
+            isObserving = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleWillEnterForeground),
+                name: UIApplication.willEnterForegroundNotification,
+                object: nil
+            )
+        }
+
+        @objc private func handleWillEnterForeground() {
+            guard let animationView, !animationView.isAnimationPlaying else { return }
+            animationView.play()
         }
 
         deinit {
-            if let observer = observer {
-                NotificationCenter.default.removeObserver(observer)
-            }
+            NotificationCenter.default.removeObserver(self)
         }
     }
 }
@@ -379,7 +380,7 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
         context.coordinator.startObserving()
 
         // Asynchronously fetch JSON from Firebase Storage and play
-        Styling.setAnimationNamed(fileName, toView: animationView, withSpeed: speed) { success in
+        Styling.setAnimationNamed(fileName, to: animationView, withSpeed: speed) { success in
             if !success {
                 // If remote fetch failed, check if it exists in local app bundle
                 if let bundleAnimation = LOTComposition(name: self.fileName) {
@@ -396,34 +397,36 @@ public struct PPLottieFirebaseView: UIViewRepresentable {
 
     public func updateUIView(_ uiView: UIView, context: Context) {
         if let animationView = context.coordinator.animationView {
+            animationView.animationSpeed = CGFloat(self.speed)
             if !animationView.isAnimationPlaying {
                 animationView.play()
             }
         }
     }
 
+    @MainActor
     public final class Coordinator: NSObject {
         weak var animationView: LOTAnimationView?
-        private var observer: NSObjectProtocol?
+        private var isObserving = false
 
         func startObserving() {
-            guard observer == nil else { return }
-            observer = NotificationCenter.default.addObserver(
-                forName: UIApplication.willEnterForegroundNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                guard let anim = self?.animationView else { return }
-                if !anim.isAnimationPlaying {
-                    anim.play()
-                }
-            }
+            guard !isObserving else { return }
+            isObserving = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleWillEnterForeground),
+                name: UIApplication.willEnterForegroundNotification,
+                object: nil
+            )
+        }
+
+        @objc private func handleWillEnterForeground() {
+            guard let animationView, !animationView.isAnimationPlaying else { return }
+            animationView.play()
         }
 
         deinit {
-            if let observer = observer {
-                NotificationCenter.default.removeObserver(observer)
-            }
+            NotificationCenter.default.removeObserver(self)
         }
     }
 }
@@ -1257,9 +1260,28 @@ struct POSBarcodeCameraView: UIViewControllerRepresentable {
     }
 }
 
+private final class ScannerCaptureSessionDriver: @unchecked Sendable {
+    let session = AVCaptureSession()
+    private let queue = DispatchQueue(label: "com.purepets.admin.pos.scanner", qos: .userInitiated)
+
+    func start() {
+        queue.async { [weak self] in
+            guard let self, !session.isRunning else { return }
+            session.startRunning()
+        }
+    }
+
+    func stop() {
+        queue.async { [weak self] in
+            guard let self, session.isRunning else { return }
+            session.stopRunning()
+        }
+    }
+}
+
 final class ScannerViewController: UIViewController {
-    private let captureSession = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "com.purepets.admin.pos.scanner", qos: .userInitiated)
+    private let captureDriver = ScannerCaptureSessionDriver()
+    private var captureSession: AVCaptureSession { captureDriver.session }
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var isConfigured = false
 
@@ -1284,10 +1306,7 @@ final class ScannerViewController: UIViewController {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        sessionQueue.async { [weak self] in
-            guard let self, self.captureSession.isRunning else { return }
-            self.captureSession.stopRunning()
-        }
+        captureDriver.stop()
     }
 
     private func configureCapture() {
@@ -1331,10 +1350,7 @@ final class ScannerViewController: UIViewController {
 
     private func startSessionIfPossible() {
         guard isConfigured else { return }
-        sessionQueue.async { [weak self] in
-            guard let self, !self.captureSession.isRunning else { return }
-            self.captureSession.startRunning()
-        }
+        captureDriver.start()
     }
 
     private func failConfiguration() {

@@ -5526,6 +5526,9 @@
 "LivePetDossier_ActiveOnHandCount" = "%ld available in stock";
 "LivePetDossier_SoldCount" = "%ld sold";
 "LivePet_Units_Archived_Count" = "Sales history and archived (%ld)";
+"LivePet_Units_Archived_Title" = "Sales History & Archived";
+"LivePet_Units_Archived_CollapsedHint" = "Tap to view sold and archived records";
+"LivePet_Units_Archived_ExpandedHint" = "Showing all sold and archived records";
 "LivePetDossier_LoadingHint" = "The current state is being fetched before actions are available.";
 "LivePetDossier_UnitsRestricted" = "Individual animal records are unavailable with your permission.";
 "LivePetDossier_EmptyUnitsHint" = "Add individual stock to create an identity record for each animal.";
@@ -7313,8 +7316,8 @@
 "LivePet_TotalRefundDue" = "Total Refund Due";
 "LivePet_UnitsCount" = "Animal(s) Selected";
 
-"LivePet_Confirm_SuccessTitle" = "Live Pet Return Processed";
-"LivePet_Confirm_SuccessSub" = "Return case created and animal transferred to intake custody";
+"LivePet_Confirm_SuccessTitle" = "Animal return recorded successfully";
+"LivePet_Confirm_SuccessSub" = "The financial refund is complete and the animal is now in the protected inspection workflow.";
 "LivePet_CaseNumberLabel" = "Return Case Number";
 "LivePet_AnimalStateLabel" = "Animal Status";
 "LivePet_RefundStateLabel" = "Refund Status";
@@ -7651,6 +7654,8 @@
 
 /* ===================== Live Pet Return Release Routing ===================== */
 "LivePet_LegacyReturn_Notice_Title" = "Returned animal in quarantine custody";
+"LivePet_Quarantine_Notice_Title" = "Animal under veterinary quarantine";
+"LivePet_ReturnTx_Ref" = "Return Transaction: %@";
 "LivePet_LegacyReturn_Notice_Desc" = "This animal was received through the legacy return flow. It remains unavailable for sale until quarantine review and an authorized release.";
 "LivePet_ActionApproveAndRelease" = "Approve and release for sale";
 "LivePet_ActionReleaseResale" = "Release for sale";
@@ -7658,9 +7663,79 @@
 "LivePet_Error_ResaleReadback" = "The release command was submitted, but the final state could not be confirmed. Refresh the return case before retrying.";
 "LivePet_Error_ReturnUnitMissing" = "The return case or selected animal record is no longer available.";
 
+/* ===================== Admin Home Category-Defining Section Headers ===================== */
+"AdminPOS_SectionEyebrow" = "POINT OF SALE";
+"Stock_SectionEyebrow" = "STOCK & CATALOG";
+"AdminQuickActions_SectionEyebrow" = "FIELD OPERATIONS";
+"AdminHorizons_SectionEyebrow" = "OPERATIONAL HORIZONS";
+"AdminHorizons_SectionTitle" = "Financial & Hospitality Horizons";
+"AdminHorizons_SectionDetail" = "Real-time telemetry for revenue, net margin, and hotel occupancy";
+"AdminRunway_SectionEyebrow" = "ACTION RUNWAY";
+"AdminLedger_SectionEyebrow" = "SYSTEM TELEMETRY";
+"AdminSectionHeader_AllOptimal" = "All systems optimal";
+"AdminSectionHeader_Loading" = "Updating telemetry...";
+"AdminSectionHeader_TapToInspect" = "Tap for quick inspection";
+"AdminSectionHeader_ActiveSignalsSingular" = "1 active signal";
+
+/* ===================== Admin Inventory Product Cards (Catalog & Live Pets) ===================== */
+"Valuation_Heading"             = "Valuation & Margin";
+"Cost_Short"                    = "Cost:";
+"Margin_Short"                  = "Margin:";
+"Gross_Margin_Format"           = "Margin: %@";
+"Stock_Lot_Expiry_Alert"        = "Track lots & expiry";
+"Manage_Lots_Button"            = "Lots / Expiry";
+"LivePet_Tracked_Units_Title"   = "Tracked with official ring tags";
+"Biological_Readiness"          = "Veterinary Status";
+"Pet_Health_Sound"              = "In-Store & Healthy";
+"Pet_Quarantine_All"            = "Quarantine / Reserved";
+"LivePet_Manage_Units"          = "Specimen Roster";
+"Quarantine_Studio"             = "Quarantine Studio";
+"Specimen_Actions"              = "Specimen Actions";
+
+/* Inventory Redesign Category-Defining Additions */
+"ActiveInCatalog" = "Active in Catalog";
+"Wholesale_Short" = "Wholesale:";
+"Manage_Lots" = "Manage Lots & Expiry";
+"LivePet_Reserved_Format" = "Reserved (%@)";
+"LivePet_Mortality_Record" = "Record Loss or Mortality";
+"ViewDetails" = "View Details";
+
 // Post-first-refund multi-refund lifecycle
 "POS_Action_AdditionalRefund" = "Refund another item";
 "LivePet_Action_ReturnAnother" = "Return another animal";
 "POS_Refund_ItemProgress" = "%d refunded • %d remaining";
 "POS_Refund_ItemFullyRefunded" = "%d refunded • complete";
 "POS_Refund_NetRetained" = "Net retained";
+// Live Pet Return Confirmation V2 (iPhone & iPadOS)
+"LivePet_Confirm_NoRefundRequiredSub" = "The return is recorded and no financial refund is required. The animal follow-up workflow has started.";
+"LivePet_Confirm_RefundProcessingSub" = "The return is recorded and the financial refund is processing. Animal follow-up continues independently.";
+"LivePet_Confirm_RefundAttentionSub" = "The return is recorded, but the financial refund needs attention. Open the case to review the required action.";
+"LivePet_Confirm_RefundPendingSub" = "The return is recorded and financial settlement has not started yet. The animal follow-up workflow is preserved.";
+"LivePet_Confirm_WorkflowSupport" = "The animal remains unavailable for sale until inspection closes";
+"LivePet_Confirm_NextStepTitle" = "What happens next?";
+"LivePet_Confirm_FinalCaseNote" = "This case workflow is closed. Open the case to review the complete record.";
+"LivePet_Confirm_InspectionNote" = "The animal remains unavailable for sale until inspection is complete and a final disposition is recorded.";
+"LivePet_Confirm_Close" = "Close";
+"LivePet_Confirm_ProtectedRecord" = "Verified return record";
+"LivePet_Confirm_ProtectedCustody" = "Recorded in return custody";
+"LivePet_Confirm_NoUnits" = "No animal records are currently attached to this case.";
+"LivePet_Confirm_NextActions" = "Next action";
+"LivePet_Confirm_ContinueCase" = "Continue the animal case";
+"LivePet_Confirm_ContinueCaseSub" = "The financial state is recorded. Open the case to continue inspection and custody follow-up.";
+"LivePet_Confirm_ContinueSale" = "Continue processing the sale";
+"LivePet_Confirm_ContinueSaleSub" = "The animal return is recorded. You can now process other eligible products from the same sale.";
+"LivePet_Confirm_RefundRemainingItems" = "Refund remaining products";
+"LivePet_Confirm_RefundRemainingItemsSub" = "Return to the sale and choose other eligible items";
+"LivePet_Confirm_OpenDossierSub" = "Review inspection, custody, and decision history";
+"LivePet_Confirm_Done" = "Done";
+"LivePet_Confirm_Copy" = "Copy";
+"LivePet_Confirm_Copied" = "Case number copied";
+"LivePet_Confirm_CopyCaseA11y" = "Copy return case number";
+"LivePet_Confirm_CopyCaseHint" = "Copies the case number to the clipboard";
+"LivePet_Confirm_Loading" = "Preparing return summary";
+"LivePet_Confirm_EmptyTitle" = "No return details to show";
+"LivePet_Confirm_EmptyMessage" = "No completed return case was found for this operation. Close this screen and review the sale again.";
+"LivePet_Confirm_ErrorTitle" = "Couldn’t load the return summary";
+"LivePet_Confirm_ErrorMessage" = "The return data is saved, but the summary can’t be displayed right now. Try again.";
+"LivePet_Confirm_Retry" = "Try again";
+"POS_TransactionID" = "Receipt";
