@@ -25,9 +25,11 @@ public struct ReturnConfirmationView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var hasCopiedCaseNumber = false
     @State private var successAppeared = false
+    @State private var shimmerOn = false
     @State private var actionFeedbackToken = 0
 
     public init(
@@ -62,17 +64,26 @@ public struct ReturnConfirmationView: View {
         Group {
             switch surfaceState {
             case .loading:
-                loadingState
+                ScrollView(.vertical, showsIndicators: false) {
+                    loadingState
+                        .padding(AdminSpacing.screenMargin)
+                }
             case .empty:
-                emptyState
+                ScrollView(.vertical, showsIndicators: false) {
+                    emptyState
+                        .padding(AdminSpacing.screenMargin)
+                }
             case .failure(let message):
-                failureState(message: message)
+                ScrollView(.vertical, showsIndicators: false) {
+                    failureState(message: message)
+                        .padding(AdminSpacing.screenMargin)
+                }
             case .ready(let returnCase):
                 readyState(returnCase)
             }
         }
-        .frame(maxWidth: .infinity)
-        .background(AdminSurface.background)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AdminSurface.background.ignoresSafeArea())
         .environment(\.layoutDirection, Language.isRTL() ? .rightToLeft : .leftToRight)
         .sensoryFeedback(.success, trigger: hasCopiedCaseNumber) { oldValue, newValue in
             !oldValue && newValue
@@ -84,31 +95,35 @@ public struct ReturnConfirmationView: View {
 
     @ViewBuilder
     private func readyState(_ returnCase: LivePetReturnCase) -> some View {
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            iPadReadyState(returnCase)
+        if UIDevice.current.userInterfaceIdiom == .pad, horizontalSizeClass == .regular {
+            ScrollView(.vertical, showsIndicators: false) {
+                iPadReadyState(returnCase)
+                    .padding(AdminSpacing.screenMargin)
+            }
         } else {
-            iPhoneReadyState(returnCase)
+            VStack(spacing: 0) {
+                ScrollView(.vertical, showsIndicators: false) {
+                    iPhoneReadyState(returnCase)
+                        .padding(.horizontal, AdminSpacing.screenMargin)
+                        .padding(.top, AdminSpacing.sm)
+                        .padding(.bottom, 22)
+                }
+
+                iPhoneActionDock(returnCase)
+            }
         }
     }
 
     private func iPhoneReadyState(_ returnCase: LivePetReturnCase) -> some View {
         VStack(spacing: 20) {
             closeRail
-
             hero(returnCase, compact: true)
-
             outcomeLane(returnCase)
-
             caseIdentity(returnCase)
-
             unitsSection(returnCase, compact: true)
-
             nextStepNote(returnCase)
-
-            phoneActions(returnCase)
         }
         .frame(maxWidth: 620)
-        .padding(.vertical, 4)
         .frame(maxWidth: .infinity)
         .onAppear(perform: revealSuccess)
     }
@@ -123,7 +138,7 @@ public struct ReturnConfirmationView: View {
                     outcomeLane(returnCase)
                     unitsSection(returnCase, compact: false)
                 }
-                .frame(maxWidth: 650, alignment: .top)
+                .frame(maxWidth: .infinity, alignment: .top)
 
                 iPadInspector(returnCase)
                     .frame(width: dynamicTypeSize.isAccessibilitySize ? 430 : 390)
@@ -230,25 +245,17 @@ public struct ReturnConfirmationView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
 
-                Text(text(
-                    "LivePet_Confirm_SuccessSub",
-                    ar: "اكتمل الاسترداد المالي وبدأت متابعة الحيوان ضمن مسار الفحص الآمن.",
-                    en: "The financial refund is complete and the animal is now in the protected inspection workflow."
-                ))
-                .font(AdminType.subheadline)
-                .foregroundStyle(AdminSurface.secondaryText)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: compact ? 470 : 560)
+                Text(heroSubtitle(returnCase))
+                    .font(AdminType.subheadline)
+                    .foregroundStyle(AdminSurface.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: compact ? 470 : 560)
             }
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            text(
-                "LivePet_Confirm_A11ySummary",
-                ar: "تم تسجيل الاسترجاع بنجاح. الاسترداد المالي مكتمل، وملف الحيوان مستمر للفحص والمتابعة.",
-                en: "Return recorded successfully. The financial refund is complete and the animal case remains active for inspection and follow-up."
-            )
+            "\(text("LivePet_Confirm_SuccessTitle", ar: "تم تسجيل استرجاع الحيوان بنجاح", en: "Animal return recorded successfully")). \(heroSubtitle(returnCase))"
         )
     }
 
@@ -257,12 +264,12 @@ public struct ReturnConfirmationView: View {
     @ViewBuilder
     private func outcomeLane(_ returnCase: LivePetReturnCase) -> some View {
         let financial = outcomeItem(
-            icon: "checkmark.circle.fill",
+            icon: returnCase.refundStatus.iconName,
             eyebrow: text("LivePet_RefundStateLabel", ar: "الاسترداد المالي", en: "Financial refund"),
             value: returnCase.refundStatus.localizedTitle,
-            supporting: localizedMoney(returnCase),
+            supporting: financialSupportingText(returnCase),
             tint: returnCase.refundStatus.badgeColor,
-            isComplete: true
+            isComplete: returnCase.refundStatus.isSettled || returnCase.refundStatus == .notRequired
         )
         let workflow = outcomeItem(
             icon: "cross.case.fill",
@@ -364,7 +371,6 @@ public struct ReturnConfirmationView: View {
             }
 
             Spacer(minLength: 8)
-
             copyCaseButton(returnCase)
         }
         .padding(14)
@@ -554,13 +560,9 @@ public struct ReturnConfirmationView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(text(
-                    "LivePet_Confirm_NextStepTitle",
-                    ar: "ما الذي يحدث الآن؟",
-                    en: "What happens next?"
-                ))
-                .font(AdminType.subheadlineBold)
-                .foregroundStyle(AdminSurface.primaryText)
+                Text(text("LivePet_Confirm_NextStepTitle", ar: "ما الذي يحدث الآن؟", en: "What happens next?"))
+                    .font(AdminType.subheadlineBold)
+                    .foregroundStyle(AdminSurface.primaryText)
 
                 Text(returnCase.status.isFinal
                      ? text(
@@ -586,17 +588,13 @@ public struct ReturnConfirmationView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - iPhone Actions
+    // MARK: - iPhone Thumb-Zone Dock
 
-    private func phoneActions(_ returnCase: LivePetReturnCase) -> some View {
+    private func iPhoneActionDock(_ returnCase: LivePetReturnCase) -> some View {
         VStack(spacing: 10) {
             if let onProceedToMerchandiseRefund {
                 actionButton(
-                    title: text(
-                        "LivePet_Confirm_RefundRemainingItems",
-                        ar: "استرداد بقية المنتجات",
-                        en: "Refund remaining products"
-                    ),
+                    title: text("LivePet_Confirm_RefundRemainingItems", ar: "استرداد بقية المنتجات", en: "Refund remaining products"),
                     subtitle: text(
                         "LivePet_Confirm_RefundRemainingItemsSub",
                         ar: "العودة للفاتورة واختيار العناصر المؤهلة المتبقية",
@@ -610,32 +608,54 @@ public struct ReturnConfirmationView: View {
                 }
             }
 
-            actionButton(
-                title: text("LivePet_OpenDossierButton", ar: "فتح ملف الاسترجاع", en: "Open return case"),
-                subtitle: text(
+            HStack(spacing: 10) {
+                Button {
+                    actionFeedbackToken += 1
+                    onOpenDossier()
+                } label: {
+                    Label(text("LivePet_OpenDossierButton", ar: "فتح الملف", en: "Open case"), systemImage: "folder.fill")
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(onProceedToMerchandiseRefund == nil ? Color.white : AdminSurface.primaryText)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .background(
+                            onProceedToMerchandiseRefund == nil ? AdminSurface.primary : AdminSurface.cardElevated,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        )
+                        .overlay {
+                            if onProceedToMerchandiseRefund != nil {
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .stroke(AdminSurface.hairline, lineWidth: 1)
+                            }
+                        }
+                }
+                .buttonStyle(ReturnConfirmationPressStyle())
+                .accessibilityHint(text(
                     "LivePet_Confirm_OpenDossierSub",
                     ar: "متابعة الفحص والعهدة وسجل القرارات",
                     en: "Review inspection, custody, and decision history"
-                ),
-                icon: "folder.fill",
-                style: onProceedToMerchandiseRefund == nil ? .primary : .secondary
-            ) {
-                actionFeedbackToken += 1
-                onOpenDossier()
-            }
+                ))
 
-            Button {
-                actionFeedbackToken += 1
-                onDismiss()
-            } label: {
-                Text(text("LivePet_Confirm_Done", ar: "تم", en: "Done"))
-                    .font(AdminType.subheadlineBold)
-                    .foregroundStyle(AdminSurface.secondaryText)
-                    .frame(maxWidth: .infinity, minHeight: 46)
+                Button {
+                    actionFeedbackToken += 1
+                    onDismiss()
+                } label: {
+                    Text(text("LivePet_Confirm_Done", ar: "تم", en: "Done"))
+                        .font(AdminType.subheadlineBold)
+                        .foregroundStyle(AdminSurface.secondaryText)
+                        .frame(minWidth: 76, minHeight: 50)
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(ReturnConfirmationPressStyle())
             }
-            .buttonStyle(ReturnConfirmationPressStyle())
         }
-        .padding(.top, 2)
+        .padding(.horizontal, AdminSpacing.screenMargin)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+        .background(AdminSurface.surface.ignoresSafeArea(edges: .bottom))
+        .overlay(alignment: .top) {
+            Divider().overlay(AdminSurface.hairline)
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - iPad Inspector
@@ -656,13 +676,13 @@ public struct ReturnConfirmationView: View {
                 Text(onProceedToMerchandiseRefund == nil
                      ? text(
                         "LivePet_Confirm_ContinueCaseSub",
-                        ar: "الاسترداد المالي انتهى. افتح الملف لمتابعة مسار الفحص والعهدة.",
-                        en: "The refund is complete. Open the case to continue inspection and custody follow-up."
+                        ar: "الاسترداد المالي انتهى أو تم تسجيل حالته. افتح الملف لمتابعة الفحص والعهدة.",
+                        en: "The financial state is recorded. Open the case to continue inspection and custody follow-up."
                      )
                      : text(
                         "LivePet_Confirm_ContinueSaleSub",
-                        ar: "تم استرداد الحيوان. يمكنك الآن استرداد أي منتجات أخرى مؤهلة من نفس الفاتورة.",
-                        en: "The animal refund is complete. You can now refund other eligible products from the same sale."
+                        ar: "تم تسجيل استرجاع الحيوان. يمكنك الآن معالجة أي منتجات أخرى مؤهلة من نفس الفاتورة.",
+                        en: "The animal return is recorded. You can now process other eligible products from the same sale."
                      ))
                 .font(AdminType.subheadline)
                 .foregroundStyle(AdminSurface.secondaryText)
@@ -670,16 +690,14 @@ public struct ReturnConfirmationView: View {
             }
 
             Divider().overlay(AdminSurface.hairline)
-
             nextStepNote(returnCase)
-
             caseIdentity(returnCase)
 
             VStack(spacing: 10) {
                 if let onProceedToMerchandiseRefund {
                     actionButton(
                         title: text("LivePet_Confirm_RefundRemainingItems", ar: "استرداد بقية المنتجات", en: "Refund remaining products"),
-                        subtitle: text("LivePet_Confirm_ShortcutRefund", ar: "⌘R", en: "⌘R"),
+                        subtitle: "⌘R",
                         icon: "arrow.uturn.backward.circle.fill",
                         style: .primary
                     ) {
@@ -692,7 +710,7 @@ public struct ReturnConfirmationView: View {
 
                 actionButton(
                     title: text("LivePet_OpenDossierButton", ar: "فتح ملف الاسترجاع", en: "Open return case"),
-                    subtitle: text("LivePet_Confirm_ShortcutOpen", ar: "⌘O", en: "⌘O"),
+                    subtitle: "⌘O",
                     icon: "folder.fill",
                     style: onProceedToMerchandiseRefund == nil ? .primary : .secondary
                 ) {
@@ -919,16 +937,58 @@ public struct ReturnConfirmationView: View {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .stroke(AdminSurface.hairline.opacity(0.75), lineWidth: 1)
             )
-            .opacity(reduceMotion ? 0.78 : (successAppeared ? 0.58 : 0.9))
+            .opacity(reduceMotion ? 0.78 : (shimmerOn ? 0.58 : 0.9))
             .onAppear {
-                guard !reduceMotion else { return }
+                guard !reduceMotion, !shimmerOn else { return }
                 withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    successAppeared = true
+                    shimmerOn = true
                 }
             }
     }
 
     // MARK: - Formatting / Localization / Motion
+
+    private func heroSubtitle(_ returnCase: LivePetReturnCase) -> String {
+        switch returnCase.refundStatus {
+        case .succeeded:
+            return text(
+                "LivePet_Confirm_SuccessSub",
+                ar: "اكتمل الاسترداد المالي وبدأت متابعة الحيوان ضمن مسار الفحص الآمن.",
+                en: "The financial refund is complete and the animal is now in the protected inspection workflow."
+            )
+        case .notRequired:
+            return text(
+                "LivePet_Confirm_NoRefundRequiredSub",
+                ar: "تم تسجيل الاسترجاع ولا يلزم استرداد مالي. بدأ مسار الفحص والمتابعة للحيوان.",
+                en: "The return is recorded and no financial refund is required. The animal follow-up workflow has started."
+            )
+        case .requested, .processing:
+            return text(
+                "LivePet_Confirm_RefundProcessingSub",
+                ar: "تم تسجيل الاسترجاع وطلب الاسترداد المالي قيد المعالجة. تستمر متابعة الحيوان بشكل مستقل.",
+                en: "The return is recorded and the financial refund is processing. Animal follow-up continues independently."
+            )
+        case .failed, .retryRequired, .manualReview:
+            return text(
+                "LivePet_Confirm_RefundAttentionSub",
+                ar: "تم تسجيل الاسترجاع، لكن الاسترداد المالي يحتاج متابعة. افتح الملف لمراجعة الإجراء المطلوب.",
+                en: "The return is recorded, but the financial refund needs attention. Open the case to review the required action."
+            )
+        case .notRequested:
+            return text(
+                "LivePet_Confirm_RefundPendingSub",
+                ar: "تم تسجيل الاسترجاع، وما زالت التسوية المالية بانتظار البدء. مسار متابعة الحيوان محفوظ.",
+                en: "The return is recorded and financial settlement has not started yet. The animal follow-up workflow is preserved."
+            )
+        }
+    }
+
+    private func financialSupportingText(_ returnCase: LivePetReturnCase) -> String {
+        if returnCase.totalRefundAmountMinor > 0 {
+            return localizedMoney(returnCase)
+        }
+        return returnCase.financialResolution.localizedTitle
+    }
 
     private func localizedMoney(_ returnCase: LivePetReturnCase) -> String {
         let formatter = NumberFormatter()
