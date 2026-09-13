@@ -3006,11 +3006,18 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        // Existing return cases are history and have their own explicit
-                        // dossier buttons. They must never hijack the primary refund
-                        // action: a partially-refunded sale can still refund any
-                        // remaining eligible quantity or exact live-pet unit.
-                        onRefund()
+                        if isRefunded {
+                            // Post-first-refund only: historical return cases stay
+                            // accessible from their dossier cards, while the primary
+                            // action starts another eligible refund/return operation.
+                            onRefund()
+                        } else if let firstReturnCase = returnCases.first {
+                            // Preserve the existing pre-first-refund behavior exactly:
+                            // resume the active return case instead of creating another.
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
                     },
                     onCancel: {
                         DossierHaptics.warning()
@@ -3045,11 +3052,18 @@ struct POSTransactionDossierSheet: View {
                     },
                     onRefund: {
                         DossierHaptics.medium()
-                        // Existing return cases are history and have their own explicit
-                        // dossier buttons. They must never hijack the primary refund
-                        // action: a partially-refunded sale can still refund any
-                        // remaining eligible quantity or exact live-pet unit.
-                        onRefund()
+                        if isRefunded {
+                            // Post-first-refund only: historical return cases stay
+                            // accessible from their dossier cards, while the primary
+                            // action starts another eligible refund/return operation.
+                            onRefund()
+                        } else if let firstReturnCase = returnCases.first {
+                            // Preserve the existing pre-first-refund behavior exactly:
+                            // resume the active return case instead of creating another.
+                            selectedReturnCaseForDetail = firstReturnCase
+                        } else {
+                            onRefund()
+                        }
                     },
                     onCancel: {
                         DossierHaptics.warning()
