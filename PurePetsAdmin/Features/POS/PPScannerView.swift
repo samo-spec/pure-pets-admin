@@ -1759,6 +1759,7 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         analysisContextLock.unlock()
     }
 
+    @MainActor
     func updateScanGeometry(reticleFrame: CGRect, viewportSize: CGSize) {
         guard !reticleFrame.isEmpty, viewportSize.width > 0, viewportSize.height > 0 else { return }
 
@@ -2614,7 +2615,10 @@ final class PPScannerEngine: NSObject, ObservableObject, AVCaptureVideoDataOutpu
         completion: @escaping @MainActor @Sendable (PPScannedCheque) -> Void
     ) {
         guard let cgImage = image.cgImage else {
-            completion(PPScannedCheque(image: image))
+            nonisolated(unsafe) let safeImage = image
+            Task { @MainActor in
+                completion(PPScannedCheque(image: safeImage))
+            }
             return
         }
 
